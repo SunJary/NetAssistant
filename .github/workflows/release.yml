@@ -1,0 +1,175 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: netassistant.exe
+            asset_name: netassistant-windows-x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: netassistant
+            asset_name: netassistant-linux-x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: netassistant
+            asset_name: netassistant-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: netassistant
+            asset_name: netassistant-macos-aarch64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Rust targets
+        run: |
+          rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxkbcommon-x11-dev
+
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install openssl
+
+      - name: Build release
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Copy-Item target\${{ matrix.target }}\release\netassistant.exe netassistant.exe
+          Compress-Archive -Path netassistant.exe -DestinationPath ${{ matrix.asset_name }}.zip
+
+      - name: Prepare artifact (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          strip target/${{ matrix.target }}/release/netassistant || true
+          tar -czf ${{ matrix.asset_name }}.tar.gz -C target/${{ matrix.target }}/release netassistant
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.os == 'windows-latest' && format('{0}.zip', matrix.asset_name) || format('{0}.tar.gz', matrix.asset_name) }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*/*
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## NetAssistant ${{ steps.get_version.outputs.VERSION }}
+            
+            ### 下载说明
+            
+            - **Windows**: 下载 `netassistant-windows-x86_64.zip`
+            - **Linux**: 下载 `netassistant-linux-x86_64.tar.gz`
+            - **macOS (Intel)**: 下载 `netassistant-macos-x86_64.tar.gz`
+            - **macOS (Apple Silicon)**: 下载 `netassistant-macos-aarch64.tar.gz`
+            
+            ### 安装方法
+            
+            #### Windows
+            1. 下载并解压 `netassistant-windows-x86_64.zip`
+            2. 运行 `netassistant.exe`
+            
+            #### Linux
+            1. 下载并解压 `netassistant-linux-x86_64.tar.gz`
+            2. 添加执行权限：`chmod +x netassistant`
+            3. 运行：`./netassistant`
+            
+            #### macOS
+            1. 下载对应的 macOS 版本
+            2. 解压：`tar -xzf netassistant-macos-*.tar.gz`
+            3. 添加执行权限：`chmod +x netassistant`
+            4. 运行：`./netassistant`
+            
+            ### 系统要求
+            
+            - Windows 10 或更高版本
+            - Linux (需要 GTK3 库)
+            - macOS 10.15 或更高版本
+            
+            ### 更新内容
+            
+            请查看 [CHANGELOG.md](https://github.com/sunjary/netassistant/blob/main/CHANGELOG.md) 了解详细更新内容。
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
