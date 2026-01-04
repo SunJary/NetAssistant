@@ -1,8 +1,7 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::StyledExt;
-use gpui_component::input::{Input, InputState};
-use gpui_component::button::{Toggle, ToggleGroup};
+use gpui_component::input::Input;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ClientConfig, ConnectionConfig, ConnectionType, ServerConfig};

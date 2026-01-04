@@ -1,5 +1,4 @@
 use gpui::*;
-use gpui::prelude::FluentBuilder;
 use gpui_component::input::InputState;
 
 use crate::config;
@@ -7,7 +6,7 @@ use crate::config::storage::ConfigStorage;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::ui::connection_tab::ConnectionTabState;
 use crate::ui::main_window::MainWindow;
-use crate::message::{Message, MessageDirection, MessageType};
+use crate::message::{Message, MessageDirection, MessageType, DisplayMode};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -66,6 +65,10 @@ pub struct NetAssistantApp {
 
     // 发送消息输入框状态
     pub message_input: Entity<InputState>,
+    pub message_input_mode: String,
+
+    // 消息显示模式
+    pub display_mode: DisplayMode,
 }
 
 impl NetAssistantApp {
@@ -114,15 +117,9 @@ impl NetAssistantApp {
             context_menu_position: None,
             context_menu_position_y: None,
             message_input,
+            message_input_mode: String::from("text"),
+            display_mode: DisplayMode::Text,
         }
-    }
-
-    pub fn get_active_tab_state(&self) -> Option<&ConnectionTabState> {
-        self.connection_tabs.get(&self.active_tab)
-    }
-
-    pub fn get_active_tab_state_mut(&mut self) -> Option<&mut ConnectionTabState> {
-        self.connection_tabs.get_mut(&self.active_tab)
     }
 
     pub fn ensure_tab_exists(&mut self, tab_id: String, connection_config: config::connection::ConnectionConfig) {
@@ -137,6 +134,9 @@ impl NetAssistantApp {
     pub fn ensure_auto_reply_input_exists(&mut self, tab_id: String, window: &mut Window, cx: &mut Context<Self>) {
         if !self.auto_reply_inputs.contains_key(&tab_id) {
             let auto_reply_input = cx.new(|cx| InputState::new(window, cx).multi_line().placeholder("输入自动回复内容..."));
+            auto_reply_input.update(cx, |input, cx| {
+                input.set_value("ok".to_string(), window, cx);
+            });
             self.auto_reply_inputs.insert(tab_id, auto_reply_input);
         }
     }
@@ -157,6 +157,22 @@ impl NetAssistantApp {
         }
         
         println!("[关闭标签页] 标签页 {} 已关闭", tab_id);
+    }
+
+    pub fn sanitize_hex_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.message_input_mode == "hex" {
+            let current_text = self.message_input.read(cx).text().to_string();
+            let sanitized: String = current_text
+                .chars()
+                .filter(|c| c.is_ascii_hexdigit() || c.is_ascii_whitespace())
+                .collect();
+            
+            if sanitized != current_text {
+                self.message_input.update(cx, |input, cx| {
+                    input.set_value(sanitized, window, cx);
+                });
+            }
+        }
     }
 
     pub fn connect_client(&mut self, tab_id: String, _cx: &mut Context<Self>) {
@@ -203,15 +219,14 @@ impl NetAssistantApp {
                                             Ok(n) => {
                                                 if n > 0 {
                                                     buffer.truncate(n);
-                                                    if let Ok(content) = String::from_utf8(buffer.clone()) {
-                                                        let message = Message::new(
-                                                            MessageDirection::Received,
-                                                            content,
-                                                            MessageType::Text,
-                                                        );
-                                                        if let Some(sender) = sender_clone.clone() {
-                                                            let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2.clone(), message));
-                                                        }
+                                                    let message = Message::new(
+                                                        MessageDirection::Received,
+                                                        buffer.clone(),
+                                                        MessageType::Text,
+                                                    );
+                                                    if let Some(sender) = sender_clone.clone() {
+                                                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2.clone(), message));
+                                                
                                                     }
                                                 } else {
                                                     println!("[客户端] 接收到0字节，连接已关闭");
@@ -338,15 +353,13 @@ impl NetAssistantApp {
                                                                 Ok(n) => {
                                                                     if n > 0 {
                                                                         buffer.truncate(n);
-                                                                        if let Ok(content) = String::from_utf8(buffer.clone()) {
-                                                                            let message = Message::new(
-                                                                                MessageDirection::Received,
-                                                                                content,
-                                                                                MessageType::Text,
-                                                                            ).with_source(addr.to_string());
-                                                                            if let Some(sender) = sender_clone2.clone() {
-                                                                                let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone3.clone(), message));
-                                                                            }
+                                                                        let message = Message::new(
+                                                                            MessageDirection::Received,
+                                                                            buffer.clone(),
+                                                                            MessageType::Text,
+                                                                        ).with_source(addr.to_string());
+                                                                        if let Some(sender) = sender_clone2.clone() {
+                                                                            let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone3.clone(), message));
                                                                         }
                                                                     } else {
                                                                         println!("[服务端] 客户端 {} 接收到0字节，连接已关闭", addr);
@@ -427,15 +440,13 @@ impl NetAssistantApp {
                                                     Ok((n, addr)) => {
                                                         if n > 0 {
                                                             buffer.truncate(n);
-                                                            if let Ok(content) = String::from_utf8(buffer.clone()) {
-                                                                let message = Message::new(
-                                                                    MessageDirection::Received,
-                                                                    content,
-                                                                    MessageType::Text,
-                                                                ).with_source(addr.to_string());
-                                                                if let Some(sender) = sender_clone.clone() {
-                                                                    let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2.clone(), message));
-                                                                }
+                                                            let message = Message::new(
+                                                                MessageDirection::Received,
+                                                                buffer.clone(),
+                                                                MessageType::Text,
+                                                            ).with_source(addr.to_string());
+                                                            if let Some(sender) = sender_clone.clone() {
+                                                                let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2.clone(), message));
                                                             }
                                                         }
                                                     }
@@ -492,6 +503,7 @@ impl NetAssistantApp {
         println!("[send_message] 开始，tab_id: {}, content: '{}'", tab_id, content);
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
+        let bytes = content.into_bytes();
         
         if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
             println!("[send_message] 找到标签页，is_connected: {}, connection_config: {:?}", 
@@ -500,9 +512,10 @@ impl NetAssistantApp {
                 if tab_state.connection_config.is_client() {
                     println!("[send_message] 客户端模式");
                     if let Some(write_sender) = self.client_write_senders.get(&tab_id).cloned() {
+                        let bytes_clone = bytes.clone();
                         tokio::spawn(async move {
                             println!("[send_message] 异步任务开始发送");
-                            let result: Result<(), mpsc::error::SendError<Vec<u8>>> = write_sender.send(content.clone().into_bytes());
+                            let result: Result<(), mpsc::error::SendError<Vec<u8>>> = write_sender.send(bytes_clone);
                             if let Err(e) = result {
                                 println!("[send_message] 发送失败: {}", e);
                                 if let Some(sender) = sender {
@@ -513,7 +526,7 @@ impl NetAssistantApp {
                                 if let Some(sender) = sender {
                                     let message = Message::new(
                                         MessageDirection::Sent,
-                                        content,
+                                        bytes,
                                         MessageType::Text,
                                     );
                                     let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
@@ -545,7 +558,7 @@ impl NetAssistantApp {
                             println!("[send_message] 异步任务开始广播");
                             let mut success_count = 0;
                             for (addr, write_sender) in clients {
-                                if let Err(_e) = write_sender.send(content.clone().into_bytes()) {
+                                if let Err(_e) = write_sender.send(bytes.clone()) {
                                     println!("[send_message] 发送给客户端 {} 失败", addr);
                                 } else {
                                     success_count += 1;
@@ -556,7 +569,7 @@ impl NetAssistantApp {
                                 if let Some(sender) = sender_clone {
                                     let message = Message::new(
                                         MessageDirection::Sent,
-                                        content,
+                                        bytes,
                                         MessageType::Text,
                                     );
                                     let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2, message));
@@ -576,10 +589,101 @@ impl NetAssistantApp {
         }
     }
 
+    pub fn send_message_bytes(&mut self, tab_id: String, bytes: Vec<u8>, hex_input: String, _cx: &mut Context<Self>) {
+        println!("[send_message_bytes] 开始，tab_id: {}, bytes: {:?}, hex_input: '{}'", tab_id, bytes, hex_input);
+        let sender = self.connection_event_sender.clone();
+        let tab_id_clone = tab_id.clone();
+        
+        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
+            println!("[send_message_bytes] 找到标签页，is_connected: {}, connection_config: {:?}", 
+                tab_state.is_connected, tab_state.connection_config);
+            if tab_state.is_connected {
+                if tab_state.connection_config.is_client() {
+                    println!("[send_message_bytes] 客户端模式");
+                    if let Some(write_sender) = self.client_write_senders.get(&tab_id).cloned() {
+                        let bytes_clone = bytes.clone();
+                        tokio::spawn(async move {
+                            println!("[send_message_bytes] 异步任务开始发送");
+                            let result: Result<(), mpsc::error::SendError<Vec<u8>>> = write_sender.send(bytes_clone);
+                            if let Err(e) = result {
+                                println!("[send_message_bytes] 发送失败: {}", e);
+                                if let Some(sender) = sender {
+                                    let _ = sender.send(ConnectionEvent::Error(tab_id_clone, format!("发送失败: {}", e)));
+                                }
+                            } else {
+                                println!("[send_message_bytes] 发送成功");
+                                if let Some(sender) = sender {
+                                    let message = Message::new(
+                                        MessageDirection::Sent,
+                                        bytes,
+                                        MessageType::Hex,
+                                    );
+                                    let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                                }
+                            }
+                        });
+                    } else {
+                        println!("[send_message_bytes] 未找到TCP写入器");
+                        if let Some(sender) = sender {
+                            let _ = sender.send(ConnectionEvent::Error(tab_id_clone, "TCP写入器未初始化".to_string()));
+                        }
+                    }
+                } else {
+                    println!("[send_message_bytes] 服务端模式");
+                    let clients: Vec<(SocketAddr, mpsc::UnboundedSender<Vec<u8>>)> = self.server_clients
+                        .get(&tab_id)
+                        .map(|clients| clients.iter().map(|(addr, sender)| (*addr, sender.clone())).collect())
+                        .unwrap_or_default();
+                    
+                    if clients.is_empty() {
+                        println!("[send_message_bytes] 没有连接的客户端");
+                        if let Some(sender) = sender {
+                            let _ = sender.send(ConnectionEvent::Error(tab_id_clone, "没有连接的客户端".to_string()));
+                        }
+                    } else {
+                        let sender_clone = sender.clone();
+                        let tab_id_clone2 = tab_id_clone.clone();
+                        let bytes_clone = bytes.clone();
+                        tokio::spawn(async move {
+                            println!("[send_message_bytes] 异步任务开始广播");
+                            let mut success_count = 0;
+                            for (addr, write_sender) in clients {
+                                if let Err(_e) = write_sender.send(bytes_clone.clone()) {
+                                    println!("[send_message_bytes] 发送给客户端 {} 失败", addr);
+                                } else {
+                                    success_count += 1;
+                                }
+                            }
+                            if success_count > 0 {
+                                println!("[send_message_bytes] 广播成功，发送给 {} 个客户端", success_count);
+                                if let Some(sender) = sender_clone {
+                                    let message = Message::new(
+                                        MessageDirection::Sent,
+                                        bytes_clone,
+                                        MessageType::Hex,
+                                    );
+                                    let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2, message));
+                                }
+                            }
+                        });
+                    }
+                }
+            } else {
+                println!("[send_message_bytes] 连接未建立");
+                if let Some(sender) = sender {
+                    let _ = sender.send(ConnectionEvent::Error(tab_id_clone, "连接未建立".to_string()));
+                }
+            }
+        } else {
+            println!("[send_message_bytes] 未找到标签页: {}", tab_id);
+        }
+    }
+
     pub fn send_message_to_client(&mut self, tab_id: String, content: String, source: Option<String>, _cx: &mut Context<Self>) {
         println!("[send_message_to_client] 开始，tab_id: {}, content: '{}', source: {:?}", tab_id, content, source);
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
+        let bytes = content.clone().into_bytes();
         
         if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
             println!("[send_message_to_client] 找到标签页，is_connected: {}, connection_config: {:?}", 
@@ -598,8 +702,9 @@ impl NetAssistantApp {
                                 if let Some(write_sender) = clients.get(&addr).cloned() {
                                     let sender_clone = sender.clone();
                                     let tab_id_clone2 = tab_id_clone.clone();
+                                    let bytes_clone = bytes.clone();
                                     tokio::spawn(async move {
-                                        if let Err(e) = write_sender.send(content.clone().into_bytes()) {
+                                        if let Err(e) = write_sender.send(bytes_clone) {
                                             println!("[send_message_to_client] 发送失败: {}", e);
                                             if let Some(sender) = sender_clone {
                                                 let _ = sender.send(ConnectionEvent::Error(tab_id_clone2, e.to_string()));
@@ -609,7 +714,7 @@ impl NetAssistantApp {
                                             if let Some(sender) = sender_clone {
                                                 let message = Message::new(
                                                     MessageDirection::Sent,
-                                                    content,
+                                                    bytes,
                                                     MessageType::Text,
                                                 );
                                                 let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2, message));
@@ -643,9 +748,7 @@ impl NetAssistantApp {
         }
     }
 
-
-
-    pub fn handle_connection_events(&mut self, cx: &mut Context<Self>) {
+    fn handle_connection_events(&mut self, cx: &mut Context<Self>) {
         let mut auto_reply_events: Vec<(String, String, Option<String>)> = Vec::new();
         
         if let Some(ref mut receiver) = self.connection_event_receiver {
@@ -724,6 +827,19 @@ impl NetAssistantApp {
                 self.send_message_to_client(tab_id, auto_reply_content, source, cx);
             }
         }
+    }
+}
+
+impl Drop for NetAssistantApp {
+    fn drop(&mut self) {
+        println!("[应用关闭] 开始关闭所有连接");
+        
+        let tab_ids: Vec<String> = self.connection_tabs.keys().cloned().collect();
+        for tab_id in tab_ids {
+            self.close_tab(tab_id);
+        }
+        
+        println!("[应用关闭] 所有连接已关闭");
     }
 }
 
