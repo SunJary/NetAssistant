@@ -15,7 +15,7 @@ impl<'a> NewConnectionDialog<'a> {
         Self { app }
     }
 
-    pub fn render(self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    pub fn render(self, _window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         div()
             .absolute()
             .inset_0()

@@ -80,7 +80,7 @@ impl<'a> ConnectionPanel<'a> {
 
     fn render_accordion_item(
         &self,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
         id: &'static str,
         content_id: &'static str,

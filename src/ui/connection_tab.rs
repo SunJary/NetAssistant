@@ -44,7 +44,6 @@ pub struct ConnectionTabState {
     pub is_connected: bool,
     pub error_message: Option<String>,
     pub auto_reply_enabled: bool,
-    pub auto_reply_content: String,
     pub scroll_handle: VirtualListScrollHandle,
     pub item_sizes: Rc<Vec<Size<Pixels>>>,
     pub auto_scroll_enabled: bool,
@@ -59,7 +58,6 @@ impl ConnectionTabState {
             is_connected: false,
             error_message: None,
             auto_reply_enabled: false,
-            auto_reply_content: String::new(),
             scroll_handle: VirtualListScrollHandle::new(),
             item_sizes: Rc::new(Vec::new()),
             auto_scroll_enabled: true,
@@ -91,6 +89,7 @@ impl ConnectionTabState {
     pub fn calculate_message_height(message: &Message) -> Size<Pixels> {
         let outer_gap = px(4.);
         let header_height = px(20.);
+        let gap_between_header_and_content = px(4.);
         let content_font_height = px(20.);
         let content_padding_top = px(12.);
         let content_padding_bottom = px(12.);
@@ -99,7 +98,7 @@ impl ConnectionTabState {
         let content_lines = content_str.lines().count().max(1);
         let content_height = content_font_height * content_lines as f32;
         
-        let total_height = outer_gap + header_height + content_padding_top + content_height + content_padding_bottom;
+        let total_height = outer_gap + header_height + gap_between_header_and_content + content_padding_top + content_height + content_padding_bottom;
         size(px(300.), total_height)
     }
 
@@ -359,7 +358,7 @@ impl<'a> ConnectionTab<'a> {
     }
 
     /// 渲染自动回复配置区域
-    fn render_auto_reply_config(&self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_auto_reply_config(&self, _window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let tab_id = self.tab_id.clone();
         let tab_id_for_toggle = tab_id.clone();
         let auto_reply_enabled = self.tab_state.auto_reply_enabled;
@@ -441,8 +440,8 @@ impl<'a> ConnectionTab<'a> {
                             )
                             .child(
                                 div()
-                                    .h_32()
                                     .w_full()
+                                    .h_32()
                                     .bg(gpui::rgb(0xffffff))
                                     .rounded_md()
                                     .border_1()
@@ -474,6 +473,7 @@ impl<'a> ConnectionTab<'a> {
                 .flex()
                 .flex_col()
                 .flex_1()
+                .h_full()
                 .p_4()
                 .child(
                     div()
@@ -571,9 +571,9 @@ impl<'a> ConnectionTab<'a> {
         let display_mode_clone = display_mode;
         
         div()
-            .flex_1()
             .flex()
             .flex_col()
+            .flex_1()
             .p_4()
             .child(
                 div()
@@ -651,94 +651,100 @@ impl<'a> ConnectionTab<'a> {
                     ),
             )
             .child(
-                v_virtual_list(
-                    cx.entity().clone(),
-                    "message-list",
-                    item_sizes,
-                    move |_view, visible_range, _, cx| {
-                        visible_range
-                            .map(|ix| {
-                                if let Some(message) = messages_clone.get(ix) {
-                                    let is_sent = message.direction == MessageDirection::Sent;
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .child(
+                        v_virtual_list(
+                            cx.entity().clone(),
+                            "message-list",
+                            item_sizes,
+                            move |_view, visible_range, _, _cx| {
+                                visible_range
+                                    .map(|ix| {
+                                        if let Some(message) = messages_clone.get(ix) {
+                                            let is_sent = message.direction == MessageDirection::Sent;
                                     
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_1()
-                                        .w_full()
-                                        .when(is_sent, |div| {
-                                            div.items_end()
-                                        })
-                                        .when(!is_sent, |div| {
-                                            div.items_start()
-                                        })
-                                        .child(
                                             div()
                                                 .flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_semibold()
-                                                        .when(is_sent, |div| {
-                                                            div.text_color(gpui::rgb(0x3b82f6))
-                                                        })
-                                                        .when(!is_sent, |div| {
-                                                            div.text_color(gpui::rgb(0x10b981))
-                                                        })
-                                                        .child(if is_sent { "发送" } else { "接收" }),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .text_color(gpui::rgb(0x9ca3af))
-                                                        .child(message.timestamp.clone()),
-                                                )
-                                                .when(message.source.is_some(), |this_div| {
-                                                    if let Some(source) = &message.source {
-                                                        this_div.child(
-                                                            div()
-                                                                .text_xs()
-                                                                .text_color(gpui::rgb(0x6b7280))
-                                                                .child(format!("({})", source)),
-                                                        )
-                                                    } else {
-                                                        this_div
-                                                    }
-                                                }),
-                                        )
-                                        .child(
-                                            div()
-                                                .max_w_80()
-                                                .p_3()
-                                                .rounded_md()
+                                                .flex_col()
+                                                .gap_1()
+                                                .w_full()
                                                 .when(is_sent, |div| {
-                                                    div.bg(gpui::rgb(0x3b82f6))
+                                                    div.items_end()
                                                 })
                                                 .when(!is_sent, |div| {
-                                                    div.bg(gpui::rgb(0xf3f4f6))
+                                                    div.items_start()
                                                 })
                                                 .child(
                                                     div()
-                                                        .text_sm()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_2()
+                                                        .child(
+                                                            div()
+                                                                .text_xs()
+                                                                .font_semibold()
+                                                                .when(is_sent, |div| {
+                                                                    div.text_color(gpui::rgb(0x3b82f6))
+                                                                })
+                                                                .when(!is_sent, |div| {
+                                                                    div.text_color(gpui::rgb(0x10b981))
+                                                                })
+                                                                .child(if is_sent { "发送" } else { "接收" }),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .text_xs()
+                                                                .text_color(gpui::rgb(0x9ca3af))
+                                                                .child(message.timestamp.clone()),
+                                                        )
+                                                        .when(message.source.is_some(), |this_div| {
+                                                            if let Some(source) = &message.source {
+                                                                this_div.child(
+                                                                    div()
+                                                                        .text_xs()
+                                                                        .text_color(gpui::rgb(0x6b7280))
+                                                                        .child(format!("({})", source)),
+                                                                )
+                                                            } else {
+                                                                this_div
+                                                            }
+                                                        }),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .max_w_80()
+                                                        .p_3()
+                                                        .rounded_md()
                                                         .when(is_sent, |div| {
-                                                            div.text_color(gpui::rgb(0xffffff))
+                                                            div.bg(gpui::rgb(0x3b82f6))
                                                         })
                                                         .when(!is_sent, |div| {
-                                                            div.text_color(gpui::rgb(0x111827))
+                                                            div.bg(gpui::rgb(0xf3f4f6))
                                                         })
-                                                        .child(message.get_display_content(display_mode_clone)),
-                                                ),
-                                        )
-                                } else {
-                                    div()
-                                }
-                            })
-                            .collect()
-                    },
-                )
-                .track_scroll(&scroll_handle)
+                                                        .child(
+                                                            div()
+                                                                .text_sm()
+                                                                .when(is_sent, |div| {
+                                                                    div.text_color(gpui::rgb(0xffffff))
+                                                                })
+                                                                .when(!is_sent, |div| {
+                                                                    div.text_color(gpui::rgb(0x111827))
+                                                                })
+                                                                .child(message.get_display_content(display_mode_clone)),
+                                                        ),
+                                                )
+                                        } else {
+                                            div()
+                                        }
+                                    })
+                                    .collect()
+                            }
+                        )
+                        .track_scroll(&scroll_handle),
+                    ),
             )
     }
 
@@ -747,7 +753,6 @@ impl<'a> ConnectionTab<'a> {
         let tab_id = self.tab_id.clone();
         
         div()
-            .h_48()
             .flex()
             .flex_col()
             .p_3()
@@ -827,6 +832,7 @@ impl<'a> ConnectionTab<'a> {
             .child(
                 div()
                     .flex_1()
+                    .h_32()
                     .child(
                         Input::new(&self.app.message_input)
                             .w_full()
@@ -916,7 +922,7 @@ impl<'a> ConnectionTab<'a> {
                                     .hover(|style| {
                                         style.bg(gpui::rgb(0x2563eb))
                                     })
-                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app, event, window, cx| {
+                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, window, cx| {
                                         println!("[发送按钮] 点击事件触发，tab_id: {}", tab_id);
                                         let content = app.message_input.read(cx).text().to_string();
                                         println!("[发送按钮] 消息内容: '{}', 长度: {}, 模式: {}", content, content.len(), app.message_input_mode);

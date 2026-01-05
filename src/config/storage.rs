@@ -13,11 +13,6 @@ pub enum StorageError {
     #[error("JSON序列化错误: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("配置文件不存在")]
-    FileNotFound,
-
-    #[error("无效的配置格式")]
-    InvalidFormat,
 }
 
 /// 应用配置
@@ -40,7 +35,6 @@ impl Default for AppConfig {
 
 /// 配置存储管理器
 pub struct ConfigStorage {
-    config_dir: PathBuf,
     config_file: PathBuf,
     config: AppConfig,
 }
@@ -61,7 +55,6 @@ impl ConfigStorage {
         };
 
         Ok(Self {
-            config_dir,
             config_file,
             config,
         })
@@ -95,41 +88,11 @@ impl ConfigStorage {
         Ok(())
     }
 
-    /// 获取当前配置
-    pub fn config(&self) -> &AppConfig {
-        &self.config
-    }
-
-    /// 获取可变配置
-    pub fn config_mut(&mut self) -> &mut AppConfig {
-        &mut self.config
-    }
-
     /// 保存配置
     pub fn save(&self) -> Result<(), StorageError> {
         Self::save_to_file(&self.config_file, &self.config)
     }
 
-    /// 加载配置
-    pub fn load(&mut self) -> Result<(), StorageError> {
-        if self.config_file.exists() {
-            self.config = Self::load_from_file(&self.config_file)?;
-            Ok(())
-        } else {
-            Err(StorageError::FileNotFound)
-        }
-    }
-
-    /// 导出配置到指定路径
-    pub fn export(&self, path: &Path) -> Result<(), StorageError> {
-        Self::save_to_file(path, &self.config)
-    }
-
-    /// 从指定路径导入配置
-    pub fn import(&mut self, path: &Path) -> Result<(), StorageError> {
-        self.config = Self::load_from_file(path)?;
-        self.save()
-    }
 
     /// 添加连接配置
     pub fn add_connection(&mut self, connection: ConnectionConfig) {
@@ -139,36 +102,6 @@ impl ConfigStorage {
         }
     }
 
-    /// 更新连接配置
-    pub fn update_connection(&mut self, index: usize, connection: ConnectionConfig) -> Result<(), StorageError> {
-        if index >= self.config.connections.len() {
-            return Err(StorageError::InvalidFormat);
-        }
-        self.config.connections[index] = connection;
-        if self.config.auto_save {
-            self.save()
-        } else {
-            Ok(())
-        }
-    }
-
-    /// 删除连接配置
-    pub fn remove_connection(&mut self, index: usize) -> Result<(), StorageError> {
-        if index >= self.config.connections.len() {
-            return Err(StorageError::InvalidFormat);
-        }
-        self.config.connections.remove(index);
-        if self.config.auto_save {
-            self.save()
-        } else {
-            Ok(())
-        }
-    }
-
-    /// 获取所有连接配置
-    pub fn connections(&self) -> &[ConnectionConfig] {
-        &self.config.connections
-    }
 
     /// 获取客户端连接配置
     pub fn client_connections(&self) -> Vec<&ConnectionConfig> {
@@ -188,10 +121,7 @@ impl ConfigStorage {
             .collect()
     }
 
-    /// 获取配置文件路径
-    pub fn config_file_path(&self) -> &Path {
-        &self.config_file
-    }
+
 
     /// 按IP和端口删除客户端连接
     pub fn remove_client_connection(&mut self, identifier: &str) {

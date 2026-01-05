@@ -33,7 +33,6 @@ pub struct NetAssistantApp {
     pub client_expanded: bool,
     pub show_new_connection: bool,
     pub new_connection_is_client: bool,
-    pub name_input: Entity<InputState>,
     pub host_input: Entity<InputState>,
     pub port_input: Entity<InputState>,
     pub new_connection_protocol: String,
@@ -76,12 +75,17 @@ impl NetAssistantApp {
         let storage = ConfigStorage::new().expect("无法创建配置存储");
         
         // 使用window创建InputState实体
-        let name_input = cx.new(|cx| InputState::new(window, cx));
         let host_input = cx.new(|cx| InputState::new(window, cx));
         let port_input = cx.new(|cx| InputState::new(window, cx));
         
         // 创建多行文本输入框
-        let message_input = cx.new(|cx| InputState::new(window, cx).multi_line().placeholder("输入消息..."));
+        let message_input = cx.new(|cx| 
+            InputState::new(window, cx)
+                .code_editor("json")
+                .line_number(false)
+                // .rows(5)
+                .multi_line(true)
+                .placeholder("输入消息..."));
         
         // 初始化空的连接标签页状态（不预先创建）
         let connection_tabs = HashMap::new();
@@ -99,7 +103,6 @@ impl NetAssistantApp {
             client_expanded: true,
             show_new_connection: false,
             new_connection_is_client: true,
-            name_input,
             host_input,
             port_input,
             new_connection_protocol: String::from("TCP"),
@@ -133,7 +136,12 @@ impl NetAssistantApp {
 
     pub fn ensure_auto_reply_input_exists(&mut self, tab_id: String, window: &mut Window, cx: &mut Context<Self>) {
         if !self.auto_reply_inputs.contains_key(&tab_id) {
-            let auto_reply_input = cx.new(|cx| InputState::new(window, cx).multi_line().placeholder("输入自动回复内容..."));
+            let auto_reply_input = cx.new(|cx| InputState::new(window, cx)
+                .code_editor("json")
+                .line_number(false)
+                // .rows(5)
+                .multi_line(true)
+                .placeholder("输入自动回复内容..."));
             auto_reply_input.update(cx, |input, cx| {
                 input.set_value("ok".to_string(), window, cx);
             });
@@ -803,7 +811,6 @@ impl NetAssistantApp {
                         }
                     }
                     ConnectionEvent::MessageReceived(tab_id, message) => {
-                        let tab_id_for_scroll = tab_id.clone();
                         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                             tab_state.add_message(message.clone());
                             
