@@ -572,6 +572,7 @@ impl NetAssistantApp {
                                     success_count += 1;
                                 }
                             }
+
                             if success_count > 0 {
                                 println!("[send_message] 广播成功，发送给 {} 个客户端", success_count);
                                 if let Some(sender) = sender_clone {
@@ -583,6 +584,7 @@ impl NetAssistantApp {
                                     let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2, message));
                                 }
                             }
+
                         });
                     }
                 }
@@ -711,6 +713,7 @@ impl NetAssistantApp {
                                     let sender_clone = sender.clone();
                                     let tab_id_clone2 = tab_id_clone.clone();
                                     let bytes_clone = bytes.clone();
+                                    let source_str_clone = source_str.clone();
                                     tokio::spawn(async move {
                                         if let Err(e) = write_sender.send(bytes_clone) {
                                             println!("[send_message_to_client] 发送失败: {}", e);
@@ -724,7 +727,7 @@ impl NetAssistantApp {
                                                     MessageDirection::Sent,
                                                     bytes,
                                                     MessageType::Text,
-                                                );
+                                                ).with_source(source_str_clone);
                                                 let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone2, message));
                                             }
                                         }
@@ -803,11 +806,21 @@ impl NetAssistantApp {
                         if let Some(clients) = self.server_clients.get_mut(&tab_id) {
                             clients.insert(addr, write_sender);
                         }
+                        // 更新 ConnectionTabState 中的客户端连接列表
+                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                            if !tab_state.client_connections.contains(&addr) {
+                                tab_state.client_connections.push(addr);
+                            }
+                        }
                     }
                     ConnectionEvent::ServerClientDisconnected(tab_id, addr) => {
                         println!("[handle_connection_events] 服务端客户端断开: tab_id={}, addr={}", tab_id, addr);
                         if let Some(clients) = self.server_clients.get_mut(&tab_id) {
                             clients.remove(&addr);
+                        }
+                        // 更新 ConnectionTabState 中的客户端连接列表
+                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                            tab_state.client_connections.retain(|&client_addr| client_addr != addr);
                         }
                     }
                     ConnectionEvent::MessageReceived(tab_id, message) => {

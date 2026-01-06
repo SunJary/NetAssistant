@@ -23,10 +23,8 @@ NetAssistant is a high-performance, modern network debugging tool built with Rus
 - **Chat-Style Message Log**: Intuitive display of message interactions
 - **Configuration Persistence**: Automatically save connection configurations
 - **Auto-Reply Functionality**: Automatic response support for testing
-- **Lock-Free Architecture**: High-performance concurrent message handling
-- **Dynamic Message Heights**: Adaptive UI for different message sizes
 - **Multi-Tab Management**: Manage multiple connections simultaneously
-- **Real-time Message Monitoring**: Instant message display with auto-scroll
+- **Client Message Viewing**: Select specific clients to view their messages
 
 ## 🚀 Quick Start
 
@@ -37,23 +35,11 @@ NetAssistant is a high-performance, modern network debugging tool built with Rus
 
 ### Installation
 
-```bash
-git clone https://github.com/sunjary/netassistant.git
-cd netassistant
-cargo build --release
-```
+Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version.
 
 ### Running
 
-```bash
-cargo run
-```
-
-Or run the compiled binary directly:
-
-```bash
-./target/release/netassistant
-```
+After downloading, extract the package and run the executable file.
 
 ## 💡 Usage
 
@@ -81,6 +67,12 @@ Or run the compiled binary directly:
    - Click `×` on the tab to close the connection
    - Right-click on a connection to delete saved configurations
 
+6. **Client Message Viewing**
+   - In server mode, the left panel displays all connected clients
+   - Click on a client address to select it, and the right message list will only show messages from that client
+   - Click on an already selected client to deselect it and resume showing all messages
+   - Server replies to that client will also be included in the viewed results
+
 ## 🎯 Technical Highlights
 
 ### ⚡ Blazing Fast Performance
@@ -100,11 +92,6 @@ Or run the compiled binary directly:
   - Avoid lock contention to improve throughput
   - Support for high-frequency message sending/receiving
 
-- **Zero-copy message handling**: Minimized memory overhead
-  - Pass-by-reference to reduce data copying
-  - Efficient memory management
-  - Optimized serialization/deserialization
-
 ### 🎨 Modern Interface
 
 - **GPUI framework**: Cutting-edge GPU-accelerated UI
@@ -122,7 +109,7 @@ Or run the compiled binary directly:
   - Adaptive message display
   - Optimized space utilization
 
-### 🔧 Advanced Features
+### 🔧 Core Features
 
 - **Real-time message monitoring**: Instant message display with auto-scroll
   - Millisecond-level message response
@@ -204,10 +191,6 @@ netassistant/
 
 - [ ] WebSocket protocol support
 - [ ] Message filtering and search functionality
-- [ ] Script automation testing
-- [ ] Message recording and playback
-- [ ] Custom message format parsing
-- [ ] Performance monitoring and statistics
 - [ ] Plugin system support
 
 ## 🤝 Contributing

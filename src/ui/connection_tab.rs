@@ -3,9 +3,11 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::StyledExt;
 use gpui_component::{
     v_virtual_list, VirtualListScrollHandle, input::{Input, InputState},
+    scroll::ScrollableElement,
 };
 use std::rc::Rc;
 use gpui::{px, size, ScrollStrategy, Size, Pixels};
+use std::net::SocketAddr;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
@@ -47,6 +49,8 @@ pub struct ConnectionTabState {
     pub scroll_handle: VirtualListScrollHandle,
     pub item_sizes: Rc<Vec<Size<Pixels>>>,
     pub auto_scroll_enabled: bool,
+    pub client_connections: Vec<SocketAddr>,
+    pub selected_client: Option<SocketAddr>,
 }
 
 impl ConnectionTabState {
@@ -60,7 +64,11 @@ impl ConnectionTabState {
             auto_reply_enabled: false,
             scroll_handle: VirtualListScrollHandle::new(),
             item_sizes: Rc::new(Vec::new()),
+
             auto_scroll_enabled: true,
+            client_connections: Vec::new(),
+            selected_client: None,
+
         }
     }
 
@@ -120,6 +128,7 @@ impl ConnectionTabState {
     pub fn disconnect(&mut self) {
         self.is_connected = false;
         self.connection_status = ConnectionStatus::Disconnected;
+        self.client_connections.clear();
     }
 }
 
@@ -367,6 +376,7 @@ impl<'a> ConnectionTab<'a> {
             .flex()
             .flex_col()
             .gap_2()
+            .flex_1()
             .child(
                 div()
                     .flex()
@@ -461,6 +471,106 @@ impl<'a> ConnectionTab<'a> {
                     this
                 }
             })
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .flex_1()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(gpui::rgb(0x111827))
+                                    .child("客户端连接"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .flex_1()
+                            .bg(gpui::rgb(0xffffff))
+                            .rounded_md()
+                            .border_1()
+                            .border_color(gpui::rgb(0xe5e7eb))
+                            .child(
+                                div()
+                                    .w_full()
+                                    .h_full()
+                                    .overflow_y_scrollbar()
+                                    .child(
+                                        if self.tab_state.client_connections.is_empty() {
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .h_full()
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(gpui::rgb(0x9ca3af))
+                                                        .child("暂无客户端连接"),
+                                                )
+                                        } else {
+                                            div()
+                                                .flex()
+                                                .flex_col()
+                                                .p_2()
+                                                .gap_1()
+                                                .children(
+                                                    self.tab_state.client_connections.iter().map(|addr| {
+                                                        let addr_clone = addr.clone();
+                                                        let tab_id_clone = tab_id.clone();
+                                                        div()
+                                                            .flex()
+                                                            .items_center()
+                                                            .gap_2()
+                                                            .p_2()
+                                                            .bg(if Some(addr) == self.tab_state.selected_client.as_ref() {
+                                                                gpui::rgb(0xe0f2fe)
+                                                            } else {
+                                                                gpui::rgb(0xf9fafb)
+                                                            })
+                                                            .rounded_md()
+                                                            .hover(|style| {
+                                                                style.bg(gpui::rgb(0xf3f4f6))
+                                                            })
+                                                            .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone) {
+                                                                    // 切换选中状态：如果已经选中则取消选中，否则选中
+                                                                    tab_state.selected_client = if tab_state.selected_client.as_ref() == Some(&addr_clone) {
+                                                                        None
+                                                                    } else {
+                                                                        Some(addr_clone)
+                                                                    };
+                                                                    cx.notify();
+                                                                }
+                                                            }))
+                                                            .child(
+                                                                div()
+                                                                    .w_2()
+                                                                    .h_2()
+                                                                    .rounded_full()
+                                                                    .bg(gpui::rgb(0x22c55e)),
+                                                            )
+                                                            .child(
+                                                                div()
+                                                                    .text_xs()
+                                                                    .text_color(gpui::rgb(0x111827))
+                                                                    .child(addr.to_string()),
+                                                            )
+                                                    })
+                                                )
+                                        }
+                                    ),
+                            ),
+                    )
+            )
     }
 
     /// 渲染报文记录区域（聊天样式）- 使用虚拟列表优化性能
@@ -468,7 +578,18 @@ impl<'a> ConnectionTab<'a> {
         let messages = &self.tab_state.message_list.messages;
         let display_mode = self.app.display_mode;
         
-        if messages.is_empty() {
+        // 根据选中的客户端查看消息
+        let filtered_messages: Vec<&Message> = messages.iter()
+            .filter(|m| {
+                // 如果没有选中客户端，显示所有消息
+                // 如果选中了客户端，只显示该客户端的消息
+                self.tab_state.selected_client.as_ref().map_or(true, |selected| {
+                    m.source.as_ref() == Some(&selected.to_string())
+                })
+            })
+            .collect();
+        
+        if filtered_messages.is_empty() {
             return div()
                 .flex()
                 .flex_col()
@@ -565,9 +686,11 @@ impl<'a> ConnectionTab<'a> {
                 );
         }
         
-        let messages_clone = messages.clone();
+        // 为虚拟列表计算查看消息的高度
+        let item_sizes = Rc::new(filtered_messages.iter().map(|m| ConnectionTabState::calculate_message_height(m)).collect());
+        
+        let filtered_messages_clone: Vec<Message> = filtered_messages.into_iter().cloned().collect();
         let scroll_handle = self.tab_state.scroll_handle.clone();
-        let item_sizes = self.tab_state.item_sizes.clone();
         let display_mode_clone = display_mode;
         
         div()
@@ -599,11 +722,11 @@ impl<'a> ConnectionTab<'a> {
                                     .when(display_mode == DisplayMode::Text, |div| {
                                         div.bg(gpui::rgb(0x3b82f6))
                                             .text_color(gpui::rgb(0xffffff))
-                                    })
+                                        })
                                     .when(display_mode != DisplayMode::Text, |div| {
                                         div.bg(gpui::rgb(0xf3f4f6))
                                             .text_color(gpui::rgb(0x6b7280))
-                                    })
+                                        })
                                     .rounded_md()
                                     .cursor_pointer()
                                     .hover(|style| {
@@ -627,11 +750,11 @@ impl<'a> ConnectionTab<'a> {
                                     .when(display_mode == DisplayMode::Hex, |div| {
                                         div.bg(gpui::rgb(0x3b82f6))
                                             .text_color(gpui::rgb(0xffffff))
-                                    })
+                                        })
                                     .when(display_mode != DisplayMode::Hex, |div| {
                                         div.bg(gpui::rgb(0xf3f4f6))
                                             .text_color(gpui::rgb(0x6b7280))
-                                    })
+                                        })
                                     .rounded_md()
                                     .cursor_pointer()
                                     .hover(|style| {
@@ -656,14 +779,16 @@ impl<'a> ConnectionTab<'a> {
                     .flex_col()
                     .flex_1()
                     .child(
+
                         v_virtual_list(
                             cx.entity().clone(),
                             "message-list",
                             item_sizes,
                             move |_view, visible_range, _, _cx| {
+
                                 visible_range
                                     .map(|ix| {
-                                        if let Some(message) = messages_clone.get(ix) {
+                                        if let Some(message) = filtered_messages_clone.get(ix) {
                                             let is_sent = message.direction == MessageDirection::Sent;
                                     
                                             div()
@@ -940,12 +1065,42 @@ impl<'a> ConnectionTab<'a> {
                                             if !content.trim().is_empty() {
                                                 println!("[发送按钮] 调用 send_message_bytes");
                                                 let bytes = hex_to_bytes(&content);
-                                                app.send_message_bytes(tab_id.clone(), bytes, content, cx);
-                                                app.message_input.update(cx, |input: &mut InputState, cx| {
-                                                    input.set_value("", window, cx);
-                                                });
-                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                    tab_state.error_message = None;
+                                                
+                                                // Check connection status before sending
+                                                if let Some(tab_state) = app.connection_tabs.get(&tab_id) {
+                                                    let can_send = if tab_state.connection_config.is_client() {
+                                                        tab_state.is_connected
+                                                    } else {
+                                                        // Server mode: check if there are connected clients
+                                                        app.server_clients.get(&tab_id).map_or(false, |clients| !clients.is_empty())
+                                                    };
+                                                    
+                                                    if can_send {
+                                                        app.send_message_bytes(tab_id.clone(), bytes, content, cx);
+                                                        // Clear input ONLY on successful send initiation
+                                                        app.message_input.update(cx, |input: &mut InputState, cx| {
+                                                            input.set_value("", window, cx);
+                                                        });
+                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                                            tab_state.error_message = None;
+                                                        }
+                                                    } else {
+                                                        // Send failed due to connection issue
+                                                        println!("[发送按钮] 发送失败: 连接未建立或无客户端连接");
+                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                                            tab_state.error_message = Some(if tab_state.connection_config.is_client() {
+                                                                "连接未建立".to_string()
+                                                            } else {
+                                                                "无客户端连接".to_string()
+                                                            });
+                                                        }
+                                                        cx.notify();
+                                                        // DO NOT clear input on connection failure
+                                                    }
+                                                } else {
+                                                    // Tab not found
+                                                    println!("[发送按钮] 发送失败: 标签页不存在");
+                                                    // DO NOT clear input
                                                 }
                                             } else {
                                                 println!("[发送按钮] 消息内容为空，不发送");
@@ -953,12 +1108,42 @@ impl<'a> ConnectionTab<'a> {
                                         } else {
                                             if !content.is_empty() {
                                                 println!("[发送按钮] 调用 send_message");
-                                                app.send_message(tab_id.clone(), content, cx);
-                                                app.message_input.update(cx, |input: &mut InputState, cx| {
-                                                    input.set_value("", window, cx);
-                                                });
-                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                    tab_state.error_message = None;
+                                                
+                                                // Check connection status before sending
+                                                if let Some(tab_state) = app.connection_tabs.get(&tab_id) {
+                                                    let can_send = if tab_state.connection_config.is_client() {
+                                                        tab_state.is_connected
+                                                    } else {
+                                                        // Server mode: check if there are connected clients
+                                                        app.server_clients.get(&tab_id).map_or(false, |clients| !clients.is_empty())
+                                                    };
+                                                    
+                                                    if can_send {
+                                                        app.send_message(tab_id.clone(), content, cx);
+                                                        // Clear input ONLY on successful send initiation
+                                                        app.message_input.update(cx, |input: &mut InputState, cx| {
+                                                            input.set_value("", window, cx);
+                                                        });
+                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                                            tab_state.error_message = None;
+                                                        }
+                                                    } else {
+                                                        // Send failed due to connection issue
+                                                        println!("[发送按钮] 发送失败: 连接未建立或无客户端连接");
+                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                                            tab_state.error_message = Some(if tab_state.connection_config.is_client() {
+                                                                "连接未建立".to_string()
+                                                            } else {
+                                                                "无客户端连接".to_string()
+                                                            });
+                                                        }
+                                                        cx.notify();
+                                                        // DO NOT clear input on connection failure
+                                                    }
+                                                } else {
+                                                    // Tab not found
+                                                    println!("[发送按钮] 发送失败: 标签页不存在");
+                                                    // DO NOT clear input
                                                 }
                                             } else {
                                                 println!("[发送按钮] 消息内容为空，不发送");
