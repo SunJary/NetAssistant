@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=NetAssistant
+Comment=多协议网络调试工具
+Exec=netassistant
+Icon=assets/icon_256x256.png
+Type=Application
+Categories=Development;Network;
+Terminal=false
