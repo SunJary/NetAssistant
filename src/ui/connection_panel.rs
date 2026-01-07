@@ -80,7 +80,7 @@ impl<'a> ConnectionPanel<'a> {
 
     fn render_accordion_item(
         &self,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
         id: &'static str,
         content_id: &'static str,
@@ -162,9 +162,20 @@ impl<'a> ConnectionPanel<'a> {
                 .font_medium()
                 .cursor_pointer()
                 .child("+ 新建连接")
-                .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, _cx: &mut Context<NetAssistantApp>| {
+                .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                     app.show_new_connection = true;
                     app.new_connection_is_client = is_client_clone;
+                    
+                    let default_host = if is_client_clone {
+                        "127.0.0.1"
+                    } else {
+                        "0.0.0.0"
+                    };
+                    
+                    app.host_input.update(cx, |input, cx| {
+                        input.set_value(default_host.to_string(), window, cx);
+                        cx.notify();
+                    });
                 })),
         );
 

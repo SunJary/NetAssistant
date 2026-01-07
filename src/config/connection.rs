@@ -131,13 +131,6 @@ impl ConnectionConfig {
         }
     }
 
-    pub fn set_name(&mut self, name: String) {
-        match self {
-            ConnectionConfig::Client(config) => config.name = name,
-            ConnectionConfig::Server(config) => config.name = name,
-        }
-    }
-
     pub fn protocol(&self) -> ConnectionType {
         match self {
             ConnectionConfig::Client(config) => config.protocol,
