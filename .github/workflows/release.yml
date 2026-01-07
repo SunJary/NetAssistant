@@ -100,7 +100,7 @@ jobs:
       - name: Build AppImage
         if: matrix.artifact_name == 'netassistant.AppImage'
         run: |
-          cargo appimage --release
+          cargo appimage
 
       - name: Prepare artifact (Windows)
         if: matrix.os == 'windows-latest'
@@ -118,7 +118,7 @@ jobs:
       - name: Prepare artifact (AppImage)
         if: matrix.artifact_name == 'netassistant.AppImage'
         run: |
-          cp target/x86_64-unknown-linux-gnu/appimage/netassistant-*-x86_64.AppImage netassistant.AppImage
+          cp target/appimage/netassistant-*-x86_64.AppImage netassistant.AppImage || cp target/x86_64-unknown-linux-gnu/appimage/netassistant-*-x86_64.AppImage netassistant.AppImage
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
