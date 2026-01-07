@@ -104,6 +104,12 @@ jobs:
         run: |
           cargo appimage
 
+      - name: Check AppImage output directory
+        if: matrix.artifact_name == 'netassistant.AppImage'
+        run: |
+          find . -name "*.AppImage" -type f || true
+          ls -la target/ || true
+
       - name: Prepare artifact (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -120,7 +126,12 @@ jobs:
       - name: Prepare artifact (AppImage)
         if: matrix.artifact_name == 'netassistant.AppImage'
         run: |
-          cp target/appimage/netassistant-*-x86_64.AppImage netassistant.AppImage || cp target/x86_64-unknown-linux-gnu/appimage/netassistant-*-x86_64.AppImage netassistant.AppImage
+          APPIMAGE_FILE=$(find . -name "*.AppImage" -type f | head -1)
+          if [ -z "$APPIMAGE_FILE" ]; then
+            echo "Error: No AppImage file found"
+            exit 1
+          fi
+          cp "$APPIMAGE_FILE" netassistant.AppImage
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
