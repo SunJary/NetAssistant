@@ -86,7 +86,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.artifact_name == 'netassistant.AppImage'
         run: |
           cargo install cargo-appimage
-          sudo wget -O /usr/local/bin/appimagetool https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+          sudo wget -O /usr/local/bin/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           sudo chmod +x /usr/local/bin/appimagetool
 
       - name: Install dependencies (macOS)
