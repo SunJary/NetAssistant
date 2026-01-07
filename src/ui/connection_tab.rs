@@ -994,6 +994,12 @@ impl<'a> ConnectionTab<'a> {
                                             .hover(|style| {
                                                 style.bg(gpui::rgb(0xe5e7eb))
                                             })
+                                            .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                // 清空输入框内容
+                                                app.message_input.update(cx, |input: &mut InputState, cx| {
+                                                    input.set_value("", window, cx);
+                                                });
+                                            }))
                                             .child(
                                                 div()
                                                     .text_xs()
@@ -1004,20 +1010,40 @@ impl<'a> ConnectionTab<'a> {
                                     )
                                     .child(
                                         div()
-                                            .px_3()
-                                            .py_1()
-                                            .bg(gpui::rgb(0xf3f4f6))
-                                            .rounded_md()
-                                            .cursor_pointer()
-                                            .hover(|style| {
-                                                style.bg(gpui::rgb(0xe5e7eb))
-                                            })
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .w_4()
+                                                    .h_4()
+                                                    .border_1()
+                                                    .border_color(gpui::rgb(0xd1d5db))
+                                                    .rounded(px(4.))
+                                                    .cursor_pointer()
+                                                    .when(self.app.auto_clear_input, |this| {
+                                                        this.bg(gpui::rgb(0x3b82f6))
+                                                            .flex()
+                                                            .items_center()
+                                                            .justify_center()
+                                                            .child(
+                                                                div()
+                                                                    .text_xs()
+                                                                    .text_color(gpui::rgb(0xffffff))
+                                                                    .font_bold()
+                                                                    .child("✓"),
+                                                            )
+                                                    })
+                                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                        app.auto_clear_input = !app.auto_clear_input;
+                                                        cx.notify();
+                                                    })),
+                                            )
                                             .child(
                                                 div()
                                                     .text_xs()
-                                                    .font_medium()
                                                     .text_color(gpui::rgb(0x6b7280))
-                                                    .child("导出"),
+                                                    .child("自动清除输入内容"),
                                             ),
                                     ),
                             )
@@ -1077,10 +1103,12 @@ impl<'a> ConnectionTab<'a> {
                                                     
                                                     if can_send {
                                                         app.send_message_bytes(tab_id.clone(), bytes, content, cx);
-                                                        // Clear input ONLY on successful send initiation
-                                                        app.message_input.update(cx, |input: &mut InputState, cx| {
-                                                            input.set_value("", window, cx);
-                                                        });
+                                                        // Clear input ONLY on successful send initiation and if auto_clear_input is true
+                                                        if app.auto_clear_input {
+                                                            app.message_input.update(cx, |input: &mut InputState, cx| {
+                                                                input.set_value("", window, cx);
+                                                            });
+                                                        }
                                                         if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
                                                             tab_state.error_message = None;
                                                         }
@@ -1120,10 +1148,12 @@ impl<'a> ConnectionTab<'a> {
                                                     
                                                     if can_send {
                                                         app.send_message(tab_id.clone(), content, cx);
-                                                        // Clear input ONLY on successful send initiation
-                                                        app.message_input.update(cx, |input: &mut InputState, cx| {
-                                                            input.set_value("", window, cx);
-                                                        });
+                                                        // Clear input ONLY on successful send initiation and if auto_clear_input is true
+                                                        if app.auto_clear_input {
+                                                            app.message_input.update(cx, |input: &mut InputState, cx| {
+                                                                input.set_value("", window, cx);
+                                                            });
+                                                        }
                                                         if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
                                                             tab_state.error_message = None;
                                                         }

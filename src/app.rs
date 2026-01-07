@@ -65,6 +65,7 @@ pub struct NetAssistantApp {
     // 发送消息输入框状态
     pub message_input: Entity<InputState>,
     pub message_input_mode: String,
+    pub auto_clear_input: bool,
 
     // 消息显示模式
     pub display_mode: DisplayMode,
@@ -121,6 +122,7 @@ impl NetAssistantApp {
             context_menu_position_y: None,
             message_input,
             message_input_mode: String::from("text"),
+            auto_clear_input: true,
             display_mode: DisplayMode::Text,
         }
     }
