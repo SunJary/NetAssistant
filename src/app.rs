@@ -7,7 +7,9 @@ use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionTy
 use crate::ui::connection_tab::ConnectionTabState;
 use crate::ui::main_window::MainWindow;
 use crate::message::{Message, MessageDirection, MessageType, DisplayMode};
+use crate::utils::hex::{hex_to_bytes, validate_hex_input};
 
+use std::time::Duration;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -66,6 +68,9 @@ pub struct NetAssistantApp {
     pub message_input: Entity<InputState>,
     pub message_input_mode: String,
     pub auto_clear_input: bool,
+    pub periodic_send_enabled: bool,
+    pub periodic_interval_input: Entity<InputState>,
+    pub periodic_send_timer: Option<tokio::task::JoinHandle<()>>,
 
     // 消息显示模式
     pub display_mode: DisplayMode,
@@ -87,6 +92,13 @@ impl NetAssistantApp {
                 // .rows(5)
                 .multi_line(true)
                 .placeholder("输入消息..."));
+        
+        // 创建周期发送间隔输入框
+        let periodic_interval_input = cx.new(|cx| {
+            let mut input = InputState::new(window, cx);
+            input.set_value("1000", window, cx);
+            input
+        });
         
         // 初始化空的连接标签页状态（不预先创建）
         let connection_tabs = HashMap::new();
@@ -123,10 +135,107 @@ impl NetAssistantApp {
             message_input,
             message_input_mode: String::from("text"),
             auto_clear_input: true,
+            periodic_send_enabled: false,
+            periodic_interval_input,
+            periodic_send_timer: None,
             display_mode: DisplayMode::Text,
         }
     }
 
+    pub fn start_periodic_send(&mut self, tab_id: String, interval_ms: u32, content: String, message_input_mode: String, _cx: &mut Context<Self>) {
+        // 停止现有定时器
+        self.stop_periodic_send();
+        
+        // 保存必要的状态
+        let connection_event_sender = self.connection_event_sender.clone();
+        let client_write_senders = self.client_write_senders.clone();
+        let _server_clients = self.server_clients.clone();
+        
+        // 创建新定时器
+        let handle = tokio::spawn(async move {
+            // 创建一个定时器
+            let mut interval = tokio::time::interval(Duration::from_millis(interval_ms as u64));
+            
+            // 循环实现周期性发送
+            loop {
+                // 等待下一个周期
+                interval.tick().await;
+                
+                // 检查是否需要发送消息
+                // 注意：由于我们在异步线程中，无法直接访问app状态
+                // 所以我们需要在每次发送时检查连接状态
+                
+                // 根据输入模式发送消息
+                if message_input_mode == "hex" && validate_hex_input(&content) {
+                    let bytes = hex_to_bytes(&content);
+                    // 模拟send_message_bytes的逻辑
+                    if let Some(write_sender) = client_write_senders.get(&tab_id).cloned() {
+                        let bytes_clone = bytes.clone();
+                        let sender = connection_event_sender.clone();
+                        let tab_id_clone = tab_id.clone();
+                        
+                        tokio::spawn(async move {
+                            let result: Result<(), mpsc::error::SendError<Vec<u8>>> = write_sender.send(bytes_clone);
+                            if let Err(e) = result {
+                                println!("[start_periodic_send] 发送失败: {}", e);
+                                if let Some(sender) = sender {
+                                    let _ = sender.send(ConnectionEvent::Error(tab_id_clone, format!("发送失败: {}", e)));
+                                }
+                            } else {
+                                println!("[start_periodic_send] 发送成功");
+                                if let Some(sender) = sender {
+                                    let message = Message::new(
+                                        MessageDirection::Sent,
+                                        bytes,
+                                        MessageType::Hex,
+                                    );
+                                    let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    // 模拟send_message的逻辑
+                    let bytes = content.clone().into_bytes();
+                    if let Some(write_sender) = client_write_senders.get(&tab_id).cloned() {
+                        let bytes_clone = bytes.clone();
+                        let sender = connection_event_sender.clone();
+                        let tab_id_clone = tab_id.clone();
+                        
+                        tokio::spawn(async move {
+                            let result: Result<(), mpsc::error::SendError<Vec<u8>>> = write_sender.send(bytes_clone);
+                            if let Err(e) = result {
+                                println!("[start_periodic_send] 发送失败: {}", e);
+                                if let Some(sender) = sender {
+                                    let _ = sender.send(ConnectionEvent::Error(tab_id_clone, format!("发送失败: {}", e)));
+                                }
+                            } else {
+                                println!("[start_periodic_send] 发送成功");
+                                if let Some(sender) = sender {
+                                    let message = Message::new(
+                                        MessageDirection::Sent,
+                                        bytes,
+                                        MessageType::Text,
+                                    );
+                                    let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        });
+        
+        self.periodic_send_timer = Some(handle);
+    }
+    
+    pub fn stop_periodic_send(&mut self) {
+        // 取消并移除定时器
+        if let Some(handle) = self.periodic_send_timer.take() {
+            handle.abort();
+        }
+    }
+    
     pub fn ensure_tab_exists(&mut self, tab_id: String, connection_config: config::connection::ConnectionConfig) {
         if !self.connection_tabs.contains_key(&tab_id) {
             self.connection_tabs.insert(
@@ -509,7 +618,7 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn send_message(&mut self, tab_id: String, content: String, _cx: &mut Context<Self>) {
+    pub fn send_message(&mut self, tab_id: String, content: String) {
         println!("[send_message] 开始，tab_id: {}, content: '{}'", tab_id, content);
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
@@ -601,7 +710,7 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn send_message_bytes(&mut self, tab_id: String, bytes: Vec<u8>, hex_input: String, _cx: &mut Context<Self>) {
+    pub fn send_message_bytes(&mut self, tab_id: String, bytes: Vec<u8>, hex_input: String) {
         println!("[send_message_bytes] 开始，tab_id: {}, bytes: {:?}, hex_input: '{}'", tab_id, bytes, hex_input);
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
@@ -703,7 +812,7 @@ impl NetAssistantApp {
             if tab_state.is_connected {
                 if tab_state.connection_config.is_client() {
                     println!("[send_message_to_client] 客户端模式，直接发送给服务器");
-                    self.send_message(tab_id, content, _cx);
+                    self.send_message(tab_id, content);
                 } else {
                     println!("[send_message_to_client] 服务端模式");
                     

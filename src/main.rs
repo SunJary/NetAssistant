@@ -5,6 +5,7 @@ mod app;
 mod config;
 mod ui;
 mod message;
+mod utils;
 
 use app::NetAssistantApp;
 

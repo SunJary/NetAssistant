@@ -12,30 +12,7 @@ use std::net::SocketAddr;
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::message::{Message, MessageDirection, MessageListState, DisplayMode};
-
-fn hex_to_bytes(hex: &str) -> Vec<u8> {
-    let hex = hex.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "");
-    let mut bytes = Vec::new();
-    
-    for i in (0..hex.len()).step_by(2) {
-        if i + 1 < hex.len() {
-            let byte_str = &hex[i..i+2];
-            if let Ok(byte) = u8::from_str_radix(byte_str, 16) {
-                bytes.push(byte);
-            }
-        }
-    }
-    
-    bytes
-}
-
-fn validate_hex_input(input: &str) -> bool {
-    let cleaned = input.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "");
-    if cleaned.is_empty() {
-        return true;
-    }
-    cleaned.chars().all(|c| c.is_ascii_hexdigit())
-}
+use crate::utils::hex::{hex_to_bytes, validate_hex_input};
 
 /// 连接标签页状态
 #[derive(Clone)]
@@ -1036,6 +1013,10 @@ impl<'a> ConnectionTab<'a> {
                                                     })
                                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                                         app.auto_clear_input = !app.auto_clear_input;
+                                                        // 互斥逻辑：勾选自动清除时禁用周期发送
+                                                        if app.auto_clear_input {
+                                                            app.periodic_send_enabled = false;
+                                                        }
                                                         cx.notify();
                                                     })),
                                             )
@@ -1044,6 +1025,69 @@ impl<'a> ConnectionTab<'a> {
                                                     .text_xs()
                                                     .text_color(gpui::rgb(0x6b7280))
                                                     .child("自动清除输入内容"),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .w_4()
+                                                    .h_4()
+                                                    .border_1()
+                                                    .border_color(gpui::rgb(0xd1d5db))
+                                                    .rounded(px(4.))
+                                                    .cursor_pointer()
+                                                    .when(self.app.periodic_send_enabled, |this| {
+                                                        this.bg(gpui::rgb(0x3b82f6))
+                                                            .flex()
+                                                            .items_center()
+                                                            .justify_center()
+                                                            .child(
+                                                                div()
+                                                                    .text_xs()
+                                                                    .text_color(gpui::rgb(0xffffff))
+                                                                    .font_bold()
+                                                                    .child("✓"),
+                                                            )
+                                                    })
+                                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                        app.periodic_send_enabled = !app.periodic_send_enabled;
+                                                        // 互斥逻辑：勾选周期发送时禁用自动清除
+                                                        if app.periodic_send_enabled {
+                                                            app.auto_clear_input = false;
+                                                        } else {
+                                                            // 禁用周期发送时停止定时器
+                                                            app.stop_periodic_send();
+                                                        }
+                                                        cx.notify();
+                                                    })),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(gpui::rgb(0x6b7280))
+                                                    .child("周期发送 (ms):"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w_24()
+                                                    .h_7()
+                                                    .bg(gpui::rgb(0xf9fafb))
+                                                    .rounded_md()
+                                                    .border_1()
+                                                    .border_color(gpui::rgb(0xe5e7eb))
+                                                    .child(
+                                                        Input::new(&self.app.periodic_interval_input)
+                                                            .w_full()
+                                                            .h_full()
+                                                            .bg(gpui::rgb(0xf9fafb))
+                                                            .rounded_md()
+                                                            .border_0()
+                                                            .text_center(),
+                                                    ),
                                             ),
                                     ),
                             )
@@ -1078,6 +1122,14 @@ impl<'a> ConnectionTab<'a> {
                                         let content = app.message_input.read(cx).text().to_string();
                                         println!("[发送按钮] 消息内容: '{}', 长度: {}, 模式: {}", content, content.len(), app.message_input_mode);
                                         
+                                        // 读取周期发送间隔值
+                                        let interval_str = app.periodic_interval_input.read(cx).text().to_string();
+                                        let interval_ms = interval_str.parse::<u32>().unwrap_or(1000);
+                                        println!("[发送按钮] 周期发送间隔: {}ms", interval_ms);
+                                        
+                                        // 克隆 content 以避免所有权移动问题
+                                        let content_clone = content.clone();
+                                        
                                         if app.message_input_mode == "hex" {
                                             if !validate_hex_input(&content) {
                                                 println!("[发送按钮] 十六进制输入包含非法字符");
@@ -1102,12 +1154,16 @@ impl<'a> ConnectionTab<'a> {
                                                     };
                                                     
                                                     if can_send {
-                                                        app.send_message_bytes(tab_id.clone(), bytes, content, cx);
+                                                        app.send_message_bytes(tab_id.clone(), bytes, content);
                                                         // Clear input ONLY on successful send initiation and if auto_clear_input is true
                                                         if app.auto_clear_input {
                                                             app.message_input.update(cx, |input: &mut InputState, cx| {
                                                                 input.set_value("", window, cx);
                                                             });
+                                                        }
+                                                        // 启动周期发送（如果启用）
+                                                        if app.periodic_send_enabled {
+                                                            app.start_periodic_send(tab_id.clone(), interval_ms, content_clone, app.message_input_mode.clone(), cx);
                                                         }
                                                         if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
                                                             tab_state.error_message = None;
@@ -1147,12 +1203,16 @@ impl<'a> ConnectionTab<'a> {
                                                     };
                                                     
                                                     if can_send {
-                                                        app.send_message(tab_id.clone(), content, cx);
+                                                        app.send_message(tab_id.clone(), content);
                                                         // Clear input ONLY on successful send initiation and if auto_clear_input is true
                                                         if app.auto_clear_input {
                                                             app.message_input.update(cx, |input: &mut InputState, cx| {
                                                                 input.set_value("", window, cx);
                                                             });
+                                                        }
+                                                        // 启动周期发送（如果启用）
+                                                        if app.periodic_send_enabled {
+                                                            app.start_periodic_send(tab_id.clone(), interval_ms, content_clone, app.message_input_mode.clone(), cx);
                                                         }
                                                         if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
                                                             tab_state.error_message = None;
