@@ -86,45 +86,43 @@ jobs:
               Set-Content "$manifestDir/NetAssistant.yaml"
           } else {
               # 创建新的主清单文件
-              $content = @"
-# yaml-language-server: \$schema=https://aka.ms/winget-manifest.singleton.1.0.0.schema.json
-PackageIdentifier: SunJary.NetAssistant
-PackageVersion: $version
-PackageName: NetAssistant
-Publisher: SunJary
-PublisherUrl: https://github.com/SunJary/netassistant
-PackageUrl: https://github.com/SunJary/netassistant
-License: MIT
-LicenseUrl: https://github.com/SunJary/netassistant/blob/main/LICENSE
-Copyright: Copyright (c) 2024 SunJary
-ShortDescription: 多协议网络调试工具
-Description: 一个基于 Rust 构建的高性能、现代化的网络调试工具，支持 TCP/UDP 协议的客户端和服务端模式。
-Moniker: netassistant
-Tags:
-- network
-- debug
-- tcp
-- udp
-- rust
-ReleaseNotesUrl: https://github.com/SunJary/netassistant/releases/tag/v$version
-ManifestType: singleton
-ManifestVersion: 1.0.0
-Installers:
-- Architecture: x64
-  InstallerType: zip
-  InstallerUrl: $url
-  InstallerSha256: $hash
-  NestedInstallerType: portable
-  NestedInstallerFiles:
-  - RelativeFilePath: netassistant.exe
-    PortableCommandAlias: netassistant
-  Commands:
-  - netassistant
-  Scope: user
-  InstallerLocale: en-US
-  UpgradeBehavior: uninstallPrevious
-"@
-              $content | Set-Content "$manifestDir/NetAssistant.yaml"
+              $yamlContent = "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.singleton.1.0.0.schema.json`n" +
+                            "PackageIdentifier: SunJary.NetAssistant`n" +
+                            "PackageVersion: $version`n" +
+                            "PackageName: NetAssistant`n" +
+                            "Publisher: SunJary`n" +
+                            "PublisherUrl: https://github.com/SunJary/netassistant`n" +
+                            "PackageUrl: https://github.com/SunJary/netassistant`n" +
+                            "License: MIT`n" +
+                            "LicenseUrl: https://github.com/SunJary/netassistant/blob/main/LICENSE`n" +
+                            "Copyright: Copyright (c) 2024 SunJary`n" +
+                            "ShortDescription: 多协议网络调试工具`n" +
+                            "Description: 一个基于 Rust 构建的高性能、现代化的网络调试工具，支持 TCP/UDP 协议的客户端和服务端模式。`n" +
+                            "Moniker: netassistant`n" +
+                            "Tags:`n" +
+                            "- network`n" +
+                            "- debug`n" +
+                            "- tcp`n" +
+                            "- udp`n" +
+                            "- rust`n" +
+                            "ReleaseNotesUrl: https://github.com/SunJary/netassistant/releases/tag/v$version`n" +
+                            "ManifestType: singleton`n" +
+                            "ManifestVersion: 1.0.0`n" +
+                            "Installers:`n" +
+                            "- Architecture: x64`n" +
+                            "  InstallerType: zip`n" +
+                            "  InstallerUrl: $url`n" +
+                            "  InstallerSha256: $hash`n" +
+                            "  NestedInstallerType: portable`n" +
+                            "  NestedInstallerFiles:`n" +
+                            "  - RelativeFilePath: netassistant.exe`n" +
+                            "    PortableCommandAlias: netassistant`n" +
+                            "  Commands:`n" +
+                            "  - netassistant`n" +
+                            "  Scope: user`n" +
+                            "  InstallerLocale: en-US`n" +
+                            "  UpgradeBehavior: uninstallPrevious"
+              $yamlContent | Set-Content "$manifestDir/NetAssistant.yaml"
           }
           
           # 复制语言文件
