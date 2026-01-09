@@ -74,65 +74,28 @@ jobs:
           $manifestDir = "winget-pkgs/manifests/s/SunJary/NetAssistant/$version"
           New-Item -ItemType Directory -Path $manifestDir -Force
           
-          # 复制并更新主清单文件
-          $templateFile = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.yaml"
-          if (Test-Path $templateFile) {
-              Copy-Item $templateFile -Destination "$manifestDir/NetAssistant.yaml"
-              # 更新版本和哈希值
-              (Get-Content "$manifestDir/NetAssistant.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" `
-                                                        -replace 'InstallerUrl: .*', "InstallerUrl: $url" `
-                                                        -replace 'InstallerSha256: .*', "InstallerSha256: $hash" `
-                                                        -replace 'ReleaseNotesUrl: .*', "ReleaseNotesUrl: https://github.com/SunJary/netassistant/releases/tag/v$version" |
-              Set-Content "$manifestDir/NetAssistant.yaml"
-          } else {
-              # 创建新的主清单文件
-              $yamlContent = "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.singleton.1.0.0.schema.json`n" +
-                            "PackageIdentifier: SunJary.NetAssistant`n" +
-                            "PackageVersion: $version`n" +
-                            "PackageName: NetAssistant`n" +
-                            "Publisher: SunJary`n" +
-                            "PublisherUrl: https://github.com/SunJary/netassistant`n" +
-                            "PackageUrl: https://github.com/SunJary/netassistant`n" +
-                            "License: MIT`n" +
-                            "LicenseUrl: https://github.com/SunJary/netassistant/blob/main/LICENSE`n" +
-                            "Copyright: Copyright (c) 2024 SunJary`n" +
-                            "ShortDescription: 多协议网络调试工具`n" +
-                            "Description: 一个基于 Rust 构建的高性能、现代化的网络调试工具，支持 TCP/UDP 协议的客户端和服务端模式。`n" +
-                            "Moniker: netassistant`n" +
-                            "Tags:`n" +
-                            "- network`n" +
-                            "- debug`n" +
-                            "- tcp`n" +
-                            "- udp`n" +
-                            "- rust`n" +
-                            "ReleaseNotesUrl: https://github.com/SunJary/netassistant/releases/tag/v$version`n" +
-                            "ManifestType: singleton`n" +
-                            "ManifestVersion: 1.0.0`n" +
-                            "Installers:`n" +
-                            "- Architecture: x64`n" +
-                            "  InstallerType: zip`n" +
-                            "  InstallerUrl: $url`n" +
-                            "  InstallerSha256: $hash`n" +
-                            "  NestedInstallerType: portable`n" +
-                            "  NestedInstallerFiles:`n" +
-                            "  - RelativeFilePath: netassistant.exe`n" +
-                            "    PortableCommandAlias: netassistant`n" +
-                            "  Commands:`n" +
-                            "  - netassistant`n" +
-                            "  Scope: user`n" +
-                            "  InstallerLocale: en-US`n" +
-                            "  UpgradeBehavior: uninstallPrevious"
-              $yamlContent | Set-Content "$manifestDir/NetAssistant.yaml"
-          }
+          # 处理版本清单文件
+          $versionTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/SunJary.NetAssistant.yaml"
+          Copy-Item $versionTemplate -Destination "$manifestDir/SunJary.NetAssistant.yaml"
+          # 只更新版本号
+          (Get-Content "$manifestDir/SunJary.NetAssistant.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" |
+          Set-Content "$manifestDir/SunJary.NetAssistant.yaml"
           
-          # 复制语言文件
-          if (Test-Path "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.locale.en-US.yaml") {
-              Copy-Item "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.locale.en-US.yaml" -Destination "$manifestDir/"
-              Copy-Item "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.locale.zh-CN.yaml" -Destination "$manifestDir/"
-              # 更新语言文件中的版本
-              (Get-Content "$manifestDir/NetAssistant.locale.en-US.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" | Set-Content "$manifestDir/NetAssistant.locale.en-US.yaml"
-              (Get-Content "$manifestDir/NetAssistant.locale.zh-CN.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" | Set-Content "$manifestDir/NetAssistant.locale.zh-CN.yaml"
-          }
+          # 处理安装程序清单文件
+          $installerTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/SunJary.NetAssistant.installer.yaml"
+          Copy-Item $installerTemplate -Destination "$manifestDir/SunJary.NetAssistant.installer.yaml"
+          # 更新版本号、下载链接和哈希值
+          (Get-Content "$manifestDir/SunJary.NetAssistant.installer.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" `
+                                                                       -replace 'InstallerUrl: .*', "InstallerUrl: $url" `
+                                                                       -replace 'InstallerSha256: .*', "InstallerSha256: $hash" |
+          Set-Content "$manifestDir/SunJary.NetAssistant.installer.yaml"
+          
+          # 处理中文语言清单文件
+          $localeTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/SunJary.NetAssistant.locale.zh-CN.yaml"
+          Copy-Item $localeTemplate -Destination "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml"
+          # 只更新版本号
+          (Get-Content "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" |
+          Set-Content "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml"
           
           # 输出分支名
           echo "branch=update-netassistant-$version" >> $env:GITHUB_OUTPUT
