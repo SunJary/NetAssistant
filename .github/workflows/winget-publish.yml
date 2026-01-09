@@ -1,0 +1,160 @@
+name: Publish to Winget
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Winget
+        run: |
+          # 安装 Winget CLI
+          Invoke-WebRequest -Uri https://aka.ms/getwinget -OutFile getwinget.msi
+          Start-Process msiexec.exe -ArgumentList '/i getwinget.msi /quiet' -Wait
+          Remove-Item getwinget.msi
+
+      - name: Get release information
+        id: release_info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: context.ref.replace('refs/tags/', '')
+            });
+            const asset = release.data.assets.find(asset => asset.name.includes('windows-x86_64.zip'));
+            if (!asset) {
+              throw new Error('Windows x86_64 zip asset not found');
+            }
+            return {
+              version: release.data.tag_name.replace('v', ''),
+              downloadUrl: asset.browser_download_url
+            };
+
+      - name: Calculate SHA256 hash
+        id: calculate_hash
+        run: |
+          $url = "${{ steps.release_info.outputs.result.downloadUrl }}"
+          $outputFile = "netassistant.zip"
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $outputFile
+            $hash = Get-FileHash -Path $outputFile -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+            echo "hash=$hash" >> $env:GITHUB_OUTPUT
+          } finally {
+            if (Test-Path $outputFile) {
+              Remove-Item $outputFile
+            }
+          }
+
+      - name: Clone winget-pkgs fork
+        run: |
+          git clone https://${{ secrets.GITHUB_TOKEN }}@github.com/SunJary/winget-pkgs.git
+          cd winget-pkgs
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Update winget manifest
+        id: update_manifest
+        run: |
+          $version = "${{ steps.release_info.outputs.result.version }}"
+          $hash = "${{ steps.calculate_hash.outputs.hash }}"
+          $url = "${{ steps.release_info.outputs.result.downloadUrl }}"
+          
+          # 创建版本目录（使用正确的大小写）
+          $manifestDir = "winget-pkgs/manifests/s/SunJary/NetAssistant/$version"
+          New-Item -ItemType Directory -Path $manifestDir -Force
+          
+          # 复制并更新主清单文件
+          $templateFile = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.yaml"
+          if (Test-Path $templateFile) {
+              Copy-Item $templateFile -Destination "$manifestDir/NetAssistant.yaml"
+              # 更新版本和哈希值
+              (Get-Content "$manifestDir/NetAssistant.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" `
+                                                        -replace 'InstallerUrl: .*', "InstallerUrl: $url" `
+                                                        -replace 'InstallerSha256: .*', "InstallerSha256: $hash" `
+                                                        -replace 'ReleaseNotesUrl: .*', "ReleaseNotesUrl: https://github.com/SunJary/netassistant/releases/tag/v$version" |
+              Set-Content "$manifestDir/NetAssistant.yaml"
+          } else {
+              # 创建新的主清单文件
+              $content = @"
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.singleton.1.0.0.schema.json
+PackageIdentifier: SunJary.NetAssistant
+PackageVersion: $version
+PackageName: NetAssistant
+Publisher: SunJary
+PublisherUrl: https://github.com/SunJary/netassistant
+PackageUrl: https://github.com/SunJary/netassistant
+License: MIT
+LicenseUrl: https://github.com/SunJary/netassistant/blob/main/LICENSE
+Copyright: Copyright (c) 2024 SunJary
+ShortDescription: 多协议网络调试工具
+Description: 一个基于 Rust 构建的高性能、现代化的网络调试工具，支持 TCP/UDP 协议的客户端和服务端模式。
+Moniker: netassistant
+Tags:
+- network
+- debug
+- tcp
+- udp
+- rust
+ReleaseNotesUrl: https://github.com/SunJary/netassistant/releases/tag/v$version
+ManifestType: singleton
+ManifestVersion: 1.0.0
+Installers:
+- Architecture: x64
+  InstallerType: zip
+  InstallerUrl: $url
+  InstallerSha256: $hash
+  NestedInstallerType: portable
+  NestedInstallerFiles:
+  - RelativeFilePath: netassistant.exe
+    PortableCommandAlias: netassistant
+  Commands:
+  - netassistant
+  Scope: user
+  InstallerLocale: en-US
+  UpgradeBehavior: uninstallPrevious
+"@
+              $content | Set-Content "$manifestDir/NetAssistant.yaml"
+          }
+          
+          # 复制语言文件
+          if (Test-Path "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.locale.en-US.yaml") {
+              Copy-Item "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.locale.en-US.yaml" -Destination "$manifestDir/"
+              Copy-Item "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/NetAssistant.locale.zh-CN.yaml" -Destination "$manifestDir/"
+              # 更新语言文件中的版本
+              (Get-Content "$manifestDir/NetAssistant.locale.en-US.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" | Set-Content "$manifestDir/NetAssistant.locale.en-US.yaml"
+              (Get-Content "$manifestDir/NetAssistant.locale.zh-CN.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" | Set-Content "$manifestDir/NetAssistant.locale.zh-CN.yaml"
+          }
+          
+          # 输出分支名
+          echo "branch=update-netassistant-$version" >> $env:GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        run: |
+          $branch = "${{ steps.update_manifest.outputs.branch }}"
+          cd winget-pkgs
+          git checkout -b $branch
+          git add .
+          git commit -m "Update SunJary.NetAssistant to version ${{ steps.release_info.outputs.result.version }}"
+          git push origin $branch
+
+      - name: Create Pull Request
+        uses: repo-sync/pull-request@v2
+        with:
+          source_branch: ${{ steps.update_manifest.outputs.branch }}
+          destination_branch: master
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_title: "Update SunJary.NetAssistant to version ${{ steps.release_info.outputs.result.version }}"
+          pr_body: "Automatically generated PR to update SunJary.NetAssistant to version ${{ steps.release_info.outputs.result.version }}"
+          pr_reviewer: SunJary
+          pr_assignee: SunJary
