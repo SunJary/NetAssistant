@@ -1,8 +1,9 @@
 name: Publish to Winget
 
-on:
-  release:
-    types: [published]
+# 暂时禁用工作流，等下次再开启
+# on:
+#   release:
+#     types: [published]
 
 permissions:
   contents: write
@@ -75,14 +76,14 @@ jobs:
           New-Item -ItemType Directory -Path $manifestDir -Force
           
           # 处理版本清单文件
-          $versionTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/SunJary.NetAssistant.yaml"
+          $versionTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.2.0/SunJary.NetAssistant.yaml"
           Copy-Item $versionTemplate -Destination "$manifestDir/SunJary.NetAssistant.yaml"
           # 只更新版本号
           (Get-Content "$manifestDir/SunJary.NetAssistant.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" |
           Set-Content "$manifestDir/SunJary.NetAssistant.yaml"
           
           # 处理安装程序清单文件
-          $installerTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/SunJary.NetAssistant.installer.yaml"
+          $installerTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.2.0/SunJary.NetAssistant.installer.yaml"
           Copy-Item $installerTemplate -Destination "$manifestDir/SunJary.NetAssistant.installer.yaml"
           # 更新版本号、下载链接和哈希值
           (Get-Content "$manifestDir/SunJary.NetAssistant.installer.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" `
@@ -91,7 +92,7 @@ jobs:
           Set-Content "$manifestDir/SunJary.NetAssistant.installer.yaml"
           
           # 处理中文语言清单文件
-          $localeTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.1.1/SunJary.NetAssistant.locale.zh-CN.yaml"
+          $localeTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.2.0/SunJary.NetAssistant.locale.zh-CN.yaml"
           Copy-Item $localeTemplate -Destination "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml"
           # 只更新版本号
           (Get-Content "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" |
