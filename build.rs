@@ -12,7 +12,7 @@ fn main() {
         }
 
         let mut res = winres::WindowsResource::new();
-        res.set_icon("assets/icon.ico");
+        res.set_icon("assets/icon/icon.ico");
         res.set_version_info(winres::VersionInfo::PRODUCTVERSION, 0x0001000000000000);
         res.set_version_info(winres::VersionInfo::FILEVERSION, 0x0001000000000000);
         res.set("ProductName", "NetAssistant");

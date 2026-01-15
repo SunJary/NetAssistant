@@ -23,7 +23,7 @@ winres = "0.1"
 [package.metadata.appimage]
 name = "NetAssistant"
 comment = "多协议网络调试工具"
-icon = "assets/icon_256x256.png"
+icon = "assets/icon/icon_256x256.png"
 categories = ["Development", "Network"]
 terminal = false
 

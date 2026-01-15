@@ -23,16 +23,17 @@ NetAssistant is a high-performance, modern network debugging tool built with Rus
 - **Chat-style message logging**: Intuitive display of message interactions
 - **Configuration persistence**: Automatically saves connection configurations
 - **Auto-reply functionality**: Supports test auto-replies
+- **Periodic send functionality**: Supports timed periodic message sending
 - **Multi-tab management**: Manage multiple connections simultaneously
 - **Client message viewing**: Select specific clients to view their messages
 
 ## 📸 Interface Preview
 
 ### Client Mode
-![Client Screenshot](assets/screenshot_client.png)
+![Client Screenshot](assets/screenshots/screenshot_client.png)
 
 ### Server Mode
-![Server Screenshot](assets/screenshot_server.png)
+![Server Screenshot](assets/screenshots/screenshot_server.png)
 
 ## 🚀 Quick Start
 
@@ -65,17 +66,23 @@ After downloading, extract the package and run the executable file.
    - Enter message content in the bottom input box
    - Click the `[Send]` button or press Enter to send
 
-4. **Auto-reply**
+4. **Periodic Send**
+   - Enable periodic send functionality in the connection tab
+   - Set send interval (milliseconds)
+   - Click the `[Send]` button to start periodic sending
+   - Uncheck periodic send to stop the sending task
+
+5. **Auto-reply**
    - Enable auto-reply functionality in the connection tab
    - Set auto-reply content
    - Auto-reply when receiving messages
 
-5. **Manage Connections**
+6. **Manage Connections**
    - Use tabs to switch between different connections
    - Click the `×` on the tab to close the connection
    - Right-click on the connection to delete saved configuration
 
-6. **Client Message Viewing**
+7. **Client Message Viewing**
    - In server mode, the left panel displays the list of connected clients
    - Click a single client address to select it, and the right message list will only show messages from that client
    - Click the selected client again to deselect and restore all messages
