@@ -12,7 +12,6 @@ pub enum StorageError {
 
     #[error("JSON序列化错误: {0}")]
     Json(#[from] serde_json::Error),
-
 }
 
 /// 应用配置
@@ -67,7 +66,10 @@ impl ConfigStorage {
             PathBuf::from(appdata).join("NetAssistant")
         } else if cfg!(target_os = "macos") {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join("Library").join("Application Support").join("NetAssistant")
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("NetAssistant")
         } else {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
             PathBuf::from(home).join(".config").join("netassistant")
@@ -93,7 +95,6 @@ impl ConfigStorage {
         Self::save_to_file(&self.config_file, &self.config)
     }
 
-
     /// 添加连接配置
     pub fn add_connection(&mut self, connection: ConnectionConfig) {
         self.config.connections.push(connection);
@@ -101,7 +102,6 @@ impl ConfigStorage {
             let _ = self.save();
         }
     }
-
 
     /// 获取客户端连接配置
     pub fn client_connections(&self) -> Vec<&ConnectionConfig> {
@@ -120,8 +120,6 @@ impl ConfigStorage {
             .filter(|c| c.is_server())
             .collect()
     }
-
-
 
     /// 按IP和端口删除客户端连接
     pub fn remove_client_connection(&mut self, identifier: &str) {

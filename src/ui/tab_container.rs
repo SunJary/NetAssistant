@@ -1,5 +1,5 @@
-use gpui::*;
 use gpui::prelude::FluentBuilder;
+use gpui::*;
 use gpui_component::StyledExt;
 
 use crate::app::NetAssistantApp;
@@ -22,26 +22,26 @@ impl<'a> TabContainer<'a> {
         Self { app }
     }
 
-    pub fn render(self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    pub fn render(
+        self,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         let tabs = self.get_tabs();
-        
+
         div()
             .flex()
             .flex_col()
             .flex_1()
             .bg(gpui::rgb(0xffffff))
-            .child(
-                self.render_tab_header(&tabs, cx),
-            )
-            .child(
-                self.render_tab_content(window, cx),
-            )
+            .child(self.render_tab_header(&tabs, cx))
+            .child(self.render_tab_content(window, cx))
     }
 
     /// 获取所有标签页（只显示已创建的标签页）
     fn get_tabs(&self) -> Vec<TabInfo> {
         let mut tabs = Vec::new();
-        
+
         for (tab_id, tab_state) in &self.app.connection_tabs {
             let address = tab_state.address();
             let protocol = tab_state.protocol();
@@ -58,12 +58,16 @@ impl<'a> TabContainer<'a> {
             };
             tabs.push(tab);
         }
-        
+
         tabs
     }
 
     /// 渲染标签页头部
-    fn render_tab_header(&self, tabs: &[TabInfo], cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_tab_header(
+        &self,
+        tabs: &[TabInfo],
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         let mut header_div = div()
             .flex()
             .items_center()
@@ -72,12 +76,12 @@ impl<'a> TabContainer<'a> {
             .bg(gpui::rgb(0xf3f4f6))
             .border_b_1()
             .border_color(gpui::rgb(0xe5e7eb));
-        
+
         for (index, tab) in tabs.iter().enumerate() {
             let tab_id = tab.id.clone();
             let is_active = tab.is_active;
             let tab_name = tab.name.clone();
-            
+
             header_div = header_div.child(
                 div()
                     .flex()
@@ -128,7 +132,7 @@ impl<'a> TabContainer<'a> {
                                 let tab_id_clone = tab_id.clone();
                                 cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                     app.close_tab(tab_id_clone.clone());
-                                    
+
                                     if app.active_tab == tab_id_clone {
                                         if let Some(first_tab_id) = app.connection_tabs.keys().next() {
                                             app.active_tab = (*first_tab_id).to_string();
@@ -142,36 +146,31 @@ impl<'a> TabContainer<'a> {
                     ),
             );
         }
-        
+
         header_div
     }
 
     /// 渲染标签页内容区域
-    fn render_tab_content(&self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
-        if let Some((tab_id, tab_state)) = self.app.connection_tabs.get_key_value(&self.app.active_tab) {
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .child(ConnectionTab::new(self.app, (*tab_id).clone(), tab_state).render(window, cx))
+    fn render_tab_content(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
+        if let Some((tab_id, tab_state)) =
+            self.app.connection_tabs.get_key_value(&self.app.active_tab)
+        {
+            div().flex().flex_col().flex_1().child(
+                ConnectionTab::new(self.app, (*tab_id).clone(), tab_state).render(window, cx),
+            )
         } else {
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .child(
+            div().flex().flex_col().flex_1().child(
+                div().flex().items_center().justify_center().flex_1().child(
                     div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .flex_1()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(gpui::rgb(0x9ca3af))
-                                .child("请先创建连接"),
-                        ),
-                )
+                        .text_sm()
+                        .text_color(gpui::rgb(0x9ca3af))
+                        .child("请先创建连接"),
+                ),
+            )
         }
     }
 }

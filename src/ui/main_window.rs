@@ -1,11 +1,11 @@
-use gpui::*;
 use gpui::prelude::FluentBuilder;
+use gpui::*;
 use gpui_component::StyledExt;
 
 use crate::app::NetAssistantApp;
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::tab_container::TabContainer;
 use crate::ui::dialog::new_connection::NewConnectionDialog;
+use crate::ui::tab_container::TabContainer;
 
 pub struct MainWindow<'a> {
     app: &'a NetAssistantApp,
@@ -16,7 +16,11 @@ impl<'a> MainWindow<'a> {
         Self { app }
     }
 
-    pub fn render(self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    pub fn render(
+        self,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         div()
             .w_full()
             .h_full()
