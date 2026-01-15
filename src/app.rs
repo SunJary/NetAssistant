@@ -11,6 +11,7 @@ use crate::ui::main_window::MainWindow;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
@@ -154,12 +155,25 @@ impl NetAssistantApp {
         message_input_mode: String,
         _cx: &mut Context<Self>,
     ) {
+        // 首先停止已有的周期发送任务
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            if let Some(timer_arc) = &tab_state.periodic_send_timer {
+                if let Ok(mut timer) = timer_arc.lock() {
+                    if let Some(timer_handle) = timer.take() {
+                        timer_handle.abort();
+                        info!("[周期发送] 已停止旧的周期发送任务");
+                    }
+                }
+            }
+        }
+
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
         let content_clone = content.clone();
         let message_input_mode_clone = message_input_mode.clone();
 
-        tokio::spawn(async move {
+        // 创建周期发送任务
+        let task = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await;
 
@@ -191,6 +205,11 @@ impl NetAssistantApp {
                 }
             }
         });
+
+        // 存储任务句柄到标签页状态中
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            tab_state.periodic_send_timer = Some(Arc::new(Mutex::new(Some(task))));
+        }
     }
 
     pub fn start_tcp_server(
@@ -511,6 +530,16 @@ impl NetAssistantApp {
 
         if self.auto_reply_inputs.remove(&tab_id).is_some() {
             info!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
+        }
+
+        // 清理客户端连接发送器
+        if self.client_write_senders.remove(&tab_id).is_some() {
+            info!("[关闭标签页] 移除客户端连接发送器: {}", tab_id);
+        }
+
+        // 清理服务端客户端连接
+        if self.server_clients.remove(&tab_id).is_some() {
+            info!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);
         }
 
         info!("[关闭标签页] 标签页 {} 已关闭", tab_id);
@@ -1228,6 +1257,9 @@ impl NetAssistantApp {
                             tab_state.error_message = Some(error);
                             need_notify = true;
                         }
+                        // 清理连接信息，确保下次发送时直接失败
+                        self.client_write_senders.remove(&tab_id);
+                        self.server_clients.remove(&tab_id);
                     }
                     ConnectionEvent::ClientWriteSenderReady(tab_id, write_sender) => {
                         info!(

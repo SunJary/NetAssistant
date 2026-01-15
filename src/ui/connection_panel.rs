@@ -108,7 +108,7 @@ impl<'a> ConnectionPanel<'a> {
         new_button_id: &'static str,
         is_client: bool,
     ) -> Div {
-        let mut content_div = div().flex().flex_col().gap_1().id(content_id);
+        let mut content_div = div().flex().flex_col().gap_2().id(content_id).pl_3();
 
         for (index, (host, port, protocol)) in items.iter().enumerate() {
             let host_clone = host.clone();
@@ -125,6 +125,9 @@ impl<'a> ConnectionPanel<'a> {
                     .text_sm()
                     .text_color(gpui::rgb(0x6b7280))
                     .cursor_pointer()
+                    .bg(gpui::rgb(0xf3f4f6))
+                    .rounded_md()
+                    .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
                     .child(display_text)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -197,6 +200,9 @@ impl<'a> ConnectionPanel<'a> {
                 .text_color(gpui::rgb(0x3b82f6))
                 .font_medium()
                 .cursor_pointer()
+                .bg(gpui::rgb(0xf0f9ff))
+                .rounded_md()
+                .hover(|style| style.bg(gpui::rgb(0xe0f2fe)))
                 .child("+ 新建连接")
                 .on_mouse_down(
                     MouseButton::Left,
@@ -231,13 +237,25 @@ impl<'a> ConnectionPanel<'a> {
                 // 手风琴标题（可点击）
                 div()
                     .id(id)
-                    .px_2()
-                    .py_1()
+                    .px_3()
+                    .py_2()
                     .text_sm()
                     .font_medium()
                     .text_color(gpui::rgb(0x374151))
                     .cursor_pointer()
+                    .bg(gpui::rgb(0xf9fafb))
+                    .rounded_md()
+                    .hover(|style| style.bg(gpui::rgb(0xf3f4f6)))
+                    .flex()
+                    .items_center()
+                    .justify_between()
                     .child(title)
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(gpui::rgb(0x6b7280))
+                            .child(if is_expanded { "▼" } else { "▶" })
+                    )
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |app, _event, _window, _cx| {

@@ -180,6 +180,16 @@ impl ConnectionTabState {
                 }
             }
         }
+
+        // 停止周期发送任务
+        if let Some(timer_arc) = &self.periodic_send_timer {
+            if let Ok(mut timer) = timer_arc.lock() {
+                if let Some(timer_handle) = timer.take() {
+                    timer_handle.abort();
+                    info!("[ConnectionTabState] 周期发送任务已取消");
+                }
+            }
+        }
     }
 }
 
