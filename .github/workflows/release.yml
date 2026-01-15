@@ -131,14 +131,24 @@ jobs:
       - name: Get commit history between tags
         id: get_commits
         run: |
-          # Get all tags sorted by creation date
-          ALL_TAGS=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
-          
           # Get current tag
           CURRENT_TAG=${GITHUB_REF#refs/tags/}
           
+          # Get all tags sorted by version
+          ALL_TAGS=$(git tag -l | sort -Vr)
+          
           # Find previous tag
-          PREVIOUS_TAG=$(echo "$ALL_TAGS" | grep -v "$CURRENT_TAG" | head -n 1)
+          PREVIOUS_TAG=""
+          found_current=false
+          for tag in $ALL_TAGS; do
+            if [ "$found_current" = true ]; then
+              PREVIOUS_TAG=$tag
+              break
+            fi
+            if [ "$tag" = "$CURRENT_TAG" ]; then
+              found_current=true
+            fi
+          done
           
           if [ -z "$PREVIOUS_TAG" ]; then
             # If no previous tag, get all commits
@@ -171,8 +181,12 @@ jobs:
             ### 安装方法
             
             #### Windows
-            1. 下载并解压 `netassistant-windows-x86_64.zip`
-            2. 运行 `netassistant.exe`
+            1. **推荐方法：使用 winget 安装**
+               - 安装：`winget install SunJary.NetAssistant`
+               - 升级：`winget upgrade SunJary.NetAssistant`
+            2. **备选方法：手动安装**
+               - 下载并解压 `netassistant-windows-x86_64.zip`
+               - 运行 `netassistant.exe`
             
             #### Linux
             1. 下载并解压 `netassistant-linux-x86_64.tar.gz`
