@@ -1,41 +1,23 @@
-use gpui::*;
 use gpui::prelude::FluentBuilder;
+use gpui::*;
+use gpui::{Pixels, ScrollStrategy, Size, px, size};
 use gpui_component::StyledExt;
 use gpui_component::{
-    v_virtual_list, VirtualListScrollHandle, input::{Input, InputState},
+    VirtualListScrollHandle,
+    input::{Input, InputState},
     scroll::ScrollableElement,
+    v_virtual_list,
 };
-use std::rc::Rc;
-use gpui::{px, size, ScrollStrategy, Size, Pixels};
+use log::{debug, error, info, warn};
 use std::net::SocketAddr;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+use tokio::task::JoinHandle;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
-use crate::message::{Message, MessageDirection, MessageListState, DisplayMode};
-
-fn hex_to_bytes(hex: &str) -> Vec<u8> {
-    let hex = hex.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "");
-    let mut bytes = Vec::new();
-    
-    for i in (0..hex.len()).step_by(2) {
-        if i + 1 < hex.len() {
-            let byte_str = &hex[i..i+2];
-            if let Ok(byte) = u8::from_str_radix(byte_str, 16) {
-                bytes.push(byte);
-            }
-        }
-    }
-    
-    bytes
-}
-
-fn validate_hex_input(input: &str) -> bool {
-    let cleaned = input.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "");
-    if cleaned.is_empty() {
-        return true;
-    }
-    cleaned.chars().all(|c| c.is_ascii_hexdigit())
-}
+use crate::message::{DisplayMode, Message, MessageDirection, MessageListState};
+use crate::utils::hex::{hex_to_bytes, validate_hex_input};
 
 /// 连接标签页状态
 #[derive(Clone)]
@@ -51,13 +33,31 @@ pub struct ConnectionTabState {
     pub auto_scroll_enabled: bool,
     pub client_connections: Vec<SocketAddr>,
     pub selected_client: Option<SocketAddr>,
+
+    // 每个标签页独立的功能
+    pub message_input: Option<Entity<InputState>>,
+    pub message_input_mode: String,
+    pub auto_clear_input: bool,
+    pub periodic_send_enabled: bool,
+    pub periodic_interval_input: Option<Entity<InputState>>,
+    // 使用 Arc<Mutex> 包装以支持克隆
+    pub periodic_send_timer: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
+    pub display_mode: DisplayMode,
+
+    // 服务端和客户端的控制句柄
+    pub server_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
+    pub client_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
 }
 
 impl ConnectionTabState {
-    pub fn new(connection_config: ConnectionConfig) -> Self {
+    pub fn new(
+        connection_config: ConnectionConfig,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Self {
         Self {
             connection_config,
-            connection_status: ConnectionStatus::Disconnected,
+            connection_status: ConnectionStatus::NotConnected,
             message_list: MessageListState::new(),
             is_connected: false,
             error_message: None,
@@ -69,6 +69,29 @@ impl ConnectionTabState {
             client_connections: Vec::new(),
             selected_client: None,
 
+            // 初始化每个标签页独立的功能
+            message_input: Some(cx.new(|cx| {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .placeholder("输入消息内容...")
+            })),
+            message_input_mode: String::from("text"),
+            auto_clear_input: true,
+            periodic_send_enabled: false,
+            periodic_interval_input: {
+                let input = cx.new(|cx| InputState::new(window, cx));
+                // 设置周期发送的默认值为1000
+                input.update(cx, |input, cx| {
+                    input.set_value("1000".to_string(), window, cx);
+                });
+                Some(input)
+            },
+            periodic_send_timer: None,
+            display_mode: DisplayMode::Text,
+
+            // 初始化服务端和客户端的控制句柄
+            server_handle: None,
+            client_handle: None,
         }
     }
 
@@ -101,12 +124,17 @@ impl ConnectionTabState {
         let content_font_height = px(20.);
         let content_padding_top = px(12.);
         let content_padding_bottom = px(12.);
-        
+
         let content_str = String::from_utf8_lossy(&message.raw_data);
         let content_lines = content_str.lines().count().max(1);
         let content_height = content_font_height * content_lines as f32;
-        
-        let total_height = outer_gap + header_height + gap_between_header_and_content + content_padding_top + content_height + content_padding_bottom;
+
+        let total_height = outer_gap
+            + header_height
+            + gap_between_header_and_content
+            + content_padding_top
+            + content_height
+            + content_padding_bottom;
         size(px(300.), total_height)
     }
 
@@ -116,11 +144,12 @@ impl ConnectionTabState {
         let mut sizes = self.item_sizes.as_ref().to_vec();
         sizes.push(new_height);
         self.item_sizes = Rc::new(sizes);
-        
+
         if self.auto_scroll_enabled {
             let message_count = self.message_list.messages.len();
             if message_count > 0 {
-                self.scroll_handle.scroll_to_item(message_count - 1, ScrollStrategy::Bottom);
+                self.scroll_handle
+                    .scroll_to_item(message_count - 1, ScrollStrategy::Bottom);
             }
         }
     }
@@ -129,6 +158,38 @@ impl ConnectionTabState {
         self.is_connected = false;
         self.connection_status = ConnectionStatus::Disconnected;
         self.client_connections.clear();
+
+        // 停止服务端任务
+        if let Some(handle) = &self.server_handle {
+            if let Ok(mut guard) = handle.lock() {
+                if let Some(join_handle) = guard.take() {
+                    // 尝试取消服务端任务
+                    join_handle.abort();
+                    info!("[ConnectionTabState] 服务端任务已取消");
+                }
+            }
+        }
+
+        // 停止客户端任务
+        if let Some(handle) = &self.client_handle {
+            if let Ok(mut guard) = handle.lock() {
+                if let Some(join_handle) = guard.take() {
+                    // 尝试取消客户端任务
+                    join_handle.abort();
+                    info!("[ConnectionTabState] 客户端任务已取消");
+                }
+            }
+        }
+
+        // 停止周期发送任务
+        if let Some(timer_arc) = &self.periodic_send_timer {
+            if let Ok(mut timer) = timer_arc.lock() {
+                if let Some(timer_handle) = timer.take() {
+                    timer_handle.abort();
+                    info!("[ConnectionTabState] 周期发送任务已取消");
+                }
+            }
+        }
     }
 }
 
@@ -140,45 +201,52 @@ pub struct ConnectionTab<'a> {
 }
 
 impl<'a> ConnectionTab<'a> {
-    pub fn new(app: &'a NetAssistantApp, tab_id: String, tab_state: &'a ConnectionTabState) -> Self {
-        Self { 
-            app, 
-            tab_id, 
+    pub fn new(
+        app: &'a NetAssistantApp,
+        tab_id: String,
+        tab_state: &'a ConnectionTabState,
+    ) -> Self {
+        Self {
+            app,
+            tab_id,
             tab_state,
         }
     }
 
-    pub fn render(self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    pub fn render(
+        self,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         let is_client = self.tab_state.connection_config.is_client();
-        
+
         div()
             .flex()
             .flex_row()
             .flex_1()
             .bg(gpui::rgb(0xffffff))
-            .child(
-                self.render_connection_info(window, cx),
-            )
+            .child(self.render_connection_info(window, cx))
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .child(
-                        self.render_message_area(cx),
-                    )
-                    .when(is_client, |div| {
-                        div.child(self.render_send_area(cx))
-                    }),
+                    .child(self.render_message_area(cx))
+                    .when(is_client, |div| div.child(self.render_send_area(cx))),
             )
     }
 
     /// 渲染连接信息区域（左侧面板）
-    fn render_connection_info(&self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_connection_info(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         let tab_id = self.tab_id.clone();
+
         let is_connected = self.tab_state.is_connected;
         let is_client = self.tab_state.connection_config.is_client();
-        
+
         div()
             .flex()
             .flex_col()
@@ -219,10 +287,10 @@ impl<'a> ConnectionTab<'a> {
                                     .text_xs()
                                     .font_semibold()
                                     .text_color(gpui::rgb(0xffffff))
-                                    .child(if is_connected { 
-                                        if is_client { "断开" } else { "停止" } 
-                                    } else { 
-                                        if is_client { "连接" } else { "启动" } 
+                                    .child(if is_connected {
+                                        if is_client { "断开" } else { "停止" }
+                                    } else {
+                                        if is_client { "连接" } else { "启动" }
                                     }),
                             )
                             .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
@@ -367,11 +435,15 @@ impl<'a> ConnectionTab<'a> {
     }
 
     /// 渲染自动回复配置区域
-    fn render_auto_reply_config(&self, _window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_auto_reply_config(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         let tab_id = self.tab_id.clone();
         let tab_id_for_toggle = tab_id.clone();
         let auto_reply_enabled = self.tab_state.auto_reply_enabled;
-        
+
         div()
             .flex()
             .flex_col()
@@ -434,9 +506,8 @@ impl<'a> ConnectionTab<'a> {
                     ),
             )
             .when(auto_reply_enabled, |this| {
-                let tab_id_clone = tab_id.clone();
-                
-                if let Some(input_state) = self.app.auto_reply_inputs.get(&tab_id_clone) {
+
+                if let Some(input_state) = self.app.auto_reply_inputs.get(&tab_id) {
                     this.child(
                         div()
                             .flex()
@@ -576,19 +647,24 @@ impl<'a> ConnectionTab<'a> {
     /// 渲染报文记录区域（聊天样式）- 使用虚拟列表优化性能
     fn render_message_area(&self, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let messages = &self.tab_state.message_list.messages;
-        let display_mode = self.app.display_mode;
-        
+        let display_mode = self.tab_state.display_mode;
+        let tab_id = self.tab_id.clone();
+
         // 根据选中的客户端查看消息
-        let filtered_messages: Vec<&Message> = messages.iter()
+        let filtered_messages: Vec<&Message> = messages
+            .iter()
             .filter(|m| {
                 // 如果没有选中客户端，显示所有消息
                 // 如果选中了客户端，只显示该客户端的消息
-                self.tab_state.selected_client.as_ref().map_or(true, |selected| {
-                    m.source.as_ref() == Some(&selected.to_string())
-                })
+                self.tab_state
+                    .selected_client
+                    .as_ref()
+                    .map_or(true, |selected| {
+                        m.source.as_ref() == Some(&selected.to_string())
+                    })
             })
             .collect();
-        
+
         if filtered_messages.is_empty() {
             return div()
                 .flex()
@@ -627,19 +703,21 @@ impl<'a> ConnectionTab<'a> {
                                         })
                                         .rounded_md()
                                         .cursor_pointer()
-                                        .hover(|style| {
-                                            style.bg(gpui::rgb(0xe5e7eb))
-                                        })
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_medium()
-                                                .child("文本"),
-                                        )
-                                        .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
-                                            app.display_mode = DisplayMode::Text;
-                                            cx.notify();
-                                        })),
+                                        .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
+                                        .child(div().text_xs().font_medium().child("文本"))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener({
+                                                let tab_id = tab_id.clone();
+                                                move |app, _event, _window, cx| {
+                                                    app.connection_tabs
+                                                        .get_mut(&tab_id)
+                                                        .unwrap()
+                                                        .display_mode = DisplayMode::Text;
+                                                    cx.notify();
+                                                }
+                                            }),
+                                        ),
                                 )
                                 .child(
                                     div()
@@ -655,44 +733,47 @@ impl<'a> ConnectionTab<'a> {
                                         })
                                         .rounded_md()
                                         .cursor_pointer()
-                                        .hover(|style| {
-                                            style.bg(gpui::rgb(0xe5e7eb))
-                                        })
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_medium()
-                                                .child("十六进制"),
-                                        )
-                                        .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
-                                            app.display_mode = DisplayMode::Hex;
-                                            cx.notify();
-                                        })),
+                                        .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
+                                        .child(div().text_xs().font_medium().child("十六进制"))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener({
+                                                let tab_id = tab_id.clone();
+                                                move |app, _event, _window, cx| {
+                                                    app.connection_tabs
+                                                        .get_mut(&tab_id)
+                                                        .unwrap()
+                                                        .display_mode = DisplayMode::Hex;
+                                                    cx.notify();
+                                                }
+                                            }),
+                                        ),
                                 ),
                         ),
                 )
                 .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .flex_1()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(gpui::rgb(0x9ca3af))
-                                .child("暂无消息记录"),
-                        ),
+                    div().flex().items_center().justify_center().flex_1().child(
+                        div()
+                            .text_sm()
+                            .text_color(gpui::rgb(0x9ca3af))
+                            .child("暂无消息记录"),
+                    ),
                 );
         }
-        
+
         // 为虚拟列表计算查看消息的高度
-        let item_sizes = Rc::new(filtered_messages.iter().map(|m| ConnectionTabState::calculate_message_height(m)).collect());
-        
-        let filtered_messages_clone: Vec<Message> = filtered_messages.into_iter().cloned().collect();
+        let item_sizes = Rc::new(
+            filtered_messages
+                .iter()
+                .map(|m| ConnectionTabState::calculate_message_height(m))
+                .collect(),
+        );
+
+        let filtered_messages_clone: Vec<Message> =
+            filtered_messages.into_iter().cloned().collect();
         let scroll_handle = self.tab_state.scroll_handle.clone();
         let display_mode_clone = display_mode;
-        
+
         div()
             .flex()
             .flex_col()
@@ -720,163 +801,164 @@ impl<'a> ConnectionTab<'a> {
                                     .px_2()
                                     .py_1()
                                     .when(display_mode == DisplayMode::Text, |div| {
-                                        div.bg(gpui::rgb(0x3b82f6))
-                                            .text_color(gpui::rgb(0xffffff))
-                                        })
+                                        div.bg(gpui::rgb(0x3b82f6)).text_color(gpui::rgb(0xffffff))
+                                    })
                                     .when(display_mode != DisplayMode::Text, |div| {
-                                        div.bg(gpui::rgb(0xf3f4f6))
-                                            .text_color(gpui::rgb(0x6b7280))
-                                        })
+                                        div.bg(gpui::rgb(0xf3f4f6)).text_color(gpui::rgb(0x6b7280))
+                                    })
                                     .rounded_md()
                                     .cursor_pointer()
-                                    .hover(|style| {
-                                        style.bg(gpui::rgb(0xe5e7eb))
-                                    })
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_medium()
-                                            .child("文本"),
-                                    )
-                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
-                                        app.display_mode = DisplayMode::Text;
-                                        cx.notify();
-                                    })),
+                                    .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
+                                    .child(div().text_xs().font_medium().child("文本"))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener({
+                                            let tab_id = tab_id.clone();
+                                            move |app, _event, _window, cx| {
+                                                app.connection_tabs
+                                                    .get_mut(&tab_id)
+                                                    .unwrap()
+                                                    .display_mode = DisplayMode::Text;
+                                                cx.notify();
+                                            }
+                                        }),
+                                    ),
                             )
                             .child(
                                 div()
                                     .px_2()
                                     .py_1()
                                     .when(display_mode == DisplayMode::Hex, |div| {
-                                        div.bg(gpui::rgb(0x3b82f6))
-                                            .text_color(gpui::rgb(0xffffff))
-                                        })
+                                        div.bg(gpui::rgb(0x3b82f6)).text_color(gpui::rgb(0xffffff))
+                                    })
                                     .when(display_mode != DisplayMode::Hex, |div| {
-                                        div.bg(gpui::rgb(0xf3f4f6))
-                                            .text_color(gpui::rgb(0x6b7280))
-                                        })
+                                        div.bg(gpui::rgb(0xf3f4f6)).text_color(gpui::rgb(0x6b7280))
+                                    })
                                     .rounded_md()
                                     .cursor_pointer()
-                                    .hover(|style| {
-                                        style.bg(gpui::rgb(0xe5e7eb))
-                                    })
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_medium()
-                                            .child("十六进制"),
-                                    )
-                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
-                                        app.display_mode = DisplayMode::Hex;
-                                        cx.notify();
-                                    })),
+                                    .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
+                                    .child(div().text_xs().font_medium().child("十六进制"))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener({
+                                            let tab_id = tab_id.clone();
+                                            move |app, _event, _window, cx| {
+                                                app.connection_tabs
+                                                    .get_mut(&tab_id)
+                                                    .unwrap()
+                                                    .display_mode = DisplayMode::Hex;
+                                                cx.notify();
+                                            }
+                                        }),
+                                    ),
                             ),
                     ),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .child(
+                div().flex().flex_col().flex_1().child(
+                    v_virtual_list(
+                        cx.entity().clone(),
+                        "message-list",
+                        item_sizes,
+                        move |_view, visible_range, _, _cx| {
+                            visible_range
+                                .map(|ix| {
+                                    if let Some(message) = filtered_messages_clone.get(ix) {
+                                        let is_sent = message.direction == MessageDirection::Sent;
 
-                        v_virtual_list(
-                            cx.entity().clone(),
-                            "message-list",
-                            item_sizes,
-                            move |_view, visible_range, _, _cx| {
-
-                                visible_range
-                                    .map(|ix| {
-                                        if let Some(message) = filtered_messages_clone.get(ix) {
-                                            let is_sent = message.direction == MessageDirection::Sent;
-                                    
-                                            div()
-                                                .flex()
-                                                .flex_col()
-                                                .gap_1()
-                                                .w_full()
-                                                .when(is_sent, |div| {
-                                                    div.items_end()
-                                                })
-                                                .when(!is_sent, |div| {
-                                                    div.items_start()
-                                                })
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .gap_2()
-                                                        .child(
-                                                            div()
-                                                                .text_xs()
-                                                                .font_semibold()
-                                                                .when(is_sent, |div| {
-                                                                    div.text_color(gpui::rgb(0x3b82f6))
-                                                                })
-                                                                .when(!is_sent, |div| {
-                                                                    div.text_color(gpui::rgb(0x10b981))
-                                                                })
-                                                                .child(if is_sent { "发送" } else { "接收" }),
-                                                        )
-                                                        .child(
-                                                            div()
-                                                                .text_xs()
-                                                                .text_color(gpui::rgb(0x9ca3af))
-                                                                .child(message.timestamp.clone()),
-                                                        )
-                                                        .when(message.source.is_some(), |this_div| {
-                                                            if let Some(source) = &message.source {
-                                                                this_div.child(
-                                                                    div()
-                                                                        .text_xs()
-                                                                        .text_color(gpui::rgb(0x6b7280))
-                                                                        .child(format!("({})", source)),
-                                                                )
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_1()
+                                            .w_full()
+                                            .when(is_sent, |div| div.items_end())
+                                            .when(!is_sent, |div| div.items_start())
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .font_semibold()
+                                                            .when(is_sent, |div| {
+                                                                div.text_color(gpui::rgb(0x3b82f6))
+                                                            })
+                                                            .when(!is_sent, |div| {
+                                                                div.text_color(gpui::rgb(0x10b981))
+                                                            })
+                                                            .child(if is_sent {
+                                                                "发送"
                                                             } else {
-                                                                this_div
-                                                            }
-                                                        }),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .max_w_80()
-                                                        .p_3()
-                                                        .rounded_md()
-                                                        .when(is_sent, |div| {
-                                                            div.bg(gpui::rgb(0x3b82f6))
-                                                        })
-                                                        .when(!is_sent, |div| {
-                                                            div.bg(gpui::rgb(0xf3f4f6))
-                                                        })
-                                                        .child(
-                                                            div()
-                                                                .text_sm()
-                                                                .when(is_sent, |div| {
-                                                                    div.text_color(gpui::rgb(0xffffff))
-                                                                })
-                                                                .when(!is_sent, |div| {
-                                                                    div.text_color(gpui::rgb(0x111827))
-                                                                })
-                                                                .child(message.get_display_content(display_mode_clone)),
-                                                        ),
-                                                )
-                                        } else {
-                                            div()
-                                        }
-                                    })
-                                    .collect()
-                            }
-                        )
-                        .track_scroll(&scroll_handle),
-                    ),
+                                                                "接收"
+                                                            }),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(gpui::rgb(0x9ca3af))
+                                                            .child(message.timestamp.clone()),
+                                                    )
+                                                    .when(message.source.is_some(), |this_div| {
+                                                        if let Some(source) = &message.source {
+                                                            this_div.child(
+                                                                div()
+                                                                    .text_xs()
+                                                                    .text_color(gpui::rgb(0x6b7280))
+                                                                    .child(format!("({})", source)),
+                                                            )
+                                                        } else {
+                                                            this_div
+                                                        }
+                                                    }),
+                                            )
+                                            .child(
+                                                div()
+                                                    .max_w_80()
+                                                    .p_3()
+                                                    .rounded_md()
+                                                    .when(is_sent, |div| {
+                                                        div.bg(gpui::rgb(0x3b82f6))
+                                                    })
+                                                    .when(!is_sent, |div| {
+                                                        div.bg(gpui::rgb(0xf3f4f6))
+                                                    })
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .when(is_sent, |div| {
+                                                                div.text_color(gpui::rgb(0xffffff))
+                                                            })
+                                                            .when(!is_sent, |div| {
+                                                                div.text_color(gpui::rgb(0x111827))
+                                                            })
+                                                            .child(message.get_display_content(
+                                                                display_mode_clone,
+                                                            )),
+                                                    ),
+                                            )
+                                    } else {
+                                        div()
+                                    }
+                                })
+                                .collect()
+                        },
+                    )
+                    .track_scroll(&scroll_handle),
+                ),
             )
     }
 
     /// 渲染发送区域
     fn render_send_area(&self, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let tab_id = self.tab_id.clone();
-        
+        let tab_id_text = tab_id.clone();
+        let tab_id_hex = tab_id.clone();
+        let tab_id_periodic = tab_id.clone();
+        let tab_id_auto_clear = tab_id.clone();
+        let tab_id_send = tab_id.clone();
+
         div()
             .flex()
             .flex_col()
@@ -900,11 +982,11 @@ impl<'a> ConnectionTab<'a> {
                         div()
                             .px_2()
                             .py_1()
-                            .when(self.app.message_input_mode == "text", |div| {
+                            .when(self.tab_state.message_input_mode == "text", |div| {
                                 div.bg(gpui::rgb(0x3b82f6))
                                     .text_color(gpui::rgb(0xffffff))
                             })
-                            .when(self.app.message_input_mode != "text", |div| {
+                            .when(self.tab_state.message_input_mode != "text", |div| {
                                 div.bg(gpui::rgb(0xf3f4f6))
                                     .text_color(gpui::rgb(0x6b7280))
                             })
@@ -919,20 +1001,23 @@ impl<'a> ConnectionTab<'a> {
                                     .font_medium()
                                     .child("文本"),
                             )
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
-                                app.message_input_mode = String::from("text");
-                                cx.notify();
+                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                let tab_id_text = tab_id_text.clone();
+                                move |app, _event, _window, cx| {
+                                    app.connection_tabs.get_mut(&tab_id_text).unwrap().message_input_mode = String::from("text");
+                                    cx.notify();
+                                }
                             })),
                     )
                     .child(
                         div()
                             .px_2()
                             .py_1()
-                            .when(self.app.message_input_mode == "hex", |div| {
+                            .when(self.tab_state.message_input_mode == "hex", |div| {
                                 div.bg(gpui::rgb(0x3b82f6))
                                     .text_color(gpui::rgb(0xffffff))
                             })
-                            .when(self.app.message_input_mode != "hex", |div| {
+                            .when(self.tab_state.message_input_mode != "hex", |div| {
                                 div.bg(gpui::rgb(0xf3f4f6))
                                     .text_color(gpui::rgb(0x6b7280))
                             })
@@ -947,10 +1032,13 @@ impl<'a> ConnectionTab<'a> {
                                     .font_medium()
                                     .child("十六进制"),
                             )
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, window, cx| {
-                                app.message_input_mode = String::from("hex");
-                                app.sanitize_hex_input(window, cx);
-                                cx.notify();
+                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                let tab_id_hex = tab_id_hex.clone();
+                                move |app, _event, window, cx| {
+                                    app.connection_tabs.get_mut(&tab_id_hex).unwrap().message_input_mode = String::from("hex");
+                                    app.sanitize_hex_input(window, cx);
+                                    cx.notify();
+                                }
                             })),
                     ),
             )
@@ -959,7 +1047,7 @@ impl<'a> ConnectionTab<'a> {
                     .flex_1()
                     .h_32()
                     .child(
-                        Input::new(&self.app.message_input)
+                        Input::new(self.tab_state.message_input.as_ref().unwrap())
                             .w_full()
                             .h_full()
                             .p_3()
@@ -994,12 +1082,19 @@ impl<'a> ConnectionTab<'a> {
                                             .hover(|style| {
                                                 style.bg(gpui::rgb(0xe5e7eb))
                                             })
-                                            .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                            let tab_id = tab_id.clone();
+                                            move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                                 // 清空输入框内容
-                                                app.message_input.update(cx, |input: &mut InputState, cx| {
-                                                    input.set_value("", window, cx);
-                                                });
-                                            }))
+                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                                    if let Some(message_input) = &tab_state.message_input {
+                                                        message_input.update(cx, |input: &mut InputState, cx| {
+                                                            input.set_value("", window, cx);
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                        }))
                                             .child(
                                                 div()
                                                     .text_xs()
@@ -1021,7 +1116,7 @@ impl<'a> ConnectionTab<'a> {
                                                     .border_color(gpui::rgb(0xd1d5db))
                                                     .rounded(px(4.))
                                                     .cursor_pointer()
-                                                    .when(self.app.auto_clear_input, |this| {
+                                                    .when(self.tab_state.auto_clear_input, |this| {
                                                         this.bg(gpui::rgb(0x3b82f6))
                                                             .flex()
                                                             .items_center()
@@ -1034,9 +1129,19 @@ impl<'a> ConnectionTab<'a> {
                                                                     .child("✓"),
                                                             )
                                                     })
-                                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                        app.auto_clear_input = !app.auto_clear_input;
-                                                        cx.notify();
+                                                    .on_mouse_down(MouseButton::Left, cx.listener({
+                                                        let tab_id_auto_clear = tab_id_auto_clear.clone();
+                                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                            // 获取当前标签页的状态
+                                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_auto_clear) {
+                                                                tab_state.auto_clear_input = !tab_state.auto_clear_input;
+                                                                // 互斥逻辑：勾选自动清除时禁用周期发送
+                                                                if tab_state.auto_clear_input {
+                                                                    tab_state.periodic_send_enabled = false;
+                                                                }
+                                                            }
+                                                            cx.notify();
+                                                        }
                                                     })),
                                             )
                                             .child(
@@ -1044,6 +1149,81 @@ impl<'a> ConnectionTab<'a> {
                                                     .text_xs()
                                                     .text_color(gpui::rgb(0x6b7280))
                                                     .child("自动清除输入内容"),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .w_4()
+                                                    .h_4()
+                                                    .border_1()
+                                                    .border_color(gpui::rgb(0xd1d5db))
+                                                    .rounded(px(4.))
+                                                    .cursor_pointer()
+                                                    .when(self.tab_state.periodic_send_enabled, |this| {
+                                                        this.bg(gpui::rgb(0x3b82f6))
+                                                            .flex()
+                                                            .items_center()
+                                                            .justify_center()
+                                                            .child(
+                                                                div()
+                                                                    .text_xs()
+                                                                    .text_color(gpui::rgb(0xffffff))
+                                                                    .font_bold()
+                                                                    .child("✓"),
+                                                            )
+                                                    })
+                                                    .on_mouse_down(MouseButton::Left, cx.listener({
+                                                        let tab_id_periodic = tab_id_periodic.clone();
+                                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                            // 获取当前标签页的状态
+                                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_periodic) {
+                                                                tab_state.periodic_send_enabled = !tab_state.periodic_send_enabled;
+                                                                // 互斥逻辑：勾选周期发送时禁用自动清除
+                                                                if tab_state.periodic_send_enabled {
+                                                                    tab_state.auto_clear_input = false;
+                                                                } else {
+                                                                    // 禁用周期发送时停止定时器
+                                                                    if let Some(timer_arc) = tab_state.periodic_send_timer.take() {
+                                                                        if let Ok(mut timer) = timer_arc.lock() {
+                                                                            if let Some(timer_handle) = timer.take() {
+                                                                                timer_handle.abort();
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            cx.notify();
+                                                        }
+                                                    })),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(gpui::rgb(0x6b7280))
+                                                    .child("周期发送 (ms):"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w_24()
+                                                    .h_7()
+                                                    .bg(gpui::rgb(0xf9fafb))
+                                                    .rounded_md()
+                                                    .border_1()
+                                                    .border_color(gpui::rgb(0xe5e7eb))
+                                                    .child(
+                                                        Input::new(self.tab_state.periodic_interval_input.as_ref().unwrap())
+                                                            .w_full()
+                                                            .h_full()
+                                                            .bg(gpui::rgb(0xf9fafb))
+                                                            .rounded_md()
+                                                            .border_0()
+                                                            .text_center(),
+                                                    ),
                                             ),
                                     ),
                             )
@@ -1074,109 +1254,117 @@ impl<'a> ConnectionTab<'a> {
                                         style.bg(gpui::rgb(0x2563eb))
                                     })
                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, window, cx| {
-                                        println!("[发送按钮] 点击事件触发，tab_id: {}", tab_id);
-                                        let content = app.message_input.read(cx).text().to_string();
-                                        println!("[发送按钮] 消息内容: '{}', 长度: {}, 模式: {}", content, content.len(), app.message_input_mode);
-                                        
-                                        if app.message_input_mode == "hex" {
-                                            if !validate_hex_input(&content) {
-                                                println!("[发送按钮] 十六进制输入包含非法字符");
-                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                    tab_state.error_message = Some("十六进制输入包含非法字符".to_string());
-                                                }
-                                                cx.notify();
-                                                return;
-                                            }
-                                            
-                                            if !content.trim().is_empty() {
-                                                println!("[发送按钮] 调用 send_message_bytes");
-                                                let bytes = hex_to_bytes(&content);
-                                                
-                                                // Check connection status before sending
-                                                if let Some(tab_state) = app.connection_tabs.get(&tab_id) {
-                                                    let can_send = if tab_state.connection_config.is_client() {
-                                                        tab_state.is_connected
-                                                    } else {
-                                                        // Server mode: check if there are connected clients
-                                                        app.server_clients.get(&tab_id).map_or(false, |clients| !clients.is_empty())
-                                                    };
-                                                    
-                                                    if can_send {
-                                                        app.send_message_bytes(tab_id.clone(), bytes, content, cx);
-                                                        // Clear input ONLY on successful send initiation and if auto_clear_input is true
-                                                        if app.auto_clear_input {
-                                                            app.message_input.update(cx, |input: &mut InputState, cx| {
-                                                                input.set_value("", window, cx);
-                                                            });
-                                                        }
-                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                            tab_state.error_message = None;
-                                                        }
-                                                    } else {
-                                                        // Send failed due to connection issue
-                                                        println!("[发送按钮] 发送失败: 连接未建立或无客户端连接");
-                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                            tab_state.error_message = Some(if tab_state.connection_config.is_client() {
-                                                                "连接未建立".to_string()
-                                                            } else {
-                                                                "无客户端连接".to_string()
-                                                            });
-                                                        }
-                                                        cx.notify();
-                                                        // DO NOT clear input on connection failure
-                                                    }
+                                        let tab_id_send = tab_id_send.clone();
+                                        debug!("[发送按钮] 点击事件触发，tab_id: {}", tab_id_send);
+
+                                        // 首先获取所有需要的值，避免后续的借用冲突
+                                        let mut message_input_clone = None;
+                                        let mut content = String::new();
+                                        let mut message_input_mode = String::new();
+                                        let mut auto_clear_input = false;
+                                        let mut periodic_send_enabled = false;
+                                        let mut connection_config = None;
+                                        let mut interval_ms = 1000;
+
+                                        // 获取当前标签页的状态
+                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_send) {
+                                            // 获取消息输入内容
+                                            if let Some(message_input) = &tab_state.message_input {
+                                                content = message_input.read(cx).text().to_string();
+                                                message_input_clone = Some(message_input.clone());
+                                                debug!("[发送按钮] 消息内容: '{}', 长度: {}, 模式: {}", content, content.len(), tab_state.message_input_mode);
+
+                                                // 读取周期发送间隔值
+                                                let interval_str = if let Some(periodic_interval_input) = &tab_state.periodic_interval_input {
+                                                    periodic_interval_input.read(cx).text().to_string()
                                                 } else {
-                                                    // Tab not found
-                                                    println!("[发送按钮] 发送失败: 标签页不存在");
-                                                    // DO NOT clear input
+                                                    "1000".to_string()
+                                                };
+                                                interval_ms = interval_str.parse::<u32>().unwrap_or(1000);
+                                                debug!("[发送按钮] 周期发送间隔: {}ms", interval_ms);
+
+                                                // 存储其他需要的值
+                                                message_input_mode = tab_state.message_input_mode.clone();
+                                                auto_clear_input = tab_state.auto_clear_input;
+                                                periodic_send_enabled = tab_state.periodic_send_enabled;
+                                                connection_config = Some(tab_state.connection_config.clone());
+
+                                                // 检查十六进制输入
+                                                if message_input_mode == "hex" && !validate_hex_input(&content) {
+                                                    warn!("[发送按钮] 十六进制输入包含非法字符");
+                                                    tab_state.error_message = Some("十六进制输入包含非法字符".to_string());
+                                                    cx.notify();
+                                                    return;
                                                 }
-                                            } else {
-                                                println!("[发送按钮] 消息内容为空，不发送");
                                             }
                                         } else {
-                                            if !content.is_empty() {
-                                                println!("[发送按钮] 调用 send_message");
-                                                
-                                                // Check connection status before sending
-                                                if let Some(tab_state) = app.connection_tabs.get(&tab_id) {
-                                                    let can_send = if tab_state.connection_config.is_client() {
-                                                        tab_state.is_connected
-                                                    } else {
-                                                        // Server mode: check if there are connected clients
-                                                        app.server_clients.get(&tab_id).map_or(false, |clients| !clients.is_empty())
-                                                    };
-                                                    
-                                                    if can_send {
-                                                        app.send_message(tab_id.clone(), content, cx);
-                                                        // Clear input ONLY on successful send initiation and if auto_clear_input is true
-                                                        if app.auto_clear_input {
-                                                            app.message_input.update(cx, |input: &mut InputState, cx| {
-                                                                input.set_value("", window, cx);
-                                                            });
-                                                        }
-                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                            tab_state.error_message = None;
-                                                        }
-                                                    } else {
-                                                        // Send failed due to connection issue
-                                                        println!("[发送按钮] 发送失败: 连接未建立或无客户端连接");
-                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                            tab_state.error_message = Some(if tab_state.connection_config.is_client() {
-                                                                "连接未建立".to_string()
-                                                            } else {
-                                                                "无客户端连接".to_string()
-                                                            });
-                                                        }
-                                                        cx.notify();
-                                                        // DO NOT clear input on connection failure
-                                                    }
+                                            // Tab not found
+                                            error!("[发送按钮] 发送失败: 标签页不存在");
+                                            return;
+                                        }
+
+                                        // 检查消息内容是否为空
+                                        if content.trim().is_empty() {
+                                            debug!("[发送按钮] 消息内容为空，不发送");
+                                            return;
+                                        }
+
+                                        // 确保获取到了所有必要的值
+                                        if let Some(connection_config) = connection_config {
+                                            // Check connection status before sending
+                                            let can_send = if connection_config.is_client() {
+                                                if let Some(tab_state) = app.connection_tabs.get(&tab_id_send) {
+                                                    tab_state.is_connected
                                                 } else {
-                                                    // Tab not found
-                                                    println!("[发送按钮] 发送失败: 标签页不存在");
-                                                    // DO NOT clear input
+                                                    false
                                                 }
                                             } else {
-                                                println!("[发送按钮] 消息内容为空，不发送");
+                                                // Server mode: check if there are connected clients
+                                                app.server_clients.get(&tab_id_send).map_or(false, |clients| !clients.is_empty())
+                                            };
+
+                                            if can_send {
+                                                // 发送消息
+                                                if message_input_mode == "hex" {
+                                                    let bytes = hex_to_bytes(&content);
+                                                    app.send_message_bytes(tab_id_send.clone(), bytes, content.clone());
+                                                } else {
+                                                    app.send_message(tab_id_send.clone(), content.clone());
+                                                }
+
+                                                // Clear input ONLY on successful send initiation and if auto_clear_input is true
+                                                if auto_clear_input {
+                                                    if let Some(message_input) = message_input_clone {
+                                                        message_input.update(cx, |input: &mut InputState, cx| {
+                                                            input.set_value("", window, cx);
+                                                        });
+                                                    }
+                                                }
+
+                                                // 启动周期发送（如果启用）
+                                                if periodic_send_enabled {
+                                                    let tab_id_periodic = tab_id_send.clone();
+                                                    let content_periodic = content.clone();
+                                                    let message_input_mode_periodic = message_input_mode.clone();
+                                                    app.start_periodic_send(tab_id_periodic, interval_ms.into(), content_periodic, message_input_mode_periodic, cx);
+                                                }
+
+                                                // 清除错误消息
+                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_send) {
+                                                    tab_state.error_message = None;
+                                                }
+                                            } else {
+                                                // Send failed due to connection issue
+                                                warn!("[发送按钮] 发送失败: 连接未建立或无客户端连接");
+                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_send) {
+                                                    tab_state.error_message = Some(if connection_config.is_client() {
+                                                        "连接未建立".to_string()
+                                                    } else {
+                                                        "无客户端连接".to_string()
+                                                    });
+                                                }
+                                                cx.notify();
+                                                // DO NOT clear input on connection failure
                                             }
                                         }
                                     }))

@@ -77,7 +77,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxkbcommon-x11-dev
-
+          
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
@@ -128,6 +128,31 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Get commit history between tags
+        id: get_commits
+        run: |
+          # Get all tags sorted by creation date
+          ALL_TAGS=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
+          
+          # Get current tag
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+          
+          # Find previous tag
+          PREVIOUS_TAG=$(echo "$ALL_TAGS" | grep -v "$CURRENT_TAG" | head -n 1)
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # If no previous tag, get all commits
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+          else
+            # Get commits between previous tag and current tag
+            COMMITS=$(git log $PREVIOUS_TAG..$CURRENT_TAG --pretty=format:"- %s" --no-merges)
+          fi
+          
+          # Store commits in output
+          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -165,10 +190,7 @@ jobs:
             - Windows 10 或更高版本
             - Linux (需要 GTK3 库)
             - macOS 10.15 或更高版本
-            
-            ### 更新内容
-            
-            请查看 [CHANGELOG.md](https://github.com/sunjary/netassistant/blob/main/CHANGELOG.md) 了解详细更新内容。
+
           draft: false
           prerelease: false
         env:

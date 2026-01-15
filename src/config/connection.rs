@@ -22,6 +22,7 @@ impl fmt::Display for ConnectionType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConnectionStatus {
+    NotConnected,
     Disconnected,
     Connecting,
     Connected,
@@ -32,7 +33,8 @@ pub enum ConnectionStatus {
 impl fmt::Display for ConnectionStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConnectionStatus::Disconnected => write!(f, "未连接"),
+            ConnectionStatus::NotConnected => write!(f, "未连接"),
+            ConnectionStatus::Disconnected => write!(f, "已断开"),
             ConnectionStatus::Connecting => write!(f, "连接中"),
             ConnectionStatus::Connected => write!(f, "已连接"),
             ConnectionStatus::Listening => write!(f, "监听中"),
@@ -66,7 +68,12 @@ impl Default for ClientConfig {
 }
 
 impl ClientConfig {
-    pub fn new(name: String, server_address: String, server_port: u16, protocol: ConnectionType) -> Self {
+    pub fn new(
+        name: String,
+        server_address: String,
+        server_port: u16,
+        protocol: ConnectionType,
+    ) -> Self {
         Self {
             name,
             protocol,
@@ -103,7 +110,12 @@ impl Default for ServerConfig {
 }
 
 impl ServerConfig {
-    pub fn new(name: String, listen_address: String, listen_port: u16, protocol: ConnectionType) -> Self {
+    pub fn new(
+        name: String,
+        listen_address: String,
+        listen_port: u16,
+        protocol: ConnectionType,
+    ) -> Self {
         Self {
             name,
             protocol,
@@ -144,5 +156,94 @@ impl ConnectionConfig {
 
     pub fn is_server(&self) -> bool {
         matches!(self, ConnectionConfig::Server(_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClientConfig, ConnectionConfig, ConnectionType, ServerConfig};
+
+    #[test]
+    /// 测试客户端配置的默认值
+    fn test_client_config_default() {
+        let default_config = ClientConfig::default();
+        assert_eq!(default_config.name, "新客户端连接");
+        assert_eq!(default_config.protocol, ConnectionType::Tcp);
+        assert_eq!(default_config.server_address, "127.0.0.1");
+        assert_eq!(default_config.server_port, 8080);
+        assert_eq!(default_config.timeout, 30);
+        assert!(!default_config.auto_reconnect);
+    }
+
+    #[test]
+    /// 测试创建自定义客户端配置
+    fn test_client_config_new() {
+        let custom_config = ClientConfig::new(
+            "测试客户端".to_string(),
+            "192.168.1.1".to_string(),
+            1234,
+            ConnectionType::Udp,
+        );
+        assert_eq!(custom_config.name, "测试客户端");
+        assert_eq!(custom_config.protocol, ConnectionType::Udp);
+        assert_eq!(custom_config.server_address, "192.168.1.1");
+        assert_eq!(custom_config.server_port, 1234);
+        assert_eq!(custom_config.timeout, 30);
+        assert!(!custom_config.auto_reconnect);
+    }
+
+    #[test]
+    /// 测试服务端配置的默认值
+    fn test_server_config_default() {
+        let default_config = ServerConfig::default();
+        assert_eq!(default_config.name, "新服务端监听");
+        assert_eq!(default_config.protocol, ConnectionType::Tcp);
+        assert_eq!(default_config.listen_address, "0.0.0.0");
+        assert_eq!(default_config.listen_port, 8080);
+        assert_eq!(default_config.max_connections, 100);
+        assert_eq!(default_config.timeout, 30);
+    }
+
+    #[test]
+    /// 测试创建自定义服务端配置
+    fn test_server_config_new() {
+        let custom_config = ServerConfig::new(
+            "测试服务端".to_string(),
+            "192.168.1.1".to_string(),
+            5678,
+            ConnectionType::Udp,
+        );
+        assert_eq!(custom_config.name, "测试服务端");
+        assert_eq!(custom_config.protocol, ConnectionType::Udp);
+        assert_eq!(custom_config.listen_address, "192.168.1.1");
+        assert_eq!(custom_config.listen_port, 5678);
+        assert_eq!(custom_config.max_connections, 100);
+        assert_eq!(custom_config.timeout, 30);
+    }
+
+    #[test]
+    /// 测试客户端连接配置的功能
+    /// 包括类型判断、名称获取和协议获取
+    fn test_connection_config_client() {
+        let client_config = ClientConfig::default();
+        let connection_config = ConnectionConfig::Client(client_config.clone());
+
+        assert!(connection_config.is_client());
+        assert!(!connection_config.is_server());
+        assert_eq!(connection_config.name(), &client_config.name);
+        assert_eq!(connection_config.protocol(), client_config.protocol);
+    }
+
+    #[test]
+    /// 测试服务端连接配置的功能
+    /// 包括类型判断、名称获取和协议获取
+    fn test_connection_config_server() {
+        let server_config = ServerConfig::default();
+        let connection_config = ConnectionConfig::Server(server_config.clone());
+
+        assert!(!connection_config.is_client());
+        assert!(connection_config.is_server());
+        assert_eq!(connection_config.name(), &server_config.name);
+        assert_eq!(connection_config.protocol(), server_config.protocol);
     }
 }
