@@ -1,9 +1,9 @@
 name: Publish to Winget
 
 # 暂时禁用工作流，等下次再开启
-# on:
-#   release:
-#     types: [published]
+on:
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -16,12 +16,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Winget
+      - name: Check and install winget
         run: |
-          # 安装 Winget CLI
-          Invoke-WebRequest -Uri https://aka.ms/getwinget -OutFile getwinget.msi
-          Start-Process msiexec.exe -ArgumentList '/i getwinget.msi /quiet' -Wait
-          Remove-Item getwinget.msi
+          # 检查 winget 是否已安装
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Host "Winget not found, installing..."
+            # 安装 Winget CLI
+            Invoke-WebRequest -Uri https://aka.ms/getwinget -OutFile getwinget.msi
+            Start-Process msiexec.exe -ArgumentList '/i getwinget.msi /quiet' -Wait
+            Remove-Item getwinget.msi
+            Write-Host "Winget installed successfully"
+          } else {
+            Write-Host "Winget is already installed"
+          }
 
       - name: Get release information
         id: release_info
@@ -42,81 +49,17 @@ jobs:
               downloadUrl: asset.browser_download_url
             };
 
-      - name: Calculate SHA256 hash
-        id: calculate_hash
+      - name: Install wingetcreate
         run: |
-          $url = "${{ steps.release_info.outputs.result.downloadUrl }}"
-          $outputFile = "netassistant.zip"
-          try {
-            Invoke-WebRequest -Uri $url -OutFile $outputFile
-            $hash = Get-FileHash -Path $outputFile -Algorithm SHA256 | Select-Object -ExpandProperty Hash
-            echo "hash=$hash" >> $env:GITHUB_OUTPUT
-          } finally {
-            if (Test-Path $outputFile) {
-              Remove-Item $outputFile
-            }
-          }
+          # 安装 wingetcreate
+          winget install Microsoft.WingetCreate --source winget
 
-      - name: Clone winget-pkgs fork
-        run: |
-          git clone https://${{ secrets.GITHUB_TOKEN }}@github.com/SunJary/winget-pkgs.git
-          cd winget-pkgs
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-
-      - name: Update winget manifest
-        id: update_manifest
+      - name: Update winget package
         run: |
           $version = "${{ steps.release_info.outputs.result.version }}"
-          $hash = "${{ steps.calculate_hash.outputs.hash }}"
           $url = "${{ steps.release_info.outputs.result.downloadUrl }}"
           
-          # 创建版本目录（使用正确的大小写）
-          $manifestDir = "winget-pkgs/manifests/s/SunJary/NetAssistant/$version"
-          New-Item -ItemType Directory -Path $manifestDir -Force
-          
-          # 处理版本清单文件
-          $versionTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.2.0/SunJary.NetAssistant.yaml"
-          Copy-Item $versionTemplate -Destination "$manifestDir/SunJary.NetAssistant.yaml"
-          # 只更新版本号
-          (Get-Content "$manifestDir/SunJary.NetAssistant.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" |
-          Set-Content "$manifestDir/SunJary.NetAssistant.yaml"
-          
-          # 处理安装程序清单文件
-          $installerTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.2.0/SunJary.NetAssistant.installer.yaml"
-          Copy-Item $installerTemplate -Destination "$manifestDir/SunJary.NetAssistant.installer.yaml"
-          # 更新版本号、下载链接和哈希值
-          (Get-Content "$manifestDir/SunJary.NetAssistant.installer.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" `
-                                                                       -replace 'InstallerUrl: .*', "InstallerUrl: $url" `
-                                                                       -replace 'InstallerSha256: .*', "InstallerSha256: $hash" |
-          Set-Content "$manifestDir/SunJary.NetAssistant.installer.yaml"
-          
-          # 处理中文语言清单文件
-          $localeTemplate = "winget-pkgs/manifests/s/SunJary/NetAssistant/0.2.0/SunJary.NetAssistant.locale.zh-CN.yaml"
-          Copy-Item $localeTemplate -Destination "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml"
-          # 只更新版本号
-          (Get-Content "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml") -replace 'PackageVersion: .*', "PackageVersion: $version" |
-          Set-Content "$manifestDir/SunJary.NetAssistant.locale.zh-CN.yaml"
-          
-          # 输出分支名
-          echo "branch=update-netassistant-$version" >> $env:GITHUB_OUTPUT
-
-      - name: Commit and push changes
-        run: |
-          $branch = "${{ steps.update_manifest.outputs.branch }}"
-          cd winget-pkgs
-          git checkout -b $branch
-          git add .
-          git commit -m "Update SunJary.NetAssistant to version ${{ steps.release_info.outputs.result.version }}"
-          git push origin $branch
-
-      - name: Create Pull Request
-        uses: repo-sync/pull-request@v2
-        with:
-          source_branch: ${{ steps.update_manifest.outputs.branch }}
-          destination_branch: master
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          pr_title: "Update SunJary.NetAssistant to version ${{ steps.release_info.outputs.result.version }}"
-          pr_body: "Automatically generated PR to update SunJary.NetAssistant to version ${{ steps.release_info.outputs.result.version }}"
-          pr_reviewer: SunJary
-          pr_assignee: SunJary
+          # 使用 wingetcreate 命令更新包
+          wingetcreate update SunJary.NetAssistant --version $version --urls $url --submit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
