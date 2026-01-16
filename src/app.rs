@@ -1308,6 +1308,8 @@ impl NetAssistantApp {
                             tab_state.add_message(message.clone());
                             need_notify = true;
 
+                            // 只有当消息方向是 Received 且是真正从网络接收到的消息时才触发自动回复
+                            // 避免自动回复生成的消息又被当作新消息处理
                             if tab_state.auto_reply_enabled
                                 && message.direction == MessageDirection::Received
                             {
