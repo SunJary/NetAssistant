@@ -51,7 +51,12 @@ impl<'a> MainWindow<'a> {
                         ConnectionPanel::new(self.app).render(window, cx),
                     )
                     .child(
-                        TabContainer::new(self.app).render(window, cx),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .overflow_x_hidden()
+                            .child(TabContainer::new(self.app).render(window, cx)),
                     ),
             )
             .when(self.app.show_new_connection, |this_div| {
@@ -89,11 +94,22 @@ impl<'a> MainWindow<'a> {
                                         })
                                         .child("删除连接")
                                         .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                            if let Some(connection_name) = &app.context_menu_connection {
-                                                if app.context_menu_is_client {
-                                                    app.storage.remove_client_connection(connection_name);
+                                            if let Some(connection_name) = app.context_menu_connection.clone() {
+                                                let is_client = app.context_menu_is_client;
+                                                
+                                                // 生成对应的标签页ID并关闭标签页
+                                                let tab_id = if is_client {
+                                                    format!("client_{}", connection_name)
                                                 } else {
-                                                    app.storage.remove_server_connection(connection_name);
+                                                    format!("server_{}", connection_name)
+                                                };
+                                                app.close_tab(tab_id);
+                                                
+                                                // 然后删除连接配置
+                                                if is_client {
+                                                    app.storage.remove_client_connection(&connection_name);
+                                                } else {
+                                                    app.storage.remove_server_connection(&connection_name);
                                                 }
                                             }
                                             app.show_context_menu = false;

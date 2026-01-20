@@ -121,41 +121,31 @@ impl ConfigStorage {
             .collect()
     }
 
-    /// 按IP和端口删除客户端连接
-    pub fn remove_client_connection(&mut self, identifier: &str) {
-        // 解析 "IP:端口" 格式
-        if let Some((host, port_str)) = identifier.split_once(':') {
-            if let Ok(port) = port_str.parse::<u16>() {
-                self.config.connections.retain(|c| {
-                    if let ConnectionConfig::Client(client) = c {
-                        client.server_address != host || client.server_port != port
-                    } else {
-                        true
-                    }
-                });
-                if self.config.auto_save {
-                    let _ = self.save();
-                }
+    /// 按ID删除客户端连接
+    pub fn remove_client_connection(&mut self, connection_id: &str) {
+        self.config.connections.retain(|c| {
+            if let ConnectionConfig::Client(client) = c {
+                client.id != connection_id
+            } else {
+                true
             }
+        });
+        if self.config.auto_save {
+            let _ = self.save();
         }
     }
 
-    /// 按IP和端口删除服务端连接
-    pub fn remove_server_connection(&mut self, identifier: &str) {
-        // 解析 "IP:端口" 格式
-        if let Some((host, port_str)) = identifier.split_once(':') {
-            if let Ok(port) = port_str.parse::<u16>() {
-                self.config.connections.retain(|c| {
-                    if let ConnectionConfig::Server(server) = c {
-                        server.listen_address != host || server.listen_port != port
-                    } else {
-                        true
-                    }
-                });
-                if self.config.auto_save {
-                    let _ = self.save();
-                }
+    /// 按ID删除服务端连接
+    pub fn remove_server_connection(&mut self, connection_id: &str) {
+        self.config.connections.retain(|c| {
+            if let ConnectionConfig::Server(server) = c {
+                server.id != connection_id
+            } else {
+                true
             }
+        });
+        if self.config.auto_save {
+            let _ = self.save();
         }
     }
 }

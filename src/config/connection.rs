@@ -46,6 +46,8 @@ impl fmt::Display for ConnectionStatus {
 /// 客户端连接配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientConfig {
+    #[serde(default = "generate_uuid")]
+    pub id: String,
     pub name: String,
     pub protocol: ConnectionType,
     pub server_address: String,
@@ -57,6 +59,7 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
+            id: generate_uuid(),
             name: "新客户端连接".to_string(),
             protocol: ConnectionType::Tcp,
             server_address: "127.0.0.1".to_string(),
@@ -75,6 +78,7 @@ impl ClientConfig {
         protocol: ConnectionType,
     ) -> Self {
         Self {
+            id: generate_uuid(),
             name,
             protocol,
             server_address,
@@ -88,6 +92,8 @@ impl ClientConfig {
 /// 服务端监听配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
+    #[serde(default = "generate_uuid")]
+    pub id: String,
     pub name: String,
     pub protocol: ConnectionType,
     pub listen_address: String,
@@ -99,6 +105,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
+            id: generate_uuid(),
             name: "新服务端监听".to_string(),
             protocol: ConnectionType::Tcp,
             listen_address: "0.0.0.0".to_string(),
@@ -117,6 +124,7 @@ impl ServerConfig {
         protocol: ConnectionType,
     ) -> Self {
         Self {
+            id: generate_uuid(),
             name,
             protocol,
             listen_address,
@@ -127,6 +135,11 @@ impl ServerConfig {
     }
 }
 
+/// 生成UUID
+fn generate_uuid() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
 /// 连接配置（统一客户端和服务端）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "config")]
@@ -134,6 +147,7 @@ pub enum ConnectionConfig {
     Client(ClientConfig),
     Server(ServerConfig),
 }
+
 
 impl ConnectionConfig {
     pub fn name(&self) -> &str {

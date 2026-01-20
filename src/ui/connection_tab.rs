@@ -369,6 +369,7 @@ impl<'a> ConnectionTab<'a> {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .items_center()
                     .gap_4()
                     .child(

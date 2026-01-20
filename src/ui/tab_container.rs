@@ -1,6 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
+use gpui_component::IconName;
 
 use crate::app::NetAssistantApp;
 use crate::ui::connection_tab::ConnectionTab;
@@ -68,21 +69,38 @@ impl<'a> TabContainer<'a> {
         tabs: &[TabInfo],
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
-        let mut header_div = div()
+        let is_tab_multiline = self.app.tab_multiline;
+        
+        let header_div = div()
             .flex()
-            .items_center()
             .gap_1()
             .p_1()
             .bg(gpui::rgb(0xf3f4f6))
             .border_b_1()
-            .border_color(gpui::rgb(0xe5e7eb));
+            .border_color(gpui::rgb(0xe5e7eb))
+            .min_h(px(32.))
+            .w_full();
 
+        // 构建标签页容器，使用flex_1占据主要空间，并添加flex_shrink_0防止被压缩
+        let mut tabs_container = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .flex_1()
+            .whitespace_nowrap()
+            .overflow_hidden();
+
+        if is_tab_multiline {
+            tabs_container = tabs_container.flex_wrap();
+        }
+
+        // 添加所有标签页
         for (index, tab) in tabs.iter().enumerate() {
             let tab_id = tab.id.clone();
             let is_active = tab.is_active;
             let tab_name = tab.name.clone();
 
-            header_div = header_div.child(
+            tabs_container = tabs_container.child(
                 div()
                     .flex()
                     .items_center()
@@ -110,6 +128,10 @@ impl<'a> TabContainer<'a> {
                         div()
                             .text_xs()
                             .font_medium()
+                            .max_w(px(150.))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
                             .when(is_active, |div| {
                                 div.text_color(gpui::rgb(0x3b82f6))
                             })
@@ -147,7 +169,37 @@ impl<'a> TabContainer<'a> {
             );
         }
 
+        // 构建完整的头部，添加固定在右侧的展开/折叠按钮
         header_div
+            .child(tabs_container)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .flex_shrink_0() // 只防止被压缩，不设置固定宽度
+                    .h_8() // 设置固定高度
+                    .px_2()
+                    .py_1()
+                    .cursor_pointer()
+                    .bg(gpui::rgb(0xe9ecef))
+                    .border_1()
+                    .border_color(gpui::rgb(0xe5e7eb))
+                    .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
+                    .on_mouse_down(MouseButton::Left, {
+                        cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                            app.tab_multiline = !app.tab_multiline;
+                            cx.notify();
+                        })
+                    })
+                    .child(
+                        if is_tab_multiline {
+                            IconName::ChevronUp
+                        } else {
+                            IconName::ChevronDown
+                        },
+                    ),
+            )
     }
 
     /// 渲染标签页内容区域

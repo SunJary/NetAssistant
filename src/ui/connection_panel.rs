@@ -1,6 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
+use gpui_component::IconName;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::ConnectionConfig;
@@ -19,8 +20,8 @@ impl<'a> ConnectionPanel<'a> {
         window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
-        // 提取客户端连接信息（IP、端口、类型）
-        let client_info: Vec<(String, u16, String)> = self
+        // 提取客户端连接信息（ID、IP、端口、类型）
+        let client_info: Vec<(String, String, u16, String)> = self
             .app
             .storage
             .client_connections()
@@ -28,18 +29,19 @@ impl<'a> ConnectionPanel<'a> {
             .map(|c| {
                 if let ConnectionConfig::Client(client) = c {
                     (
+                        client.id.clone(),
                         client.server_address.clone(),
                         client.server_port,
                         client.protocol.to_string(),
                     )
                 } else {
-                    (String::new(), 0, String::new())
+                    (String::new(), String::new(), 0, String::new())
                 }
             })
             .collect();
 
-        // 提取服务端连接信息（IP、端口、类型）
-        let server_info: Vec<(String, u16, String)> = self
+        // 提取服务端连接信息（ID、IP、端口、类型）
+        let server_info: Vec<(String, String, u16, String)> = self
             .app
             .storage
             .server_connections()
@@ -47,12 +49,13 @@ impl<'a> ConnectionPanel<'a> {
             .map(|c| {
                 if let ConnectionConfig::Server(server) = c {
                     (
+                        server.id.clone(),
                         server.listen_address.clone(),
                         server.listen_port,
                         server.protocol.to_string(),
                     )
                 } else {
-                    (String::new(), 0, String::new())
+                    (String::new(), String::new(), 0, String::new())
                 }
             })
             .collect();
@@ -104,18 +107,19 @@ impl<'a> ConnectionPanel<'a> {
         content_id: &'static str,
         title: &'static str,
         is_expanded: bool,
-        items: Vec<(String, u16, String)>,
+        items: Vec<(String, String, u16, String)>,
         new_button_id: &'static str,
         is_client: bool,
     ) -> Div {
         let mut content_div = div().flex().flex_col().gap_2().id(content_id).pl_3();
 
-        for (index, (host, port, protocol)) in items.iter().enumerate() {
-            let host_clone = host.clone();
-            let port_clone = *port;
+        for (conn_id, host, port, protocol) in items.iter() {
+            let conn_id_clone1 = conn_id.clone();
+            let conn_id_clone2 = conn_id.clone();
+            let _host_clone = host.clone();
+            let _port_clone = *port;
             let _protocol_clone = protocol.clone();
             let is_client_clone = is_client;
-            let index_clone = index;
             let display_text = format!("{}:{} [{}]", host, port, protocol);
 
             content_div = content_div.child(
@@ -137,21 +141,33 @@ impl<'a> ConnectionPanel<'a> {
                                   window: &mut Window,
                                   cx: &mut Context<NetAssistantApp>| {
                                 let tab_id = if is_client_clone {
-                                    format!("client_{}", index_clone)
+                                    format!("client_{}", conn_id_clone1)
                                 } else {
-                                    format!("server_{}", index_clone)
+                                    format!("server_{}", conn_id_clone1)
                                 };
 
                                 let connection_config = if is_client_clone {
                                     let client_configs = app.storage.client_connections();
-                                    if let Some(config) = client_configs.get(index_clone) {
+                                    if let Some(config) = client_configs.iter().find(|c| {
+                                        if let ConnectionConfig::Client(client) = c {
+                                            client.id == conn_id_clone1
+                                        } else {
+                                            false
+                                        }
+                                    }) {
                                         (*config).clone()
                                     } else {
                                         return;
                                     }
                                 } else {
                                     let server_configs = app.storage.server_connections();
-                                    if let Some(config) = server_configs.get(index_clone) {
+                                    if let Some(config) = server_configs.iter().find(|c| {
+                                        if let ConnectionConfig::Server(server) = c {
+                                            server.id == conn_id_clone1
+                                        } else {
+                                            false
+                                        }
+                                    }) {
                                         (*config).clone()
                                     } else {
                                         return;
@@ -178,7 +194,7 @@ impl<'a> ConnectionPanel<'a> {
                                   cx: &mut Context<NetAssistantApp>| {
                                 app.show_context_menu = true;
                                 app.context_menu_connection =
-                                    Some(format!("{}:{}", host_clone, port_clone));
+                                    Some(conn_id_clone2.clone());
                                 app.context_menu_is_client = is_client_clone;
                                 app.context_menu_position = Some(event.position.x);
                                 app.context_menu_position_y = Some(event.position.y);
@@ -251,10 +267,11 @@ impl<'a> ConnectionPanel<'a> {
                     .justify_between()
                     .child(title)
                     .child(
-                        div()
-                            .text_sm()
-                            .text_color(gpui::rgb(0x6b7280))
-                            .child(if is_expanded { "▼" } else { "▶" })
+                        if is_expanded {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        }
                     )
                     .on_mouse_down(
                         MouseButton::Left,

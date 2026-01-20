@@ -44,6 +44,19 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的网络调试�
 
 ### 安装
 
+#### 推荐方法：使用 winget 安装
+**优势**：支持自动升级，安装和管理更便捷
+1. 首先安装 winget（Windows 10 1809+ 或 Windows 11 内置，或参考 [Microsoft 官方文档](https://learn.microsoft.com/zh-cn/windows/package-manager/winget/) 了解安装方法）
+2. 打开命令提示符或 PowerShell，运行以下命令：
+   ```bash
+   winget install SunJary.NetAssistant
+   ```
+3. 后续升级只需运行：
+   ```bash
+   winget upgrade SunJary.NetAssistant
+   ```
+
+#### 备选方法：从 GitHub Release 下载
 请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本的安装包。
 
 ### 运行

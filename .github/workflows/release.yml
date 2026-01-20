@@ -131,26 +131,49 @@ jobs:
       - name: Get commit history between tags
         id: get_commits
         run: |
-          # Get all tags sorted by creation date
-          ALL_TAGS=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
-          
           # Get current tag
           CURRENT_TAG=${GITHUB_REF#refs/tags/}
           
-          # Find previous tag
-          PREVIOUS_TAG=$(echo "$ALL_TAGS" | grep -v "$CURRENT_TAG" | head -n 1)
+          # Get all tags sorted by version
+          ALL_TAGS=$(git tag -l | sort -Vr)
           
+          # Find previous tag
+          PREVIOUS_TAG=""
+          found_current=false
+          for tag in $ALL_TAGS; do
+            if [ "$found_current" = true ]; then
+              PREVIOUS_TAG=$tag
+              break
+            fi
+            if [ "$tag" = "$CURRENT_TAG" ]; then
+              found_current=true
+            fi
+          done
+          
+          # Get repository URL
+          REPO_URL=$(git config --get remote.origin.url | sed 's/\.git$//')
+          
+          # Get commits
           if [ -z "$PREVIOUS_TAG" ]; then
             # If no previous tag, get all commits
-            COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+            COMMITS=$(git log --pretty=format:"%H %s" --no-merges)
           else
             # Get commits between previous tag and current tag
-            COMMITS=$(git log $PREVIOUS_TAG..$CURRENT_TAG --pretty=format:"- %s" --no-merges)
+            COMMITS=$(git log $PREVIOUS_TAG..$CURRENT_TAG --pretty=format:"%H %s" --no-merges)
           fi
+          
+          # Filter and format commits
+          FORMATTED_COMMITS=$(echo "$COMMITS" | while IFS= read -r line; do
+            hash=$(echo "$line" | cut -d ' ' -f 1)
+            msg=$(echo "$line" | cut -d ' ' -f 2-)
+            if [[ ! "$msg" =~ ^build: && ! "$msg" =~ ^doc: ]]; then
+              echo "- [$msg]($REPO_URL/commit/$hash)"
+            fi
+          done)
           
           # Store commits in output
           echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "$FORMATTED_COMMITS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
@@ -171,8 +194,12 @@ jobs:
             ### 安装方法
             
             #### Windows
-            1. 下载并解压 `netassistant-windows-x86_64.zip`
-            2. 运行 `netassistant.exe`
+            1. **推荐方法：使用 winget 安装**
+               - 安装：`winget install SunJary.NetAssistant`
+               - 升级：`winget upgrade SunJary.NetAssistant`
+            2. **备选方法：手动安装**
+               - 下载并解压 `netassistant-windows-x86_64.zip`
+               - 运行 `netassistant.exe`
             
             #### Linux
             1. 下载并解压 `netassistant-linux-x86_64.tar.gz`
@@ -190,7 +217,10 @@ jobs:
             - Windows 10 或更高版本
             - Linux (需要 GTK3 库)
             - macOS 10.15 或更高版本
-
+            
+            ### 更新内容
+            
+            ${{ steps.get_commits.outputs.COMMITS }}
           draft: false
           prerelease: false
         env:

@@ -47,6 +47,7 @@ pub struct NetAssistantApp {
     // Tab页状态（每个标签页独立管理自己的网络连接）
     pub active_tab: String,
     pub connection_tabs: HashMap<String, ConnectionTabState>,
+    pub tab_multiline: bool,
 
     // 自动回复输入框状态（每个标签页一个）
     pub auto_reply_inputs: HashMap<String, Entity<InputState>>,
@@ -97,6 +98,7 @@ impl NetAssistantApp {
             server_expanded: true,
             active_tab,
             connection_tabs,
+            tab_multiline: false,
             auto_reply_inputs: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
@@ -1308,6 +1310,8 @@ impl NetAssistantApp {
                             tab_state.add_message(message.clone());
                             need_notify = true;
 
+                            // 只有当消息方向是 Received 且是真正从网络接收到的消息时才触发自动回复
+                            // 避免自动回复生成的消息又被当作新消息处理
                             if tab_state.auto_reply_enabled
                                 && message.direction == MessageDirection::Received
                             {

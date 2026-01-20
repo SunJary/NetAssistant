@@ -44,6 +44,19 @@ NetAssistant is a high-performance, modern network debugging tool built with Rus
 
 ### Installation
 
+#### Recommended Method: Install via winget
+**Advantages**: Supports automatic upgrades, easier installation and management
+1. First install winget (built-in on Windows 10 1809+ or Windows 11, or refer to [Microsoft official documentation](https://learn.microsoft.com/en-us/windows/package-manager/winget/) for installation methods)
+2. Open Command Prompt or PowerShell and run:
+   ```bash
+   winget install SunJary.NetAssistant
+   ```
+3. To upgrade later, simply run:
+   ```bash
+   winget upgrade SunJary.NetAssistant
+   ```
+
+#### Alternative Method: Download from GitHub Release
 Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version.
 
 ### Running
