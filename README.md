@@ -27,6 +27,12 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的网络调试�
 - **多标签页管理**：同时管理多个连接
 - **客户端消息查看**：选择特定客户端查看其消息
 
+## 🎯 使用场景
+
+- ✅ **物联网设备对接测试**：与各类IoT设备进行通信测试，验证设备响应和数据格式
+- ✅ **网络应用开发调试**：开发网络应用时快速测试通信逻辑，验证数据传输格式
+- ✅ **嵌入式设备通信验证**：验证嵌入式系统的网络通信协议实现是否正确
+
 ## 📸 界面预览
 
 ### 客户端模式
@@ -195,26 +201,48 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的网络调试�
 
 ```
 netassistant/
-├── src/
-│   ├── main.rs           # 应用入口
-│   ├── app.rs            # 主应用逻辑
-│   ├── config/           # 配置管理
-│   ├── message.rs        # 消息处理
-│   └── ui/               # UI 组件
-│       ├── main_window.rs
-│       ├── connection_panel.rs
-│       ├── connection_tab.rs
-│       ├── tab_container.rs
-│       └── dialog/       # 对话框组件
-├── Cargo.toml            # 项目配置
-└── README.md             # 项目文档
+├── src/                    # 源代码目录
+│   ├── main.rs           # 应用入口：初始化日志、创建应用实例、启动主窗口
+│   ├── app.rs            # 主应用逻辑：管理连接、处理网络事件、状态管理
+│   ├── config/           # 配置管理：连接配置定义、存储和加载
+│   │   ├── connection.rs # 连接配置和类型定义
+│   │   ├── mod.rs        # 配置模块导出
+│   │   └── storage.rs    # 配置持久化存储
+│   ├── message.rs        # 消息处理：定义消息结构、处理消息方向和类型
+│   ├── ui/               # UI 组件：构建用户界面和处理用户交互
+│   │   ├── main_window.rs      # 主窗口组件
+│   │   ├── connection_panel.rs # 连接面板：显示和管理连接
+│   │   ├── connection_tab.rs   # 连接标签页：每个标签页对应一个连接
+│   │   ├── tab_container.rs    # 标签页容器：管理多个标签页
+│   │   ├── mod.rs              # UI 模块导出
+│   │   └── dialog/             # 对话框组件
+│   │       ├── mod.rs          # 对话框模块导出
+│   │       └── new_connection.rs # 新建连接对话框
+│   └── utils/            # 工具函数：通用工具和辅助功能
+│       ├── hex.rs        # 十六进制数据处理
+│       └── mod.rs        # 工具模块导出
+├── assets/               # 资源文件：图标和截图
+│   ├── icon/             # 图标文件
+│   └── screenshots/      # 应用截图
+├── .cargo/               # Cargo 配置：Rust 构建工具配置
+│   └── config.toml       # Cargo 配置文件
+├── .github/              # GitHub 配置：CI/CD 工作流
+│   └── workflows/        # 工作流配置
+│       └── release.yml   # 发布工作流
+├── Cargo.toml            # 项目配置：依赖管理和项目元数据
+├── Cargo.lock            # 依赖锁文件：固定依赖版本
+├── README.md             # 项目文档：中文说明
+├── README-en.md          # 英文文档：英文说明
+├── build.rs              # 构建脚本：自定义构建逻辑
+└── .gitignore            # Git 忽略文件：指定 Git 忽略的文件和目录
 ```
 
 ## 🔮 未来计划
 
 - [ ] 支持 WebSocket 协议
 - [ ] 添加消息过滤和搜索功能
-- [ ] 支持插件系统
+- [ ] 增加清空历史消息功能
+
 
 ## 🤝 贡献
 

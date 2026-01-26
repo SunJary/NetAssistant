@@ -1,6 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
+use gpui_component::IconName;
+use gpui_component::ActiveTheme;
 
 use crate::app::NetAssistantApp;
 use crate::ui::connection_panel::ConnectionPanel;
@@ -21,26 +23,59 @@ impl<'a> MainWindow<'a> {
         window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
+        let theme = cx.theme().clone();
         div()
             .w_full()
             .h_full()
             .flex()
             .flex_col()
-            .bg(gpui::rgb(0xf9fafb))
+            .bg(theme.background)
             .child(
                 div()
                     .h_12()
-                    .bg(gpui::rgb(0xffffff))
+                    .bg(theme.background)
                     .border_b_1()
-                    .border_color(gpui::rgb(0xe5e7eb))
+                    .border_color(theme.border)
                     .flex()
                     .items_center()
+                    .justify_between()
                     .px_4()
                     .child(
                         div()
                             .text_lg()
                             .font_semibold()
+                            .text_color(theme.foreground)
                             .child("NetAssistant"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .w_8()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .rounded_md()
+                                    .hover(|style| style.bg(theme.border))
+                                    .child(
+                                        if self.app.is_dark_mode {
+                                            IconName::Sun
+                                        } else {
+                                            IconName::Moon
+                                        }
+                                    )
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |app, _event, _window, cx| {
+                                            app.toggle_theme(cx);
+                                        }),
+                                    ),
+                            ),
                     ),
             )
             .child(
@@ -78,7 +113,7 @@ impl<'a> MainWindow<'a> {
                                 .absolute()
                                 .left(menu_x)
                                 .top(menu_y)
-                                .bg(gpui::rgb(0xffffff))
+                                .bg(theme.background)
                                 .rounded_md()
                                 .shadow_lg()
                                 .w_48()

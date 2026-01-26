@@ -2,6 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
 use gpui_component::IconName;
+use gpui_component::ActiveTheme as _;
 
 use crate::app::NetAssistantApp;
 use crate::ui::connection_tab::ConnectionTab;
@@ -28,13 +29,14 @@ impl<'a> TabContainer<'a> {
         window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
+        let theme = cx.theme().clone();
         let tabs = self.get_tabs();
 
         div()
             .flex()
             .flex_col()
             .flex_1()
-            .bg(gpui::rgb(0xffffff))
+            .bg(theme.background)
             .child(self.render_tab_header(&tabs, cx))
             .child(self.render_tab_content(window, cx))
     }
@@ -69,15 +71,16 @@ impl<'a> TabContainer<'a> {
         tabs: &[TabInfo],
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
+        let theme = cx.theme().clone();
         let is_tab_multiline = self.app.tab_multiline;
         
         let header_div = div()
             .flex()
             .gap_1()
             .p_1()
-            .bg(gpui::rgb(0xf3f4f6))
+            .bg(theme.secondary)
             .border_b_1()
-            .border_color(gpui::rgb(0xe5e7eb))
+            .border_color(theme.border)
             .min_h(px(32.))
             .w_full();
 
@@ -109,12 +112,12 @@ impl<'a> TabContainer<'a> {
                     .py_1()
                     .cursor_pointer()
                     .hover(|style| {
-                        style.bg(gpui::rgb(0xe5e7eb))
+                        style.bg(theme.border)
                     })
                     .when(is_active, |div| {
-                        div.bg(gpui::rgb(0xffffff))
+                        div.bg(theme.background)
                             .border_1()
-                            .border_color(gpui::rgb(0xe5e7eb))
+                            .border_color(theme.border)
                             .border_b_0()
                     })
                     .on_mouse_down(MouseButton::Left, {
@@ -133,10 +136,10 @@ impl<'a> TabContainer<'a> {
                             .text_ellipsis()
                             .whitespace_nowrap()
                             .when(is_active, |div| {
-                                div.text_color(gpui::rgb(0x3b82f6))
+                                div.text_color(theme.primary)
                             })
                             .when(!is_active, |div| {
-                                div.text_color(gpui::rgb(0x6b7280))
+                                div.text_color(theme.muted_foreground)
                             })
                             .child(tab_name),
                     )
@@ -182,10 +185,10 @@ impl<'a> TabContainer<'a> {
                     .px_2()
                     .py_1()
                     .cursor_pointer()
-                    .bg(gpui::rgb(0xe9ecef))
+                    .bg(theme.secondary)
                     .border_1()
-                    .border_color(gpui::rgb(0xe5e7eb))
-                    .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
+                    .border_color(theme.border)
+                    .hover(|style| style.bg(theme.border))
                     .on_mouse_down(MouseButton::Left, {
                         cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                             app.tab_multiline = !app.tab_multiline;

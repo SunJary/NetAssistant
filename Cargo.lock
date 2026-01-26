@@ -3472,17 +3472,20 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "cocoa 0.25.0",
  "gpui",
  "gpui-component",
  "gpui-component-assets",
  "hex",
  "log",
+ "objc",
  "serde",
  "serde_json",
  "simple_logger",
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+ "winapi",
  "winres",
 ]
 

@@ -2,6 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
 use gpui_component::IconName;
+use gpui_component::ActiveTheme as _;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::ConnectionConfig;
@@ -20,6 +21,8 @@ impl<'a> ConnectionPanel<'a> {
         window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
+        let theme = cx.theme().clone();
+        
         // 提取客户端连接信息（ID、IP、端口、类型）
         let client_info: Vec<(String, String, u16, String)> = self
             .app
@@ -65,9 +68,9 @@ impl<'a> ConnectionPanel<'a> {
             .h_full()
             .flex()
             .flex_col()
-            .bg(gpui::rgb(0xffffff))
+            .bg(theme.background)
             .border_r_1()
-            .border_color(gpui::rgb(0xe5e7eb))
+            .border_color(theme.border)
             .p_2()
             .child(
                 // 客户端连接手风琴项
@@ -111,6 +114,7 @@ impl<'a> ConnectionPanel<'a> {
         new_button_id: &'static str,
         is_client: bool,
     ) -> Div {
+        let theme = cx.theme().clone();
         let mut content_div = div().flex().flex_col().gap_2().id(content_id).pl_3();
 
         for (conn_id, host, port, protocol) in items.iter() {
@@ -127,11 +131,11 @@ impl<'a> ConnectionPanel<'a> {
                     .px_3()
                     .py_2()
                     .text_sm()
-                    .text_color(gpui::rgb(0x6b7280))
+                    .text_color(theme.muted_foreground)
                     .cursor_pointer()
-                    .bg(gpui::rgb(0xf3f4f6))
+                    .bg(theme.secondary)
                     .rounded_md()
-                    .hover(|style| style.bg(gpui::rgb(0xe5e7eb)))
+                    .hover(|style| style.bg(theme.border))
                     .child(display_text)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -213,12 +217,12 @@ impl<'a> ConnectionPanel<'a> {
                 .px_3()
                 .py_2()
                 .text_sm()
-                .text_color(gpui::rgb(0x3b82f6))
+                .text_color(theme.primary)
                 .font_medium()
                 .cursor_pointer()
-                .bg(gpui::rgb(0xf0f9ff))
+                .bg(theme.background)
                 .rounded_md()
-                .hover(|style| style.bg(gpui::rgb(0xe0f2fe)))
+                .hover(|style| style.bg(theme.border))
                 .child("+ 新建连接")
                 .on_mouse_down(
                     MouseButton::Left,
@@ -257,11 +261,11 @@ impl<'a> ConnectionPanel<'a> {
                     .py_2()
                     .text_sm()
                     .font_medium()
-                    .text_color(gpui::rgb(0x374151))
+                    .text_color(theme.foreground)
                     .cursor_pointer()
-                    .bg(gpui::rgb(0xf9fafb))
+                    .bg(theme.secondary)
                     .rounded_md()
-                    .hover(|style| style.bg(gpui::rgb(0xf3f4f6)))
+                    .hover(|style| style.bg(theme.border))
                     .flex()
                     .items_center()
                     .justify_between()

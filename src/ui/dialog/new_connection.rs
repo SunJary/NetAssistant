@@ -2,6 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
 use gpui_component::input::Input;
+use gpui_component::ActiveTheme as _;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ClientConfig, ConnectionConfig, ConnectionType, ServerConfig};
@@ -20,6 +21,7 @@ impl<'a> NewConnectionDialog<'a> {
         _window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
+        let theme = cx.theme().clone();
         div()
             .absolute()
             .inset_0()
@@ -30,7 +32,7 @@ impl<'a> NewConnectionDialog<'a> {
             .child(
                 div()
                     .w_96()
-                    .bg(gpui::rgb(0xffffff))
+                    .bg(theme.background)
                     .rounded_lg()
                     .shadow_2xl()
                     .p_6()
@@ -39,6 +41,7 @@ impl<'a> NewConnectionDialog<'a> {
                             .text_lg()
                             .font_semibold()
                             .mb_4()
+                            .text_color(theme.foreground)
                             .child("新建连接"),
                     )
                     .child(
@@ -55,6 +58,7 @@ impl<'a> NewConnectionDialog<'a> {
                                         div()
                                             .text_sm()
                                             .font_semibold()
+                                            .text_color(theme.foreground)
                                             .child("主机地址"),
                                     )
                                     .child(Input::new(&self.app.host_input)),
@@ -68,6 +72,7 @@ impl<'a> NewConnectionDialog<'a> {
                                         div()
                                             .text_sm()
                                             .font_semibold()
+                                            .text_color(theme.foreground)
                                             .child("端口"),
                                     )
                                     .child(Input::new(&self.app.port_input)),
@@ -81,6 +86,7 @@ impl<'a> NewConnectionDialog<'a> {
                                         div()
                                             .text_sm()
                                             .font_semibold()
+                                            .text_color(theme.foreground)
                                             .child("协议"),
                                     )
                                     .child(
@@ -93,12 +99,12 @@ impl<'a> NewConnectionDialog<'a> {
                                                     .py_1()
                                                     .cursor_pointer()
                                                     .when(self.app.new_connection_protocol == "TCP", |div| {
-                                                        div.bg(gpui::rgb(0x3b82f6))
-                                                            .text_color(gpui::rgb(0xffffff))
+                                                        div.bg(theme.primary)
+                                                            .text_color(theme.background)
                                                     })
                                                     .when(self.app.new_connection_protocol != "TCP", |div| {
-                                                        div.bg(gpui::rgb(0xe5e7eb))
-                                                            .text_color(gpui::rgb(0x374151))
+                                                        div.bg(theme.border)
+                                                            .text_color(theme.foreground)
                                                     })
                                                     .rounded_md()
                                                     .child(
@@ -118,12 +124,12 @@ impl<'a> NewConnectionDialog<'a> {
                                                     .py_1()
                                                     .cursor_pointer()
                                                     .when(self.app.new_connection_protocol == "UDP", |div| {
-                                                        div.bg(gpui::rgb(0x3b82f6))
-                                                            .text_color(gpui::rgb(0xffffff))
+                                                        div.bg(theme.primary)
+                                                            .text_color(theme.background)
                                                     })
                                                     .when(self.app.new_connection_protocol != "UDP", |div| {
-                                                        div.bg(gpui::rgb(0xe5e7eb))
-                                                            .text_color(gpui::rgb(0x374151))
+                                                        div.bg(theme.border)
+                                                            .text_color(theme.foreground)
                                                     })
                                                     .rounded_md()
                                                     .child(
@@ -149,13 +155,13 @@ impl<'a> NewConnectionDialog<'a> {
                                 div()
                                     .flex_1()
                                     .p_2()
-                                    .bg(gpui::rgb(0x9ca3af))
+                                    .bg(theme.border)
                                     .rounded_md()
                                     .cursor_pointer()
                                     .child(
                                         div()
                                             .text_sm()
-                                            .text_color(gpui::rgb(0xffffff))
+                                            .text_color(theme.foreground)
                                             .child("取消"),
                                     )
                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
@@ -167,13 +173,13 @@ impl<'a> NewConnectionDialog<'a> {
                                 div()
                                     .flex_1()
                                     .p_2()
-                                    .bg(gpui::rgb(0x3b82f6))
+                                    .bg(theme.primary)
                                     .rounded_md()
                                     .cursor_pointer()
                                     .child(
                                         div()
                                             .text_sm()
-                                            .text_color(gpui::rgb(0xffffff))
+                                            .text_color(theme.background)
                                             .child("确定"),
                                     )
                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {

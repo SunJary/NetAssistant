@@ -8,8 +8,11 @@ mod config;
 mod message;
 mod ui;
 mod utils;
+mod theme_detector;
+mod theme_manager;
 
 use app::NetAssistantApp;
+use theme_manager::ThemeManager;
 
 #[tokio::main]
 async fn main() {
@@ -29,6 +32,11 @@ async fn main() {
         // 必须在使用任何 GPUI Component 功能之前调用
         gpui_component::init(cx);
         info!("=== gpui_component::init() 完成 ===");
+
+        // 初始化主题管理器
+        let mut theme_manager = ThemeManager::new();
+        theme_manager.init(cx);
+        info!("=== 主题管理器初始化完成 ===");
 
         cx.spawn(async move |cx| {
             info!("=== 进入 spawn 异步任务 ===");
@@ -55,6 +63,14 @@ async fn main() {
                     info!("=== 进入 open_window 回调 ===");
                     // 创建应用实例
                     let app = cx.new(|cx| NetAssistantApp::new(window, cx));
+                    
+                    // 初始化主题状态（根据系统主题）
+                    app.update(cx, |app, cx| {
+                        app.update_from_system_theme(cx);
+                        // 启动系统主题变化监听
+                        app.start_theme_listener(cx);
+                    });
+                    
                     // 使用 gpui_component::Root 包装应用
                     cx.new(|cx| gpui_component::Root::new(app, window, cx))
                 },

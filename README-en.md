@@ -27,6 +27,12 @@ NetAssistant is a high-performance, modern network debugging tool built with Rus
 - **Multi-tab management**: Manage multiple connections simultaneously
 - **Client message viewing**: Select specific clients to view their messages
 
+## 🎯 Use Cases
+
+- ✅ **IoT device integration testing**: Test communication with various IoT devices and verify device responses and data formats
+- ✅ **Network application development debugging**: Quickly test communication logic and verify data transfer formats during network application development
+- ✅ **Embedded device communication verification**: Verify the correctness of network communication protocol implementations in embedded systems
+
 ## 📸 Interface Preview
 
 ### Client Mode
@@ -189,32 +195,53 @@ After downloading, extract the package and run the executable file.
 
 - **UI response**: 60fps rendering
   - Smooth user experience
-  - No卡顿 interactions
+  - Lag-free interactions
 
 ## 🏗️ Project Structure
 
 ```
 netassistant/
-├── src/
-│   ├── main.rs           # Application entry
-│   ├── app.rs            # Main application logic
-│   ├── config/           # Configuration management
-│   ├── message.rs        # Message processing
-│   └── ui/               # UI components
-│       ├── main_window.rs
-│       ├── connection_panel.rs
-│       ├── connection_tab.rs
-│       ├── tab_container.rs
-│       └── dialog/       # Dialog components
-├── Cargo.toml            # Project configuration
-└── README.md             # Project documentation
+├── src/                    # Source code directory
+│   ├── main.rs           # Application entry: initialize logging, create app instance, start main window
+│   ├── app.rs            # Main application logic: manage connections, handle network events, state management
+│   ├── config/           # Configuration management: connection config definition, storage and loading
+│   │   ├── connection.rs # Connection config and type definitions
+│   │   ├── mod.rs        # Configuration module export
+│   │   └── storage.rs    # Configuration persistence storage
+│   ├── message.rs        # Message processing: define message structure, handle message direction and type
+│   ├── ui/               # UI components: build user interface and handle user interaction
+│   │   ├── main_window.rs      # Main window component
+│   │   ├── connection_panel.rs # Connection panel: display and manage connections
+│   │   ├── connection_tab.rs   # Connection tab: each tab corresponds to one connection
+│   │   ├── tab_container.rs    # Tab container: manage multiple tabs
+│   │   ├── mod.rs              # UI module export
+│   │   └── dialog/             # Dialog components
+│   │       ├── mod.rs          # Dialog module export
+│   │       └── new_connection.rs # New connection dialog
+│   └── utils/            # Utility functions: common tools and helper functions
+│       ├── hex.rs        # Hexadecimal data processing
+│       └── mod.rs        # Utility module export
+├── assets/               # Resource files: icons and screenshots
+│   ├── icon/             # Icon files
+│   └── screenshots/      # Application screenshots
+├── .cargo/               # Cargo configuration: Rust build tool configuration
+│   └── config.toml       # Cargo configuration file
+├── .github/              # GitHub configuration: CI/CD workflows
+│   └── workflows/        # Workflow configurations
+│       └── release.yml   # Release workflow
+├── Cargo.toml            # Project configuration: dependency management and project metadata
+├── Cargo.lock            # Dependency lock file: fix dependency versions
+├── README.md             # Project documentation: Chinese description
+├── README-en.md          # English documentation: English description
+├── build.rs              # Build script: custom build logic
+└── .gitignore            # Git ignore file: specify files and directories to be ignored by Git
 ```
 
 ## 🔮 Future Plans
 
 - [ ] Support WebSocket protocol
 - [ ] Add message filtering and search functionality
-- [ ] Support plugin system
+- [ ] Add clear history messages functionality
 
 ## 🤝 Contribution
 
