@@ -4,11 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "macos")]
 use cocoa::foundation::{NSAutoreleasePool, NSString};
 #[cfg(target_os = "macos")]
-use cocoa::appkit::{NSAppearance, NSAppearanceNameAqua, NSAppearanceNameDarkAqua};
-#[cfg(target_os = "macos")]
 use cocoa::base::{id, nil};
-#[cfg(target_os = "macos")]
-use objc::runtime::Object;
 #[cfg(target_os = "macos")]
 use objc::{msg_send, sel, sel_impl, class};
 
@@ -59,8 +55,8 @@ impl ThemeDetector {
                 return false;
             }
 
-            let dark_aqua = NSString::alloc(nil).init_str(NSAppearanceNameDarkAqua);
-            let aqua = NSString::alloc(nil).init_str(NSAppearanceNameAqua);
+            let dark_aqua = NSString::alloc(nil).init_str("NSAppearanceNameDarkAqua");
+            let aqua = NSString::alloc(nil).init_str("NSAppearanceNameAqua");
             
             let best_match: id = msg_send![appearance, 
                 bestMatchFromAppearancesWithNames:vec![dark_aqua, aqua]
