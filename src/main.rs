@@ -10,9 +10,11 @@ mod ui;
 mod utils;
 mod theme_detector;
 mod theme_manager;
+mod theme_event_handler;
 
 use app::NetAssistantApp;
 use theme_manager::ThemeManager;
+use theme_event_handler::{ThemeEventHandler, apply_theme};
 
 #[tokio::main]
 async fn main() {
@@ -64,12 +66,15 @@ async fn main() {
                     // 创建应用实例
                     let app = cx.new(|cx| NetAssistantApp::new(window, cx));
                     
+                    // 初始化主题处理器
+                    let theme_handler = ThemeEventHandler::new();
+                    cx.set_global(theme_handler);
+                    
                     // 初始化主题状态（根据系统主题）
-                    app.update(cx, |app, cx| {
-                        app.update_from_system_theme(cx);
-                        // 启动系统主题变化监听
-                        app.start_theme_listener(cx);
-                    });
+                    cx.global_mut::<ThemeEventHandler>().update_from_system_theme();
+                    let is_dark = cx.global::<ThemeEventHandler>().is_dark_mode();
+                    apply_theme(is_dark, cx);
+                    cx.global_mut::<ThemeEventHandler>().start_listener();
                     
                     // 使用 gpui_component::Root 包装应用
                     cx.new(|cx| gpui_component::Root::new(app, window, cx))

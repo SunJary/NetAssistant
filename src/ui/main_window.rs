@@ -5,6 +5,7 @@ use gpui_component::IconName;
 use gpui_component::ActiveTheme;
 
 use crate::app::NetAssistantApp;
+use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
 use crate::ui::dialog::new_connection::NewConnectionDialog;
 use crate::ui::tab_container::TabContainer;
@@ -63,7 +64,7 @@ impl<'a> MainWindow<'a> {
                                     .rounded_md()
                                     .hover(|style| style.bg(theme.border))
                                     .child(
-                                        if self.app.is_dark_mode {
+                                        if cx.global::<ThemeEventHandler>().is_dark_mode() {
                                             IconName::Sun
                                         } else {
                                             IconName::Moon
@@ -71,8 +72,11 @@ impl<'a> MainWindow<'a> {
                                     )
                                     .on_mouse_down(
                                         MouseButton::Left,
-                                        cx.listener(move |app, _event, _window, cx| {
-                                            app.toggle_theme(cx);
+                                        cx.listener(move |_app, _event, _window, cx| {
+                                            cx.global_mut::<ThemeEventHandler>().toggle_theme();
+                                            let is_dark = cx.global::<ThemeEventHandler>().is_dark_mode();
+                                            apply_theme(is_dark, cx);
+                                            cx.notify();
                                         }),
                                     ),
                             ),

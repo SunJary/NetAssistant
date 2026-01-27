@@ -1,12 +1,12 @@
 use gpui::*;
 use gpui_component::input::InputState;
-use gpui_component::theme::{Theme, ThemeRegistry};
 use log::{debug, error, info};
 
 use crate::config;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType, ServerConfig};
 use crate::config::storage::ConfigStorage;
 use crate::message::{Message, MessageDirection, MessageType};
+use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_tab::ConnectionTabState;
 use crate::ui::main_window::MainWindow;
 
@@ -28,11 +28,6 @@ pub enum ConnectionEvent {
     ServerClientDisconnected(String, SocketAddr),
     PeriodicSend(String, String),
     PeriodicSendBytes(String, Vec<u8>, String),
-}
-
-#[derive(Debug, Clone)]
-pub enum ThemeEvent {
-    SystemThemeChanged(bool), // true = dark mode, false = light mode
 }
 
 pub struct NetAssistantApp {
@@ -62,10 +57,6 @@ pub struct NetAssistantApp {
     pub connection_event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
     pub connection_event_receiver: Option<mpsc::UnboundedReceiver<ConnectionEvent>>,
 
-    // 主题事件通道（用于通知UI主题变化）
-    pub theme_event_sender: Option<mpsc::UnboundedSender<ThemeEvent>>,
-    pub theme_event_receiver: Option<mpsc::UnboundedReceiver<ThemeEvent>>,
-
     // 写入发送器映射（无锁设计，每个标签页独立管理）
     pub client_write_senders: HashMap<String, mpsc::UnboundedSender<Vec<u8>>>,
     pub server_clients: HashMap<String, HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>>,
@@ -76,9 +67,6 @@ pub struct NetAssistantApp {
     pub context_menu_is_client: bool,
     pub context_menu_position: Option<Pixels>,
     pub context_menu_position_y: Option<Pixels>,
-
-    // 主题状态
-    pub is_dark_mode: bool,
 }
 
 impl NetAssistantApp {
@@ -95,9 +83,6 @@ impl NetAssistantApp {
 
         // 创建连接事件通道
         let (connection_event_sender, connection_event_receiver) = mpsc::unbounded_channel();
-
-        // 创建主题事件通道
-        let (theme_event_sender, theme_event_receiver) = mpsc::unbounded_channel();
 
         // 初始化写入发送器映射
         let client_write_senders = HashMap::new();
@@ -118,8 +103,6 @@ impl NetAssistantApp {
             auto_reply_inputs: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
-            theme_event_sender: Some(theme_event_sender),
-            theme_event_receiver: Some(theme_event_receiver),
             client_write_senders,
             server_clients,
             show_context_menu: false,
@@ -127,7 +110,6 @@ impl NetAssistantApp {
             context_menu_is_client: false,
             context_menu_position: None,
             context_menu_position_y: None,
-            is_dark_mode: false,
         }
     }
 
@@ -165,89 +147,6 @@ impl NetAssistantApp {
                     }
                 }
             }
-        }
-    }
-
-    /// 切换主题模式
-    pub fn toggle_theme(&mut self, cx: &mut Context<Self>) {
-        self.is_dark_mode = !self.is_dark_mode;
-        info!("手动切换主题: {}", if self.is_dark_mode { "Dark" } else { "Light" });
-        self.apply_theme(cx);
-    }
-
-    /// 应用当前主题
-    fn apply_theme(&self, cx: &mut Context<Self>) {
-        let theme_name = if self.is_dark_mode {
-            SharedString::from("Default Dark")
-        } else {
-            SharedString::from("Default Light")
-        };
-
-        info!("应用主题: {}", theme_name);
-
-        if let Some(theme) = ThemeRegistry::global(cx)
-            .themes()
-            .get(&theme_name)
-            .cloned()
-        {
-            Theme::global_mut(cx).apply_config(&theme);
-            info!("主题已应用: {}", theme_name);
-        } else {
-            info!("主题 {} 未找到", theme_name);
-        }
-    }
-
-    /// 从系统主题更新
-    pub fn update_from_system_theme(&mut self, cx: &mut Context<Self>) {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            use crate::theme_detector::ThemeDetector;
-            let detector = ThemeDetector::new();
-            let system_is_dark = detector.is_dark_mode();
-            
-            if self.is_dark_mode != system_is_dark {
-                self.is_dark_mode = system_is_dark;
-                self.apply_theme(cx);
-                info!("系统主题变化，更新为: {}", if system_is_dark { "Dark" } else { "Light" });
-            }
-        }
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            // 非 macOS 和 Windows 平台，默认使用浅色
-            if self.is_dark_mode {
-                self.is_dark_mode = false;
-                self.apply_theme(cx);
-            }
-        }
-    }
-    
-    /// 启动系统主题变化监听
-    pub fn start_theme_listener(&mut self, _cx: &mut Context<Self>) {
-        #[cfg(target_os = "windows")]
-        {
-            let theme_event_sender = self.theme_event_sender.clone();
-            
-            // 启动一个标准线程来定期检查系统主题变化
-            std::thread::spawn(move || {
-                use crate::theme_detector::ThemeDetector;
-                let mut last_is_dark = ThemeDetector::new().is_dark_mode();
-                
-                // 每500毫秒检查一次系统主题变化
-                loop {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    
-                    let current_is_dark = ThemeDetector::new().is_dark_mode();
-                    if current_is_dark != last_is_dark {
-                        last_is_dark = current_is_dark;
-                        
-                        // 通过事件系统通知UI线程主题变化
-                        if let Some(sender) = theme_event_sender.clone() {
-                            let _ = sender.send(ThemeEvent::SystemThemeChanged(current_is_dark));
-                        }
-                    }
-                }
-            });
         }
     }
 
@@ -1468,28 +1367,6 @@ impl NetAssistantApp {
             cx.notify();
         }
     }
-
-    pub fn handle_theme_events(&mut self, cx: &mut Context<Self>) {
-        let mut theme_events = Vec::new();
-        
-        if let Some(ref mut receiver) = self.theme_event_receiver {
-            while let Ok(event) = receiver.try_recv() {
-                theme_events.push(event);
-            }
-        }
-        
-        for event in theme_events {
-            match event {
-                ThemeEvent::SystemThemeChanged(is_dark) => {
-                    if self.is_dark_mode != is_dark {
-                        self.is_dark_mode = is_dark;
-                        self.apply_theme(cx);
-                        info!("系统主题变化，更新为: {}", if is_dark { "Dark" } else { "Light" });
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl Drop for NetAssistantApp {
@@ -1508,7 +1385,14 @@ impl Drop for NetAssistantApp {
 impl Render for NetAssistantApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.handle_connection_events(cx);
-        self.handle_theme_events(cx);
+
+        // 处理主题事件
+        let need_notify = cx.global_mut::<ThemeEventHandler>().handle_events();
+        if need_notify {
+            let is_dark = cx.global::<ThemeEventHandler>().is_dark_mode();
+            apply_theme(is_dark, cx);
+            cx.notify();
+        }
 
         if !self.active_tab.is_empty() {
             if let Some(tab_state) = self.connection_tabs.get(&self.active_tab) {
