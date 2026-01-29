@@ -93,6 +93,21 @@ impl Message {
                 .join(" "),
         }
     }
+
+    pub fn get_content_by_type(&self) -> String {
+        match self.message_type {
+            MessageType::Text => match String::from_utf8(self.raw_data.clone()) {
+                Ok(text) => text,
+                Err(_) => "[非UTF-8数据]".to_string(),
+            },
+            MessageType::Hex => self
+                .raw_data
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<String>>()
+                .join(" "),
+        }
+    }
 }
 
 /// 消息列表状态

@@ -323,6 +323,11 @@ impl NetAssistantApp {
                                             error!("[服务端] 写入错误: {}", e);
                                             break;
                                         }
+                                        // 确保数据立即发送
+                                        if let Err(e) = writer.flush().await {
+                                            error!("[服务端] 刷新缓冲区失败: {}", e);
+                                            break;
+                                        }
                                     }
                                 });
                             }
@@ -612,7 +617,7 @@ impl NetAssistantApp {
                                                                 tab_id_clone2.clone(),
                                                                 message,
                                                             ),
-                                                        );
+                                                    );
                                                     }
                                                 } else {
                                                     info!("[客户端] 接收到0字节，连接已关闭");
@@ -658,6 +663,17 @@ impl NetAssistantApp {
                                                 let _ = sender.send(ConnectionEvent::Error(
                                                     tab_id_clone3,
                                                     e.to_string(),
+                                                ));
+                                            }
+                                            break;
+                                        }
+                                        // 确保数据立即发送
+                                        if let Err(e) = writer.flush().await {
+                                            error!("[客户端] 刷新缓冲区失败: {}", e);
+                                            if let Some(sender) = sender_clone2.clone() {
+                                                let _ = sender.send(ConnectionEvent::Error(
+                                                    tab_id_clone3,
+                            e.to_string(),
                                                 ));
                                             }
                                             break;
@@ -896,6 +912,7 @@ impl NetAssistantApp {
                     debug!("[send_message] 客户端模式");
                     if let Some(write_sender) = self.client_write_senders.get(&tab_id).cloned() {
                         let bytes_clone = bytes.clone();
+                        let message_input_mode = tab_state.message_input_mode.clone();
                         tokio::spawn(async move {
                             debug!("[send_message] 异步任务开始发送");
                             let result: Result<(), mpsc::error::SendError<Vec<u8>>> =
@@ -911,10 +928,15 @@ impl NetAssistantApp {
                             } else {
                                 debug!("[send_message] 发送成功");
                                 if let Some(sender) = sender {
+                                    let message_type = if message_input_mode == "text" {
+                                        MessageType::Text
+                                    } else {
+                                        MessageType::Hex
+                                    };
                                     let message = Message::new(
                                         MessageDirection::Sent,
                                         bytes,
-                                        MessageType::Text,
+                                        message_type,
                                     );
                                     let _ = sender.send(ConnectionEvent::MessageReceived(
                                         tab_id_clone,
@@ -954,6 +976,7 @@ impl NetAssistantApp {
                             ));
                         }
                     } else {
+                        let message_input_mode = tab_state.message_input_mode.clone();
                         let sender_clone = sender.clone();
                         let tab_id_clone2 = tab_id_clone.clone();
                         tokio::spawn(async move {
@@ -970,10 +993,15 @@ impl NetAssistantApp {
                             if success_count > 0 {
                                 info!("[send_message] 广播成功，发送给 {} 个客户端", success_count);
                                 if let Some(sender) = sender_clone {
+                                    let message_type = if message_input_mode == "text" {
+                                        MessageType::Text
+                                    } else {
+                                        MessageType::Hex
+                                    };
                                     let message = Message::new(
                                         MessageDirection::Sent,
                                         bytes,
-                                        MessageType::Text,
+                                        message_type,
                                     );
                                     let _ = sender.send(ConnectionEvent::MessageReceived(
                                         tab_id_clone2,
@@ -1153,6 +1181,7 @@ impl NetAssistantApp {
                             info!("[send_message_to_client] 发送给指定客户端: {}", addr);
                             if let Some(clients) = self.server_clients.get(&tab_id) {
                                 if let Some(write_sender) = clients.get(&addr).cloned() {
+                                    let message_input_mode = tab_state.message_input_mode.clone();
                                     let sender_clone = sender.clone();
                                     let tab_id_clone2 = tab_id_clone.clone();
                                     let bytes_clone = bytes.clone();
@@ -1169,10 +1198,15 @@ impl NetAssistantApp {
                                         } else {
                                             debug!("[send_message_to_client] 发送成功");
                                             if let Some(sender) = sender_clone {
+                                                let message_type = if message_input_mode == "text" {
+                                                    MessageType::Text
+                                                } else {
+                                                    MessageType::Hex
+                                                };
                                                 let message = Message::new(
                                                     MessageDirection::Sent,
                                                     bytes,
-                                                    MessageType::Text,
+                                                    message_type,
                                                 )
                                                 .with_source(source_str_clone);
                                                 let _ =
@@ -1308,13 +1342,22 @@ impl NetAssistantApp {
                     }
                     ConnectionEvent::MessageReceived(tab_id, message) => {
                         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            tab_state.add_message(message.clone());
+                            let mut message = message.clone();
+                            let message_for_auto_reply = message.clone();
+                            if message.direction == MessageDirection::Received {
+                                message.message_type = if tab_state.message_input_mode == "text" {
+                                    MessageType::Text
+                                } else {
+                                    MessageType::Hex
+                                };
+                            }
+                            tab_state.add_message(message);
                             need_notify = true;
 
                             // 只有当消息方向是 Received 且是真正从网络接收到的消息时才触发自动回复
                             // 避免自动回复生成的消息又被当作新消息处理
                             if tab_state.auto_reply_enabled
-                                && message.direction == MessageDirection::Received
+                                && message_for_auto_reply.direction == MessageDirection::Received
                             {
                                 if let Some(auto_reply_input) = self.auto_reply_inputs.get(&tab_id)
                                 {
@@ -1324,7 +1367,7 @@ impl NetAssistantApp {
                                         auto_reply_events.push((
                                             tab_id,
                                             auto_reply_content,
-                                            message.source.clone(),
+                                            message_for_auto_reply.source.clone(),
                                         ));
                                     }
                                 }
