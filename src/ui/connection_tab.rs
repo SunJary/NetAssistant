@@ -9,15 +9,17 @@ use gpui_component::{
     v_virtual_list,
 };
 use gpui_component::ActiveTheme as _;
+use gpui_component::PixelsExt;
 use log::{debug, error, info, warn};
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
+use textwrap::wrap;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
-use crate::message::{DisplayMode, Message, MessageDirection, MessageListState};
+use crate::message::{Message, MessageDirection, MessageListState};
 use crate::utils::hex::{hex_to_bytes, validate_hex_input};
 
 /// 连接标签页状态
@@ -117,15 +119,38 @@ impl ConnectionTabState {
     }
 
     pub fn calculate_message_height(message: &Message) -> Size<Pixels> {
+        // 如果高度已经计算过，直接返回缓存的结果
+        if message.message_height > 0.0 {
+            return size(px(300.), px(message.message_height));
+        }
+
         let outer_gap = px(4.);
         let header_height = px(20.);
         let gap_between_header_and_content = px(4.);
-        let content_font_height = px(20.);
+        let content_font_height = px(23.);
         let content_padding_top = px(12.);
         let content_padding_bottom = px(12.);
 
-        let content_str = String::from_utf8_lossy(&message.raw_data);
-        let content_lines = content_str.lines().count().max(1);
+        let message_content = message.get_content_by_type();
+        let max_chars_per_line = 36; // 根据字体大小和宽度估算每行最大字符数
+        
+        // 计算原始消息中的换行符数量
+        let original_newlines = message_content.chars().filter(|&c| c == '\n').count();
+        
+        // 使用 textwrap 库计算实际需要的行数
+        // textwrap::wrap 会自动处理不同字符的宽度和换行符
+        let wrapped_lines = wrap(&message_content, max_chars_per_line);
+        let content_lines = wrapped_lines.len().max(1);
+        
+        // 打印调试信息
+        debug!(
+            "消息内容: {:?}\n原始换行符数量: {}, textwrap计算行数: {}, 最终使用行数: {}",
+            message_content,
+            original_newlines,
+            wrapped_lines.len(),
+            content_lines
+        );
+        
         let content_height = content_font_height * content_lines as f32;
 
         let total_height = outer_gap
@@ -134,12 +159,15 @@ impl ConnectionTabState {
             + content_padding_top
             + content_height
             + content_padding_bottom;
+        
         size(px(300.), total_height)
     }
 
-    pub fn add_message(&mut self, message: Message) {
-        self.message_list.add_message(message.clone());
+    pub fn add_message(&mut self, mut message: Message) {
         let new_height = Self::calculate_message_height(&message);
+        // 手动缓存高度结果
+        message.message_height = new_height.height.as_f32();
+        self.message_list.add_message(message);
         let mut sizes = self.item_sizes.as_ref().to_vec();
         sizes.push(new_height);
         self.item_sizes = Rc::new(sizes);
@@ -727,7 +755,7 @@ impl<'a> ConnectionTab<'a> {
     /// 渲染报文记录区域（聊天样式）- 使用虚拟列表优化性能
     fn render_message_area(&self, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let messages = &self.tab_state.message_list.messages;
-        let tab_id = self.tab_id.clone();
+        let _tab_id = self.tab_id.clone();
 
         // 根据选中的客户端查看消息
         let filtered_messages: Vec<&Message> = messages
@@ -785,6 +813,7 @@ impl<'a> ConnectionTab<'a> {
         let filtered_messages_clone: Vec<Message> =
             filtered_messages.into_iter().cloned().collect();
         let scroll_handle = self.tab_state.scroll_handle.clone();
+        let _tab_id_clone = self.tab_id.clone();
 
         div()
             .flex()
@@ -887,8 +916,8 @@ impl<'a> ConnectionTab<'a> {
                                                     ),
                                             )
                                     } else {
-                                        div()
-                                    }
+                                    div()
+                                }
                                 })
                                 .collect()
                         },
@@ -902,8 +931,8 @@ impl<'a> ConnectionTab<'a> {
     fn render_send_area(&self, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let tab_id = self.tab_id.clone();
-        let tab_id_text = tab_id.clone();
-        let tab_id_hex = tab_id.clone();
+        let _tab_id_text = tab_id.clone();
+        let _tab_id_hex = tab_id.clone();
         let tab_id_periodic = tab_id.clone();
         let tab_id_auto_clear = tab_id.clone();
         let tab_id_send = tab_id.clone();

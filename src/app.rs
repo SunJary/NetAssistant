@@ -1044,6 +1044,7 @@ impl NetAssistantApp {
                     debug!("[send_message_bytes] 客户端模式");
                     if let Some(write_sender) = self.client_write_senders.get(&tab_id).cloned() {
                         let bytes_clone = bytes.clone();
+                        let message_input_mode = tab_state.message_input_mode.clone();
                         tokio::spawn(async move {
                             debug!("[send_message_bytes] 异步任务开始发送");
                             let result: Result<(), mpsc::error::SendError<Vec<u8>>> =
@@ -1059,10 +1060,15 @@ impl NetAssistantApp {
                             } else {
                                 debug!("[send_message_bytes] 发送成功");
                                 if let Some(sender) = sender {
+                                    let message_type = if message_input_mode == "text" {
+                                        MessageType::Text
+                                    } else {
+                                        MessageType::Hex
+                                    };
                                     let message = Message::new(
                                         MessageDirection::Sent,
                                         bytes,
-                                        MessageType::Hex,
+                                        message_type,
                                     );
                                     let _ = sender.send(ConnectionEvent::MessageReceived(
                                         tab_id_clone,
@@ -1104,6 +1110,7 @@ impl NetAssistantApp {
                     } else {
                         let sender_clone = sender.clone();
                         let tab_id_clone2 = tab_id_clone.clone();
+                        let message_input_mode = tab_state.message_input_mode.clone();
                         tokio::spawn(async move {
                             debug!("[send_message_bytes] 异步任务开始广播");
                             let mut success_count = 0;
@@ -1121,10 +1128,15 @@ impl NetAssistantApp {
                                     success_count
                                 );
                                 if let Some(sender) = sender_clone {
+                                    let message_type = if message_input_mode == "text" {
+                                        MessageType::Text
+                                    } else {
+                                        MessageType::Hex
+                                    };
                                     let message = Message::new(
                                         MessageDirection::Sent,
                                         bytes,
-                                        MessageType::Hex,
+                                        message_type,
                                     );
                                     let _ = sender.send(ConnectionEvent::MessageReceived(
                                         tab_id_clone2,
