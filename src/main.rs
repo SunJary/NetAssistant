@@ -5,7 +5,9 @@ use simple_logger::SimpleLogger;
 
 mod app;
 mod config;
+mod core;
 mod message;
+mod network;
 mod ui;
 mod utils;
 mod theme_detector;

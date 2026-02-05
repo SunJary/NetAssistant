@@ -44,7 +44,7 @@ impl fmt::Display for ConnectionStatus {
 }
 
 /// 客户端连接配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfig {
     #[serde(default = "generate_uuid")]
     pub id: String,
@@ -70,27 +70,8 @@ impl Default for ClientConfig {
     }
 }
 
-impl ClientConfig {
-    pub fn new(
-        name: String,
-        server_address: String,
-        server_port: u16,
-        protocol: ConnectionType,
-    ) -> Self {
-        Self {
-            id: generate_uuid(),
-            name,
-            protocol,
-            server_address,
-            server_port,
-            timeout: 30,
-            auto_reconnect: false,
-        }
-    }
-}
-
 /// 服务端监听配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
     #[serde(default = "generate_uuid")]
     pub id: String,
@@ -116,38 +97,18 @@ impl Default for ServerConfig {
     }
 }
 
-impl ServerConfig {
-    pub fn new(
-        name: String,
-        listen_address: String,
-        listen_port: u16,
-        protocol: ConnectionType,
-    ) -> Self {
-        Self {
-            id: generate_uuid(),
-            name,
-            protocol,
-            listen_address,
-            listen_port,
-            max_connections: 100,
-            timeout: 30,
-        }
-    }
-}
-
 /// 生成UUID
 fn generate_uuid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
 /// 连接配置（统一客户端和服务端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "config")]
 pub enum ConnectionConfig {
     Client(ClientConfig),
     Server(ServerConfig),
 }
-
 
 impl ConnectionConfig {
     pub fn name(&self) -> &str {
@@ -171,7 +132,88 @@ impl ConnectionConfig {
     pub fn is_server(&self) -> bool {
         matches!(self, ConnectionConfig::Server(_))
     }
+    
+    /// 获取连接ID
+    pub fn id(&self) -> &str {
+        match self {
+            ConnectionConfig::Client(config) => &config.id,
+            ConnectionConfig::Server(config) => &config.id,
+        }
+    }
+    
+    /// 设置连接名称
+    // pub fn set_name(&mut self, name: String) {
+    //     match self {
+    //         ConnectionConfig::Client(config) => config.name = name,
+    //         ConnectionConfig::Server(config) => config.name = name,
+    //     }
+    // }
+    
+    /// 验证配置是否有效
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            ConnectionConfig::Client(config) => {
+                if config.server_address.is_empty() {
+                    return Err("服务器地址不能为空".to_string());
+                }
+                if config.server_port == 0 {
+                    return Err("服务器端口无效".to_string());
+                }
+                Ok(())
+            },
+            ConnectionConfig::Server(config) => {
+                if config.listen_address.is_empty() {
+                    return Err("监听地址不能为空".to_string());
+                }
+                if config.listen_port == 0 {
+                    return Err("监听端口无效".to_string());
+                }
+                if config.max_connections == 0 {
+                    return Err("最大连接数不能为0".to_string());
+                }
+                Ok(())
+            },
+        }
+    }
+    
+    /// 创建新的客户端连接配置（自动生成ID）
+    pub fn new_client(
+        name: String,
+        server_address: String,
+        server_port: u16,
+        protocol: ConnectionType,
+    ) -> Self {
+        ConnectionConfig::Client(ClientConfig {
+            id: generate_uuid(),
+            name,
+            protocol,
+            server_address,
+            server_port,
+            timeout: 30,
+            auto_reconnect: false,
+        })
+    }
+    
+    /// 创建新的服务端监听配置（自动生成ID）
+    pub fn new_server(
+        name: String,
+        listen_address: String,
+        listen_port: u16,
+        protocol: ConnectionType,
+    ) -> Self {
+        ConnectionConfig::Server(ServerConfig {
+            id: generate_uuid(),
+            name,
+            protocol,
+            listen_address,
+            listen_port,
+            max_connections: 100,
+            timeout: 30,
+        })
+    }
 }
+
+
 
 #[cfg(test)]
 mod tests {
@@ -192,18 +234,23 @@ mod tests {
     #[test]
     /// 测试创建自定义客户端配置
     fn test_client_config_new() {
-        let custom_config = ClientConfig::new(
+        let connection_config = ConnectionConfig::new_client(
             "测试客户端".to_string(),
             "192.168.1.1".to_string(),
             1234,
             ConnectionType::Udp,
         );
-        assert_eq!(custom_config.name, "测试客户端");
-        assert_eq!(custom_config.protocol, ConnectionType::Udp);
-        assert_eq!(custom_config.server_address, "192.168.1.1");
-        assert_eq!(custom_config.server_port, 1234);
-        assert_eq!(custom_config.timeout, 30);
-        assert!(!custom_config.auto_reconnect);
+        
+        if let ConnectionConfig::Client(custom_config) = connection_config {
+            assert_eq!(custom_config.name, "测试客户端");
+            assert_eq!(custom_config.protocol, ConnectionType::Udp);
+            assert_eq!(custom_config.server_address, "192.168.1.1");
+            assert_eq!(custom_config.server_port, 1234);
+            assert_eq!(custom_config.timeout, 30);
+            assert!(!custom_config.auto_reconnect);
+        } else {
+            panic!("应该创建客户端配置");
+        }
     }
 
     #[test]
@@ -221,18 +268,23 @@ mod tests {
     #[test]
     /// 测试创建自定义服务端配置
     fn test_server_config_new() {
-        let custom_config = ServerConfig::new(
+        let connection_config = ConnectionConfig::new_server(
             "测试服务端".to_string(),
             "192.168.1.1".to_string(),
             5678,
             ConnectionType::Udp,
         );
-        assert_eq!(custom_config.name, "测试服务端");
-        assert_eq!(custom_config.protocol, ConnectionType::Udp);
-        assert_eq!(custom_config.listen_address, "192.168.1.1");
-        assert_eq!(custom_config.listen_port, 5678);
-        assert_eq!(custom_config.max_connections, 100);
-        assert_eq!(custom_config.timeout, 30);
+        
+        if let ConnectionConfig::Server(custom_config) = connection_config {
+            assert_eq!(custom_config.name, "测试服务端");
+            assert_eq!(custom_config.protocol, ConnectionType::Udp);
+            assert_eq!(custom_config.listen_address, "192.168.1.1");
+            assert_eq!(custom_config.listen_port, 5678);
+            assert_eq!(custom_config.max_connections, 100);
+            assert_eq!(custom_config.timeout, 30);
+        } else {
+            panic!("应该创建服务端配置");
+        }
     }
 
     #[test]

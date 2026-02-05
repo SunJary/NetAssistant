@@ -74,7 +74,7 @@ impl Message {
             MessageType::Hex => self
                 .raw_data
                 .iter()
-                .map(|b| format!("{:02x}", b))
+                .map(|b| format!("{:02X}", b))
                 .collect::<Vec<String>>()
                 .join(" "),
         }

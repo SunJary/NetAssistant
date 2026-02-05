@@ -5,7 +5,7 @@ use gpui_component::input::Input;
 use gpui_component::ActiveTheme as _;
 
 use crate::app::NetAssistantApp;
-use crate::config::connection::{ClientConfig, ConnectionConfig, ConnectionType, ServerConfig};
+use crate::config::connection::{ConnectionConfig, ConnectionType};
 
 pub struct NewConnectionDialog<'a> {
     app: &'a NetAssistantApp,
@@ -206,56 +206,34 @@ impl<'a> NewConnectionDialog<'a> {
                                         };
 
                                         // 根据new_connection_is_client创建客户端或服务端连接
-                                        let new_tab_id = if app.new_connection_is_client {
-                                            // 创建客户端连接配置
-                                            let config = ClientConfig::new(
-                                                String::new(),
-                                                host,
-                                                port,
-                                                connection_type,
-                                            );
-
-                                            // 添加到配置存储
-                                            app.storage.add_connection(ConnectionConfig::Client(config));
-
-                                            // 获取新添加的客户端索引
-                                            let client_configs = app.storage.client_connections();
-                                            let index = client_configs.len() - 1;
-                                            format!("client_{}", index)
-                                        } else {
-                                            // 创建服务端连接配置
-                                            let config = ServerConfig::new(
-                                                String::new(),
-                                                host,
-                                                port,
-                                                connection_type,
-                                            );
-
-                                            // 添加到配置存储
-                                            app.storage.add_connection(ConnectionConfig::Server(config));
-
-                                            // 获取新添加的服务端索引
-                                            let server_configs = app.storage.server_connections();
-                                            let index = server_configs.len() - 1;
-                                            format!("server_{}", index)
-                                        };
-
-                                        // 获取新添加的连接配置
                                         let connection_config = if app.new_connection_is_client {
-                                            let client_configs = app.storage.client_connections();
-                                            if let Some(config) = client_configs.last() {
-                                                (*config).clone()
-                                            } else {
-                                                return;
-                                            }
+                                            // 创建客户端连接配置（自动生成ID）
+                                            let config = ConnectionConfig::new_client(
+                                                String::new(),
+                                                host,
+                                                port,
+                                                connection_type,
+                                            );
+                                            
+                                            // 添加到配置存储
+                                            app.storage.add_connection(config.clone());
+                                            config
                                         } else {
-                                            let server_configs = app.storage.server_connections();
-                                            if let Some(config) = server_configs.last() {
-                                                (*config).clone()
-                                            } else {
-                                                return;
-                                            }
+                                            // 创建服务端连接配置（自动生成ID）
+                                            let config = ConnectionConfig::new_server(
+                                                String::new(),
+                                                host,
+                                                port,
+                                                connection_type,
+                                            );
+                                            
+                                            // 添加到配置存储
+                                            app.storage.add_connection(config.clone());
+                                            config
                                         };
+                                        
+                                        // 使用连接配置中的ID作为标签页ID
+                                        let new_tab_id = connection_config.id().to_string();
                                                                                 // 确保标签页存在并切换到该标签页
                                         app.ensure_tab_exists(new_tab_id.clone(), connection_config, window, cx);
                                         app.active_tab = new_tab_id;

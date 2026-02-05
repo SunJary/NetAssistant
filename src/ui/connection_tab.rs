@@ -133,24 +133,13 @@ impl ConnectionTabState {
 
         let message_content = message.get_content_by_type();
         let max_chars_per_line = 36; // 根据字体大小和宽度估算每行最大字符数
-        
-        // 计算原始消息中的换行符数量
-        let original_newlines = message_content.chars().filter(|&c| c == '\n').count();
-        
+       
         // 使用 textwrap 库计算实际需要的行数
         // textwrap::wrap 会自动处理不同字符的宽度和换行符
         let wrapped_lines = wrap(&message_content, max_chars_per_line);
         let content_lines = wrapped_lines.len().max(1);
         
-        // 打印调试信息
-        debug!(
-            "消息内容: {:?}\n原始换行符数量: {}, textwrap计算行数: {}, 最终使用行数: {}",
-            message_content,
-            original_newlines,
-            wrapped_lines.len(),
-            content_lines
-        );
-        
+       
         let content_height = content_font_height * content_lines as f32;
 
         let total_height = outer_gap

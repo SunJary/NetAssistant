@@ -1,11 +1,13 @@
 use gpui::*;
 use gpui_component::input::InputState;
 use log::{debug, error, info};
+use crate::network::message::sender::MessageSender;
 
 use crate::config;
-use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType, ServerConfig};
+use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::config::storage::ConfigStorage;
 use crate::message::{Message, MessageDirection, MessageType};
+use crate::network::events::ConnectionEvent;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_tab::ConnectionTabState;
 use crate::ui::main_window::MainWindow;
@@ -13,22 +15,7 @@ use crate::ui::main_window::MainWindow;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
-
-#[derive(Debug, Clone)]
-pub enum ConnectionEvent {
-    Connected(String),
-    Disconnected(String),
-    Listening(String),
-    Error(String, String),
-    MessageReceived(String, Message),
-    ClientWriteSenderReady(String, mpsc::UnboundedSender<Vec<u8>>),
-    ServerClientConnected(String, SocketAddr, mpsc::UnboundedSender<Vec<u8>>),
-    ServerClientDisconnected(String, SocketAddr),
-    PeriodicSend(String, String),
-    PeriodicSendBytes(String, Vec<u8>, String),
-}
 
 pub struct NetAssistantApp {
     // 配置存储
@@ -57,6 +44,12 @@ pub struct NetAssistantApp {
     pub connection_event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
     pub connection_event_receiver: Option<mpsc::UnboundedReceiver<ConnectionEvent>>,
 
+    // 网络连接管理器
+    pub network_manager: std::sync::Arc<tokio::sync::Mutex<crate::network::connection::manager::NetworkConnectionManager>>,
+    
+    // 消息处理器
+    pub message_processor: std::sync::Arc<crate::core::message_processor::DefaultMessageProcessor>,
+
     // 写入发送器映射（无锁设计，每个标签页独立管理）
     pub client_write_senders: HashMap<String, mpsc::UnboundedSender<Vec<u8>>>,
     pub server_clients: HashMap<String, HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>>,
@@ -84,9 +77,19 @@ impl NetAssistantApp {
         // 创建连接事件通道
         let (connection_event_sender, connection_event_receiver) = mpsc::unbounded_channel();
 
+        // 初始化网络连接管理器
+        let network_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::network::connection::manager::NetworkConnectionManager::new()
+        ));
+
         // 初始化写入发送器映射
         let client_write_senders = HashMap::new();
         let server_clients = HashMap::new();
+        
+        // 初始化消息处理器
+        let message_processor = std::sync::Arc::new(
+            crate::core::message_processor::DefaultMessageProcessor::new()
+        );
 
         Self {
             storage,
@@ -103,6 +106,8 @@ impl NetAssistantApp {
             auto_reply_inputs: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
+            network_manager,
+            message_processor,
             client_write_senders,
             server_clients,
             show_context_menu: false,
@@ -120,33 +125,16 @@ impl NetAssistantApp {
                 if tab_state.connection_config.is_client() {
                     self.disconnect_client(tab_id, cx);
                 } else {
-                    // 服务端断开
-                    tab_state.disconnect();
-                    self.server_clients.remove(&tab_id);
+                    self.disconnect_server(tab_id);
                 }
             } else {
-                // 建立连接
-                if tab_state.connection_config.is_client() {
-                    // 根据协议类型选择连接方法
-                    if tab_state.connection_config.protocol() == ConnectionType::Tcp {
-                        self.connect_client(tab_id, cx);
+                    // 建立连接
+                    if tab_state.connection_config.is_client() {
+                        self.connect_to_server(tab_id);
                     } else {
-                        self.connect_udp_client(tab_id, cx);
-                    }
-                } else {
-                    // 启动服务端
-                    if let ConnectionConfig::Server(server_config) = &tab_state.connection_config {
-                        let server_config_clone = server_config.clone();
-                        let tab_id_clone = tab_id.clone();
-                        // 然后调用相应的服务器启动方法
-                        if server_config_clone.protocol == ConnectionType::Tcp {
-                            self.start_tcp_server(tab_id_clone, &server_config_clone, cx);
-                        } else {
-                            self.start_udp_server(tab_id_clone, &server_config_clone, cx);
-                        }
+                        self.start_server(tab_id);
                     }
                 }
-            }
         }
     }
 
@@ -215,271 +203,6 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn start_tcp_server(
-        &mut self,
-        tab_id: String,
-        server_config: &ServerConfig,
-        _cx: &mut Context<Self>,
-    ) {
-        let address = format!(
-            "{}:{}",
-            server_config.listen_address, server_config.listen_port
-        );
-        info!("[服务端] 尝试启动: {}", address);
-
-        let sender = self.connection_event_sender.clone();
-        let tab_id_clone = tab_id.clone();
-
-        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-            tab_state.connection_status = ConnectionStatus::Connecting;
-        }
-
-        let handle: tokio::task::JoinHandle<()> = tokio::spawn(async move {
-            debug!("[服务端] 异步任务开始，尝试监听: {}", address);
-            match tokio::net::TcpListener::bind(&address).await {
-                Ok(listener) => {
-                    info!("[服务端] 启动成功，监听: {}", address);
-
-                    if let Some(sender) = sender.clone() {
-                        let _ = sender.send(ConnectionEvent::Listening(tab_id_clone.clone()));
-                    }
-
-                    // 接受连接循环
-                    loop {
-                        match listener.accept().await {
-                            Ok((stream, addr)) => {
-                                info!("[服务端] 客户端连接: {}", addr);
-
-                                let (mut reader, mut writer) = stream.into_split();
-                                let (write_sender, mut write_receiver) =
-                                    mpsc::unbounded_channel::<Vec<u8>>();
-
-                                let sender_clone = sender.clone();
-                                let tab_id_clone2 = tab_id_clone.clone();
-
-                                // 通知UI客户端连接
-                                let sender_clone_for_connect = sender.clone();
-                                let tab_id_clone_for_connect = tab_id_clone.clone();
-                                let write_sender_clone = write_sender.clone();
-                                tokio::spawn(async move {
-                                    if let Some(sender) = sender_clone_for_connect {
-                                        let _ =
-                                            sender.send(ConnectionEvent::ServerClientConnected(
-                                                tab_id_clone_for_connect,
-                                                addr,
-                                                write_sender_clone,
-                                            ));
-                                    }
-                                });
-
-                                // 启动接收任务
-                                tokio::spawn(async move {
-                                    let mut buffer = vec![0u8; 4096];
-                                    loop {
-                                        match reader.read(&mut buffer).await {
-                                            Ok(n) if n > 0 => {
-                                                buffer.truncate(n);
-                                                let message = Message::new(
-                                                    MessageDirection::Received,
-                                                    buffer.clone(),
-                                                    MessageType::Text,
-                                                )
-                                                .with_source(addr.to_string());
-
-                                                if let Some(sender) = sender_clone.clone() {
-                                                    let _ = sender.send(
-                                                        ConnectionEvent::MessageReceived(
-                                                            tab_id_clone2.clone(),
-                                                            message,
-                                                        ),
-                                                    );
-                                                }
-                                            }
-                                            Ok(_) => {
-                                                info!("[服务端] 客户端 {} 连接关闭", addr);
-                                                break;
-                                            }
-                                            Err(e) => {
-                                                error!("[服务端] 读取错误: {}", e);
-                                                break;
-                                            }
-                                        }
-                                    }
-
-                                    // 通知UI客户端断开
-                                    if let Some(sender) = sender_clone {
-                                        let _ =
-                                            sender.send(ConnectionEvent::ServerClientDisconnected(
-                                                tab_id_clone2,
-                                                addr,
-                                            ));
-                                    }
-                                });
-
-                                // 启动写入任务
-                                tokio::spawn(async move {
-                                    while let Some(data) = write_receiver.recv().await {
-                                        if let Err(e) = writer.write_all(&data).await {
-                                            error!("[服务端] 写入错误: {}", e);
-                                            break;
-                                        }
-                                        // 确保数据立即发送
-                                        if let Err(e) = writer.flush().await {
-                                            error!("[服务端] 刷新缓冲区失败: {}", e);
-                                            break;
-                                        }
-                                    }
-                                });
-                            }
-                            Err(e) => {
-                                error!("[服务端] 接受连接错误: {}", e);
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("[服务端] 启动失败: {}", e);
-                    if let Some(sender) = sender {
-                        let _ = sender.send(ConnectionEvent::Error(tab_id_clone, e.to_string()));
-                    }
-                }
-            }
-        });
-
-        // 保存服务端任务的 JoinHandle
-        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-            tab_state.server_handle =
-                Some(std::sync::Arc::new(std::sync::Mutex::new(Some(handle))));
-        }
-    }
-
-    pub fn start_udp_server(
-        &mut self,
-        tab_id: String,
-        server_config: &ServerConfig,
-        _cx: &mut Context<Self>,
-    ) {
-        let address = format!(
-            "{}:{}",
-            server_config.listen_address, server_config.listen_port
-        );
-        info!("[UDP服务端] 尝试启动: {}", address);
-
-        let sender = self.connection_event_sender.clone();
-        let tab_id_clone = tab_id.clone();
-
-        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-            tab_state.connection_status = ConnectionStatus::Connecting;
-        }
-
-        let handle: tokio::task::JoinHandle<()> = tokio::spawn(async move {
-            debug!("[UDP服务端] 异步任务开始，尝试监听: {}", address);
-            match tokio::net::UdpSocket::bind(&address).await {
-                Ok(socket) => {
-                    info!("[UDP服务端] 启动成功，监听: {}", address);
-
-                    // 使用 Arc 包装 socket 以支持多任务共享
-                    let socket = std::sync::Arc::new(socket);
-
-                    if let Some(sender) = sender.clone() {
-                        let _ = sender.send(ConnectionEvent::Listening(tab_id_clone.clone()));
-                    }
-
-                    // 保存客户端地址和对应的发送器
-                    let mut clients: std::collections::HashMap<
-                        std::net::SocketAddr,
-                        mpsc::UnboundedSender<Vec<u8>>,
-                    > = std::collections::HashMap::new();
-
-                    // 接收数据循环
-                    loop {
-                        let mut buffer = vec![0u8; 4096];
-                        let socket_clone = socket.clone();
-                        match socket_clone.recv_from(&mut buffer).await {
-                            Ok((n, addr)) => {
-                                buffer.truncate(n);
-                                debug!("[UDP服务端] 收到来自 {} 的数据: {:?}", addr, buffer);
-
-                                // 检查客户端是否已存在，不存在则创建新的发送器
-                                if !clients.contains_key(&addr) {
-                                    let (write_sender, mut write_receiver) =
-                                        mpsc::unbounded_channel::<Vec<u8>>();
-                                    clients.insert(addr, write_sender.clone());
-
-                                    // 通知UI客户端连接
-                                    let sender_clone_for_connect = sender.clone();
-                                    let tab_id_clone_for_connect = tab_id_clone.clone();
-                                    let write_sender_clone = write_sender.clone();
-                                    tokio::spawn(async move {
-                                        if let Some(sender) = sender_clone_for_connect {
-                                            let _ = sender.send(
-                                                ConnectionEvent::ServerClientConnected(
-                                                    tab_id_clone_for_connect,
-                                                    addr,
-                                                    write_sender_clone,
-                                                ),
-                                            );
-                                        }
-                                    });
-
-                                    // 启动写入任务
-                                    let socket_clone = socket.clone();
-                                    let addr_clone = addr;
-                                    tokio::spawn(async move {
-                                        while let Some(data) = write_receiver.recv().await {
-                                            if let Err(e) =
-                                                socket_clone.send_to(&data, addr_clone).await
-                                            {
-                                                error!("[UDP服务端] 发送错误: {}", e);
-                                                break;
-                                            }
-                                        }
-                                    });
-                                }
-
-                                // 处理收到的数据
-                                let sender_clone = sender.clone();
-                                let tab_id_clone2 = tab_id_clone.clone();
-                                let addr_clone = addr;
-                                tokio::spawn(async move {
-                                    let message = Message::new(
-                                        MessageDirection::Received,
-                                        buffer,
-                                        MessageType::Text,
-                                    )
-                                    .with_source(addr_clone.to_string());
-
-                                    if let Some(sender) = sender_clone {
-                                        let _ = sender.send(ConnectionEvent::MessageReceived(
-                                            tab_id_clone2,
-                                            message,
-                                        ));
-                                    }
-                                });
-                            }
-                            Err(e) => {
-                                error!("[UDP服务端] 接收错误: {}", e);
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("[UDP服务端] 启动失败: {}", e);
-                    if let Some(sender) = sender {
-                        let _ = sender.send(ConnectionEvent::Error(tab_id_clone, e.to_string()));
-                    }
-                }
-            }
-        });
-
-        // 保存服务端任务的 JoinHandle
-        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-            tab_state.server_handle =
-                Some(std::sync::Arc::new(std::sync::Mutex::new(Some(handle))));
-        }
-    }
 
     pub fn sanitize_hex_input(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
         // 这里可以实现十六进制输入的清理逻辑
@@ -553,344 +276,92 @@ impl NetAssistantApp {
         info!("[关闭标签页] 标签页 {} 已关闭", tab_id);
     }
 
-    pub fn connect_client(&mut self, tab_id: String, _cx: &mut Context<Self>) {
-        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
-            if !tab_state.is_connected && tab_state.connection_config.is_client() {
-                if let ConnectionConfig::Client(client_config) = &tab_state.connection_config {
-                    let address = format!(
-                        "{}:{}",
-                        client_config.server_address, client_config.server_port
-                    );
-                    info!("[客户端] 尝试连接到服务器: {}", address);
-                    let sender = self.connection_event_sender.clone();
-                    let tab_id_clone = tab_id.clone();
-
-                    if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                        tab_state.connection_status = ConnectionStatus::Connecting;
-                        info!("[客户端] 连接状态已更新为: Connecting");
-                    }
-
-                    let handle = tokio::spawn(async move {
-                        debug!("[客户端] 异步任务开始，尝试连接: {}", address);
-                        match tokio::net::TcpStream::connect(&address).await {
-                            Ok(stream) => {
-                                let peer_addr = stream.peer_addr().ok();
-                                info!("[客户端] 连接成功: {:?}", peer_addr);
-
-                                let (mut reader, mut writer) = stream.into_split();
-                                let (write_sender, mut write_receiver) =
-                                    mpsc::unbounded_channel::<Vec<u8>>();
-
-                                let sender_clone = sender.clone();
-                                let tab_id_clone2 = tab_id_clone.clone();
-
-                                // 保存write_sender到映射（需要在UI线程中操作）
-                                let tab_id_clone_for_sender = tab_id_clone.clone();
-                                let write_sender_clone = write_sender.clone();
-                                let sender_clone_for_map = sender.clone();
-                                // 直接发送事件，不创建新的异步任务，减少延迟
-                                if let Some(sender) = sender_clone_for_map {
-                                    let _ = sender.send(ConnectionEvent::ClientWriteSenderReady(
-                                        tab_id_clone_for_sender,
-                                        write_sender_clone,
-                                    ));
-                                }
-
-                                // 启动接收任务
-                                tokio::spawn(async move {
-                                    debug!("[客户端] 启动接收任务");
-                                    loop {
-                                        let mut buffer = vec![0u8; 4096];
-                                        let result = reader.read(&mut buffer).await;
-                                        match result {
-                                            Ok(n) => {
-                                                if n > 0 {
-                                                    buffer.truncate(n);
-                                                    let message = Message::new(
-                                                        MessageDirection::Received,
-                                                        buffer.clone(),
-                                                        MessageType::Text,
-                                                    );
-                                                    if let Some(sender) = sender_clone.clone() {
-                                                        let _ = sender.send(
-                                                            ConnectionEvent::MessageReceived(
-                                                                tab_id_clone2.clone(),
-                                                                message,
-                                                            ),
-                                                    );
-                                                    }
-                                                } else {
-                                                    info!("[客户端] 接收到0字节，连接已关闭");
-                                                    // 通知UI连接已断开
-                                                    if let Some(sender) = sender_clone.clone() {
-                                                        let _ = sender.send(
-                                                            ConnectionEvent::Disconnected(
-                                                                tab_id_clone2.clone(),
-                                                            ),
-                                                        );
-                                                    }
-                                                    break;
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!("[客户端] 接收数据失败: {}", e);
-                                                // 通知UI连接已断开
-                                                if let Some(sender) = sender_clone.clone() {
-                                                    let _ =
-                                                        sender.send(ConnectionEvent::Disconnected(
-                                                            tab_id_clone2.clone(),
-                                                        ));
-                                                }
-                                                break;
-                                            }
-                                        }
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(10))
-                                            .await;
-                                    }
-                                    debug!("[客户端] 接收任务结束");
-                                });
-
-                                // 启动写入任务
-                                let sender_clone2 = sender.clone();
-                                let tab_id_clone3 = tab_id_clone.clone();
-                                tokio::spawn(async move {
-                                    debug!("[客户端] 启动写入任务");
-                                    while let Some(data) = write_receiver.recv().await {
-                                        let result = writer.write_all(&data).await;
-                                        if let Err(e) = result {
-                                            error!("[客户端] 写入数据失败: {}", e);
-                                            if let Some(sender) = sender_clone2.clone() {
-                                                let _ = sender.send(ConnectionEvent::Error(
-                                                    tab_id_clone3,
-                                                    e.to_string(),
-                                                ));
-                                            }
-                                            break;
-                                        }
-                                        // 确保数据立即发送
-                                        if let Err(e) = writer.flush().await {
-                                            error!("[客户端] 刷新缓冲区失败: {}", e);
-                                            if let Some(sender) = sender_clone2.clone() {
-                                                let _ = sender.send(ConnectionEvent::Error(
-                                                    tab_id_clone3,
-                            e.to_string(),
-                                                ));
-                                            }
-                                            break;
-                                        }
-                                    }
-                                    debug!("[客户端] 写入任务结束");
-                                });
-
-                                // 通知UI连接成功
-                                let sender_clone3 = sender.clone();
-                                if let Some(sender) = sender_clone3 {
-                                    let _ = sender.send(ConnectionEvent::Connected(tab_id_clone));
-                                }
-                            }
-                            Err(e) => {
-                                error!("[客户端] 连接失败: {}", e);
-                                let sender_clone4 = sender.clone();
-                                if let Some(sender) = sender_clone4 {
-                                    let _ = sender
-                                        .send(ConnectionEvent::Error(tab_id_clone, e.to_string()));
-                                }
-                            }
-                        }
-                    });
-
-                    // 保存客户端任务的 JoinHandle
-                    if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                        tab_state.client_handle =
-                            Some(std::sync::Arc::new(std::sync::Mutex::new(Some(handle))));
-                    }
-                }
-            } else {
-                debug!(
-                    "[客户端] 连接条件不满足: is_connected={}, is_client={}",
-                    tab_state.is_connected,
-                    tab_state.connection_config.is_client()
-                );
-            }
-        } else {
-            error!("[客户端] 未找到标签页状态: {}", tab_id);
-        }
-    }
-
-    pub fn connect_udp_client(&mut self, tab_id: String, _cx: &mut Context<Self>) {
-        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
-            if !tab_state.is_connected && tab_state.connection_config.is_client() {
-                if let ConnectionConfig::Client(client_config) = &tab_state.connection_config {
-                    let address = format!(
-                        "{}:{}",
-                        client_config.server_address, client_config.server_port
-                    );
-                    info!("[UDP客户端] 尝试连接到服务器: {}", address);
-                    let sender = self.connection_event_sender.clone();
-                    let tab_id_clone = tab_id.clone();
-
-                    if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                        tab_state.connection_status = ConnectionStatus::Connecting;
-                        info!("[UDP客户端] 连接状态已更新为: Connecting");
-                    }
-
-                    let handle = tokio::spawn(async move {
-                        info!("[UDP客户端] 异步任务开始，尝试连接: {}", address);
-
-                        info!("[UDP客户端] 步骤1: 开始创建UDP Socket");
-                        match tokio::net::UdpSocket::bind("0.0.0.0:0").await {
-                            Ok(socket) => {
-
-                                // UDP是无连接的，所以这里只是创建socket，不需要真正"连接"
-                                info!("[UDP客户端] Socket创建成功");
-
-                                // 使用 Arc 包装 socket 以支持多任务共享
-                                let socket = std::sync::Arc::new(socket);
-
-                                // 解析服务器地址
-                                let server_addr: std::net::SocketAddr = address.parse().unwrap();
-
-                                // 创建发送器
-                                let (write_sender, mut write_receiver) =
-                                    mpsc::unbounded_channel::<Vec<u8>>();
-
-                                let sender_clone = sender.clone();
-                                let tab_id_clone2 = tab_id_clone.clone();
-                                let socket_clone = socket.clone();
-
-                                // 保存write_sender到映射（需要在UI线程中操作）
-                                let tab_id_clone_for_sender = tab_id_clone.clone();
-                                let write_sender_clone = write_sender.clone();
-                                let sender_clone_for_map = sender.clone();
-
-                                // 直接发送事件，不创建新的异步任务，减少延迟
-                                if let Some(sender) = sender_clone_for_map {
-                                    let _ = sender.send(ConnectionEvent::ClientWriteSenderReady(
-                                        tab_id_clone_for_sender,
-                                        write_sender_clone,
-                                    ));
-                                }
-
-
-                                // 启动接收任务
-                                tokio::spawn(async move {
-                                    info!("[UDP客户端] 接收任务启动");
-                                    loop {
-                                        let mut buffer = vec![0u8; 4096];
-                                        let socket_clone = socket_clone.clone();
-                                        let result = socket_clone.recv_from(&mut buffer).await;
-                                        match result {
-                                            Ok((n, addr)) => {
-                                                if n > 0 {
-                                                    buffer.truncate(n);
-                                                    info!(
-                                                        "[UDP客户端] 收到来自 {} 的数据: {:?}",
-                                                        addr, buffer
-                                                    );
-                                                    let message = Message::new(
-                                                        MessageDirection::Received,
-                                                        buffer.clone(),
-                                                        MessageType::Text,
-                                                    )
-                                                    .with_source(addr.to_string());
-                                                    if let Some(sender) = sender_clone.clone() {
-                                                        let _ = sender.send(
-                                                            ConnectionEvent::MessageReceived(
-                                                                tab_id_clone2.clone(),
-                                                                message,
-                                                            ),
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!("[UDP客户端] 接收数据失败: {}", e);
-                                                // UDP无连接，不需要通知断开
-                                                break;
-                                            }
-                                        }
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(10))
-                                            .await;
-                                    }
-                                    info!("[UDP客户端] 接收任务结束");
-                                });
-
-                                // 启动写入任务
-                                let sender_clone2 = sender.clone();
-                                let tab_id_clone4 = tab_id_clone.clone();
-                                tokio::spawn(async move {
-                                    info!("[UDP客户端] 写入任务启动");
-                                    while let Some(data) = write_receiver.recv().await {
-                                        let socket_clone = socket.clone();
-                                        let tab_id_clone3 = tab_id_clone4.clone();
-                                        let sender_clone3 = sender_clone2.clone();
-
-                                        let result = socket_clone.send_to(&data, server_addr).await;
-                                        if let Err(e) = result {
-                                            error!("[UDP客户端] 写入数据失败: {}", e);
-                                            if let Some(sender) = sender_clone3 {
-                                                let _ = sender.send(ConnectionEvent::Error(
-                                                    tab_id_clone3,
-                                                    e.to_string(),
-                                                ));
-                                            }
-                                            // 对于UDP，写入失败可能是暂时的，不需要断开连接
-                                        } else {
-                                            info!("[UDP客户端] 数据发送成功");
-                                        }
-                                    }
-                                    info!("[UDP客户端] 写入任务结束");
-                                });
-
-                                // 通知UI连接成功
-                                let sender_clone3 = sender.clone();
-                                let tab_id_clone5 = tab_id_clone.clone();
-                                if let Some(sender) = sender_clone3 {
-                                    let _ = sender.send(ConnectionEvent::Connected(tab_id_clone5));
-                                }
-                            }
-                            Err(e) => {
-                                error!("[UDP客户端] Socket创建失败: {}", e);
-                                let sender_clone4 = sender.clone();
-                                if let Some(sender) = sender_clone4 {
-                                    let _ = sender
-                                        .send(ConnectionEvent::Error(tab_id_clone, e.to_string()));
-                                }
-                            }
-                        }
-                    });
-
-                    // 保存客户端任务的 JoinHandle
-                    if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                        tab_state.client_handle =
-                            Some(std::sync::Arc::new(std::sync::Mutex::new(Some(handle))));
-                    }
-                }
-            } else {
-                debug!(
-                    "[UDP客户端] 连接条件不满足: is_connected={}, is_client={}",
-                    tab_state.is_connected,
-                    tab_state.connection_config.is_client()
-                );
-            }
-        } else {
-            error!("[UDP客户端] 未找到标签页状态: {}", tab_id);
-        }
-    }
 
     pub fn disconnect_client(&mut self, tab_id: String, _cx: &mut Context<Self>) {
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
+        let network_manager_arc = self.network_manager.clone();
 
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
             tab_state.disconnect();
         }
 
         tokio::spawn(async move {
+                            // 断开网络连接
+                            let mut network_manager = network_manager_arc.lock().await;
+                            if let Err(e) = network_manager.disconnect_client(&tab_id_clone).await {
+                error!("断开客户端连接失败: {:?}", e);
+            }
+            
+            // 发送断开连接事件
             if let Some(sender) = sender {
                 let _ = sender.send(ConnectionEvent::Disconnected(tab_id_clone));
             }
         });
+    }
+
+    /// 服务端断开连接
+    pub fn disconnect_server(&mut self, tab_id: String) {
+        let sender = self.connection_event_sender.clone();
+        let tab_id_clone = tab_id.clone();
+        let network_manager_arc = self.network_manager.clone();
+
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            tab_state.disconnect();
+        }
+        
+        self.server_clients.remove(&tab_id);
+
+        tokio::spawn(async move {
+            let mut network_manager = network_manager_arc.lock().await;
+            if let Err(e) = network_manager.stop_server(&tab_id_clone).await {
+                error!("停止服务器失败: {:?}", e);
+            }
+            
+            if let Some(sender) = sender {
+                let _ = sender.send(ConnectionEvent::Disconnected(tab_id_clone));
+            }
+        });
+    }
+
+    /// 客户端连接到服务端
+    pub fn connect_to_server(&mut self, tab_id: String) {
+        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
+            let client_config = if let ConnectionConfig::Client(client_config) = tab_state.connection_config.clone() {
+                client_config
+            } else {
+                return;
+            };
+            
+            let network_manager_arc = self.network_manager.clone();
+            let client_config_clone = client_config.clone();
+            let connection_event_sender_clone = self.connection_event_sender.clone();
+            
+            tokio::spawn(async move {
+                let mut network_manager = network_manager_arc.lock().await;
+                if let Err(e) = network_manager.create_and_connect_client(&client_config_clone, connection_event_sender_clone).await {
+                    error!("客户端连接失败: {:?}", e);
+                }
+            });
+        }
+    }
+
+    /// 服务端启动
+    pub fn start_server(&mut self, tab_id: String) {
+        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
+            if let ConnectionConfig::Server(server_config) = &tab_state.connection_config {
+                let network_manager_arc = self.network_manager.clone();
+                let server_config_clone = server_config.clone();
+                let connection_event_sender_clone = self.connection_event_sender.clone();
+                
+                tokio::spawn(async move {
+                    let mut network_manager = network_manager_arc.lock().await;
+                    if let Err(e) = network_manager.create_and_start_server(&server_config_clone, connection_event_sender_clone).await {
+                        error!("服务端启动失败: {:?}", e);
+                    }
+                });
+            }
+        }
     }
 
     pub fn send_message(&mut self, tab_id: String, content: String) {
@@ -900,129 +371,115 @@ impl NetAssistantApp {
         );
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
-        let bytes = content.into_bytes();
-
-        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
-            debug!(
-                "[send_message] 找到标签页，is_connected: {}, connection_config: {:?}",
-                tab_state.is_connected, tab_state.connection_config
-            );
-            if tab_state.is_connected {
-                if tab_state.connection_config.is_client() {
-                    debug!("[send_message] 客户端模式");
-                    if let Some(write_sender) = self.client_write_senders.get(&tab_id).cloned() {
-                        let bytes_clone = bytes.clone();
-                        let message_input_mode = tab_state.message_input_mode.clone();
-                        tokio::spawn(async move {
-                            debug!("[send_message] 异步任务开始发送");
-                            let result: Result<(), mpsc::error::SendError<Vec<u8>>> =
-                                write_sender.send(bytes_clone);
-                            if let Err(e) = result {
-                                error!("[send_message] 发送失败: {}", e);
-                                if let Some(sender) = sender {
-                                    let _ = sender.send(ConnectionEvent::Error(
-                                        tab_id_clone,
-                                        format!("发送失败: {}", e),
-                                    ));
-                                }
-                            } else {
-                                debug!("[send_message] 发送成功");
-                                if let Some(sender) = sender {
-                                    let message_type = if message_input_mode == "text" {
-                                        MessageType::Text
-                                    } else {
-                                        MessageType::Hex
-                                    };
-                                    let message = Message::new(
-                                        MessageDirection::Sent,
-                                        bytes,
-                                        message_type,
-                                    );
-                                    let _ = sender.send(ConnectionEvent::MessageReceived(
-                                        tab_id_clone,
-                                        message,
-                                    ));
-                                }
-                            }
-                        });
-                    } else {
-                        error!("[send_message] 未找到写入器");
-                        if let Some(sender) = sender {
-                            let _ = sender.send(ConnectionEvent::Error(
-                                tab_id_clone,
-                                "写入器未初始化".to_string(),
-                            ));
-                        }
+        let content_clone = content.clone();
+        
+        // 保存message_type用于后续事件发送
+        let message_type_result = self.connection_tabs.get(&tab_id)
+            .map(|tab_state| {
+                if tab_state.message_input_mode == "text" {
+                    MessageType::Text
+                } else {
+                    MessageType::Hex
+                }
+            });
+        
+        if message_type_result.is_none() {
+            error!("[send_message] 未找到标签页: {}", tab_id);
+            return;
+        }
+        
+        let message_type = message_type_result.unwrap();
+        
+        // 在闭包外部获取必要的信息
+        let is_connected_result = self.connection_tabs.get(&tab_id).map(|tab| tab.is_connected);
+        let is_client_result = self.connection_tabs.get(&tab_id)
+            .map(|tab| tab.connection_config.is_client());
+        
+        if is_connected_result.is_none() || is_client_result.is_none() {
+            error!("[send_message] 未找到标签页: {}", tab_id);
+            return;
+        }
+        
+        let is_connected = is_connected_result.unwrap();
+        let is_client = is_client_result.unwrap();
+        
+        if !is_connected {
+            if let Some(sender) = sender {
+                let _ = sender.send(ConnectionEvent::Error(
+                    tab_id_clone,
+                    "连接未建立".to_string(),
+                ));
+            }
+            return;
+        }
+        
+        // 直接使用client_write_senders和server_clients来发送消息
+        let bytes = content_clone.into_bytes();
+        
+        if is_client {
+            // 客户端模式：发送给服务器
+            debug!("[send_message] 客户端模式，发送给服务器");
+            
+            if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
+                if let Err(e) = write_sender.send(bytes.clone()) {
+                    error!("[send_message] 无法发送消息到服务器: {}", e);
+                    if let Some(sender) = sender {
+                        let _ = sender.send(ConnectionEvent::Error(
+                            tab_id_clone,
+                            e.to_string(),
+                        ));
                     }
                 } else {
-                    debug!("[send_message] 服务端模式");
-                    let clients: Vec<(SocketAddr, mpsc::UnboundedSender<Vec<u8>>)> = self
-                        .server_clients
-                        .get(&tab_id)
-                        .map(|clients| {
-                            clients
-                                .iter()
-                                .map(|(addr, sender)| (*addr, sender.clone()))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-
-                    if clients.is_empty() {
-                        error!("[send_message] 没有连接的客户端");
-                        if let Some(sender) = sender {
-                            let _ = sender.send(ConnectionEvent::Error(
-                                tab_id_clone,
-                                "没有连接的客户端".to_string(),
-                            ));
-                        }
-                    } else {
-                        let message_input_mode = tab_state.message_input_mode.clone();
-                        let sender_clone = sender.clone();
-                        let tab_id_clone2 = tab_id_clone.clone();
-                        tokio::spawn(async move {
-                            debug!("[send_message] 异步任务开始广播");
-                            let mut success_count = 0;
-                            for (addr, write_sender) in clients {
-                                if let Err(_e) = write_sender.send(bytes.clone()) {
-                                    error!("[send_message] 发送给客户端 {} 失败", addr);
-                                } else {
-                                    success_count += 1;
-                                }
-                            }
-
-                            if success_count > 0 {
-                                info!("[send_message] 广播成功，发送给 {} 个客户端", success_count);
-                                if let Some(sender) = sender_clone {
-                                    let message_type = if message_input_mode == "text" {
-                                        MessageType::Text
-                                    } else {
-                                        MessageType::Hex
-                                    };
-                                    let message = Message::new(
-                                        MessageDirection::Sent,
-                                        bytes,
-                                        message_type,
-                                    );
-                                    let _ = sender.send(ConnectionEvent::MessageReceived(
-                                        tab_id_clone2,
-                                        message,
-                                    ));
-                                }
-                            }
-                        });
+                    debug!("[send_message] 发送成功");
+                    if let Some(sender) = sender {
+                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
+                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
-                error!("[send_message] 连接未建立");
+                error!("[send_message] 客户端写入发送器不可用");
                 if let Some(sender) = sender {
                     let _ = sender.send(ConnectionEvent::Error(
                         tab_id_clone,
-                        "连接未建立".to_string(),
+                        "客户端写入发送器不可用".to_string(),
                     ));
                 }
             }
         } else {
-            error!("[send_message] 未找到标签页: {}", tab_id);
+            // 服务器模式：广播给所有客户端
+            debug!("[send_message] 服务端模式，广播给所有客户端");
+            
+            if let Some(clients) = self.server_clients.get(&tab_id) {
+                if clients.is_empty() {
+                    error!("[send_message] 没有可用的客户端连接");
+                    if let Some(sender) = sender {
+                        let _ = sender.send(ConnectionEvent::Error(
+                            tab_id_clone,
+                            "没有可用的客户端连接".to_string(),
+                        ));
+                    }
+                } else {
+                    for (_, write_sender) in clients {
+                        if let Err(e) = write_sender.send(bytes.clone()) {
+                            error!("[send_message] 发送给客户端失败: {}", e);
+                        }
+                    }
+                    
+                    debug!("[send_message] 发送成功");
+                    if let Some(sender) = sender {
+                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
+                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                    }
+                }
+            } else {
+                error!("[send_message] 服务器客户端映射不可用");
+                if let Some(sender) = sender {
+                    let _ = sender.send(ConnectionEvent::Error(
+                        tab_id_clone,
+                        "服务器客户端映射不可用".to_string(),
+                    ));
+                }
+            }
         }
     }
 
@@ -1033,131 +490,112 @@ impl NetAssistantApp {
         );
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
-
-        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
-            debug!(
-                "[send_message_bytes] 找到标签页，is_connected: {}, connection_config: {:?}",
-                tab_state.is_connected, tab_state.connection_config
-            );
-            if tab_state.is_connected {
-                if tab_state.connection_config.is_client() {
-                    debug!("[send_message_bytes] 客户端模式");
-                    if let Some(write_sender) = self.client_write_senders.get(&tab_id).cloned() {
-                        let bytes_clone = bytes.clone();
-                        let message_input_mode = tab_state.message_input_mode.clone();
-                        tokio::spawn(async move {
-                            debug!("[send_message_bytes] 异步任务开始发送");
-                            let result: Result<(), mpsc::error::SendError<Vec<u8>>> =
-                                write_sender.send(bytes_clone);
-                            if let Err(e) = result {
-                                error!("[send_message_bytes] 发送失败: {}", e);
-                                if let Some(sender) = sender {
-                                    let _ = sender.send(ConnectionEvent::Error(
-                                        tab_id_clone,
-                                        format!("发送失败: {}", e),
-                                    ));
-                                }
-                            } else {
-                                debug!("[send_message_bytes] 发送成功");
-                                if let Some(sender) = sender {
-                                    let message_type = if message_input_mode == "text" {
-                                        MessageType::Text
-                                    } else {
-                                        MessageType::Hex
-                                    };
-                                    let message = Message::new(
-                                        MessageDirection::Sent,
-                                        bytes,
-                                        message_type,
-                                    );
-                                    let _ = sender.send(ConnectionEvent::MessageReceived(
-                                        tab_id_clone,
-                                        message,
-                                    ));
-                                }
-                            }
-                        });
-                    } else {
-                        error!("[send_message_bytes] 未找到写入器");
-                        if let Some(sender) = sender {
-                            let _ = sender.send(ConnectionEvent::Error(
-                                tab_id_clone,
-                                "写入器未初始化".to_string(),
-                            ));
-                        }
+        
+        // 保存message_type用于后续事件发送
+        let message_type_result = self.connection_tabs.get(&tab_id)
+            .map(|tab_state| {
+                if tab_state.message_input_mode == "text" {
+                    MessageType::Text
+                } else {
+                    MessageType::Hex
+                }
+            });
+        
+        if message_type_result.is_none() {
+            error!("[send_message_bytes] 未找到标签页: {}", tab_id);
+            return;
+        }
+        
+        let message_type = message_type_result.unwrap();
+        
+        // 在闭包外部获取必要的信息
+        let is_connected_result = self.connection_tabs.get(&tab_id).map(|tab| tab.is_connected);
+        let is_client_result = self.connection_tabs.get(&tab_id)
+            .map(|tab| tab.connection_config.is_client());
+        
+        if is_connected_result.is_none() || is_client_result.is_none() {
+            error!("[send_message_bytes] 未找到标签页: {}", tab_id);
+            return;
+        }
+        
+        let is_connected = is_connected_result.unwrap();
+        let is_client = is_client_result.unwrap();
+        
+        if !is_connected {
+            if let Some(sender) = sender {
+                let _ = sender.send(ConnectionEvent::Error(
+                    tab_id_clone,
+                    "连接未建立".to_string(),
+                ));
+            }
+            return;
+        }
+        
+        // 直接使用client_write_senders和server_clients来发送消息
+        if is_client {
+            // 客户端模式：发送给服务器
+            debug!("[send_message_bytes] 客户端模式，发送给服务器");
+            
+            if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
+                if let Err(e) = write_sender.send(bytes.clone()) {
+                    error!("[send_message_bytes] 无法发送消息到服务器: {}", e);
+                    if let Some(sender) = sender {
+                        let _ = sender.send(ConnectionEvent::Error(
+                            tab_id_clone,
+                            e.to_string(),
+                        ));
                     }
                 } else {
-                    debug!("[send_message_bytes] 服务端模式");
-                    let clients: Vec<(SocketAddr, mpsc::UnboundedSender<Vec<u8>>)> = self
-                        .server_clients
-                        .get(&tab_id)
-                        .map(|clients| {
-                            clients
-                                .iter()
-                                .map(|(addr, sender)| (*addr, sender.clone()))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-
-                    if clients.is_empty() {
-                        error!("[send_message_bytes] 没有连接的客户端");
-                        if let Some(sender) = sender {
-                            let _ = sender.send(ConnectionEvent::Error(
-                                tab_id_clone,
-                                "没有连接的客户端".to_string(),
-                            ));
-                        }
-                    } else {
-                        let sender_clone = sender.clone();
-                        let tab_id_clone2 = tab_id_clone.clone();
-                        let message_input_mode = tab_state.message_input_mode.clone();
-                        tokio::spawn(async move {
-                            debug!("[send_message_bytes] 异步任务开始广播");
-                            let mut success_count = 0;
-                            for (addr, write_sender) in clients {
-                                if let Err(_e) = write_sender.send(bytes.clone()) {
-                                    error!("[send_message_bytes] 发送给客户端 {} 失败", addr);
-                                } else {
-                                    success_count += 1;
-                                }
-                            }
-
-                            if success_count > 0 {
-                                info!(
-                                    "[send_message_bytes] 广播成功，发送给 {} 个客户端",
-                                    success_count
-                                );
-                                if let Some(sender) = sender_clone {
-                                    let message_type = if message_input_mode == "text" {
-                                        MessageType::Text
-                                    } else {
-                                        MessageType::Hex
-                                    };
-                                    let message = Message::new(
-                                        MessageDirection::Sent,
-                                        bytes,
-                                        message_type,
-                                    );
-                                    let _ = sender.send(ConnectionEvent::MessageReceived(
-                                        tab_id_clone2,
-                                        message,
-                                    ));
-                                }
-                            }
-                        });
+                    debug!("[send_message_bytes] 发送成功");
+                    if let Some(sender) = sender {
+                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
+                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
-                error!("[send_message_bytes] 连接未建立");
+                error!("[send_message_bytes] 客户端写入发送器不可用");
                 if let Some(sender) = sender {
                     let _ = sender.send(ConnectionEvent::Error(
                         tab_id_clone,
-                        "连接未建立".to_string(),
+                        "客户端写入发送器不可用".to_string(),
                     ));
                 }
             }
         } else {
-            error!("[send_message_bytes] 未找到标签页: {}", tab_id);
+            // 服务器模式：广播给所有客户端
+            debug!("[send_message_bytes] 服务端模式，广播给所有客户端");
+            
+            if let Some(clients) = self.server_clients.get(&tab_id) {
+                if clients.is_empty() {
+                    error!("[send_message_bytes] 没有可用的客户端连接");
+                    if let Some(sender) = sender {
+                        let _ = sender.send(ConnectionEvent::Error(
+                            tab_id_clone,
+                            "没有可用的客户端连接".to_string(),
+                        ));
+                    }
+                } else {
+                    for (_, write_sender) in clients {
+                        if let Err(e) = write_sender.send(bytes.clone()) {
+                            error!("[send_message_bytes] 发送给客户端失败: {}", e);
+                        }
+                    }
+                    
+                    debug!("[send_message_bytes] 发送成功");
+                    if let Some(sender) = sender {
+                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
+                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                    }
+                }
+            } else {
+                error!("[send_message_bytes] 服务器客户端映射不可用");
+                if let Some(sender) = sender {
+                    let _ = sender.send(ConnectionEvent::Error(
+                        tab_id_clone,
+                        "服务器客户端映射不可用".to_string(),
+                    ));
+                }
+            }
         }
     }
 
@@ -1174,94 +612,109 @@ impl NetAssistantApp {
         );
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
-        let bytes = content.clone().into_bytes();
-
-        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
-            debug!(
-                "[send_message_to_client] 找到标签页，is_connected: {}, connection_config: {:?}",
-                tab_state.is_connected, tab_state.connection_config
-            );
-            if tab_state.is_connected {
-                if tab_state.connection_config.is_client() {
-                    debug!("[send_message_to_client] 客户端模式，直接发送给服务器");
-                    self.send_message(tab_id, content);
-                } else {
-                    debug!("[send_message_to_client] 服务端模式");
-
-                    if let Some(source_str) = source {
-                        if let Ok(addr) = source_str.parse::<std::net::SocketAddr>() {
-                            info!("[send_message_to_client] 发送给指定客户端: {}", addr);
-                            if let Some(clients) = self.server_clients.get(&tab_id) {
-                                if let Some(write_sender) = clients.get(&addr).cloned() {
-                                    let message_input_mode = tab_state.message_input_mode.clone();
-                                    let sender_clone = sender.clone();
-                                    let tab_id_clone2 = tab_id_clone.clone();
-                                    let bytes_clone = bytes.clone();
-                                    let source_str_clone = source_str.clone();
-                                    tokio::spawn(async move {
-                                        if let Err(e) = write_sender.send(bytes_clone) {
-                                            error!("[send_message_to_client] 发送失败: {}", e);
-                                            if let Some(sender) = sender_clone {
-                                                let _ = sender.send(ConnectionEvent::Error(
-                                                    tab_id_clone2,
-                                                    e.to_string(),
-                                                ));
-                                            }
-                                        } else {
-                                            debug!("[send_message_to_client] 发送成功");
-                                            if let Some(sender) = sender_clone {
-                                                let message_type = if message_input_mode == "text" {
-                                                    MessageType::Text
-                                                } else {
-                                                    MessageType::Hex
-                                                };
-                                                let message = Message::new(
-                                                    MessageDirection::Sent,
-                                                    bytes,
-                                                    message_type,
-                                                )
-                                                .with_source(source_str_clone);
-                                                let _ =
-                                                    sender.send(ConnectionEvent::MessageReceived(
-                                                        tab_id_clone2,
-                                                        message,
-                                                    ));
-                                            }
-                                        }
-                                    });
-                                } else {
-                                    error!("[send_message_to_client] 客户端 {} 没有写入器", addr);
+        let content_clone = content.clone();
+        
+        // 获取标签页信息
+        let tab_state_result = self.connection_tabs.get(&tab_id);
+        
+        if tab_state_result.is_none() {
+            error!("[send_message_to_client] 未找到标签页: {}", tab_id);
+            return;
+        }
+        
+        let tab_state = tab_state_result.unwrap();
+        let message_type = if tab_state.message_input_mode == "text" {
+            MessageType::Text
+        } else {
+            MessageType::Hex
+        };
+        
+        // 检查连接状态
+        if !tab_state.is_connected && !tab_state.connection_config.is_server() {
+            error!("[send_message_to_client] 连接未建立");
+            if let Some(sender) = sender {
+                let _ = sender.send(ConnectionEvent::Error(
+                    tab_id_clone,
+                    "连接未建立".to_string(),
+                ));
+            }
+            return;
+        }
+        
+        // 客户端模式：直接发送给服务器
+        if tab_state.connection_config.is_client() {
+            debug!("[send_message_to_client] 客户端模式，直接发送给服务器");
+            self.send_message(tab_id, content);
+            return;
+        }
+        
+        // 服务器模式：发送给指定客户端
+        debug!("[send_message_to_client] 服务端模式");
+        
+        if let Some(source_str) = source {
+            // 解析客户端地址
+            match source_str.parse::<std::net::SocketAddr>() {
+                Ok(addr) => {
+                    info!("[send_message_to_client] 发送给指定客户端: {}", addr);
+                    let bytes = content_clone.into_bytes();
+                    
+                    // 直接使用server_clients发送消息给指定客户端
+                    if let Some(clients) = self.server_clients.get(&tab_id) {
+                        if let Some(write_sender) = clients.get(&addr) {
+                            if let Err(e) = write_sender.send(bytes.clone()) {
+                                error!("[send_message_to_client] 发送失败: {}", e);
+                                if let Some(sender) = sender {
+                                    let _ = sender.send(ConnectionEvent::Error(
+                                        tab_id_clone,
+                                        e.to_string(),
+                                    ));
                                 }
                             } else {
-                                error!(
-                                    "[send_message_to_client] 未找到服务端客户端映射: {}",
-                                    tab_id
-                                );
+                                debug!("[send_message_to_client] 发送成功");
+                                if let Some(sender) = sender {
+                                    let message = Message::new(
+                                        MessageDirection::Sent,
+                                        bytes,
+                                        message_type,
+                                    )
+                                    .with_source(source_str);
+                                    let _ = sender.send(ConnectionEvent::MessageReceived(
+                                        tab_id_clone,
+                                        message,
+                                    ));
+                                }
                             }
                         } else {
-                            error!("[send_message_to_client] 无效的客户端地址: {}", source_str);
+                            error!("[send_message_to_client] 客户端 {} 不存在", addr);
+                            if let Some(sender) = sender {
+                                let _ = sender.send(ConnectionEvent::Error(
+                                    tab_id_clone,
+                                    format!("客户端 {} 不存在", addr),
+                                ));
+                            }
                         }
                     } else {
-                        error!("[send_message_to_client] 没有指定客户端，无法发送自动回复");
+                        error!("[send_message_to_client] 服务器客户端映射不可用");
                         if let Some(sender) = sender {
                             let _ = sender.send(ConnectionEvent::Error(
                                 tab_id_clone,
-                                "无法确定目标客户端".to_string(),
+                                "服务器客户端映射不可用".to_string(),
                             ));
                         }
                     }
-                }
-            } else {
-                error!("[send_message_to_client] 连接未建立");
-                if let Some(sender) = sender {
-                    let _ = sender.send(ConnectionEvent::Error(
-                        tab_id_clone,
-                        "连接未建立".to_string(),
-                    ));
-                }
+                },
+                Err(_) => {
+                    error!("[send_message_to_client] 无效的客户端地址: {}", source_str);
+                },
             }
         } else {
-            error!("[send_message_to_client] 未找到标签页: {}", tab_id);
+            error!("[send_message_to_client] 没有指定客户端，无法发送自动回复");
+            if let Some(sender) = sender {
+                let _ = sender.send(ConnectionEvent::Error(
+                    tab_id_clone,
+                    "无法确定目标客户端".to_string(),
+                ));
+            }
         }
     }
 

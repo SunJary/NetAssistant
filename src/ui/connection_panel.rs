@@ -144,11 +144,8 @@ impl<'a> ConnectionPanel<'a> {
                                   _event: &MouseDownEvent,
                                   window: &mut Window,
                                   cx: &mut Context<NetAssistantApp>| {
-                                let tab_id = if is_client_clone {
-                                    format!("client_{}", conn_id_clone1)
-                                } else {
-                                    format!("server_{}", conn_id_clone1)
-                                };
+                                // 直接使用连接配置的原始ID作为标签页ID
+                                let tab_id = conn_id_clone1.to_string();
 
                                 let connection_config = if is_client_clone {
                                     let client_configs = app.storage.client_connections();

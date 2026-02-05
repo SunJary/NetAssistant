@@ -33,6 +33,7 @@ impl Default for AppConfig {
 }
 
 /// 配置存储管理器
+#[derive(Clone)]
 pub struct ConfigStorage {
     config_file: PathBuf,
     config: AppConfig,
@@ -144,6 +145,24 @@ impl ConfigStorage {
                 true
             }
         });
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+    
+    /// 获取所有连接配置
+    pub fn connections(&self) -> Vec<&ConnectionConfig> {
+        self.config.connections.iter().collect()
+    }
+
+    /// 检查连接是否存在
+    pub fn contains_connection(&self, connection: &ConnectionConfig) -> bool {
+        self.config.connections.contains(connection)
+    }
+
+    /// 保留满足条件的连接
+    pub fn retain_connections(&mut self, f: impl FnMut(&ConnectionConfig) -> bool) {
+        self.config.connections.retain(f);
         if self.config.auto_save {
             let _ = self.save();
         }

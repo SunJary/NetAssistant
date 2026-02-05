@@ -41,6 +41,7 @@ impl<'a> MainWindow<'a> {
                     .items_center()
                     .justify_between()
                     .px_4()
+                    .flex_shrink_0()
                     .child(
                         div()
                             .text_lg()
@@ -136,12 +137,8 @@ impl<'a> MainWindow<'a> {
                                             if let Some(connection_name) = app.context_menu_connection.clone() {
                                                 let is_client = app.context_menu_is_client;
                                                 
-                                                // 生成对应的标签页ID并关闭标签页
-                                                let tab_id = if is_client {
-                                                    format!("client_{}", connection_name)
-                                                } else {
-                                                    format!("server_{}", connection_name)
-                                                };
+                                                // 直接使用连接配置的原始ID作为标签页ID
+                                                let tab_id = connection_name.clone();
                                                 app.close_tab(tab_id);
                                                 
                                                 // 然后删除连接配置
