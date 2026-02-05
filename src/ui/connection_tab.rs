@@ -5,7 +5,7 @@ use gpui_component::StyledExt;
 use gpui_component::{
     VirtualListScrollHandle,
     input::{Input, InputState},
-    scroll::ScrollableElement,
+    scroll::{Scrollbar, ScrollbarAxis, ScrollableElement},
     v_virtual_list,
 };
 use gpui_component::ActiveTheme as _;
@@ -66,7 +66,6 @@ impl ConnectionTabState {
             auto_reply_enabled: false,
             scroll_handle: VirtualListScrollHandle::new(),
             item_sizes: Rc::new(Vec::new()),
-
             auto_scroll_enabled: true,
             client_connections: Vec::new(),
             selected_client: None,
@@ -823,96 +822,120 @@ impl<'a> ConnectionTab<'a> {
                     ),
             )
             .child(
-                div().flex().flex_col().flex_1().child(
-                    v_virtual_list(
-                        cx.entity().clone(),
-                        "message-list",
-                        item_sizes,
-                        move |_view, visible_range, _, _cx| {
-                            visible_range
-                                .map(|ix| {
-                                    if let Some(message) = filtered_messages_clone.get(ix) {
-                                        let is_sent = message.direction == MessageDirection::Sent;
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_1()
+                    .h_full()
+                    // 消息区域
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .h_full()
+                            .child(
+                                v_virtual_list(
+                                    cx.entity().clone(),
+                                    "message-list",
+                                    item_sizes,
+                                    move |_view, visible_range, _, _cx| {
+                                        visible_range
+                                            .map(|ix| {
+                                                if let Some(message) = filtered_messages_clone.get(ix) {
+                                                    let is_sent = message.direction == MessageDirection::Sent;
 
-                                        div()
-                                            .flex()
-                                            .flex_col()
-                                            .gap_1()
-                                            .w_full()
-                                            .when(is_sent, |div| div.items_end())
-                                            .when(!is_sent, |div| div.items_start())
-                                            .child(
+                                                    div()
+                                                        .flex()
+                                                        .flex_col()
+                                                        .gap_1()
+                                                        .w_full()
+                                                        .when(is_sent, |div| div.items_end())
+                                                        .when(!is_sent, |div| div.items_start())
+                                                        .child(
+                                                            div()
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_2()
+                                                                .child(
+                                                                    div()
+                                                                        .text_xs()
+                                                                        .font_semibold()
+                                                                        .when(is_sent, |div| {
+                                                                            div.text_color(gpui::rgb(0x3b82f6))
+                                                                        })
+                                                                        .when(!is_sent, |div| {
+                                                                            div.text_color(gpui::rgb(0x10b981))
+                                                                        })
+                                                                        .child(if is_sent {
+                                                                            "发送"
+                                                                        } else {
+                                                                            "接收"
+                                                                        }),
+                                                                )
+                                                                .child(
+                                                                    div()
+                                                                        .text_xs()
+                                                                        .text_color(gpui::rgb(0x9ca3af))
+                                                                        .child(message.timestamp.clone()),
+                                                                )
+                                                                .when(message.source.is_some(), |this_div| {
+                                                                    if let Some(source) = &message.source {
+                                                                        this_div.child(
+                                                                            div()
+                                                                                .text_xs()
+                                                                                .text_color(gpui::rgb(0x6b7280))
+                                                                                .child(format!("({})", source)),
+                                                                        )
+                                                                    } else {
+                                                                        this_div
+                                                                    }
+                                                                }),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .max_w_80()
+                                                                .p_3()
+                                                                .rounded_md()
+                                                                .when(is_sent, |div| {
+                                                                    div.bg(gpui::rgb(0x3b82f6))
+                                                                })
+                                                                .when(!is_sent, |div| {
+                                                                    div.bg(gpui::rgb(0xf3f4f6))
+                                                                })
+                                                                .child(
+                                                                    div()
+                                                                        .text_sm()
+                                                                        .when(is_sent, |div| {
+                                                                            div.text_color(gpui::rgb(0xffffff))
+                                                                        })
+                                                                        .when(!is_sent, |div| {
+                                                                            div.text_color(gpui::rgb(0x111827))
+                                                                        })
+                                                                        .child(message.get_content_by_type()),
+                                                                ),
+                                                        )
+                                                } else {
                                                 div()
-                                                    .flex()
-                                                    .items_center()
-                                                    .gap_2()
-                                                    .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .font_semibold()
-                                                            .when(is_sent, |div| {
-                                                                div.text_color(gpui::rgb(0x3b82f6))
-                                                            })
-                                                            .when(!is_sent, |div| {
-                                                                div.text_color(gpui::rgb(0x10b981))
-                                                            })
-                                                            .child(if is_sent {
-                                                                "发送"
-                                                            } else {
-                                                                "接收"
-                                                            }),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .text_color(gpui::rgb(0x9ca3af))
-                                                            .child(message.timestamp.clone()),
-                                                    )
-                                                    .when(message.source.is_some(), |this_div| {
-                                                        if let Some(source) = &message.source {
-                                                            this_div.child(
-                                                                div()
-                                                                    .text_xs()
-                                                                    .text_color(gpui::rgb(0x6b7280))
-                                                                    .child(format!("({})", source)),
-                                                            )
-                                                        } else {
-                                                            this_div
-                                                        }
-                                                    }),
-                                            )
-                                            .child(
-                                                div()
-                                                    .max_w_80()
-                                                    .p_3()
-                                                    .rounded_md()
-                                                    .when(is_sent, |div| {
-                                                        div.bg(gpui::rgb(0x3b82f6))
-                                                    })
-                                                    .when(!is_sent, |div| {
-                                                        div.bg(gpui::rgb(0xf3f4f6))
-                                                    })
-                                                    .child(
-                                                        div()
-                                                            .text_sm()
-                                                            .when(is_sent, |div| {
-                                                                div.text_color(gpui::rgb(0xffffff))
-                                                            })
-                                                            .when(!is_sent, |div| {
-                                                                div.text_color(gpui::rgb(0x111827))
-                                                            })
-                                                            .child(message.get_content_by_type()),
-                                                    ),
-                                            )
-                                    } else {
-                                    div()
-                                }
-                                })
-                                .collect()
-                        },
+                                            }
+                                            })
+                                            .collect()
+                                    },
+                                )
+                                .track_scroll(&scroll_handle)
+                            )
                     )
-                    .track_scroll(&scroll_handle),
-                ),
+                    // 滚动条区域
+                    .child(
+                        div()
+                            .w_6()
+                            .h_full()
+                            .flex()
+                            .justify_center()
+                            .child(
+                                Scrollbar::vertical(&scroll_handle)
+                            )
+                    ),
             )
     }
 
