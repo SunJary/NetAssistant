@@ -3,6 +3,7 @@ use gpui::*;
 use gpui_component::StyledExt;
 use gpui_component::IconName;
 use gpui_component::ActiveTheme;
+use gpui_component::scroll::ScrollableElement;
 
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
@@ -87,8 +88,13 @@ impl<'a> MainWindow<'a> {
                 div()
                     .flex()
                     .flex_1()
+                    .overflow_hidden()
                     .child(
-                        ConnectionPanel::new(self.app).render(window, cx),
+                        div()
+                            .w_64()
+                            .h_full()
+                            .overflow_y_scrollbar()
+                            .child(ConnectionPanel::new(self.app).render(window, cx)),
                     )
                     .child(
                         div()

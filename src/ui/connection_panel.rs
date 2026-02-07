@@ -64,14 +64,14 @@ impl<'a> ConnectionPanel<'a> {
             .collect();
 
         div()
-            .w_64()
+            .w_full()
             .h_full()
+            .px_2()
             .flex()
             .flex_col()
             .bg(theme.background)
             .border_r_1()
             .border_color(theme.border)
-            .p_2()
             .child(
                 // 客户端连接手风琴项
                 self.render_accordion_item(
@@ -249,7 +249,6 @@ impl<'a> ConnectionPanel<'a> {
         div()
             .flex()
             .flex_col()
-            .mb_2()
             .child(
                 // 手风琴标题（可点击）
                 div()
