@@ -644,7 +644,14 @@ impl NetAssistantApp {
         // 客户端模式：直接发送给服务器
         if tab_state.connection_config.is_client() {
             debug!("[send_message_to_client] 客户端模式，直接发送给服务器");
-            self.send_message(tab_id, content);
+            if tab_state.message_input_mode == "hex" {
+                // 十六进制模式：解析十六进制内容并发送字节数组
+                let bytes = crate::utils::hex::hex_to_bytes(&content_clone);
+                self.send_message_bytes(tab_id, bytes, content_clone);
+            } else {
+                // 文本模式：直接发送文本内容
+                self.send_message(tab_id, content);
+            }
             return;
         }
         
@@ -656,7 +663,13 @@ impl NetAssistantApp {
             match source_str.parse::<std::net::SocketAddr>() {
                 Ok(addr) => {
                     info!("[send_message_to_client] 发送给指定客户端: {}", addr);
-                    let bytes = content_clone.into_bytes();
+                    let bytes = if tab_state.message_input_mode == "hex" {
+                        // 十六进制模式：解析十六进制内容
+                        crate::utils::hex::hex_to_bytes(&content_clone)
+                    } else {
+                        // 文本模式：直接转换为字节
+                        content_clone.into_bytes()
+                    };
                     
                     // 直接使用server_clients发送消息给指定客户端
                     if let Some(clients) = self.server_clients.get(&tab_id) {

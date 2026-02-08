@@ -5,11 +5,13 @@ use gpui_component::StyledExt;
 use gpui_component::{
     VirtualListScrollHandle,
     input::{Input, InputState},
-    scroll::{Scrollbar, ScrollbarAxis, ScrollableElement},
+    scroll::{Scrollbar, ScrollableElement},
     v_virtual_list,
+    Theme,
 };
 use gpui_component::ActiveTheme as _;
 use gpui_component::PixelsExt;
+use crate::ui::components::input_with_mode::InputWithMode;
 use log::{debug, error, info, warn};
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -20,7 +22,7 @@ use textwrap::wrap;
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::message::{Message, MessageDirection, MessageListState};
-use crate::utils::hex::{hex_to_bytes, validate_hex_input};
+use crate::utils::hex::{hex_to_bytes};
 
 /// 连接标签页状态
 #[derive(Clone)]
@@ -226,6 +228,17 @@ impl<'a> ConnectionTab<'a> {
             tab_id,
             tab_state,
         }
+    }
+
+    /// 渲染通用输入框组件（支持文本/十六进制模式）
+    fn render_input_with_mode(
+        &self,
+        input_state: &Entity<InputState>,
+        mode: &str,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
+        InputWithMode::render(input_state, mode, theme, cx)
     }
 
     pub fn render(
@@ -527,6 +540,18 @@ impl<'a> ConnectionTab<'a> {
             .when(!is_client, |this| {
                 this.child(self.render_auto_reply_config(window, cx))
             })
+            // 连接相关错误信息显示
+            .when(self.tab_state.error_message.is_some(), |this| {
+                let error_msg = self.tab_state.error_message.as_deref().unwrap_or("");
+                this.child(
+                    div()
+                        .mt_3()
+                        .text_xs()
+                        .font_medium()
+                        .text_color(gpui::rgb(0xef4444))
+                        .child(error_msg.to_string()),
+                )
+            })
     }
 
     /// 渲染自动回复配置区域
@@ -616,22 +641,7 @@ impl<'a> ConnectionTab<'a> {
                                     .child("回复内容:"),
                             )
                             .child(
-                                div()
-                                    .w_full()
-                                    .h_32()
-                                    .bg(theme.background)
-                                    .rounded_md()
-                                    .border_1()
-                                    .border_color(theme.border)
-                                    .child(
-                                        Input::new(input_state)
-                                            .w_full()
-                                            .h_full()
-                                            .p_2()
-                                            .bg(theme.background)
-                                            .rounded_md()
-                                            .border_0(),
-                                    ),
+                                self.render_input_with_mode(input_state, &self.tab_state.message_input_mode, &theme, cx),
                             ),
                     )
                 } else {
@@ -960,16 +970,16 @@ impl<'a> ConnectionTab<'a> {
             .child(
                 div()
                     .flex_1()
-                    .h_32()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
                     .child(
-                        Input::new(self.tab_state.message_input.as_ref().unwrap())
-                            .w_full()
-                            .h_full()
-                            .p_3()
-                            .bg(theme.secondary)
-                            .rounded_md()
-                            .border_1()
-                            .border_color(theme.border),
+                        self.render_input_with_mode(
+                            self.tab_state.message_input.as_ref().unwrap(),
+                            &self.tab_state.message_input_mode,
+                            &theme,
+                            cx,
+                        ),
                     ),
             )
             .child(
@@ -1141,17 +1151,7 @@ impl<'a> ConnectionTab<'a> {
                                                     ),
                                             ),
                                     ),
-                            )
-                            .when(self.tab_state.error_message.is_some(), |this| {
-                                let error_msg = self.tab_state.error_message.as_deref().unwrap_or("");
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .font_medium()
-                                        .text_color(gpui::rgb(0xef4444))
-                                        .child(error_msg.to_string()),
-                                )
-                            }),
+                            ),
                     )
                     .child(
                         div()
@@ -1204,11 +1204,15 @@ impl<'a> ConnectionTab<'a> {
                                                 periodic_send_enabled = tab_state.periodic_send_enabled;
                                                 connection_config = Some(tab_state.connection_config.clone());
 
-                                                // 检查十六进制输入
-                                                if message_input_mode == "hex" && !validate_hex_input(&content) {
-                                                    warn!("[发送按钮] 十六进制输入包含非法字符");
-                                                    tab_state.error_message = Some("十六进制输入包含非法字符".to_string());
-                                                    cx.notify();
+                                                // 在发送前再次验证十六进制输入是否有效
+                                                let is_hex_valid = if message_input_mode == "hex" {
+                                                    let content = message_input.read(cx).text().to_string();
+                                                    crate::utils::hex::validate_hex_input(&content)
+                                                } else {
+                                                    true
+                                                };
+                                                if !is_hex_valid {
+                                                    debug!("[发送按钮] 十六进制输入格式错误，不发送");
                                                     return;
                                                 }
                                             }
