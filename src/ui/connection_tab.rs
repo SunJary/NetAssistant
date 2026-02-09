@@ -1,12 +1,13 @@
 use crate::ui::components::input_with_mode::InputWithMode;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui::{Pixels, ScrollStrategy, Size, px, size};
+use gpui::{ElementId, Pixels, ScrollStrategy, Size, px, size};
 use gpui_component::ActiveTheme as _;
 use gpui_component::PixelsExt;
 use gpui_component::StyledExt;
 use gpui_component::{
     Theme, VirtualListScrollHandle,
+    clipboard::Clipboard,
     input::{Input, InputState},
     scroll::{ScrollableElement, Scrollbar},
     v_virtual_list,
@@ -929,33 +930,59 @@ impl<'a> ConnectionTab<'a> {
                                                     )
                                                     .child(
                                                         div()
-                                                            .max_w_80()
-                                                            .p_3()
-                                                            .rounded_md()
-                                                            .when(is_sent, |div| {
-                                                                div.bg(gpui::rgb(0x3b82f6))
-                                                            })
+                                                            .flex()
+                                                            .items_center()
+                                                            .gap_2()
                                                             .when(!is_sent, |div| {
-                                                                div.bg(gpui::rgb(0xf3f4f6))
+                                                                div.flex_row()
+                                                            })
+                                                            .when(is_sent, |div| {
+                                                                div.flex_row_reverse()
                                                             })
                                                             .child(
                                                                 div()
-                                                                    .text_sm()
+                                                                    .max_w_80()
+                                                                    .p_3()
+                                                                    .rounded_md()
                                                                     .when(is_sent, |div| {
-                                                                        div.text_color(gpui::rgb(
-                                                                            0xffffff,
-                                                                        ))
+                                                                        div.bg(gpui::rgb(0x3b82f6))
                                                                     })
                                                                     .when(!is_sent, |div| {
-                                                                        div.text_color(gpui::rgb(
-                                                                            0x111827,
-                                                                        ))
+                                                                        div.bg(gpui::rgb(0xf3f4f6))
                                                                     })
                                                                     .child(
-                                                                        message
-                                                                            .get_content_by_type(),
+                                                                        div()
+                                                                            .text_sm()
+                                                                            .when(is_sent, |div| {
+                                                                                div.text_color(gpui::rgb(
+                                                                                    0xffffff,
+                                                                                ))
+                                                                            })
+                                                                            .when(!is_sent, |div| {
+                                                                                div.text_color(gpui::rgb(
+                                                                                    0x111827,
+                                                                                ))
+                                                                            })
+                                                                            .child(
+                                                                                message
+                                                                                    .get_content_by_type(),
+                                                                            ),
                                                                     ),
-                                                            ),
+                                                            )
+                                                            .child(
+                                                                div()
+                                                                    .opacity(0.2)
+                                                                    .hover(|div| {
+                                                                        div.opacity(1.0)
+                                                                    })
+                                                                    .child(
+                                                                        Clipboard::new(ElementId::named_usize("copy-message", ix))
+                                                                            .value(message.get_content_by_type())
+                                                                            .on_copied(|value, _, _| {
+                                                                                debug!("Copied message content: {}", value);
+                                                                            })
+                                                                    )
+                                                            )
                                                     )
                                             } else {
                                                 div()
