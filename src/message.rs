@@ -105,6 +105,12 @@ impl MessageListState {
     pub fn total_messages(&self) -> usize {
         self.messages.len()
     }
+
+    pub fn clear_messages(&mut self) {
+        self.messages.clear();
+        self.total_sent = 0;
+        self.total_received = 0;
+    }
 }
 
 #[cfg(test)]
