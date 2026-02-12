@@ -1,11 +1,15 @@
 use gpui::*;
-use gpui_component_assets::Assets;
 use log::info;
 use simple_logger::SimpleLogger;
 
+// 导入自定义资产
+use crate::assets::CustomAssets;
+
 mod app;
+mod assets;
 mod config;
 mod core;
+mod custom_icons;
 mod message;
 mod network;
 mod ui;
@@ -28,7 +32,7 @@ async fn main() {
         .unwrap();
 
     info!("=== 应用程序启动 ===");
-    let app = Application::new().with_assets(Assets);
+    let app = Application::new().with_assets(CustomAssets::new());
     info!("=== Application::new() 创建成功 ===");
 
     app.run(move |cx| {

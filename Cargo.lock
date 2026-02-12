@@ -3480,6 +3480,7 @@ dependencies = [
  "hex",
  "log",
  "objc",
+ "rust-embed",
  "serde",
  "serde_json",
  "simple_logger",

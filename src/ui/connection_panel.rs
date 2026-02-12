@@ -1,8 +1,9 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
-use gpui_component::IconName;
+use gpui_component::{Icon, IconName};
 use gpui_component::ActiveTheme as _;
+use crate::custom_icons::CustomIconName;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::ConnectionConfig;
@@ -98,7 +99,8 @@ impl<'a> ConnectionPanel<'a> {
                     server_info,
                     "server-new-button",
                     false, // is_client
-                ),
+                )
+                .mt_4(), // 添加上边距，增加与客户端连接标题的间距
             )
     }
 
@@ -208,43 +210,43 @@ impl<'a> ConnectionPanel<'a> {
 
         let _app_ptr = self.app as *const NetAssistantApp;
         let is_client_clone = is_client;
-        content_div = content_div.child(
-            div()
-                .id(new_button_id)
-                .px_3()
-                .py_2()
-                .text_sm()
-                .text_color(theme.primary)
-                .font_medium()
-                .cursor_pointer()
-                .bg(theme.background)
-                .rounded_md()
-                .hover(|style| style.bg(theme.border))
-                .child("+ 新建连接")
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(
-                        move |app: &mut NetAssistantApp,
-                              _event: &MouseDownEvent,
-                              window: &mut Window,
-                              cx: &mut Context<NetAssistantApp>| {
-                            app.show_new_connection = true;
-                            app.new_connection_is_client = is_client_clone;
 
-                            let default_host = if is_client_clone {
-                                "127.0.0.1"
-                            } else {
-                                "0.0.0.0"
-                            };
+        // 构建新建连接按钮（仅图标）
+        let new_connection_button = div()
+            .id(new_button_id)
+            .p_1()
+            .mr_2() // 添加右边距，增加两个图标之间的间距
+            .cursor_pointer()
+            .child(
+                Icon::new(CustomIconName::FilePlusCorner)
+                    .text_color(theme.primary) // 设置图标颜色为主题的主色调（蓝色）
+            )
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(
+                    move |app: &mut NetAssistantApp,
+                          _event: &MouseDownEvent,
+                          window: &mut Window,
+                          cx: &mut Context<NetAssistantApp>| {
+                        // 阻止事件传播，防止点击穿透到展开事件
+                        cx.stop_propagation();
+                        
+                        app.show_new_connection = true;
+                        app.new_connection_is_client = is_client_clone;
 
-                            app.host_input.update(cx, |input, cx| {
-                                input.set_value(default_host.to_string(), window, cx);
-                                cx.notify();
-                            });
-                        },
-                    ),
+                        let default_host = if is_client_clone {
+                            "127.0.0.1"
+                        } else {
+                            "0.0.0.0"
+                        };
+
+                        app.host_input.update(cx, |input, cx| {
+                            input.set_value(default_host.to_string(), window, cx);
+                            cx.notify();
+                        });
+                    },
                 ),
-        );
+            );
 
         div()
             .flex()
@@ -266,7 +268,19 @@ impl<'a> ConnectionPanel<'a> {
                     .items_center()
                     .justify_between()
                     .mb_2()
-                    .child(title)
+                    // 将标题和新建连接按钮组合在一起
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .child(title)
+                            .child(
+                                div()
+                                    .w_2() // 使用固定宽度的间隔元素，提供更大的间距
+                            )
+                            .child(new_connection_button)
+                    )
+                    // 展开/折叠按钮放在右侧
                     .child(
                         if is_expanded {
                             IconName::ChevronDown
