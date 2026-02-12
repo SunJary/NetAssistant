@@ -131,7 +131,7 @@ impl<'a> ConnectionPanel<'a> {
                     .px_3()
                     .py_2()
                     .text_sm()
-                    .text_color(theme.muted_foreground)
+                    .text_color(theme.foreground)
                     .cursor_pointer()
                     .bg(theme.secondary)
                     .rounded_md()
@@ -265,6 +265,7 @@ impl<'a> ConnectionPanel<'a> {
                     .flex()
                     .items_center()
                     .justify_between()
+                    .mb_2()
                     .child(title)
                     .child(
                         if is_expanded {

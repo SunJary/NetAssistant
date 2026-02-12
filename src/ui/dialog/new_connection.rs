@@ -32,7 +32,7 @@ impl<'a> NewConnectionDialog<'a> {
             .child(
                 div()
                     .w_96()
-                    .bg(theme.background)
+                    .bg(theme.muted)
                     .rounded_lg()
                     .shadow_2xl()
                     .p_6()

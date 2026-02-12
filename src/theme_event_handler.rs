@@ -118,9 +118,9 @@ impl ThemeEventHandler {
 
 pub fn apply_theme(is_dark_mode: bool, cx: &mut App) {
     let theme_name = if is_dark_mode {
-        SharedString::from("Default Dark")
+        SharedString::from("Custom Dark")
     } else {
-        SharedString::from("Default Light")
+        SharedString::from("Custom Light")
     };
 
     info!("应用主题: {}", theme_name);
@@ -130,5 +130,16 @@ pub fn apply_theme(is_dark_mode: bool, cx: &mut App) {
         info!("主题已应用: {}", theme_name);
     } else {
         info!("主题 {} 未找到", theme_name);
+        // 如果自定义主题未找到，回退到默认主题
+        let fallback_theme_name = if is_dark_mode {
+            SharedString::from("Default Dark")
+        } else {
+            SharedString::from("Default Light")
+        };
+        
+        if let Some(theme) = ThemeRegistry::global(cx).themes().get(&fallback_theme_name).cloned() {
+            Theme::global_mut(cx).apply_config(&theme);
+            info!("回退到默认主题: {}", fallback_theme_name);
+        }
     }
 }

@@ -24,9 +24,9 @@ impl ThemeManager {
 
         // 根据系统主题选择默认主题
         let theme_name = if system_is_dark {
-            SharedString::from("Default Dark")
+            SharedString::from("Custom Dark")
         } else {
-            SharedString::from("Default Light")
+            SharedString::from("Custom Light")
         };
 
         info!("使用主题: {}", theme_name);

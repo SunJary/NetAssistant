@@ -304,18 +304,18 @@ impl<'a> ConnectionTab<'a> {
                             .rounded_md()
                             .cursor_pointer()
                             .when(is_connected, |div| {
-                                div.bg(gpui::rgb(0xef4444))
-                                    .hover(|style| style.bg(gpui::rgb(0xdc2626)))
+                                div.bg(theme.danger)
+                                    .hover(|style| style.bg(theme.danger_hover))
                             })
                             .when(!is_connected, |div| {
-                                div.bg(gpui::rgb(0x22c55e))
-                                    .hover(|style| style.bg(gpui::rgb(0x16a34a)))
+                                div.bg(theme.success)
+                                    .hover(|style| style.bg(theme.success_hover))
                             })
                             .child(
                                 div()
                                     .text_xs()
                                     .font_semibold()
-                                    .text_color(gpui::rgb(0xffffff))
+                                    .text_color(if is_connected { theme.danger_foreground } else { theme.success_foreground })
                                     .child(if is_connected {
                                         if is_client { "断开" } else { "停止" }
                                     } else {
@@ -751,6 +751,7 @@ impl<'a> ConnectionTab<'a> {
 
     /// 渲染报文记录区域（聊天样式）- 使用虚拟列表优化性能
     fn render_message_area(&self, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+        let theme = cx.theme().clone();
         let messages = &self.tab_state.message_list.messages;
         let _tab_id = self.tab_id.clone();
 
@@ -810,17 +811,19 @@ impl<'a> ConnectionTab<'a> {
                     .child(
                         div()
                             .cursor_pointer()
-                            .hover(|div| {
-                                div.text_color(gpui::rgb(0x3b82f6))
-                                    .border_color(gpui::rgb(0x3b82f6))
-                            })
                             .text_xs()
-                            .text_color(gpui::rgb(0x6b7280))
+                            .font_medium()
+                            .text_color(theme.secondary_foreground)
+                            .bg(theme.secondary)
                             .border(px(1.0))
-                            .border_color(gpui::rgb(0xd1d5db))
+                            .border_color(theme.secondary)
                             .rounded(px(2.0))
                             .px(px(10.0))
                             .py(px(4.0))
+                            .hover(|style| {
+                                style.bg(theme.secondary_hover)
+                                    .border_color(theme.secondary_hover)
+                            })
                             .child("清空")
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -1058,11 +1061,11 @@ impl<'a> ConnectionTab<'a> {
                                         div()
                                             .px_3()
                                             .py_1()
-                                            .bg(gpui::rgb(0xf3f4f6))
+                                            .bg(theme.secondary)
                                             .rounded_md()
                                             .cursor_pointer()
                                             .hover(|style| {
-                                                style.bg(gpui::rgb(0xe5e7eb))
+                                                style.bg(theme.secondary_hover)
                                             })
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                             let tab_id = tab_id.clone();
@@ -1081,7 +1084,7 @@ impl<'a> ConnectionTab<'a> {
                                                 div()
                                                     .text_xs()
                                                     .font_medium()
-                                                    .text_color(gpui::rgb(0x6b7280))
+                                                    .text_color(theme.secondary_foreground)
                                                     .child("清空"),
                                             ),
                                     )
@@ -1219,11 +1222,11 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .px_4()
                                     .py_2()
-                                    .bg(gpui::rgb(0x3b82f6))
+                                    .bg(theme.primary)
                                     .rounded_md()
                                     .cursor_pointer()
                                     .hover(|style| {
-                                        style.bg(gpui::rgb(0x2563eb))
+                                        style.bg(theme.primary_hover)
                                     })
                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, window, cx| {
                                         let tab_id_send = tab_id_send.clone();
@@ -1348,7 +1351,7 @@ impl<'a> ConnectionTab<'a> {
                                         div()
                                             .text_sm()
                                             .font_semibold()
-                                            .text_color(gpui::rgb(0xffffff))
+                                            .text_color(theme.primary_foreground)
                                             .child("发送"),
                                     ),
                             ),

@@ -115,10 +115,15 @@ impl<'a> TabContainer<'a> {
                         style.bg(theme.border)
                     })
                     .when(is_active, |div| {
-                        div.bg(theme.background)
+                        div.bg(theme.primary)
+                            .text_color(theme.background)
                             .border_1()
-                            .border_color(theme.border)
+                            .border_color(theme.primary)
                             .border_b_0()
+                    })
+                    .when(!is_active, |div| {
+                        div.bg(theme.secondary)
+                            .text_color(theme.muted_foreground)
                     })
                     .on_mouse_down(MouseButton::Left, {
                         let tab_id_clone = tab_id.clone();
@@ -135,19 +140,18 @@ impl<'a> TabContainer<'a> {
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
-                            .when(is_active, |div| {
-                                div.text_color(theme.primary)
-                            })
-                            .when(!is_active, |div| {
-                                div.text_color(theme.muted_foreground)
-                            })
                             .child(tab_name),
                     )
                     .child(
                         div()
                             .id(("close-tab", index))
                             .text_xs()
-                            .text_color(gpui::rgb(0x9ca3af))
+                            .when(is_active, |div| {
+                                div.text_color(theme.background)
+                            })
+                            .when(!is_active, |div| {
+                                div.text_color(gpui::rgb(0x9ca3af))
+                            })
                             .hover(|style| {
                                 style.text_color(gpui::rgb(0xef4444))
                             })
