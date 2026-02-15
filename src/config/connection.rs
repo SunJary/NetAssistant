@@ -43,6 +43,54 @@ impl fmt::Display for ConnectionStatus {
     }
 }
 
+/// 长度前缀解码器配置
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LengthDelimitedConfig {
+    pub max_frame_length: usize, // 最大帧长度
+    pub length_field_offset: u8, // 长度字段偏移量
+    pub length_field_length: u8, // 长度字段长度
+    pub length_adjustment: i32,  // 长度调整值
+    pub length_field_is_including_length_field: bool, // 长度字段是否包含自身长度
+}
+
+impl Default for LengthDelimitedConfig {
+    fn default() -> Self {
+        Self {
+            max_frame_length: 8192,
+            length_field_offset: 0,
+            length_field_length: 4,
+            length_adjustment: 0,
+            length_field_is_including_length_field: false,
+        }
+    }
+}
+
+/// 解码器配置
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DecoderConfig {
+    Bytes,
+    LineBased,
+    LengthDelimited(LengthDelimitedConfig),
+    Json,
+}
+
+impl Default for DecoderConfig {
+    fn default() -> Self {
+        DecoderConfig::Bytes
+    }
+}
+
+impl fmt::Display for DecoderConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DecoderConfig::Bytes => write!(f, "原始数据"),
+            DecoderConfig::LineBased => write!(f, "换行符"),
+            DecoderConfig::LengthDelimited(_) => write!(f, "长度前缀"),
+            DecoderConfig::Json => write!(f, "JSON"),
+        }
+    }
+}
+
 /// 客户端连接配置
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfig {
@@ -54,6 +102,8 @@ pub struct ClientConfig {
     pub server_port: u16,
     pub timeout: u64,
     pub auto_reconnect: bool,
+    #[serde(default)]
+    pub decoder_config: DecoderConfig,
 }
 
 impl Default for ClientConfig {
@@ -66,6 +116,7 @@ impl Default for ClientConfig {
             server_port: 8080,
             timeout: 30,
             auto_reconnect: false,
+            decoder_config: DecoderConfig::default(),
         }
     }
 }
@@ -81,6 +132,8 @@ pub struct ServerConfig {
     pub listen_port: u16,
     pub max_connections: usize,
     pub timeout: u64,
+    #[serde(default)]
+    pub decoder_config: DecoderConfig,
 }
 
 impl Default for ServerConfig {
@@ -93,6 +146,7 @@ impl Default for ServerConfig {
             listen_port: 8080,
             max_connections: 100,
             timeout: 30,
+            decoder_config: DecoderConfig::default(),
         }
     }
 }
@@ -191,6 +245,7 @@ impl ConnectionConfig {
             server_port,
             timeout: 30,
             auto_reconnect: false,
+            decoder_config: DecoderConfig::default(),
         })
     }
     
@@ -209,9 +264,11 @@ impl ConnectionConfig {
             listen_port,
             max_connections: 100,
             timeout: 30,
+            decoder_config: DecoderConfig::default(),
         })
     }
 }
+
 
 
 

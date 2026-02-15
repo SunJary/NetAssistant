@@ -3472,6 +3472,7 @@ name = "netassistant"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "chrono",
  "cocoa 0.25.0",
  "gpui",
@@ -3487,6 +3488,8 @@ dependencies = [
  "textwrap",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-serde",
+ "tokio-util",
  "uuid",
  "winapi",
  "winres",
@@ -5943,6 +5946,18 @@ checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
  "tokio",
+]
+
+[[package]]
+name = "tokio-serde"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "911a61637386b789af998ee23f50aa30d5fd7edcec8d6d3dedae5e5815205466"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "pin-project",
 ]
 
 [[package]]

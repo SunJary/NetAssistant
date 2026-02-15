@@ -159,6 +159,19 @@ impl ConfigStorage {
     pub fn contains_connection(&self, connection: &ConnectionConfig) -> bool {
         self.config.connections.contains(connection)
     }
+    
+    /// 更新连接配置
+    pub fn update_connection(&mut self, connection: ConnectionConfig) {
+        // 找到并替换现有的连接配置
+        if let Some(index) = self.config.connections
+            .iter()
+            .position(|c| c.id() == connection.id()) {
+            self.config.connections[index] = connection;
+            if self.config.auto_save {
+                let _ = self.save();
+            }
+        }
+    }
 
     /// 保留满足条件的连接
     pub fn retain_connections(&mut self, f: impl FnMut(&ConnectionConfig) -> bool) {

@@ -2,7 +2,7 @@ use crate::ui::components::input_with_mode::InputWithMode;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui::{ElementId, Pixels, ScrollStrategy, Size, px, size};
-use gpui_component::ActiveTheme as _;
+use gpui_component::{ActiveTheme as _};
 use gpui_component::PixelsExt;
 use gpui_component::StyledExt;
 use gpui_component::{
@@ -12,6 +12,7 @@ use gpui_component::{
     scroll::{ScrollableElement, Scrollbar},
     v_virtual_list,
 };
+use crate::ui::dialog::DecoderSelectionDialog;
 use log::{debug, error, info, warn};
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -115,6 +116,17 @@ impl ConnectionTabState {
             }
             ConnectionConfig::Server(config) => {
                 format!("{}:{}", config.listen_address, config.listen_port)
+            }
+        }
+    }
+
+    pub fn decoder(&self) -> String {
+        match &self.connection_config {
+            ConnectionConfig::Client(config) => {
+                format!("{}", config.decoder_config)
+            }
+            ConnectionConfig::Server(config) => {
+                format!("{}", config.decoder_config)
             }
         }
     }
@@ -396,7 +408,60 @@ impl<'a> ConnectionTab<'a> {
                                     })
                                     .child(format!("{}", self.tab_state.connection_status)),
                             ),
-                    ),
+                    )
+                    // 只在TCP协议下显示解码器信息
+                    .when(self.tab_state.connection_config.protocol() == ConnectionType::Tcp, |div_builder| {
+                        div_builder.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(gpui::rgb(0x6b7280))
+                                        .child("解码器:"),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_medium()
+                                        .text_color(gpui::rgb(0x111827))
+                                        .child(self.tab_state.decoder()),
+                                )
+                                // 只在断开连接时显示编辑按钮
+                                .when(!self.tab_state.is_connected, |div_builder| {
+                                    div_builder.child(
+                                        div()
+                                            .text_xs()
+                                            .px_1()
+                                            .py_0()
+                                            .bg(gpui::rgb(0x3b82f6))
+                                            .text_color(gpui::rgb(0xffffff))
+                                            .rounded_md()
+                                            .cursor_pointer()
+                                            .child(div().text_xs().font_medium().child("编辑"))
+                                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                                let tab_id_clone = tab_id.clone();
+                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    // 打开解码器选择对话框
+                                                    debug!("Edit decoder clicked for tab: {}", tab_id_clone);
+                                                    let tab_state = app.connection_tabs.get(&tab_id_clone).unwrap();
+                                                    let current_config = match &tab_state.connection_config {
+                                                        ConnectionConfig::Client(config) => config.decoder_config.clone(),
+                                                        ConnectionConfig::Server(config) => config.decoder_config.clone(),
+                                                    };
+                                                    
+                                                    app.show_decoder_selection = true;
+                                                    app.decoder_selection_tab_id = Some(tab_id_clone.clone());
+                                                    app.decoder_selection_config = Some(current_config);
+                                                    cx.notify();
+                                                }
+                                            }))
+                                    )
+                                }),
+                        )
+                    }),
             )
             .child(
                 div()

@@ -8,7 +8,7 @@ use gpui_component::scroll::ScrollableElement;
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::new_connection::NewConnectionDialog;
+use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog};
 use crate::ui::tab_container::TabContainer;
 
 pub struct MainWindow<'a> {
@@ -107,6 +107,9 @@ impl<'a> MainWindow<'a> {
             )
             .when(self.app.show_new_connection, |this_div| {
                 this_div.child(NewConnectionDialog::new(self.app).render(window, cx))
+            })
+            .when(self.app.show_decoder_selection, |this_div| {
+                this_div.child(DecoderSelectionDialog::new(self.app).render(window, cx))
             })
             .when(self.app.show_context_menu, |this_div| {
                 let menu_x = self.app.context_menu_position.unwrap_or_else(|| px(0.0));

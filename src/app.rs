@@ -1,10 +1,10 @@
 use gpui::*;
 use gpui_component::input::InputState;
 use log::{debug, error, info};
-use crate::network::message::sender::MessageSender;
+
 
 use crate::config;
-use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
+use crate::config::connection::{ConnectionConfig, ConnectionStatus};
 use crate::config::storage::ConfigStorage;
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::ConnectionEvent;
@@ -28,6 +28,11 @@ pub struct NetAssistantApp {
     pub host_input: Entity<InputState>,
     pub port_input: Entity<InputState>,
     pub new_connection_protocol: String,
+
+    // 解码器选择对话框状态
+    pub show_decoder_selection: bool,
+    pub decoder_selection_tab_id: Option<String>,
+    pub decoder_selection_config: Option<crate::config::connection::DecoderConfig>,
 
     // 服务端连接相关状态
     pub server_expanded: bool,
@@ -99,6 +104,10 @@ impl NetAssistantApp {
             host_input,
             port_input,
             new_connection_protocol: String::from("TCP"),
+            // 初始化解码器选择对话框状态
+            show_decoder_selection: false,
+            decoder_selection_tab_id: None,
+            decoder_selection_config: None,
             server_expanded: true,
             active_tab,
             connection_tabs,
@@ -348,7 +357,11 @@ impl NetAssistantApp {
 
     /// 服务端启动
     pub fn start_server(&mut self, tab_id: String) {
-        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            // 立即更新UI状态为正在启动
+            tab_state.is_connected = true;
+            tab_state.connection_status = ConnectionStatus::Connecting;
+            
             if let ConnectionConfig::Server(server_config) = &tab_state.connection_config {
                 let network_manager_arc = self.network_manager.clone();
                 let server_config_clone = server_config.clone();
@@ -728,6 +741,20 @@ impl NetAssistantApp {
                     "无法确定目标客户端".to_string(),
                 ));
             }
+        }
+    }
+
+    pub fn update_tab_decoder_config(&mut self, tab_id: String, new_config: crate::config::connection::DecoderConfig, cx: &mut Context<Self>) {
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            match &mut tab_state.connection_config {
+                ConnectionConfig::Client(config) => {
+                    config.decoder_config = new_config;
+                },
+                ConnectionConfig::Server(config) => {
+                    config.decoder_config = new_config;
+                },
+            }
+            cx.notify();
         }
     }
 

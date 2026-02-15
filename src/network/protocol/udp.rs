@@ -92,7 +92,11 @@ impl NetworkConnection for UdpClient {
             
             // 绑定到本地随机端口
             let socket = UdpSocket::bind("0.0.0.0:0").await?;
-            let local_addr = socket.local_addr().unwrap();
+            let local_addr = socket.local_addr()
+                .map_err(|e| {
+                    error!("获取UDP套接字本地地址失败: {:?}", e);
+                    e
+                })?;
             info!("UDP客户端绑定到本地端口: {:?}", local_addr);
             
             // 尝试发送一个空的测试数据包，检查是否能够到达服务端
@@ -127,7 +131,14 @@ impl NetworkConnection for UdpClient {
                 let mut buffer = [0; 1024];
                 loop {
                     // 检查连接状态
-                    if !*is_connected_flag_read.lock().unwrap() {
+                    let is_connected = match is_connected_flag_read.lock() {
+                        Ok(guard) => *guard,
+                        Err(e) => {
+                            error!("获取UDP连接状态锁失败: {:?}", e);
+                            break;
+                        }
+                    };
+                    if !is_connected {
                         break;
                     }
                     
@@ -163,7 +174,14 @@ impl NetworkConnection for UdpClient {
             tokio::spawn(async move {
                 while let Some(data) = rx.recv().await {
                     // 检查连接状态
-                    if !*is_connected_flag_write.lock().unwrap() {
+                    let is_connected = match is_connected_flag_write.lock() {
+                        Ok(guard) => *guard,
+                        Err(e) => {
+                            error!("获取UDP连接状态锁失败: {:?}", e);
+                            break;
+                        }
+                    };
+                    if !is_connected {
                         break;
                     }
                     
@@ -201,6 +219,9 @@ impl NetworkConnection for UdpClient {
             if let Some(sender) = &event_sender {
                 let _ = sender.send(ConnectionEvent::Disconnected(config.id.clone()));
             }
+            
+            // 注意：UDP套接字会在socket_read/socket_write被drop时自动关闭
+            // 任务会在socket关闭时自动退出循环
             
             Ok(())
         }))
@@ -381,8 +402,37 @@ impl NetworkServer for UdpServer {
     }
     
     fn stop(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
+        let event_sender = self.event_sender.clone();
+        let server_id = self.config.id.clone();
+        let clients = self.clients.clone();
+        
+        // 取消接收任务
+        if let Some(handle) = self.read_handle.take() {
+            handle.abort();
+            debug!("UDP服务器接收任务已取消");
+        }
+        
+        // 取消发送任务
+        if let Some(handle) = self.write_handle.take() {
+            handle.abort();
+            debug!("UDP服务器发送任务已取消");
+        }
+        
+        // 更新状态为停止
+        self.is_running = false;
+        
         Pin::from(Box::new(async move {
-            // 简单返回Ok，因为我们不需要发送停止事件或关闭资源
+            // 清空客户端列表
+            let mut clients_guard = clients.lock().await;
+            clients_guard.clear();
+            drop(clients_guard);
+            
+            // 发送断开连接事件
+            if let Some(sender) = &event_sender {
+                let _ = sender.send(ConnectionEvent::Disconnected(server_id));
+            }
+            
+            info!("UDP服务器已停止");
             Ok(())
         }))
     }
@@ -414,5 +464,14 @@ impl NetworkServer for UdpServer {
     
     fn is_running(&self) -> bool {
         self.is_running
+    }
+    
+    fn get_connected_clients(&self) -> Vec<SocketAddr> {
+        if let Ok(clients_guard) = self.clients.try_lock() {
+            clients_guard.keys().cloned().collect()
+        } else {
+            // 如果获取锁失败，返回空列表
+            Vec::new()
+        }
     }
 }

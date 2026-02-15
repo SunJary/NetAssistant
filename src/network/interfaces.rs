@@ -26,7 +26,7 @@ pub trait NetworkConnection: Send {
 /// 网络服务器接口
 pub trait NetworkServer: Send {
     /// 启动服务器
-    fn start(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>;
+    fn start(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send + '_>>;
     
     /// 停止服务器
     fn stop(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>;
@@ -38,7 +38,10 @@ pub trait NetworkServer: Send {
         data: Vec<u8>
     ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>;
     
-    /// 获取服务器状态
+    /// 获取所有连接的客户端地址
+    fn get_connected_clients(&self) -> Vec<SocketAddr>;
+    
+    /// 检查服务器是否正在运行
     fn is_running(&self) -> bool;
 }
 
