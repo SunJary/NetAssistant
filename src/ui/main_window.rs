@@ -148,7 +148,7 @@ impl<'a> MainWindow<'a> {
                                                 
                                                 // 直接使用连接配置的原始ID作为标签页ID
                                                 let tab_id = connection_name.clone();
-                                                app.close_tab(tab_id);
+                                                app.close_tab(tab_id, cx);
                                                 
                                                 // 然后删除连接配置
                                                 if is_client {

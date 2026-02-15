@@ -160,7 +160,7 @@ impl<'a> TabContainer<'a> {
                             .on_mouse_down(MouseButton::Left, {
                                 let tab_id_clone = tab_id.clone();
                                 cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                    app.close_tab(tab_id_clone.clone());
+                                    app.close_tab(tab_id_clone.clone(), cx);
 
                                     if app.active_tab == tab_id_clone {
                                         if let Some(first_tab_id) = app.connection_tabs.keys().next() {

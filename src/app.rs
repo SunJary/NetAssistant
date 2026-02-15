@@ -96,7 +96,7 @@ impl NetAssistantApp {
             crate::core::message_processor::DefaultMessageProcessor::new()
         );
 
-        Self {
+        let mut app = Self {
             storage,
             client_expanded: true,
             show_new_connection: false,
@@ -124,7 +124,34 @@ impl NetAssistantApp {
             context_menu_is_client: false,
             context_menu_position: None,
             context_menu_position_y: None,
-        }
+        };
+
+        // 创建专门的异步任务来处理连接事件
+        let weak_app = cx.entity().clone().downgrade();
+        let event_receiver = app.connection_event_receiver.take();
+        
+        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+            let mut receiver = if let Some(receiver) = event_receiver {
+                receiver
+            } else {
+                error!("[应用初始化] 无法获取连接事件接收者");
+                return;
+            };
+            
+            // 异步处理连接事件
+            while let Some(event) = receiver.recv().await {
+                // 尝试获取应用实例并更新状态
+                if let Some(app) = weak_app.upgrade() {
+                    let _ = app.update(async_app, |app, cx| {
+                        app.handle_single_connection_event(event, cx);
+                    });
+                }
+            }
+        }).detach();
+
+        // 主题事件处理已由GPUI窗口的observe_window_appearance处理，不再需要定期检查
+
+        app
     }
 
     pub fn toggle_connection(&mut self, tab_id: String, cx: &mut Context<Self>) {
@@ -134,17 +161,18 @@ impl NetAssistantApp {
                 if tab_state.connection_config.is_client() {
                     self.disconnect_client(tab_id, cx);
                 } else {
-                    self.disconnect_server(tab_id);
+                    self.disconnect_server(tab_id, cx);
                 }
             } else {
                     // 建立连接
                     if tab_state.connection_config.is_client() {
                         self.connect_to_server(tab_id);
                     } else {
-                        self.start_server(tab_id);
+                        self.start_server(tab_id, cx);
                     }
                 }
         }
+        cx.notify();
     }
 
     pub fn start_periodic_send(
@@ -257,7 +285,7 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn close_tab(&mut self, tab_id: String) {
+    pub fn close_tab(&mut self, tab_id: String, cx: &mut Context<Self>) {
         info!("[关闭标签页] 开始关闭标签页: {}", tab_id);
 
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -286,7 +314,7 @@ impl NetAssistantApp {
     }
 
 
-    pub fn disconnect_client(&mut self, tab_id: String, _cx: &mut Context<Self>) {
+    pub fn disconnect_client(&mut self, tab_id: String, cx: &mut Context<Self>) {
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
         let network_manager_arc = self.network_manager.clone();
@@ -295,6 +323,7 @@ impl NetAssistantApp {
             tab_state.disconnect();
         }
 
+        cx.notify();
         tokio::spawn(async move {
                             // 断开网络连接
                             let mut network_manager = network_manager_arc.lock().await;
@@ -310,7 +339,7 @@ impl NetAssistantApp {
     }
 
     /// 服务端断开连接
-    pub fn disconnect_server(&mut self, tab_id: String) {
+    pub fn disconnect_server(&mut self, tab_id: String, cx: &mut Context<Self>) {
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
         let network_manager_arc = self.network_manager.clone();
@@ -321,6 +350,7 @@ impl NetAssistantApp {
         
         self.server_clients.remove(&tab_id);
 
+        cx.notify();
         tokio::spawn(async move {
             let mut network_manager = network_manager_arc.lock().await;
             if let Err(e) = network_manager.stop_server(&tab_id_clone).await {
@@ -356,7 +386,7 @@ impl NetAssistantApp {
     }
 
     /// 服务端启动
-    pub fn start_server(&mut self, tab_id: String) {
+    pub fn start_server(&mut self, tab_id: String, cx: &mut Context<Self>) {
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
             // 立即更新UI状态为正在启动
             tab_state.is_connected = true;
@@ -758,162 +788,130 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn handle_connection_events(&mut self, cx: &mut Context<Self>) {
-        let mut auto_reply_events: Vec<(String, String, Option<String>)> = Vec::new();
-        let mut periodic_send_events: Vec<(String, String)> = Vec::new();
-        let mut periodic_send_bytes_events: Vec<(String, Vec<u8>, String)> = Vec::new();
-        let mut need_notify = false;
-
-        if let Some(ref mut receiver) = self.connection_event_receiver {
-            while let Ok(event) = receiver.try_recv() {
-                match event {
-                    ConnectionEvent::Connected(tab_id) => {
-                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            tab_state.is_connected = true;
-                            tab_state.connection_status = ConnectionStatus::Connected;
-                            tab_state.error_message = None;
-                            need_notify = true;
-                        }
-                    }
-                    ConnectionEvent::Disconnected(tab_id) => {
-                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            tab_state.is_connected = false;
-                            tab_state.connection_status = ConnectionStatus::Disconnected;
-                            need_notify = true;
-                        }
-                        self.client_write_senders.remove(&tab_id);
-                        self.server_clients.remove(&tab_id);
-                    }
-                    ConnectionEvent::Listening(tab_id) => {
-                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            tab_state.is_connected = true;
-                            tab_state.connection_status = ConnectionStatus::Listening;
-                            tab_state.error_message = None;
-                            need_notify = true;
-                        }
-                    }
-                    ConnectionEvent::Error(tab_id, error) => {
-                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            tab_state.is_connected = false;
-                            tab_state.connection_status = ConnectionStatus::Error;
-                            tab_state.error_message = Some(error);
-                            need_notify = true;
-                        }
-                        // 清理连接信息，确保下次发送时直接失败
-                        self.client_write_senders.remove(&tab_id);
-                        self.server_clients.remove(&tab_id);
-                    }
-                    ConnectionEvent::ClientWriteSenderReady(tab_id, write_sender) => {
-                        info!(
-                            "[handle_connection_events] 客户端写入发送器就绪: {}",
-                            tab_id
-                        );
-                        self.client_write_senders.insert(tab_id, write_sender);
-                    }
-                    ConnectionEvent::ServerClientConnected(tab_id, addr, write_sender) => {
-                        info!(
-                            "[handle_connection_events] 服务端客户端连接: tab_id={}, addr={}",
-                            tab_id, addr
-                        );
-                        if !self.server_clients.contains_key(&tab_id) {
-                            self.server_clients.insert(tab_id.clone(), HashMap::new());
-                        }
-                        if let Some(clients) = self.server_clients.get_mut(&tab_id) {
-                            clients.insert(addr, write_sender);
-                        }
-                        // 更新 ConnectionTabState 中的客户端连接列表
-                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            if !tab_state.client_connections.contains(&addr) {
-                                tab_state.client_connections.push(addr);
-                                need_notify = true;
-                            }
-                        }
-                    }
-                    ConnectionEvent::ServerClientDisconnected(tab_id, addr) => {
-                        info!(
-                            "[handle_connection_events] 服务端客户端断开: tab_id={}, addr={}",
-                            tab_id, addr
-                        );
-                        if let Some(clients) = self.server_clients.get_mut(&tab_id) {
-                            clients.remove(&addr);
-                        }
-                        // 更新 ConnectionTabState 中的客户端连接列表
-                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            tab_state
-                                .client_connections
-                                .retain(|&client_addr| client_addr != addr);
-                            need_notify = true;
-                        }
-                    }
-                    ConnectionEvent::MessageReceived(tab_id, message) => {
-                        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                            let mut message = message.clone();
-                            let message_for_auto_reply = message.clone();
-                            if message.direction == MessageDirection::Received {
-                                message.message_type = if tab_state.message_input_mode == "text" {
-                                    MessageType::Text
-                                } else {
-                                    MessageType::Hex
-                                };
-                            }
-                            tab_state.add_message(message);
-                            need_notify = true;
-
-                            // 只有当消息方向是 Received 且是真正从网络接收到的消息时才触发自动回复
-                            // 避免自动回复生成的消息又被当作新消息处理
-                            if tab_state.auto_reply_enabled
-                                && message_for_auto_reply.direction == MessageDirection::Received
-                            {
-                                if let Some(auto_reply_input) = self.auto_reply_inputs.get(&tab_id)
-                                {
-                                    let auto_reply_content =
-                                        auto_reply_input.read(cx).text().to_string();
-                                    if !auto_reply_content.trim().is_empty() {
-                                        auto_reply_events.push((
-                                            tab_id,
-                                            auto_reply_content,
-                                            message_for_auto_reply.source.clone(),
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    ConnectionEvent::PeriodicSend(tab_id, content) => {
-                        // 处理周期发送文本消息
-                        periodic_send_events.push((tab_id, content));
-                    }
-                    ConnectionEvent::PeriodicSendBytes(tab_id, bytes, hex_input) => {
-                        // 处理周期发送十六进制消息
-                        periodic_send_bytes_events.push((tab_id, bytes, hex_input));
+    pub fn handle_single_connection_event(&mut self, event: ConnectionEvent, cx: &mut Context<Self>) {
+        match event {
+            ConnectionEvent::Connected(tab_id) => {
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state.is_connected = true;
+                    tab_state.connection_status = ConnectionStatus::Connected;
+                    tab_state.error_message = None;
+                    cx.notify();
+                }
+            }
+            ConnectionEvent::Disconnected(tab_id) => {
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state.is_connected = false;
+                    tab_state.connection_status = ConnectionStatus::Disconnected;
+                    cx.notify();
+                }
+                self.client_write_senders.remove(&tab_id);
+                self.server_clients.remove(&tab_id);
+            }
+            ConnectionEvent::Listening(tab_id) => {
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state.is_connected = true;
+                    tab_state.connection_status = ConnectionStatus::Listening;
+                    tab_state.error_message = None;
+                    cx.notify();
+                }
+            }
+            ConnectionEvent::Error(tab_id, error) => {
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state.is_connected = false;
+                    tab_state.connection_status = ConnectionStatus::Error;
+                    tab_state.error_message = Some(error);
+                    cx.notify();
+                }
+                // 清理连接信息，确保下次发送时直接失败
+                self.client_write_senders.remove(&tab_id);
+                self.server_clients.remove(&tab_id);
+            }
+            ConnectionEvent::ClientWriteSenderReady(tab_id, write_sender) => {
+                info!(
+                    "[handle_connection_events] 客户端写入发送器就绪: {}",
+                    tab_id
+                );
+                self.client_write_senders.insert(tab_id, write_sender);
+            }
+            ConnectionEvent::ServerClientConnected(tab_id, addr, write_sender) => {
+                info!(
+                    "[handle_connection_events] 服务端客户端连接: tab_id={}, addr={}",
+                    tab_id, addr
+                );
+                if !self.server_clients.contains_key(&tab_id) {
+                    self.server_clients.insert(tab_id.clone(), HashMap::new());
+                }
+                if let Some(clients) = self.server_clients.get_mut(&tab_id) {
+                    clients.insert(addr, write_sender);
+                }
+                // 更新 ConnectionTabState 中的客户端连接列表
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    if !tab_state.client_connections.contains(&addr) {
+                        tab_state.client_connections.push(addr);
+                        cx.notify();
                     }
                 }
             }
-        }
-
-        // 处理自动回复事件
-        if !auto_reply_events.is_empty() {
-            for (tab_id, auto_reply_content, source) in auto_reply_events {
-                self.send_message_to_client(tab_id, auto_reply_content, source, cx);
+            ConnectionEvent::ServerClientDisconnected(tab_id, addr) => {
+                info!(
+                    "[handle_connection_events] 服务端客户端断开: tab_id={}, addr={}",
+                    tab_id, addr
+                );
+                if let Some(clients) = self.server_clients.get_mut(&tab_id) {
+                    clients.remove(&addr);
+                }
+                // 更新 ConnectionTabState 中的客户端连接列表
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state
+                        .client_connections
+                        .retain(|&client_addr| client_addr != addr);
+                    cx.notify();
+                }
             }
-        }
+            ConnectionEvent::MessageReceived(tab_id, message) => {
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    let mut message = message.clone();
+                    let message_for_auto_reply = message.clone();
+                    if message.direction == MessageDirection::Received {
+                        message.message_type = if tab_state.message_input_mode == "text" {
+                            MessageType::Text
+                        } else {
+                            MessageType::Hex
+                        };
+                    }
+                    tab_state.add_message(message);
+                    // 消息接收是关键事件，立即触发UI更新
+                    cx.notify();
 
-        // 处理周期发送事件
-        if !periodic_send_events.is_empty() {
-            for (tab_id, content) in periodic_send_events {
+                    // 只有当消息方向是 Received 且是真正从网络接收到的消息时才触发自动回复
+                    // 避免自动回复生成的消息又被当作新消息处理
+                    if tab_state.auto_reply_enabled
+                        && message_for_auto_reply.direction == MessageDirection::Received
+                    {
+                        if let Some(auto_reply_input) = self.auto_reply_inputs.get(&tab_id)
+                        {
+                            let auto_reply_content = auto_reply_input.read(cx).text().to_string();
+                            if !auto_reply_content.trim().is_empty() {
+                                self.send_message_to_client(tab_id, auto_reply_content, message_for_auto_reply.source.clone(), cx);
+                            }
+                        }
+                    }
+                }
+            }
+            ConnectionEvent::PeriodicSend(tab_id, content) => {
+                // 处理周期发送文本消息
                 self.send_message(tab_id, content);
             }
-        }
-
-        if !periodic_send_bytes_events.is_empty() {
-            for (tab_id, bytes, hex_input) in periodic_send_bytes_events {
+            ConnectionEvent::PeriodicSendBytes(tab_id, bytes, hex_input) => {
+                // 处理周期发送十六进制消息
                 self.send_message_bytes(tab_id, bytes, hex_input);
             }
         }
+    }
 
-        if need_notify {
-            cx.notify();
-        }
+    pub fn handle_connection_events(&mut self, _cx: &mut Context<Self>) {
+        // 现在事件由专门的异步任务处理，这个方法不再需要
+        // 保持这个方法是为了向后兼容
     }
 }
 
@@ -923,7 +921,29 @@ impl Drop for NetAssistantApp {
 
         let tab_ids: Vec<String> = self.connection_tabs.keys().cloned().collect();
         for tab_id in tab_ids {
-            self.close_tab(tab_id);
+            // 在drop中无法使用cx.notify()，但close_tab的主要功能是断开连接，即使没有UI更新也没关系
+            // 重新定义一个内部方法来处理关闭连接但不更新UI的逻辑
+            if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                tab_state.disconnect();
+            }
+            
+            if self.connection_tabs.remove(&tab_id).is_some() {
+                info!("[关闭标签页] 移除标签页状态: {}", tab_id);
+            }
+            
+            if self.auto_reply_inputs.remove(&tab_id).is_some() {
+                info!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
+            }
+            
+            // 清理客户端连接发送器
+            if self.client_write_senders.remove(&tab_id).is_some() {
+                info!("[关闭标签页] 移除客户端连接发送器: {}", tab_id);
+            }
+            
+            // 清理服务端客户端连接
+            if self.server_clients.remove(&tab_id).is_some() {
+                info!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);
+            }
         }
 
         info!("[应用关闭] 所有连接已关闭");
@@ -932,16 +952,6 @@ impl Drop for NetAssistantApp {
 
 impl Render for NetAssistantApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.handle_connection_events(cx);
-
-        // 处理主题事件
-        let need_notify = cx.global_mut::<ThemeEventHandler>().handle_events();
-        if need_notify {
-            let is_dark = cx.global::<ThemeEventHandler>().is_dark_mode();
-            apply_theme(is_dark, cx);
-            cx.notify();
-        }
-
         if !self.active_tab.is_empty() {
             if let Some(tab_state) = self.connection_tabs.get(&self.active_tab) {
                 if !tab_state.connection_config.is_client() {

@@ -39,7 +39,7 @@ impl ThemeDetector {
     }
 
     #[cfg(target_os = "macos")]
-    fn detect_system_theme() -> bool {
+    pub fn detect_system_theme() -> bool {
         unsafe {
             let _pool = NSAutoreleasePool::new(nil);
 
@@ -81,7 +81,7 @@ impl ThemeDetector {
     }
 
     #[cfg(target_os = "windows")]
-    fn detect_system_theme() -> bool {
+    pub fn detect_system_theme() -> bool {
         unsafe {
             let mut hkey = std::ptr::null_mut();
             let subkey = to_wide_str("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
@@ -121,12 +121,13 @@ impl ThemeDetector {
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    fn detect_system_theme() -> bool {
+    pub fn detect_system_theme() -> bool {
         false
     }
 
     pub fn is_dark_mode(&self) -> bool {
-        self.is_dark.load(Ordering::Relaxed)
+        // 每次调用都重新检测主题
+        Self::detect_system_theme()
     }
 }
 

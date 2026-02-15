@@ -14,7 +14,6 @@ mod message;
 mod network;
 mod ui;
 mod utils;
-mod theme_detector;
 mod theme_manager;
 mod theme_event_handler;
 
@@ -46,52 +45,59 @@ async fn main() {
         theme_manager.init(cx);
         info!("=== 主题管理器初始化完成 ===");
 
-        cx.spawn(async move |cx| {
-            info!("=== 进入 spawn 异步任务 ===");
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds {
-                        origin: Point {
-                            x: px(100.0),
-                            y: px(100.0),
-                        },
-                        size: gpui::Size {
-                            width: px(1200.0),
-                            height: px(800.0),
-                        },
-                    })),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("NetAssistant - 多协议网络调试工具".into()),
-                        appears_transparent: false,
-                        traffic_light_position: None,
-                    }),
-                    ..Default::default()
-                },
-                |window, cx| {
-                    info!("=== 进入 open_window 回调 ===");
-                    // 创建应用实例
-                    let app = cx.new(|cx| NetAssistantApp::new(window, cx));
-                    
-                    // 初始化主题处理器
-                    let theme_handler = ThemeEventHandler::new();
-                    cx.set_global(theme_handler);
-                    
-                    // 初始化主题状态（根据系统主题）
-                    cx.global_mut::<ThemeEventHandler>().update_from_system_theme();
-                    let is_dark = cx.global::<ThemeEventHandler>().is_dark_mode();
+        let bounds = Bounds {
+            origin: Point {
+                x: px(100.0),
+                y: px(100.0),
+            },
+            size: gpui::Size {
+                width: px(1200.0),
+                height: px(800.0),
+            },
+        };
+        
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("NetAssistant - 多协议网络调试工具".into()),
+                    appears_transparent: false,
+                    traffic_light_position: None,
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                info!("=== 进入 open_window 回调 ===");
+                // 创建应用实例
+                let app = cx.new(|cx| NetAssistantApp::new(window, cx));
+                
+                // 初始化主题处理器
+                let theme_handler = ThemeEventHandler::new();
+                cx.set_global(theme_handler);
+                
+                // 注册GPUI窗口主题变化监听
+                window.observe_window_appearance(move |window, cx| {
+                    info!("=== 应用级别主题变化回调被调用 ===");
+                    let is_dark = window.appearance() == gpui::WindowAppearance::Dark;
+                    info!("检测到主题变化: is_dark = {}", is_dark);
                     apply_theme(is_dark, cx);
-                    cx.global_mut::<ThemeEventHandler>().start_listener();
-                    
-                    // 使用 gpui_component::Root 包装应用
-                    cx.new(|cx| gpui_component::Root::new(app, window, cx))
-                },
-            )?;
-            info!("=== open_window 调用完成 ===");
-
-            Ok::<_, anyhow::Error>(())
-        })
-        .detach();
-        info!("=== spawn 任务已 detach ===");
+                    cx.global_mut::<ThemeEventHandler>().set_is_dark_mode(is_dark);
+                    info!("=== 应用级别主题变化回调处理完成 ===");
+                })
+                .detach();
+                
+                // 初始化主题状态（根据当前窗口主题）
+                let is_dark = window.appearance() == gpui::WindowAppearance::Dark;
+                cx.global_mut::<ThemeEventHandler>().set_is_dark_mode(is_dark);
+                apply_theme(is_dark, cx);
+                
+                // 使用 gpui_component::Root 包装应用
+                cx.new(|cx| gpui_component::Root::new(app, window, cx))
+            },
+        )
+        .unwrap();
+        
+        info!("=== open_window 调用完成 ===");
     });
     info!("=== app.run 调用完成 ===");
 }

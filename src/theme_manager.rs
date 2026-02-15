@@ -3,31 +3,22 @@ use gpui_component::{Theme, ThemeRegistry};
 use std::path::PathBuf;
 use log::info;
 
-use crate::theme_detector::ThemeDetector;
-
 pub struct ThemeManager {
-    detector: ThemeDetector,
 }
 
 impl ThemeManager {
     pub fn new() -> Self {
-        let detector = ThemeDetector::new();
-        Self { detector }
+        Self {}
     }
 
     pub fn init(&mut self, cx: &mut App) {
         info!("初始化主题系统...");
         
-        // 检测系统主题
-        let system_is_dark = self.detector.is_dark_mode();
-        info!("系统主题检测: {}", if system_is_dark { "Dark" } else { "Light" });
-
-        // 根据系统主题选择默认主题
-        let theme_name = if system_is_dark {
-            SharedString::from("Custom Dark")
-        } else {
-            SharedString::from("Custom Light")
-        };
+        // 初始化主题系统时不自动检测系统主题，
+        // 由main.rs中窗口创建时通过GPUI API获取
+        
+        // 默认使用浅色主题作为后备
+        let theme_name = SharedString::from("Custom Light");
 
         info!("使用主题: {}", theme_name);
 
