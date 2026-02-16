@@ -9,7 +9,7 @@ use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use crate::config::connection::{ClientConfig, ServerConfig};
-use crate::message::{Message, MessageDirection, MessageType};
+use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::core::message_processor::{MessageProcessor, DefaultMessageProcessor};
@@ -17,7 +17,6 @@ use crate::core::message_processor::{MessageProcessor, DefaultMessageProcessor};
 /// UDP客户端实现
 pub struct UdpClient {
     config: ClientConfig,
-    socket: Option<UdpSocket>,
     server_addr: SocketAddr,
     event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
@@ -35,35 +34,11 @@ impl UdpClient {
             
         UdpClient {
             config,
-            socket: None,
             server_addr,
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
             is_connected: false,
         }
-    }
-    
-    // 内部辅助方法：读取消息
-    async fn read_message(&mut self) -> Result<Message, Box<dyn std::error::Error>> {
-        let socket = self.socket.as_mut().ok_or("客户端未连接")?;
-        let mut buffer = [0; 1024];
-        
-        let (n, addr) = socket.recv_from(&mut buffer).await?;
-        if addr != self.server_addr {
-            return Err("收到来自未知地址的消息".into());
-        }
-        
-        let raw_data = buffer[..n].to_vec();
-        let message = self.message_processor.process_received_message(raw_data, MessageType::Text);
-        
-        Ok(message)
-    }
-    
-    // 内部辅助方法：发送消息
-    async fn write_message(&mut self, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-        let socket = self.socket.as_mut().ok_or("客户端未连接")?;
-        socket.send_to(data, &self.server_addr).await?;
-        Ok(())
     }
 }
 
@@ -227,30 +202,12 @@ impl NetworkConnection for UdpClient {
         }))
     }
     
-    fn send_message(&mut self, data: Vec<u8>) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
-        let data_clone = data;
-        Pin::from(Box::new(async move {
-            // 注意：我们不再需要write_message方法，因为消息应该通过ClientWriteSenderReady事件提供的sender发送
-            Ok(())
-        }))
-    }
-    
-    fn receive_message(&mut self) -> Pin<Box<dyn Future<Output = Result<Message, Box<dyn std::error::Error>>> + Send>> {
-        Pin::from(Box::new(async move {
-            // 注意：我们不再需要read_message方法，因为接收任务已经在connect方法中启动
-            Err("Receive message is handled by event loop".into())
-        }))
-    }
-    
-    fn is_connected(&self) -> bool {
-        self.is_connected
-    }
+
 }
 
 /// UDP服务器实现
 pub struct UdpServer {
     config: ServerConfig,
-    socket: Option<Arc<UdpSocket>>,
     event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
     clients: Arc<Mutex<HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>>>,
     message_processor: Arc<dyn MessageProcessor>,
@@ -266,7 +223,6 @@ impl UdpServer {
     ) -> Self {
         UdpServer {
             config,
-            socket: None,
             event_sender,
             clients: Arc::new(Mutex::new(HashMap::new())),
             message_processor: Arc::new(DefaultMessageProcessor),
@@ -437,41 +393,5 @@ impl NetworkServer for UdpServer {
         }))
     }
     
-    fn send_to_client(
-        &mut self, 
-        client_addr: SocketAddr, 
-        data: Vec<u8>
-    ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
-        let data_clone = data;
-        let client_addr_clone = client_addr;
-        
-        // 使用现有的clients字段
-        let clients_clone = self.clients.clone();
-        
-        Pin::from(Box::new(async move {
-            // 尝试从客户端映射中获取发送通道
-            let clients_guard = clients_clone.lock().await;
-            if let Some(sender) = clients_guard.get(&client_addr_clone) {
-                // 如果找到了客户端，使用其发送通道发送消息
-                sender.send(data_clone)?;
-                Ok(())
-            } else {
-                // 如果没有找到客户端，返回错误
-                Err("客户端不存在".into())
-            }
-        }))
-    }
-    
-    fn is_running(&self) -> bool {
-        self.is_running
-    }
-    
-    fn get_connected_clients(&self) -> Vec<SocketAddr> {
-        if let Ok(clients_guard) = self.clients.try_lock() {
-            clients_guard.keys().cloned().collect()
-        } else {
-            // 如果获取锁失败，返回空列表
-            Vec::new()
-        }
-    }
+
 }

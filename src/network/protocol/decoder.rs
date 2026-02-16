@@ -1,12 +1,7 @@
 use tokio_util::codec::{BytesCodec, LengthDelimitedCodec, Decoder, Encoder};
-use bytes::{Bytes, BytesMut};
+use bytes::{BytesMut};
 use crate::config::connection::{DecoderConfig};
-use log::{debug, error};
-use std::time::Duration;
-use tokio::time::Instant;
-
-/// 解码器结果类型别名
-pub type DecoderResult = Result<Option<BytesMut>, std::io::Error>;
+use log::{debug};
 
 /// 扩展的解码器trait，支持强制刷新缓冲区
 pub trait ExtendedDecoder: Decoder<Item = BytesMut, Error = std::io::Error> + Send + Sync {
@@ -115,7 +110,7 @@ impl Decoder for LineToBytesMutDecoder {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         // 查找完整的行
-        let mut search_start = 0;
+        let search_start = 0;
         while let Some(newline_pos) = src[search_start..].iter().position(|&b| b == b'\n') {
             // 计算换行符在整个src中的位置
             let absolute_pos = search_start + newline_pos;

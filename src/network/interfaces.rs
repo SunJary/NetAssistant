@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::net::SocketAddr;
 use tokio::sync::mpsc;
-use crate::message::Message;
 use crate::network::events::ConnectionEvent;
 
 /// 网络连接接口
@@ -12,15 +10,6 @@ pub trait NetworkConnection: Send {
     
     /// 断开连接
     fn disconnect(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>;
-    
-    /// 发送消息
-    fn send_message(&mut self, data: Vec<u8>) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>;
-    
-    /// 接收消息
-    fn receive_message(&mut self) -> Pin<Box<dyn Future<Output = Result<Message, Box<dyn std::error::Error>>> + Send>>;
-    
-    /// 获取连接状态
-    fn is_connected(&self) -> bool;
 }
 
 /// 网络服务器接口
@@ -30,19 +19,6 @@ pub trait NetworkServer: Send {
     
     /// 停止服务器
     fn stop(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>;
-    
-    /// 发送消息给指定客户端
-    fn send_to_client(
-        &mut self, 
-        client_addr: SocketAddr, 
-        data: Vec<u8>
-    ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>;
-    
-    /// 获取所有连接的客户端地址
-    fn get_connected_clients(&self) -> Vec<SocketAddr>;
-    
-    /// 检查服务器是否正在运行
-    fn is_running(&self) -> bool;
 }
 
 /// 网络工厂接口

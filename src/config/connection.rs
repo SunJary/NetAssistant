@@ -203,32 +203,6 @@ impl ConnectionConfig {
     //     }
     // }
     
-    /// 验证配置是否有效
-    pub fn validate(&self) -> Result<(), String> {
-        match self {
-            ConnectionConfig::Client(config) => {
-                if config.server_address.is_empty() {
-                    return Err("服务器地址不能为空".to_string());
-                }
-                if config.server_port == 0 {
-                    return Err("服务器端口无效".to_string());
-                }
-                Ok(())
-            },
-            ConnectionConfig::Server(config) => {
-                if config.listen_address.is_empty() {
-                    return Err("监听地址不能为空".to_string());
-                }
-                if config.listen_port == 0 {
-                    return Err("监听端口无效".to_string());
-                }
-                if config.max_connections == 0 {
-                    return Err("最大连接数不能为0".to_string());
-                }
-                Ok(())
-            },
-        }
-    }
     
     /// 创建新的客户端连接配置（自动生成ID）
     pub fn new_client(

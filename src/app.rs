@@ -8,7 +8,7 @@ use crate::config::connection::{ConnectionConfig, ConnectionStatus};
 use crate::config::storage::ConfigStorage;
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::ConnectionEvent;
-use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
+
 use crate::ui::connection_tab::ConnectionTabState;
 use crate::ui::main_window::MainWindow;
 
@@ -52,8 +52,6 @@ pub struct NetAssistantApp {
     // 网络连接管理器
     pub network_manager: std::sync::Arc<tokio::sync::Mutex<crate::network::connection::manager::NetworkConnectionManager>>,
     
-    // 消息处理器
-    pub message_processor: std::sync::Arc<crate::core::message_processor::DefaultMessageProcessor>,
 
     // 写入发送器映射（无锁设计，每个标签页独立管理）
     pub client_write_senders: HashMap<String, mpsc::UnboundedSender<Vec<u8>>>,
@@ -90,11 +88,6 @@ impl NetAssistantApp {
         // 初始化写入发送器映射
         let client_write_senders = HashMap::new();
         let server_clients = HashMap::new();
-        
-        // 初始化消息处理器
-        let message_processor = std::sync::Arc::new(
-            crate::core::message_processor::DefaultMessageProcessor::new()
-        );
 
         let mut app = Self {
             storage,
@@ -116,7 +109,6 @@ impl NetAssistantApp {
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
             network_manager,
-            message_processor,
             client_write_senders,
             server_clients,
             show_context_menu: false,
@@ -285,7 +277,7 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn close_tab(&mut self, tab_id: String, cx: &mut Context<Self>) {
+    pub fn close_tab(&mut self, tab_id: String, _cx: &mut Context<Self>) {
         info!("[关闭标签页] 开始关闭标签页: {}", tab_id);
 
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -386,7 +378,7 @@ impl NetAssistantApp {
     }
 
     /// 服务端启动
-    pub fn start_server(&mut self, tab_id: String, cx: &mut Context<Self>) {
+    pub fn start_server(&mut self, tab_id: String, _cx: &mut Context<Self>) {
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
             // 立即更新UI状态为正在启动
             tab_state.is_connected = true;
@@ -774,19 +766,6 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn update_tab_decoder_config(&mut self, tab_id: String, new_config: crate::config::connection::DecoderConfig, cx: &mut Context<Self>) {
-        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-            match &mut tab_state.connection_config {
-                ConnectionConfig::Client(config) => {
-                    config.decoder_config = new_config;
-                },
-                ConnectionConfig::Server(config) => {
-                    config.decoder_config = new_config;
-                },
-            }
-            cx.notify();
-        }
-    }
 
     pub fn handle_single_connection_event(&mut self, event: ConnectionEvent, cx: &mut Context<Self>) {
         match event {
@@ -909,10 +888,6 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn handle_connection_events(&mut self, _cx: &mut Context<Self>) {
-        // 现在事件由专门的异步任务处理，这个方法不再需要
-        // 保持这个方法是为了向后兼容
-    }
 }
 
 impl Drop for NetAssistantApp {

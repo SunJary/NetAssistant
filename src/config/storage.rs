@@ -150,16 +150,6 @@ impl ConfigStorage {
         }
     }
     
-    /// 获取所有连接配置
-    pub fn connections(&self) -> Vec<&ConnectionConfig> {
-        self.config.connections.iter().collect()
-    }
-
-    /// 检查连接是否存在
-    pub fn contains_connection(&self, connection: &ConnectionConfig) -> bool {
-        self.config.connections.contains(connection)
-    }
-    
     /// 更新连接配置
     pub fn update_connection(&mut self, connection: ConnectionConfig) {
         // 找到并替换现有的连接配置
@@ -170,14 +160,6 @@ impl ConfigStorage {
             if self.config.auto_save {
                 let _ = self.save();
             }
-        }
-    }
-
-    /// 保留满足条件的连接
-    pub fn retain_connections(&mut self, f: impl FnMut(&ConnectionConfig) -> bool) {
-        self.config.connections.retain(f);
-        if self.config.auto_save {
-            let _ = self.save();
         }
     }
 }

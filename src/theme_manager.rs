@@ -14,9 +14,6 @@ impl ThemeManager {
     pub fn init(&mut self, cx: &mut App) {
         info!("初始化主题系统...");
         
-        // 初始化主题系统时不自动检测系统主题，
-        // 由main.rs中窗口创建时通过GPUI API获取
-        
         // 默认使用浅色主题作为后备
         let theme_name = SharedString::from("Custom Light");
 

@@ -12,7 +12,7 @@ use gpui_component::{
     scroll::{ScrollableElement, Scrollbar},
     v_virtual_list,
 };
-use crate::ui::dialog::DecoderSelectionDialog;
+
 use log::{debug, error, info, warn};
 use std::net::SocketAddr;
 use std::rc::Rc;

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use crate::config::connection::{ClientConfig, ServerConfig, ConnectionType};
 use crate::network::events::ConnectionEvent;
@@ -35,7 +34,6 @@ impl NetworkFactory for DefaultNetworkFactory {
 pub struct NetworkConnectionManager {
     clients: HashMap<String, Box<dyn NetworkConnection>>,
     servers: HashMap<String, Box<dyn NetworkServer>>,
-    network_factory: DefaultNetworkFactory,
 }
 
 impl NetworkConnectionManager {
@@ -43,7 +41,6 @@ impl NetworkConnectionManager {
         Self {
             clients: HashMap::new(),
             servers: HashMap::new(),
-            network_factory: DefaultNetworkFactory,
         }
     }
     
@@ -82,7 +79,7 @@ impl NetworkConnectionManager {
         }
         
         // 创建服务器
-        let mut server = DefaultNetworkFactory::create_server(config, event_sender);
+        let server = DefaultNetworkFactory::create_server(config, event_sender);
         
         // 保存服务器到映射中
         self.servers.insert(config.id.clone(), server);
@@ -119,92 +116,5 @@ impl NetworkConnectionManager {
         Ok(())
     }
     
-    /// 向客户端发送消息
-    pub async fn send_message_to_client(
-        &mut self,
-        client_id: &str,
-        data: Vec<u8>
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(client) = self.clients.get_mut(client_id) {
-            client.send_message(data).await?;
-        } else {
-            return Err(format!("客户端不存在: {}", client_id).into());
-        }
-        
-        Ok(())
-    }
-    
-    /// 向服务器客户端发送消息
-    pub async fn send_message_to_server_client(
-        &mut self,
-        server_id: &str,
-        client_addr: SocketAddr,
-        data: Vec<u8>
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(server) = self.servers.get_mut(server_id) {
-            server.send_to_client(client_addr, data).await?;
-        } else {
-            return Err(format!("服务器不存在: {}", server_id).into());
-        }
-        
-        Ok(())
-    }
-    
-    /// 检查客户端是否已连接
-    pub fn is_client_connected(&self, client_id: &str) -> bool {
-        if let Some(client) = self.clients.get(client_id) {
-            client.is_connected()
-        } else {
-            false
-        }
-    }
-    
-    /// 检查服务器是否正在运行
-    pub fn is_server_running(&self, server_id: &str) -> bool {
-        if let Some(server) = self.servers.get(server_id) {
-            server.is_running()
-        } else {
-            false
-        }
-    }
-    
-    /// 获取所有客户端连接的ID
-    pub fn get_all_client_ids(&self) -> Vec<String> {
-        self.clients.keys().cloned().collect()
-    }
-    
-    /// 获取所有服务器的ID
-    pub fn get_all_server_ids(&self) -> Vec<String> {
-        self.servers.keys().cloned().collect()
-    }
-    
-    /// 获取服务端所有连接的客户端地址
-    pub fn get_server_client_addresses(&self, server_id: &str) -> Vec<SocketAddr> {
-        // 注意：这个方法需要NetworkServer trait提供获取客户端地址的方法
-        // 目前NetworkServer trait没有这个方法，所以返回空列表
-        // 后续需要扩展NetworkServer trait来支持这个功能
-        Vec::new()
-    }
-    
-    /// 断开所有客户端连接
-    pub async fn disconnect_all_clients(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let client_ids: Vec<String> = self.clients.keys().cloned().collect();
-        
-        for client_id in client_ids {
-            self.disconnect_client(&client_id).await?;
-        }
-        
-        Ok(())
-    }
-    
-    /// 停止所有服务器
-    pub async fn stop_all_servers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let server_ids: Vec<String> = self.servers.keys().cloned().collect();
-        
-        for server_id in server_ids {
-            self.stop_server(&server_id).await?;
-        }
-        
-        Ok(())
-    }
+
 }

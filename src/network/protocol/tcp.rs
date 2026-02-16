@@ -11,7 +11,7 @@ use tokio::task::JoinHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use bytes::{BytesMut};
 use crate::config::connection::{ClientConfig, ServerConfig};
-use crate::message::{Message, MessageType};
+use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::core::message_processor::{MessageProcessor, DefaultMessageProcessor};
@@ -65,7 +65,6 @@ fn process_decoded_data_with_addr(
 /// TCP客户端实现
 pub struct TcpClient {
     config: ClientConfig,
-    socket: Option<TcpStream>,
     event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
     is_connected: bool,
@@ -78,7 +77,6 @@ impl TcpClient {
     ) -> Self {
         TcpClient {
             config,
-            socket: None,
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
             is_connected: false,
@@ -242,26 +240,7 @@ impl NetworkConnection for TcpClient {
         }))
     }
     
-    fn send_message(&mut self, data: Vec<u8>) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
-        let _data_clone = data;
-        Pin::from(Box::new(async move {
-            // 注意：我们不再需要write_message方法，因为socket已经被移动到其他任务中
-            // 消息应该通过ClientWriteSenderReady事件提供的sender发送
-            Ok(())
-        }))
-    }
-    
-    fn receive_message(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<Message, Box<dyn std::error::Error>>> + Send>> {
-        Pin::from(Box::new(async move {
-            // 注意：我们不再需要read_message方法，因为接收任务已经在connect方法中启动
-            // 消息应该通过ConnectionEvent::MessageReceived事件接收
-            Err("Receive message is handled by event loop".into())
-        }))
-    }
-    
-    fn is_connected(&self) -> bool {
-        self.is_connected
-    }
+
 }
 
 /// TCP服务器实现
@@ -612,7 +591,7 @@ impl NetworkServer for TcpServer {
         }
         
         // 关闭监听套接字
-        if let Some(listener) = self.listener.take() {
+        if let Some(_listener) = self.listener.take() {
             // 当我们从self.listener中取出listener并drop它时，会自动关闭监听套接字
             // 这将导致所有正在进行的accept()调用返回错误，从而停止接收新连接
             info!("TCP服务器监听套接字已关闭");
@@ -654,37 +633,5 @@ impl NetworkServer for TcpServer {
         }))
     }
     
-    fn send_to_client(
-        &mut self, 
-        client_addr: SocketAddr, 
-        data: Vec<u8>
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
-        let data_clone = data;
-        let clients = self.clients.clone();
-        
-        Pin::from(Box::new(async move {
-            let clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>> = clients.lock().await;
-            if let Some(sender) = clients_guard.get(&client_addr) {
-                sender.send(data_clone)?;
-            } else {
-                return Err(String::from("客户端不存在").into());
-            }
-            
-            Ok(())
-        }))
-    }
-    
-    fn is_running(&self) -> bool {
-        self.is_running
-    }
-    
-    /// 获取所有连接的客户端地址
-    fn get_connected_clients(&self) -> Vec<SocketAddr> {
-        if let Ok(clients_guard) = self.clients.try_lock() {
-            clients_guard.keys().cloned().collect::<Vec<SocketAddr>>()
-        } else {
-            // 如果获取锁失败，返回空列表
-            Vec::new()
-        }
-    }
+
 }

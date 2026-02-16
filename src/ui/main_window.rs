@@ -68,7 +68,7 @@ impl<'a> MainWindow<'a> {
                                     .child(IconName::GitHub)
                                     .on_mouse_down(
                                         MouseButton::Left,
-                                        cx.listener(move |_app, _event, window, cx| {
+                                        cx.listener(move |_app, _event, _window, cx| {
                                             cx.open_url("https://github.com/SunJary/NetAssistant/");
                                         }),
                                     )

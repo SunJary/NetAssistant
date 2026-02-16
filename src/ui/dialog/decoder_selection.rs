@@ -15,7 +15,7 @@ impl<'a> DecoderSelectionDialog<'a> {
 
     pub fn render(
         self,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
