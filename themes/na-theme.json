@@ -1,11 +1,11 @@
 {
   "$schema": "https://github.com/longbridge/gpui-component/raw/refs/heads/main/.theme-schema.json",
-  "name": "Custom Theme",
+  "name": "NetAssistant Theme",
   "author": "NetAssistant",
   "url": "https://example.com",
   "themes": [
     {
-      "name": "Custom Light",
+      "name": "NetAssistant Light",
       "mode": "light",
       "colors": {
         "accent.background": "#E3F2FD",
@@ -38,7 +38,7 @@
       }
     },
     {
-      "name": "Custom Dark",
+      "name": "NetAssistant Dark",
       "mode": "dark",
       "colors": {
         "accent.background": "#1A237E",
