@@ -4,7 +4,7 @@ use gpui_component::StyledExt;
 use gpui_component::IconName;
 use gpui_component::ActiveTheme;
 use gpui_component::scroll::ScrollableElement;
-
+use gpui_component::tooltip::Tooltip;
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
@@ -55,6 +55,28 @@ impl<'a> MainWindow<'a> {
                             .flex()
                             .items_center()
                             .gap_2()
+                            .child(
+                                div()
+                                    .w_8()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .rounded_md()
+                                    .hover(|style| style.bg(theme.border))
+                                    .child(IconName::GitHub)
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |_app, _event, window, cx| {
+                                            cx.open_url("https://github.com/SunJary/NetAssistant/");
+                                        }),
+                                    )
+                                    .id("github-link")
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new("来 GitHub 看看我们的项目吧").build(window, cx)
+                                    })
+                            )
                             .child(
                                 div()
                                     .w_8()
