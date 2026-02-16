@@ -17,8 +17,10 @@ fn main() {
         res.set_version_info(winres::VersionInfo::FILEVERSION, 0x0001000000000000);
         res.set("ProductName", "NetAssistant");
         res.set("CompanyName", "sunjary");
-        res.set("FileDescription", "多协议网络调试工具");
+        res.set("FileDescription", "NetAssistant 网络调试工具");
         res.set("LegalCopyright", "Copyright (c) 2024 sunjary");
+        res.set("InternalName", "NetAssistant");
+        res.set("OriginalFilename", "NetAssistant.exe");
 
         if let Err(e) = res.compile() {
             eprintln!("Failed to compile Windows resources: {}", e);

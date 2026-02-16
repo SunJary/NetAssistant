@@ -60,7 +60,7 @@ async fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("NetAssistant - 多协议网络调试工具".into()),
+                    title: Some("NetAssistant".into()),
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),
