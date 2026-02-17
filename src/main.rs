@@ -1,6 +1,9 @@
 use gpui::*;
-use log::info;
+use log::{error, info};
 use simple_logger::SimpleLogger;
+
+// 导入配置存储
+use crate::config::storage::ConfigStorage;
 
 // 导入自定义资产
 use crate::assets::CustomAssets;
@@ -45,20 +48,64 @@ async fn main() {
         theme_manager.init(cx);
         info!("=== 主题管理器初始化完成 ===");
 
-        let bounds = Bounds {
-            origin: Point {
-                x: px(100.0),
-                y: px(100.0),
+        // 加载窗口配置
+        let window_bounds = match ConfigStorage::new() {
+            Ok(storage) => {
+                if let Some((x, y, width, height)) = storage.load_window_bounds() {
+                    info!("=== 从配置加载窗口尺寸: {}x{} @ ({}, {}) ===", width, height, x, y);
+                    // 确保窗口在可见区域内，至少x和y坐标为0
+                    let visible_x = x.max(0.0);
+                    let visible_y = y.max(0.0);
+                    
+                    if visible_x != x || visible_y != y {
+                        info!("=== 调整窗口位置到可见区域: {}x{} @ ({}, {}) ===", width, height, visible_x, visible_y);
+                    }
+                    
+                    Bounds {
+                        origin: Point {
+                            x: px(visible_x as f32),
+                            y: px(visible_y as f32),
+                        },
+                        size: gpui::Size {
+                            width: px(width as f32),
+                            height: px(height as f32),
+                        },
+                    }
+                } else {
+                    info!("=== 使用默认窗口尺寸 ===");
+                    // 使用默认窗口尺寸
+                    Bounds {
+                        origin: Point {
+                            x: px(100.0),
+                            y: px(100.0),
+                        },
+                        size: gpui::Size {
+                            width: px(900.0),
+                            height: px(600.0),
+                        },
+                    }
+                }
             },
-            size: gpui::Size {
-                width: px(1200.0),
-                height: px(800.0),
+            Err(e) => {
+                error!("=== 加载配置失败，使用默认窗口尺寸: {:?} ===", e);
+                // 使用默认窗口尺寸
+                Bounds {
+                    origin: Point {
+                        x: px(100.0),
+                        y: px(100.0),
+                    },
+                    size: gpui::Size {
+                        width: px(900.0),
+                        height: px(600.0),
+                    },
+                }
             },
         };
         
         cx.open_window(
             WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+                window_min_size: Some(gpui::Size { width: px(400.0), height: px(300.0) }),
                 titlebar: Some(TitlebarOptions {
                     title: Some("NetAssistant".into()),
                     appears_transparent: false,
@@ -92,7 +139,52 @@ async fn main() {
                 apply_theme(is_dark, cx);
                 
                 // 使用 gpui_component::Root 包装应用
-                cx.new(|cx| gpui_component::Root::new(app, window, cx))
+                cx.new(|cx| {
+                    // 监听窗口大小变化，实现响应式布局和窗口配置保存
+                    let app_clone = app.clone();
+                    
+                    cx.observe_window_bounds(window, move |_, window, cx| {
+                        // 获取窗口内容大小和位置
+                        let window_bounds = window.bounds();
+                        let content_size = window_bounds.size;
+                        let origin = window_bounds.origin;
+                        
+                        // 设置响应式断点（800px）
+                        let threshold = px(800.0);
+                        
+                        // 根据窗口宽度自动隐藏/显示侧边栏
+                        app_clone.update(cx, |app, cx| {
+                            if content_size.width < threshold && !app.sidebar_collapsed {
+                                app.sidebar_collapsed = true;
+                                cx.notify();
+                            } else if content_size.width >= threshold && app.sidebar_collapsed {
+                                app.sidebar_collapsed = false;
+                                cx.notify();
+                            }
+                        });
+                        
+                        // 保存窗口配置
+                        if let Ok(mut storage) = ConfigStorage::new() {
+                            let x = (origin.x / gpui::px(1.0)) as f64;
+                            let y = (origin.y / gpui::px(1.0)) as f64;
+                            let width = (content_size.width / gpui::px(1.0)) as f64;
+                            let height = (content_size.height / gpui::px(1.0)) as f64;
+                            
+                            // 检查窗口位置是否有效（防止窗口被关闭时保存无效位置）
+                            if x > -1000.0 && y > -1000.0 && x < 32768.0 && y < 32768.0 {
+                                storage.save_window_bounds(Some(x), Some(y), width, height);
+                                info!("=== 窗口尺寸已保存到配置: {}x{} @ ({}, {}) ===", width, height, x, y);
+                            } else {
+                                // 只保存窗口尺寸，不保存无效位置
+                                storage.save_window_bounds(None, None, width, height);
+                                info!("=== 窗口位置无效，仅保存尺寸: {}x{} ===", width, height);
+                            }
+                        }
+                    })
+                    .detach();
+                    
+                    gpui_component::Root::new(app, window, cx)
+                })
             },
         )
         .unwrap();

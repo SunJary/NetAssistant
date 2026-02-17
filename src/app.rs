@@ -15,6 +15,7 @@ use crate::ui::main_window::MainWindow;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 pub struct NetAssistantApp {
@@ -63,6 +64,14 @@ pub struct NetAssistantApp {
     pub context_menu_is_client: bool,
     pub context_menu_position: Option<Pixels>,
     pub context_menu_position_y: Option<Pixels>,
+    
+    // 侧边栏布局状态
+    pub sidebar_width: Option<Pixels>,
+    pub sidebar_resizing: bool,
+    pub sidebar_collapsed: bool,
+    
+    // 性能优化：限制UI更新频率
+    pub last_update_time: Instant,
 }
 
 impl NetAssistantApp {
@@ -88,6 +97,10 @@ impl NetAssistantApp {
         // 初始化写入发送器映射
         let client_write_senders = HashMap::new();
         let server_clients = HashMap::new();
+
+        // 从配置加载侧边栏宽度和折叠状态
+        let sidebar_width = storage.load_sidebar_width().map(|w| gpui::px(w as f32));
+        let sidebar_collapsed = storage.load_sidebar_collapsed().unwrap_or(false);
 
         let mut app = Self {
             storage,
@@ -116,6 +129,12 @@ impl NetAssistantApp {
             context_menu_is_client: false,
             context_menu_position: None,
             context_menu_position_y: None,
+            // 初始化侧边栏布局状态
+            sidebar_width,
+            sidebar_resizing: false,
+            sidebar_collapsed,
+            // 初始化最后更新时间
+            last_update_time: Instant::now(),
         };
 
         // 创建专门的异步任务来处理连接事件
@@ -767,6 +786,68 @@ impl NetAssistantApp {
     }
 
 
+    // 侧边栏调整大小相关方法
+    pub fn start_sidebar_resize(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_resizing = true;
+        // 如果侧边栏已折叠，则先展开它
+        if self.sidebar_collapsed {
+            self.sidebar_collapsed = false;
+            // 设置一个默认宽度作为展开后的初始宽度
+            if self.sidebar_width.is_none() {
+                self.sidebar_width = Some(px(200.0));
+            }
+        }
+        cx.notify();
+    }
+    
+    pub fn resize_sidebar(&mut self, new_width: Pixels, cx: &mut Context<Self>) {
+        // 只有在调整大小状态下才允许改变宽度
+        if self.sidebar_resizing {
+            // 检查是否需要更新（限制更新频率约60fps）
+            let now = Instant::now();
+            if now.duration_since(self.last_update_time) < Duration::from_millis(16) {
+                return; // 跳过此次更新
+            }
+            
+            // 设置侧边栏宽度的最小和最大值限制
+            let min_width = px(100.0);
+            let max_width = px(300.0);
+            let collapse_threshold = px(100.0);
+            
+            // 如果新宽度小于折叠阈值，自动折叠侧边栏
+            if new_width < collapse_threshold {
+                self.sidebar_collapsed = true;
+            } else {
+                // 限制新宽度在合理范围内
+                let clamped_width = new_width.max(min_width).min(max_width);
+                self.sidebar_width = Some(clamped_width);
+                self.sidebar_collapsed = false;
+            }
+            
+            // 更新最后更新时间
+            self.last_update_time = now;
+            cx.notify();
+        }
+    }
+    
+    pub fn end_sidebar_resize(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_resizing = false;
+        // 保存当前侧边栏宽度和折叠状态到配置
+        if let Some(width) = self.sidebar_width {
+            let width_f32 = width / gpui::px(1.0);
+            self.storage.save_sidebar_width(width_f32 as f64);
+        }
+        self.storage.save_sidebar_collapsed(self.sidebar_collapsed);
+        cx.notify();
+    }
+    
+    pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_collapsed = !self.sidebar_collapsed;
+        // 保存折叠状态到配置
+        self.storage.save_sidebar_collapsed(self.sidebar_collapsed);
+        cx.notify();
+    }
+    
     pub fn handle_single_connection_event(&mut self, event: ConnectionEvent, cx: &mut Context<Self>) {
         match event {
             ConnectionEvent::Connected(tab_id) => {

@@ -291,9 +291,11 @@ impl<'a> ConnectionTab<'a> {
         div()
             .flex()
             .flex_col()
-            .w_64()
-            .p_4()
-            .gap_3()
+            .min_w_40() // 最小宽度
+            .w_1_4()   // 默认宽度为父容器的1/4
+            .max_w_64() // 最大宽度
+            .p_2()     // 减少内边距
+            .gap_2()   // 减少元素间距
             .border_r_1()
             .border_color(theme.border)
             .bg(theme.secondary)
@@ -463,17 +465,19 @@ impl<'a> ConnectionTab<'a> {
                         )
                     }),
             )
+            // 统计信息区域 - 在极窄窗口下会自动换行并调整样式
             .child(
                 div()
                     .flex()
                     .flex_wrap()
                     .items_center()
-                    .gap_4()
+                    .gap_2() // 减少间距
+                    .p_1()   // 增加内边距以提高可读性
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap_2()
+                            .gap_1() // 减少间距
                             .child(
                                 div()
                                     .w_2()
@@ -483,7 +487,7 @@ impl<'a> ConnectionTab<'a> {
                             )
                             .child(
                                 div()
-                                    .text_xs()
+                                    .text_xs() // 使用gpui支持的最小字体
                                     .text_color(gpui::rgb(0x6b7280))
                                     .child(format!("发送: {}", self.tab_state.message_list.total_sent)),
                             ),
@@ -492,7 +496,7 @@ impl<'a> ConnectionTab<'a> {
                         div()
                             .flex()
                             .items_center()
-                            .gap_2()
+                            .gap_1() // 减少间距
                             .child(
                                 div()
                                     .w_2()
@@ -502,7 +506,7 @@ impl<'a> ConnectionTab<'a> {
                             )
                             .child(
                                 div()
-                                    .text_xs()
+                                    .text_xs() // 使用gpui支持的最小字体
                                     .text_color(gpui::rgb(0x6b7280))
                                     .child(format!("接收: {}", self.tab_state.message_list.total_received)),
                             ),
@@ -511,7 +515,7 @@ impl<'a> ConnectionTab<'a> {
                         div()
                             .flex()
                             .items_center()
-                            .gap_2()
+                            .gap_1() // 减少间距
                             .child(
                                 div()
                                     .w_2()
@@ -532,6 +536,8 @@ impl<'a> ConnectionTab<'a> {
                             .items_center()
                             .gap_2()
                             .mt_2()
+                            .flex()
+                            .flex_wrap() // 允许自动换行
                             .child(
                                 div()
                                     .text_xs()
@@ -1009,7 +1015,8 @@ impl<'a> ConnectionTab<'a> {
                                                             })
                                                             .child(
                                                                 div()
-                                                                    .max_w_80()
+                                                                    .max_w_4_5()
+                                                                    .min_w_16()
                                                                     .p_3()
                                                                     .rounded_md()
                                                                     .when(is_sent, |div| {
@@ -1111,12 +1118,45 @@ impl<'a> ConnectionTab<'a> {
                 div()
                     .flex()
                     .items_center()
-                    .justify_between()
+                    .gap_2()
+                    .justify_between() // 两端对齐，发送按钮在右侧
                     .child(
                         div()
                             .flex()
-                            .flex_col()
+                            .flex_wrap() // 允许内部元素自动换行
+                            .items_center()
                             .gap_2()
+                            .child(
+                                div()
+                                    .px_3()
+                                    .py_1()
+                                    .bg(theme.secondary)
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .hover(|style| {
+                                        style.bg(theme.secondary_hover)
+                                    })
+                                    .on_mouse_down(MouseButton::Left, cx.listener({
+                                    let tab_id = tab_id.clone();
+                                    move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                        // 清空输入框内容
+                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                            if let Some(message_input) = &tab_state.message_input {
+                                                message_input.update(cx, |input: &mut InputState, cx| {
+                                                    input.set_value("", window, cx);
+                                                });
+                                            }
+                                        }
+                                    }
+                                }))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_medium()
+                                        .text_color(theme.secondary_foreground)
+                                        .child("清空"),
+                                ),
+                            )
                             .child(
                                 div()
                                     .flex()
@@ -1124,158 +1164,125 @@ impl<'a> ConnectionTab<'a> {
                                     .gap_2()
                                     .child(
                                         div()
-                                            .px_3()
-                                            .py_1()
-                                            .bg(theme.secondary)
-                                            .rounded_md()
+                                            .w_4()
+                                            .h_4()
+                                            .border_1()
+                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .rounded(px(4.))
                                             .cursor_pointer()
-                                            .hover(|style| {
-                                                style.bg(theme.secondary_hover)
+                                            .when(self.tab_state.auto_clear_input, |this| {
+                                                this.bg(gpui::rgb(0x3b82f6))
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .font_bold()
+                                                            .child("✓"),
+                                                    )
                                             })
                                             .on_mouse_down(MouseButton::Left, cx.listener({
-                                            let tab_id = tab_id.clone();
-                                            move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                // 清空输入框内容
-                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                    if let Some(message_input) = &tab_state.message_input {
-                                                        message_input.update(cx, |input: &mut InputState, cx| {
-                                                            input.set_value("", window, cx);
-                                                        });
-                                                    }
-                                                }
-                                            }
-                                        }))
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .font_medium()
-                                                    .text_color(theme.secondary_foreground)
-                                                    .child("清空"),
-                                            ),
-                                    )
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_2()
-                                            .child(
-                                                div()
-                                                    .w_4()
-                                                    .h_4()
-                                                    .border_1()
-                                                    .border_color(gpui::rgb(0xd1d5db))
-                                                    .rounded(px(4.))
-                                                    .cursor_pointer()
-                                                    .when(self.tab_state.auto_clear_input, |this| {
-                                                        this.bg(gpui::rgb(0x3b82f6))
-                                                            .flex()
-                                                            .items_center()
-                                                            .justify_center()
-                                                            .child(
-                                                                div()
-                                                                    .text_xs()
-                                                                    .text_color(gpui::rgb(0xffffff))
-                                                                    .font_bold()
-                                                                    .child("✓"),
-                                                            )
-                                                    })
-                                                    .on_mouse_down(MouseButton::Left, cx.listener({
-                                                        let tab_id_auto_clear = tab_id_auto_clear.clone();
-                                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                            // 获取当前标签页的状态
-                                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_auto_clear) {
-                                                                tab_state.auto_clear_input = !tab_state.auto_clear_input;
-                                                                // 互斥逻辑：勾选自动清除时禁用周期发送
-                                                                if tab_state.auto_clear_input {
-                                                                    tab_state.periodic_send_enabled = false;
-                                                                }
-                                                            }
-                                                            cx.notify();
+                                                let tab_id_auto_clear = tab_id_auto_clear.clone();
+                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    // 获取当前标签页的状态
+                                                    if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_auto_clear) {
+                                                        tab_state.auto_clear_input = !tab_state.auto_clear_input;
+                                                        // 互斥逻辑：勾选自动清除时禁用周期发送
+                                                        if tab_state.auto_clear_input {
+                                                            tab_state.periodic_send_enabled = false;
                                                         }
-                                                    })),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(gpui::rgb(0x6b7280))
-                                                    .child("自动清除输入内容"),
-                                            ),
+                                                    }
+                                                    cx.notify();
+                                                }
+                                            })),
                                     )
                                     .child(
                                         div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_2()
-                                            .child(
-                                                div()
-                                                    .w_4()
-                                                    .h_4()
-                                                    .border_1()
-                                                    .border_color(gpui::rgb(0xd1d5db))
-                                                    .rounded(px(4.))
-                                                    .cursor_pointer()
-                                                    .when(self.tab_state.periodic_send_enabled, |this| {
-                                                        this.bg(gpui::rgb(0x3b82f6))
-                                                            .flex()
-                                                            .items_center()
-                                                            .justify_center()
-                                                            .child(
-                                                                div()
-                                                                    .text_xs()
-                                                                    .text_color(gpui::rgb(0xffffff))
-                                                                    .font_bold()
-                                                                    .child("✓"),
-                                                            )
-                                                    })
-                                                    .on_mouse_down(MouseButton::Left, cx.listener({
-                                                        let tab_id_periodic = tab_id_periodic.clone();
-                                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                            // 获取当前标签页的状态
-                                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_periodic) {
-                                                                tab_state.periodic_send_enabled = !tab_state.periodic_send_enabled;
-                                                                // 互斥逻辑：勾选周期发送时禁用自动清除
-                                                                if tab_state.periodic_send_enabled {
-                                                                    tab_state.auto_clear_input = false;
-                                                                } else {
-                                                                    // 禁用周期发送时停止定时器
-                                                                    if let Some(timer_arc) = tab_state.periodic_send_timer.take() {
-                                                                        if let Ok(mut timer) = timer_arc.lock() {
-                                                                            if let Some(timer_handle) = timer.take() {
-                                                                                timer_handle.abort();
-                                                                            }
-                                                                        }
+                                            .text_xs()
+                                            .text_color(gpui::rgb(0x6b7280))
+                                            .child("自动清空"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .w_4()
+                                            .h_4()
+                                            .border_1()
+                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .rounded(px(4.))
+                                            .cursor_pointer()
+                                            .when(self.tab_state.periodic_send_enabled, |this| {
+                                                this.bg(gpui::rgb(0x3b82f6))
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .font_bold()
+                                                            .child("✓"),
+                                                    )
+                                            })
+                                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                                let tab_id_periodic = tab_id_periodic.clone();
+                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    // 获取当前标签页的状态
+                                                    if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_periodic) {
+                                                        tab_state.periodic_send_enabled = !tab_state.periodic_send_enabled;
+                                                        // 互斥逻辑：勾选周期发送时禁用自动清除
+                                                        if tab_state.periodic_send_enabled {
+                                                            tab_state.auto_clear_input = false;
+                                                        } else {
+                                                            // 禁用周期发送时停止定时器
+                                                            if let Some(timer_arc) = tab_state.periodic_send_timer.take() {
+                                                                if let Ok(mut timer) = timer_arc.lock() {
+                                                                    if let Some(timer_handle) = timer.take() {
+                                                                        timer_handle.abort();
                                                                     }
                                                                 }
                                                             }
-                                                            cx.notify();
                                                         }
-                                                    })),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(gpui::rgb(0x6b7280))
-                                                    .child("周期发送 (ms):"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .w_24()
-                                                    .h_7()
-                                                    .bg(theme.secondary)
-                                                    .rounded_md()
-                                                    .border_1()
-                                                    .border_color(theme.border)
-                                                    .child(
-                                                        Input::new(self.tab_state.periodic_interval_input.as_ref().unwrap())
-                                                            .w_full()
-                                                            .h_full()
-                                                            .bg(theme.secondary)
-                                                            .rounded_md()
-                                                            .border_0()
-                                                            .text_center(),
-                                                    ),
-                                            ),
-                                    ),
+                                                    }
+                                                    cx.notify();
+                                                }
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(gpui::rgb(0x6b7280))
+                                            .child("周期发送"),
+                                    )
+                                    // 只有在周期发送选中时才显示时间间隔输入框
+                                    .when(self.tab_state.periodic_send_enabled, |builder| {
+                                        builder.child(
+                                            div()
+                                                .w_20() 
+                                                .min_w_16()
+                                                .h_7()
+                                                .bg(theme.secondary)
+                                                .rounded_md()
+                                                .border_1()
+                                                .border_color(theme.border)
+                                                .child(
+                                                    Input::new(self.tab_state.periodic_interval_input.as_ref().unwrap())
+                                                        .w_full()
+                                                        .h_full()
+                                                        .bg(theme.secondary)
+                                                        .rounded_md()
+                                                        .border_0()
+                                                        .text_center(),
+                                                ),
+                                        )
+                                    }),
                             ),
                     )
                     .child(

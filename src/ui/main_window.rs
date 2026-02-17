@@ -26,12 +26,25 @@ impl<'a> MainWindow<'a> {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
+        
         div()
             .w_full()
             .h_full()
             .flex()
             .flex_col()
             .bg(theme.background)
+            // 在整个窗口区域监听鼠标移动和释放事件，确保在任何位置都能正确处理调整大小
+            .on_mouse_move(cx.listener(|app, event: &MouseMoveEvent, _window, cx| {
+                if app.sidebar_resizing {
+                    let mouse_x = event.position.x;
+                    app.resize_sidebar(mouse_x, cx);
+                }
+            }))
+            .on_mouse_up(MouseButton::Left, cx.listener(|app, _event, _window, cx| {
+                if app.sidebar_resizing {
+                    app.end_sidebar_resize(cx);
+                }
+            }))
             .child(
                 div()
                     .h_12()
@@ -111,21 +124,58 @@ impl<'a> MainWindow<'a> {
                     .flex()
                     .flex_1()
                     .overflow_hidden()
-                    .child(
-                        div()
-                            .w_64()
-                            .h_full()
-                            .overflow_y_scrollbar()
-                            .child(ConnectionPanel::new(self.app).render(window, cx)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .overflow_x_hidden()
-                            .child(TabContainer::new(self.app).render(window, cx)),
-                    ),
+                    .when(!self.app.sidebar_collapsed, |this_div| {
+                        this_div
+                            // 左侧连接面板
+                            .child(div()
+                                // 使用动态宽度，如果没有设置则使用默认的200px
+                                .w(self.app.sidebar_width.unwrap_or_else(|| px(200.0)))
+                                .h_full()
+                                .overflow_y_scrollbar()
+                                .child(ConnectionPanel::new(self.app).render(window, cx)))
+                            // 调整手柄
+                            .child(div()
+                                .w_2()
+                                .h_full()
+                                .bg(theme.border)
+                                .cursor_col_resize()
+                                .on_mouse_down(MouseButton::Left, cx.listener(|app, _event, _, cx| {
+                                    // 开始调整大小
+                                    app.start_sidebar_resize(cx);
+                                }))
+                                .on_mouse_move(cx.listener(|app, event: &MouseMoveEvent, _window, cx| {
+                                    // 只有在调整大小状态下才处理移动事件
+                                    if app.sidebar_resizing {
+                                        let mouse_x = event.position.x;
+                                        app.resize_sidebar(mouse_x, cx);
+                                    }
+                                })))
+                    })
+                    .when(self.app.sidebar_collapsed, |this_div| {
+                        this_div
+                            // 折叠状态下只显示展开按钮
+                            .child(div()
+                                .w_10()
+                                .h_full()
+                                .bg(theme.border)
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .on_mouse_down(MouseButton::Left, cx.listener(|app, _, _, cx| {
+                                    // 展开侧边栏
+                                    app.toggle_sidebar(cx);
+                                }))
+                                .child(IconName::ChevronRight))
+                    })
+                    // 右侧内容区域
+                    .child(div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .overflow_x_hidden()
+                        .child(TabContainer::new(self.app).render(window, cx))),
+
             )
             .when(self.app.show_new_connection, |this_div| {
                 this_div.child(NewConnectionDialog::new(self.app).render(window, cx))

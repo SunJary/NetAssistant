@@ -20,6 +20,14 @@ pub struct AppConfig {
     pub connections: Vec<ConnectionConfig>,
     pub auto_save: bool,
     pub save_interval: u64, // 秒
+    // 窗口配置
+    pub window_x: Option<f64>,
+    pub window_y: Option<f64>,
+    pub window_width: Option<f64>,
+    pub window_height: Option<f64>,
+    // 侧边栏配置
+    pub sidebar_width: Option<f64>,
+    pub sidebar_collapsed: Option<bool>,
 }
 
 impl Default for AppConfig {
@@ -28,6 +36,12 @@ impl Default for AppConfig {
             connections: Vec::new(),
             auto_save: true,
             save_interval: 30,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
+            sidebar_width: None,
+            sidebar_collapsed: None,
         }
     }
 }
@@ -58,6 +72,62 @@ impl ConfigStorage {
             config_file,
             config,
         })
+    }
+    
+    /// 保存窗口位置和尺寸
+    pub fn save_window_bounds(&mut self, x: Option<f64>, y: Option<f64>, width: f64, height: f64) {
+        // 只有当位置有效时才更新位置
+        if let Some(valid_x) = x {
+            self.config.window_x = Some(valid_x);
+        }
+        if let Some(valid_y) = y {
+            self.config.window_y = Some(valid_y);
+        }
+        // 总是更新尺寸
+        self.config.window_width = Some(width);
+        self.config.window_height = Some(height);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+    
+    /// 加载窗口位置和尺寸
+    pub fn load_window_bounds(&self) -> Option<(f64, f64, f64, f64)> {
+        match (
+            self.config.window_x,
+            self.config.window_y,
+            self.config.window_width,
+            self.config.window_height
+        ) {
+            (Some(x), Some(y), Some(width), Some(height)) => Some((x, y, width, height)),
+            _ => None
+        }
+    }
+    
+    /// 保存侧边栏宽度
+    pub fn save_sidebar_width(&mut self, width: f64) {
+        self.config.sidebar_width = Some(width);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+    
+    /// 加载侧边栏宽度
+    pub fn load_sidebar_width(&self) -> Option<f64> {
+        self.config.sidebar_width
+    }
+    
+    /// 保存侧边栏折叠状态
+    pub fn save_sidebar_collapsed(&mut self, collapsed: bool) {
+        self.config.sidebar_collapsed = Some(collapsed);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+    
+    /// 加载侧边栏折叠状态
+    pub fn load_sidebar_collapsed(&self) -> Option<bool> {
+        self.config.sidebar_collapsed
     }
 
     /// 获取配置目录路径
