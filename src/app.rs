@@ -2,6 +2,8 @@ use gpui::*;
 use gpui_component::input::InputState;
 use log::{debug, error, info};
 
+use crate::utils::text_measurement::TextMeasurement;
+
 
 use crate::config;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus};
@@ -72,6 +74,12 @@ pub struct NetAssistantApp {
     
     // 性能优化：限制UI更新频率
     pub last_update_time: Instant,
+    
+    // 消息容器尺寸信息（用于计算消息气泡宽度）
+    pub message_container_width: Option<Pixels>,
+    
+    // 文本测量工具实例
+    pub text_measurement: TextMeasurement,
 }
 
 impl NetAssistantApp {
@@ -135,6 +143,10 @@ impl NetAssistantApp {
             sidebar_collapsed,
             // 初始化最后更新时间
             last_update_time: Instant::now(),
+            // 初始化消息容器宽度
+            message_container_width: None,
+            // 初始化文本测量工具
+            text_measurement: TextMeasurement::new(),
         };
 
         // 创建专门的异步任务来处理连接事件
@@ -810,9 +822,9 @@ impl NetAssistantApp {
             }
             
             // 设置侧边栏宽度的最小和最大值限制
-            let min_width = px(100.0);
+            let min_width = px(150.0);
             let max_width = px(300.0);
-            let collapse_threshold = px(100.0);
+            let collapse_threshold = px(150.0);
             
             // 如果新宽度小于折叠阈值，自动折叠侧边栏
             if new_width < collapse_threshold {
@@ -939,7 +951,10 @@ impl NetAssistantApp {
                             MessageType::Hex
                         };
                     }
-                    tab_state.add_message(message);
+                    // 计算消息气泡宽度并使用带宽度参数的方法
+                    let container_width = self.message_container_width.unwrap_or(px(800.0));
+                    let bubble_width = container_width * 0.6;
+                    tab_state.add_message_with_width(message, bubble_width);
                     // 消息接收是关键事件，立即触发UI更新
                     cx.notify();
 

@@ -13,7 +13,7 @@ serde_json = "1.0"
 thiserror = "1.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 bytes = "1.4"
 tokio-serde = "0.8"
@@ -22,6 +22,7 @@ log = "0.4"
 simple_logger = "4.0"
 textwrap = "0.16"
 rust-embed = "8.0.0"
+lazy_static = "1.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
@@ -35,7 +36,7 @@ winres = "0.1"
 
 [package.metadata.appimage]
 name = "NetAssistant"
-comment = "多协议网络调试工具"
+comment = "NetAssistant - 多协议网络调试工具"
 icon = "assets/icon/icon_256x256.png"
 categories = ["Development", "Network"]
 terminal = false

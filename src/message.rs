@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::fmt;
 
 /// 消息方向
@@ -44,7 +45,10 @@ pub struct Message {
     pub message_type: MessageType,
     pub raw_data: Vec<u8>,
     pub source: Option<String>,
-    pub message_height: f32,
+    #[serde(skip)]
+    pub message_height: Cell<Option<f32>>, // 使用Cell实现内部可变性
+    #[serde(skip)]
+    pub bubble_width: Cell<Option<f32>>,    // 用于检测宽度变化
 }
 
 impl Message {
@@ -56,7 +60,8 @@ impl Message {
             message_type,
             raw_data,
             source: None,
-            message_height: 0.0, // 初始化为 0，在 calculate_message_height 中计算并缓存
+            message_height: Cell::new(None), // 初始化为None
+            bubble_width: Cell::new(None),   // 初始化为None
         }
     }
 
@@ -79,6 +84,8 @@ impl Message {
                 .join(" "),
         }
     }
+
+    // 移除了calculate_content_height方法，因为在渲染时无法修改消息对象
 }
 
 /// 消息列表状态

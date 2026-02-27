@@ -105,7 +105,7 @@ async fn main() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-                window_min_size: Some(gpui::Size { width: px(400.0), height: px(300.0) }),
+                window_min_size: Some(gpui::Size { width: px(600.0), height: px(300.0) }),
                 titlebar: Some(TitlebarOptions {
                     title: Some("NetAssistant".into()),
                     appears_transparent: false,
@@ -161,6 +161,37 @@ async fn main() {
                                 app.sidebar_collapsed = false;
                                 cx.notify();
                             }
+                            
+                            // 计算并更新消息容器宽度
+                            let sidebar_width = app.sidebar_width.unwrap_or(px(200.0));
+                            // 连接信息面板的宽度特性：
+                            // - 默认宽度为父容器的1/4
+                            // - 最小宽度：40rem (160px)
+                            // - 最大宽度：64rem (256px)
+                            let parent_content_width = if app.sidebar_collapsed {
+                                content_size.width - px(16.0)
+                            } else {
+                                content_size.width - sidebar_width - px(16.0)
+                            };
+                            // 根据连接信息面板的实际宽度特性计算可用宽度
+                            let connection_info_width = parent_content_width * 0.25;
+                            let connection_info_width = connection_info_width.max(px(160.0)).min(px(256.0));
+                            let available_width = parent_content_width - connection_info_width;
+                            let message_width = if available_width > px(0.0) {
+                                available_width
+                            } else {
+                                px(800.0)
+                            };
+                            app.message_container_width = Some(message_width);
+                            
+                            // 清空所有连接标签页的消息高度缓存，以便重新计算
+                            // 当窗口宽度变化时，消息气泡的宽度会变化，需要重新计算高度
+                            for tab_state in app.connection_tabs.values_mut() {
+                                tab_state.clear_message_height_cache();
+                            }
+                            
+                            // 通知UI需要重新渲染，因为消息高度可能已经变化
+                            cx.notify();
                         });
                         
                         // 保存窗口配置
@@ -173,11 +204,9 @@ async fn main() {
                             // 检查窗口位置是否有效（防止窗口被关闭时保存无效位置）
                             if x > -1000.0 && y > -1000.0 && x < 32768.0 && y < 32768.0 {
                                 storage.save_window_bounds(Some(x), Some(y), width, height);
-                                info!("=== 窗口尺寸已保存到配置: {}x{} @ ({}, {}) ===", width, height, x, y);
                             } else {
                                 // 只保存窗口尺寸，不保存无效位置
                                 storage.save_window_bounds(None, None, width, height);
-                                info!("=== 窗口位置无效，仅保存尺寸: {}x{} ===", width, height);
                             }
                         }
                     })
