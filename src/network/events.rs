@@ -1,9 +1,9 @@
 use std::net::SocketAddr;
-use tokio::sync::mpsc;
+use smol::channel::Sender;
 use crate::message::Message;
 
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ConnectionEvent {
     /// 客户端连接成功
     Connected(String),
@@ -16,9 +16,9 @@ pub enum ConnectionEvent {
     /// 收到消息
     MessageReceived(String, Message),
     /// 客户端写入发送器准备就绪
-    ClientWriteSenderReady(String, mpsc::UnboundedSender<Vec<u8>>),
+    ClientWriteSenderReady(String, Sender<Vec<u8>>),
     /// 服务端客户端连接
-    ServerClientConnected(String, SocketAddr, mpsc::UnboundedSender<Vec<u8>>),
+    ServerClientConnected(String, SocketAddr, Sender<Vec<u8>>),
     /// 服务端客户端断开
     ServerClientDisconnected(String, SocketAddr),
     /// 周期发送文本消息

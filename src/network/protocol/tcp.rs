@@ -5,8 +5,8 @@ use log::{debug, error, info};
 use std::pin::Pin;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
-
+use tokio::sync::Mutex;
+use smol::channel::{Sender, unbounded as smol_unbounded};
 use tokio::task::JoinHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use bytes::{BytesMut};
@@ -21,14 +21,16 @@ use crate::network::protocol::decoder::CodecFactory;
 fn process_decoded_data(
     data: BytesMut,
     processor: &Arc<dyn MessageProcessor>,
-    event_sender: &Option<mpsc::UnboundedSender<ConnectionEvent>>,
+    event_sender: &Option<Sender<ConnectionEvent>>,
     connection_id: &str
 ) {
     let raw_data: Vec<u8> = data.to_vec();
     let message = processor.process_received_message(raw_data, MessageType::Text);
     
     if let Some(sender) = event_sender {
-        let _ = sender.send(ConnectionEvent::MessageReceived(connection_id.to_string(), message));
+        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(connection_id.to_string(), message)) {
+            error!("[TCP] 发送 MessageReceived 事件失败: {:?}", e);
+        }
     }
 }
 
@@ -36,7 +38,7 @@ fn process_decoded_data(
 fn process_decoded_data_with_addr(
     data: BytesMut,
     processor: &Arc<dyn MessageProcessor>,
-    event_sender: &Option<mpsc::UnboundedSender<ConnectionEvent>>,
+    event_sender: &Option<Sender<ConnectionEvent>>,
     connection_id: &str,
     addr: &str
 ) {
@@ -58,14 +60,16 @@ fn process_decoded_data_with_addr(
     
     // 发送消息事件到UI线程
     if let Some(sender) = event_sender {
-        let _ = sender.send(ConnectionEvent::MessageReceived(connection_id.to_string(), message));
+        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(connection_id.to_string(), message)) {
+            error!("[TCP服务器] 发送 MessageReceived 事件失败: {:?}", e);
+        }
     }
 }
 
 /// TCP客户端实现
 pub struct TcpClient {
     config: ClientConfig,
-    event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
+    event_sender: Option<Sender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
     is_connected: bool,
 }
@@ -73,7 +77,7 @@ pub struct TcpClient {
 impl TcpClient {
     pub fn new(
         config: ClientConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Self {
         TcpClient {
             config,
@@ -98,12 +102,20 @@ impl NetworkConnection for TcpClient {
             info!("TCP客户端连接成功: {}", address);
             
             // 创建发送器和接收器
-            let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+            let (tx, rx) = smol_unbounded::<Vec<u8>>();
             
             // 发送连接成功事件到UI线程
             if let Some(sender) = &event_sender {
-                let _ = sender.send(ConnectionEvent::Connected(config.id.clone()));
-                let _ = sender.send(ConnectionEvent::ClientWriteSenderReady(config.id.clone(), tx));
+                info!("[TCP客户端] 发送 Connected 事件");
+                if let Err(e) = sender.send(ConnectionEvent::Connected(config.id.clone())).await {
+                    error!("[TCP客户端] 发送 Connected 事件失败: {:?}", e);
+                }
+                info!("[TCP客户端] 发送 ClientWriteSenderReady 事件");
+                if let Err(e) = sender.send(ConnectionEvent::ClientWriteSenderReady(config.id.clone(), tx)).await {
+                    error!("[TCP客户端] 发送 ClientWriteSenderReady 事件失败: {:?}", e);
+                }
+            } else {
+                error!("[TCP客户端] event_sender 为空，无法发送事件");
             }
             
             // 创建decoder和encoder
@@ -181,7 +193,9 @@ impl NetworkConnection for TcpClient {
                 
                 // 发送断开连接事件
                 if let Some(sender) = &event_sender_clone {
-                    let _ = sender.send(ConnectionEvent::Disconnected(config_clone.id.clone()));
+                    if let Err(e) = sender.send(ConnectionEvent::Disconnected(config_clone.id.clone())).await {
+                        error!("[TCP客户端] 发送 Disconnected 事件失败: {:?}", e);
+                    }
                 }
             });
             
@@ -191,7 +205,7 @@ impl NetworkConnection for TcpClient {
                 let mut encoder = encoder_for_write;
                 loop {
                     match rx.recv().await {
-                        Some(data) => {
+                        Ok(data) => {
                             let mut buffer = BytesMut::with_capacity(data.len());
                             let data_bytes = BytesMut::from(data.as_slice());
                             
@@ -207,7 +221,7 @@ impl NetworkConnection for TcpClient {
                                 break;
                             }
                         },
-                        None => {
+                        Err(_) => {
                             info!("消息发送通道已关闭");
                             break;
                         }
@@ -229,7 +243,9 @@ impl NetworkConnection for TcpClient {
         Pin::from(Box::new(async move {
             // 发送断开连接事件
             if let Some(sender) = &event_sender {
-                let _ = sender.send(ConnectionEvent::Disconnected(config.id.clone()));
+                if let Err(e) = sender.send(ConnectionEvent::Disconnected(config.id.clone())).await {
+                    error!("[TCP客户端] 发送 Disconnected 事件失败: {:?}", e);
+                }
             }
             
             // 注意：socket已经被移动到其他任务中
@@ -246,8 +262,8 @@ impl NetworkConnection for TcpClient {
 /// TCP服务器实现
 pub struct TcpServer {
     config: ServerConfig,
-    event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
-    clients: Arc<Mutex<HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>>>,
+    event_sender: Option<Sender<ConnectionEvent>>,
+    clients: Arc<Mutex<HashMap<SocketAddr, Sender<Vec<u8>>>>>,
     message_processor: Arc<dyn MessageProcessor>,
     is_running: bool,
     listener_handle: Option<JoinHandle<()>>,
@@ -269,7 +285,7 @@ impl Drop for TcpServer {
 impl TcpServer {
     pub fn new(
         config: ServerConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Self {
         TcpServer {
             config,
@@ -318,7 +334,9 @@ impl NetworkServer for TcpServer {
                     
                     // 发送监听事件到UI线程
                     if let Some(sender) = &event_sender {
-                        let _ = sender.send(ConnectionEvent::Listening(config.id.clone()));
+                        if let Err(e) = sender.send(ConnectionEvent::Listening(config.id.clone())).await {
+                            error!("[TCP服务器] 发送 Listening 事件失败: {:?}", e);
+                        }
                     }
                     
                     // 将listener包装在Arc中
@@ -339,20 +357,22 @@ impl NetworkServer for TcpServer {
                                         debug!("TCP服务器接收到来自 {} 的连接", addr);
                                         
                                         // 创建客户端连接的发送器和接收器
-                                        let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+                                        let (tx, rx) = smol_unbounded::<Vec<u8>>();
                                         
                                         // 保存客户端连接到共享的clients哈希表
-                                        let mut clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>> = clients.lock().await;
+                                        let mut clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, Sender<Vec<u8>>>> = clients.lock().await;
                                         clients_guard.insert(addr, tx.clone());
                                         drop(clients_guard);
                                         
                                         // 发送客户端连接事件到UI线程
                                         if let Some(sender) = &event_sender {
-                                            let _ = sender.send(ConnectionEvent::ServerClientConnected(
+                                            if let Err(e) = sender.send(ConnectionEvent::ServerClientConnected(
                                                 config.id.clone(),
                                                 addr,
                                                 tx,
-                                            ));
+                                            )).await {
+                                                error!("[TCP服务器] 发送 ServerClientConnected 事件失败: {:?}", e);
+                                            }
                                         }
                                         
                                         // 处理客户端连接
@@ -448,7 +468,7 @@ impl NetworkServer for TcpServer {
                                                 let mut encoder = encoder;
                                                 loop {
                                                     match rx.recv().await {
-                                                        Some(message) => {
+                                                        Ok(message) => {
                                                             let mut buffer = BytesMut::with_capacity(message.len());
                                                             let data_bytes = BytesMut::from(message.as_slice());
                                                             
@@ -475,7 +495,7 @@ impl NetworkServer for TcpServer {
                                                             };
                                                             info!("TCP服务器向 {} 发送消息: {}", addr, send_message_str);
                                                         },
-                                                        None => {
+                                                        Err(_) => {
                                                             info!("TCP服务器发送消息通道已关闭");
                                                             break;
                                                         }
@@ -494,7 +514,7 @@ impl NetworkServer for TcpServer {
                                             }
                                             
                                             // 从共享的clients哈希表中移除断开连接的客户端
-                                            let mut clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>> = clients_clone_for_disconnect.lock().await;
+                                            let mut clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, Sender<Vec<u8>>>> = clients_clone_for_disconnect.lock().await;
                                             clients_guard.remove(&addr);
                                             drop(clients_guard);
                                             
@@ -505,10 +525,12 @@ impl NetworkServer for TcpServer {
                                             
                                             // 发送客户端断开连接事件到UI线程
                                             if let Some(sender) = &client_event_sender {
-                                                let _ = sender.send(ConnectionEvent::ServerClientDisconnected(
+                                                if let Err(e) = sender.send(ConnectionEvent::ServerClientDisconnected(
                                                     client_id_clone.clone(),
                                                     addr,
-                                                ));
+                                                )).await {
+                                                    error!("[TCP服务器] 发送 ServerClientDisconnected 事件失败: {:?}", e);
+                                                }
                                             }
                                         });
                                         
@@ -624,7 +646,9 @@ impl NetworkServer for TcpServer {
             
             // 发送断开连接事件到UI线程
             if let Some(sender) = &event_sender {
-                let _ = sender.send(ConnectionEvent::Disconnected(server_id));
+                if let Err(e) = sender.send(ConnectionEvent::Disconnected(server_id)).await {
+                    error!("[TCP服务器] 发送 Disconnected 事件失败: {:?}", e);
+                }
             }
             
             info!("TCP服务器已停止");

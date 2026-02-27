@@ -3507,6 +3507,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_logger",
+ "smol",
  "textwrap",
  "thiserror 1.0.69",
  "tokio",

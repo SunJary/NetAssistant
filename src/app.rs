@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use smol::channel::{Sender, Receiver, unbounded as smol_unbounded};
 
 pub struct NetAssistantApp {
     // 配置存储
@@ -48,17 +48,17 @@ pub struct NetAssistantApp {
     // 自动回复输入框状态（每个标签页一个）
     pub auto_reply_inputs: HashMap<String, Entity<InputState>>,
 
-    // 连接事件通道（用于通知UI更新）
-    pub connection_event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>,
-    pub connection_event_receiver: Option<mpsc::UnboundedReceiver<ConnectionEvent>>,
+    // 连接事件通道（用于通知UI更新）- 使用smol channel与GPUI兼容
+    pub connection_event_sender: Option<Sender<ConnectionEvent>>,
+    pub connection_event_receiver: Option<Receiver<ConnectionEvent>>,
 
     // 网络连接管理器
     pub network_manager: std::sync::Arc<tokio::sync::Mutex<crate::network::connection::manager::NetworkConnectionManager>>,
     
 
-    // 写入发送器映射（无锁设计，每个标签页独立管理）
-    pub client_write_senders: HashMap<String, mpsc::UnboundedSender<Vec<u8>>>,
-    pub server_clients: HashMap<String, HashMap<SocketAddr, mpsc::UnboundedSender<Vec<u8>>>>,
+    // 写入发送器映射（无锁设计，每个标签页独立管理）- 使用smol channel
+    pub client_write_senders: HashMap<String, Sender<Vec<u8>>>,
+    pub server_clients: HashMap<String, HashMap<SocketAddr, Sender<Vec<u8>>>>,
 
     // 右键菜单状态
     pub show_context_menu: bool,
@@ -94,8 +94,8 @@ impl NetAssistantApp {
         let connection_tabs = HashMap::new();
         let active_tab = String::new();
 
-        // 创建连接事件通道
-        let (connection_event_sender, connection_event_receiver) = mpsc::unbounded_channel();
+        // 创建连接事件通道 - 使用smol channel与GPUI兼容
+        let (connection_event_sender, connection_event_receiver) = smol_unbounded::<ConnectionEvent>();
 
         // 初始化网络连接管理器
         let network_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -154,22 +154,30 @@ impl NetAssistantApp {
         let event_receiver = app.connection_event_receiver.take();
         
         cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
-            let mut receiver = if let Some(receiver) = event_receiver {
+            let receiver = if let Some(receiver) = event_receiver {
+                info!("[事件循环] 成功获取事件接收者，开始监听事件");
                 receiver
             } else {
                 error!("[应用初始化] 无法获取连接事件接收者");
                 return;
             };
             
+            info!("[事件循环] 进入事件接收循环");
             // 异步处理连接事件
-            while let Some(event) = receiver.recv().await {
+            while let Ok(event) = receiver.recv().await {
+                info!("[事件循环] 收到事件: {:?}", std::mem::discriminant(&event));
                 // 尝试获取应用实例并更新状态
                 if let Some(app) = weak_app.upgrade() {
+                    info!("[事件循环] 成功获取应用实例，准备处理事件");
                     let _ = app.update(async_app, |app, cx| {
                         app.handle_single_connection_event(event, cx);
                     });
+                    info!("[事件循环] 事件处理完成");
+                } else {
+                    error!("[事件循环] 无法获取应用实例");
                 }
             }
+            info!("[事件循环] 事件接收循环结束");
         }).detach();
 
         // 主题事件处理已由GPUI窗口的observe_window_appearance处理，不再需要定期检查
@@ -487,12 +495,12 @@ impl NetAssistantApp {
             debug!("[send_message] 客户端模式，发送给服务器");
             
             if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
-                if let Err(e) = write_sender.send(bytes.clone()) {
-                    error!("[send_message] 无法发送消息到服务器: {}", e);
+                if write_sender.try_send(bytes.clone()).is_err() {
+                    error!("[send_message] 无法发送消息到服务器");
                     if let Some(sender) = sender {
                         let _ = sender.send(ConnectionEvent::Error(
                             tab_id_clone,
-                            e.to_string(),
+                            "发送消息失败".to_string(),
                         ));
                     }
                 } else {
@@ -526,8 +534,8 @@ impl NetAssistantApp {
                     }
                 } else {
                     for (_, write_sender) in clients {
-                        if let Err(e) = write_sender.send(bytes.clone()) {
-                            error!("[send_message] 发送给客户端失败: {}", e);
+                        if write_sender.try_send(bytes.clone()).is_err() {
+                            error!("[send_message] 发送给客户端失败");
                         }
                     }
                     
@@ -603,12 +611,12 @@ impl NetAssistantApp {
             debug!("[send_message_bytes] 客户端模式，发送给服务器");
             
             if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
-                if let Err(e) = write_sender.send(bytes.clone()) {
-                    error!("[send_message_bytes] 无法发送消息到服务器: {}", e);
+                if write_sender.try_send(bytes.clone()).is_err() {
+                    error!("[send_message_bytes] 无法发送消息到服务器");
                     if let Some(sender) = sender {
                         let _ = sender.send(ConnectionEvent::Error(
                             tab_id_clone,
-                            e.to_string(),
+                            "发送消息失败".to_string(),
                         ));
                     }
                 } else {
@@ -642,8 +650,8 @@ impl NetAssistantApp {
                     }
                 } else {
                     for (_, write_sender) in clients {
-                        if let Err(e) = write_sender.send(bytes.clone()) {
-                            error!("[send_message_bytes] 发送给客户端失败: {}", e);
+                        if write_sender.try_send(bytes.clone()).is_err() {
+                            error!("[send_message_bytes] 发送给客户端失败");
                         }
                     }
                     
@@ -740,12 +748,12 @@ impl NetAssistantApp {
                     // 直接使用server_clients发送消息给指定客户端
                     if let Some(clients) = self.server_clients.get(&tab_id) {
                         if let Some(write_sender) = clients.get(&addr) {
-                            if let Err(e) = write_sender.send(bytes.clone()) {
-                                error!("[send_message_to_client] 发送失败: {}", e);
+                            if write_sender.try_send(bytes.clone()).is_err() {
+                                error!("[send_message_to_client] 发送失败");
                                 if let Some(sender) = sender {
                                     let _ = sender.send(ConnectionEvent::Error(
                                         tab_id_clone,
-                                        e.to_string(),
+                                        "发送消息失败".to_string(),
                                     ));
                                 }
                             } else {

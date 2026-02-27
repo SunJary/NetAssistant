@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
-use tokio::sync::mpsc;
+use smol::channel::Sender;
 use crate::network::events::ConnectionEvent;
 
 /// 网络连接接口
@@ -26,12 +26,12 @@ pub trait NetworkFactory {
     /// 创建客户端连接
     fn create_client(
         config: &crate::config::connection::ClientConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Box<dyn NetworkConnection> where Self: Sized;
     
     /// 创建服务器
     fn create_server(
         config: &crate::config::connection::ServerConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Box<dyn NetworkServer> where Self: Sized;
 }

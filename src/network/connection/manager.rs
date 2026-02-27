@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use tokio::sync::mpsc;
+use smol::channel::Sender;
 use crate::config::connection::{ClientConfig, ServerConfig, ConnectionType};
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkServer, NetworkFactory};
@@ -11,7 +11,7 @@ pub struct DefaultNetworkFactory;
 impl NetworkFactory for DefaultNetworkFactory {
     fn create_client(
         config: &ClientConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Box<dyn NetworkConnection> {
         match config.protocol {
             ConnectionType::Tcp => Box::new(TcpClient::new(config.clone(), event_sender)),
@@ -21,7 +21,7 @@ impl NetworkFactory for DefaultNetworkFactory {
     
     fn create_server(
         config: &ServerConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Box<dyn NetworkServer> {
         match config.protocol {
             ConnectionType::Tcp => Box::new(TcpServer::new(config.clone(), event_sender)),
@@ -48,7 +48,7 @@ impl NetworkConnectionManager {
     pub async fn create_and_connect_client(
         &mut self,
         config: &ClientConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果连接已存在，则先断开
         if self.clients.contains_key(&config.id) {
@@ -71,7 +71,7 @@ impl NetworkConnectionManager {
     pub async fn create_and_start_server(
         &mut self,
         config: &ServerConfig,
-        event_sender: Option<mpsc::UnboundedSender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果服务器已存在，则先停止
         if self.servers.contains_key(&config.id) {
