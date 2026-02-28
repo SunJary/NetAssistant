@@ -184,14 +184,8 @@ async fn main() {
                             };
                             app.message_container_width = Some(message_width);
                             
-                            // 清空所有连接标签页的消息高度缓存，以便重新计算
-                            // 当窗口宽度变化时，消息气泡的宽度会变化，需要重新计算高度
-                            for tab_state in app.connection_tabs.values_mut() {
-                                tab_state.clear_message_height_cache();
-                            }
-                            
-                            // 通知UI需要重新渲染，因为消息高度可能已经变化
-                            cx.notify();
+                            // 不需要清空缓存，因为消息级别缓存已有宽度判断逻辑
+                            // 当宽度变化超过 10px 时会自动重新计算
                         });
                         
                         // 保存窗口配置

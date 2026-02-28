@@ -14,6 +14,7 @@ use gpui_component::{
 };
 
 use log::{debug, error, info, warn};
+use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -35,7 +36,7 @@ pub struct ConnectionTabState {
     pub error_message: Option<String>,
     pub auto_reply_enabled: bool,
     pub scroll_handle: VirtualListScrollHandle,
-    pub item_sizes: Rc<Vec<Size<Pixels>>>,
+    pub item_sizes: RefCell<Rc<Vec<Size<Pixels>>>>,
     pub auto_scroll_enabled: bool,
     pub client_connections: Vec<SocketAddr>,
     pub selected_client: Option<SocketAddr>,
@@ -68,7 +69,7 @@ impl ConnectionTabState {
             error_message: None,
             auto_reply_enabled: false,
             scroll_handle: VirtualListScrollHandle::new(),
-            item_sizes: Rc::new(Vec::new()),
+            item_sizes: RefCell::new(Rc::new(Vec::new())),
             auto_scroll_enabled: true,
             client_connections: Vec::new(),
             selected_client: None,
@@ -132,12 +133,7 @@ impl ConnectionTabState {
     }
 
     pub fn add_message_with_width(&mut self, message: Message, _width: Pixels) {
-        // 将消息添加到列表
         self.message_list.add_message(message);
-        
-        // 清空item_sizes缓存，让渲染时重新计算
-        // 这样可以确保渲染时使用最新的消息列表和宽度
-        self.item_sizes = Rc::new(vec![]);
 
         if self.auto_scroll_enabled {
             let message_count = self.message_list.messages.len();
@@ -188,13 +184,11 @@ impl ConnectionTabState {
 
     /// 清空所有消息的高度缓存，以便在窗口大小变化时重新计算
     pub fn clear_message_height_cache(&mut self) {
-        // 清空消息对象中的缓存值
         self.message_list.messages.iter_mut().for_each(|message| {
             message.message_height.set(None);
             message.bubble_width.set(None);
         });
-        // 清空item_sizes缓存，强制虚拟列表重新计算所有项的高度
-        self.item_sizes = Rc::new(Vec::new());
+        *self.item_sizes.borrow_mut() = Rc::new(Vec::new());
     }
 }
 
@@ -833,45 +827,87 @@ impl<'a> ConnectionTab<'a> {
 
         // 为虚拟列表计算消息的高度，使用缓存优化性能
         let item_sizes = if !is_empty {
-            // 如果缓存存在且长度匹配，直接使用
-            if !self.tab_state.item_sizes.is_empty() && self.tab_state.item_sizes.len() == filtered_messages.len() {
-                Some(self.tab_state.item_sizes.clone())
+            let cached = self.tab_state.item_sizes.borrow();
+            debug!("缓存检查: cached.is_empty()={}, cached.len()={}, filtered_messages.len()={}", 
+                   cached.is_empty(), cached.len(), filtered_messages.len());
+            
+            if !cached.is_empty() && cached.len() == filtered_messages.len() {
+                debug!("使用缓存，跳过计算");
+                Some(cached.clone())
+            } else if !cached.is_empty() && cached.len() < filtered_messages.len() {
+                debug!("增量计算: 缓存={}, 消息={}, 新增={}", cached.len(), filtered_messages.len(), filtered_messages.len() - cached.len());
+                
+                let cached_clone = cached.clone();
+                drop(cached);
+                
+                let new_items: Vec<Size<Pixels>> = filtered_messages[cached_clone.len()..]
+                    .iter()
+                    .map(|m| {
+                        let message_content = m.get_content_by_type();
+                        let bubble_width_f32 = bubble_width.as_f32();
+                        
+                        let complete_message_height = if let Some(cached_height) = m.message_height.get() {
+                            if let Some(cached_width) = m.bubble_width.get() {
+                                if (cached_width - bubble_width_f32).abs() < 10.0 {
+                                    px(cached_height)
+                                } else {
+                                    let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
+                                    m.message_height.set(Some(height.as_f32()));
+                                    m.bubble_width.set(Some(bubble_width_f32));
+                                    height
+                                }
+                            } else {
+                                let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
+                                m.message_height.set(Some(height.as_f32()));
+                                m.bubble_width.set(Some(bubble_width_f32));
+                                height
+                            }
+                        } else {
+                            let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
+                            m.message_height.set(Some(height.as_f32()));
+                            m.bubble_width.set(Some(bubble_width_f32));
+                            height
+                        };
+                        
+                        size(bubble_width, complete_message_height)
+                    })
+                    .collect();
+                
+                let mut combined = (*cached_clone).clone();
+                combined.extend(new_items);
+                let new_sizes = Rc::new(combined);
+                
+                *self.tab_state.item_sizes.borrow_mut() = new_sizes.clone();
+                Some(new_sizes)
             } else {
-                // 计算消息高度
-                let new_sizes = Rc::new(
+                drop(cached);
+                debug!("缓存失效，重新计算所有消息高度");
+                
+                let new_sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
                     filtered_messages
                         .iter()
                         .map(|m| {
                             let message_content = m.get_content_by_type();
                             let bubble_width_f32 = bubble_width.as_f32();
                             
-                            // 使用缓存的高度或重新计算
                             let complete_message_height = if let Some(cached_height) = m.message_height.get() {
-                                // 检查宽度是否有显著变化
                                 if let Some(cached_width) = m.bubble_width.get() {
                                     if (cached_width - bubble_width_f32).abs() < 10.0 {
-                                        // 宽度没有显著变化，使用缓存的高度
                                         px(cached_height)
                                     } else {
-                                        // 宽度变化，重新计算
                                         let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                        // 更新缓存
                                         m.message_height.set(Some(height.as_f32()));
                                         m.bubble_width.set(Some(bubble_width_f32));
                                         height
                                     }
                                 } else {
-                                    // 没有缓存的宽度，重新计算
                                     let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                    // 更新缓存
                                     m.message_height.set(Some(height.as_f32()));
                                     m.bubble_width.set(Some(bubble_width_f32));
                                     height
                                 }
                             } else {
-                                // 没有缓存的高度，重新计算
                                 let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                // 更新缓存
                                 m.message_height.set(Some(height.as_f32()));
                                 m.bubble_width.set(Some(bubble_width_f32));
                                 height
@@ -882,10 +918,7 @@ impl<'a> ConnectionTab<'a> {
                         .collect(),
                 );
                 
-                // 更新缓存
-                // 使用内部可变性或其他方式更新缓存
-                // 注意：这里不能直接修改self.tab_state，因为它是不可变引用
-                
+                *self.tab_state.item_sizes.borrow_mut() = new_sizes.clone();
                 Some(new_sizes)
             }
         } else {
@@ -937,7 +970,7 @@ impl<'a> ConnectionTab<'a> {
                                 cx.listener(move |app, _event, _window, cx| {
                                     app.connection_tabs.get_mut(&tab_id).map(|tab_state| {
                                         tab_state.message_list.clear_messages();
-                                        tab_state.item_sizes = Rc::new(Vec::new());
+                                        *tab_state.item_sizes.borrow_mut() = Rc::new(Vec::new());
                                         cx.notify();
                                     });
                                 }),
