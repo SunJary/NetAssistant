@@ -155,29 +155,21 @@ impl NetAssistantApp {
         
         cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
             let receiver = if let Some(receiver) = event_receiver {
-                info!("[事件循环] 成功获取事件接收者，开始监听事件");
                 receiver
             } else {
-                error!("[应用初始化] 无法获取连接事件接收者");
                 return;
             };
             
-            info!("[事件循环] 进入事件接收循环");
             // 异步处理连接事件
             while let Ok(event) = receiver.recv().await {
-                info!("[事件循环] 收到事件: {:?}", std::mem::discriminant(&event));
                 // 尝试获取应用实例并更新状态
                 if let Some(app) = weak_app.upgrade() {
-                    info!("[事件循环] 成功获取应用实例，准备处理事件");
                     let _ = app.update(async_app, |app, cx| {
                         app.handle_single_connection_event(event, cx);
                     });
-                    info!("[事件循环] 事件处理完成");
                 } else {
-                    error!("[事件循环] 无法获取应用实例");
                 }
             }
-            info!("[事件循环] 事件接收循环结束");
         }).detach();
 
         // 主题事件处理已由GPUI窗口的observe_window_appearance处理，不再需要定期检查
@@ -241,7 +233,7 @@ impl NetAssistantApp {
                     // 这里我们需要一种方式来访问应用实例
                     // 由于我们不能直接访问，我们可以通过事件系统来处理
                     if let Some(sender) = sender.clone() {
-                        let _ = sender.send(ConnectionEvent::PeriodicSend(
+                        let _ = sender.try_send(ConnectionEvent::PeriodicSend(
                             tab_id_clone.clone(),
                             content_clone.clone(),
                         ));
@@ -253,7 +245,7 @@ impl NetAssistantApp {
                     if cleaned_hex.len() % 2 == 0 {
                         if let Ok(bytes) = hex::decode(&cleaned_hex) {
                             if let Some(sender) = sender.clone() {
-                                let _ = sender.send(ConnectionEvent::PeriodicSendBytes(
+                                let _ = sender.try_send(ConnectionEvent::PeriodicSendBytes(
                                     tab_id_clone.clone(),
                                     bytes,
                                     hex_content,
@@ -364,7 +356,7 @@ impl NetAssistantApp {
             
             // 发送断开连接事件
             if let Some(sender) = sender {
-                let _ = sender.send(ConnectionEvent::Disconnected(tab_id_clone));
+                let _ = sender.try_send(ConnectionEvent::Disconnected(tab_id_clone));
             }
         });
     }
@@ -389,7 +381,7 @@ impl NetAssistantApp {
             }
             
             if let Some(sender) = sender {
-                let _ = sender.send(ConnectionEvent::Disconnected(tab_id_clone));
+                let _ = sender.try_send(ConnectionEvent::Disconnected(tab_id_clone));
             }
         });
     }
@@ -479,7 +471,7 @@ impl NetAssistantApp {
         
         if !is_connected {
             if let Some(sender) = sender {
-                let _ = sender.send(ConnectionEvent::Error(
+                let _ = sender.try_send(ConnectionEvent::Error(
                     tab_id_clone,
                     "连接未建立".to_string(),
                 ));
@@ -498,7 +490,7 @@ impl NetAssistantApp {
                 if write_sender.try_send(bytes.clone()).is_err() {
                     error!("[send_message] 无法发送消息到服务器");
                     if let Some(sender) = sender {
-                        let _ = sender.send(ConnectionEvent::Error(
+                        let _ = sender.try_send(ConnectionEvent::Error(
                             tab_id_clone,
                             "发送消息失败".to_string(),
                         ));
@@ -507,13 +499,13 @@ impl NetAssistantApp {
                     debug!("[send_message] 发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
                 error!("[send_message] 客户端写入发送器不可用");
                 if let Some(sender) = sender {
-                    let _ = sender.send(ConnectionEvent::Error(
+                    let _ = sender.try_send(ConnectionEvent::Error(
                         tab_id_clone,
                         "客户端写入发送器不可用".to_string(),
                     ));
@@ -527,7 +519,7 @@ impl NetAssistantApp {
                 if clients.is_empty() {
                     error!("[send_message] 没有可用的客户端连接");
                     if let Some(sender) = sender {
-                        let _ = sender.send(ConnectionEvent::Error(
+                        let _ = sender.try_send(ConnectionEvent::Error(
                             tab_id_clone,
                             "没有可用的客户端连接".to_string(),
                         ));
@@ -542,13 +534,13 @@ impl NetAssistantApp {
                     debug!("[send_message] 发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
                 error!("[send_message] 服务器客户端映射不可用");
                 if let Some(sender) = sender {
-                    let _ = sender.send(ConnectionEvent::Error(
+                    let _ = sender.try_send(ConnectionEvent::Error(
                         tab_id_clone,
                         "服务器客户端映射不可用".to_string(),
                     ));
@@ -597,7 +589,7 @@ impl NetAssistantApp {
         
         if !is_connected {
             if let Some(sender) = sender {
-                let _ = sender.send(ConnectionEvent::Error(
+                let _ = sender.try_send(ConnectionEvent::Error(
                     tab_id_clone,
                     "连接未建立".to_string(),
                 ));
@@ -614,7 +606,7 @@ impl NetAssistantApp {
                 if write_sender.try_send(bytes.clone()).is_err() {
                     error!("[send_message_bytes] 无法发送消息到服务器");
                     if let Some(sender) = sender {
-                        let _ = sender.send(ConnectionEvent::Error(
+                        let _ = sender.try_send(ConnectionEvent::Error(
                             tab_id_clone,
                             "发送消息失败".to_string(),
                         ));
@@ -623,13 +615,13 @@ impl NetAssistantApp {
                     debug!("[send_message_bytes] 发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
                 error!("[send_message_bytes] 客户端写入发送器不可用");
                 if let Some(sender) = sender {
-                    let _ = sender.send(ConnectionEvent::Error(
+                    let _ = sender.try_send(ConnectionEvent::Error(
                         tab_id_clone,
                         "客户端写入发送器不可用".to_string(),
                     ));
@@ -643,7 +635,7 @@ impl NetAssistantApp {
                 if clients.is_empty() {
                     error!("[send_message_bytes] 没有可用的客户端连接");
                     if let Some(sender) = sender {
-                        let _ = sender.send(ConnectionEvent::Error(
+                        let _ = sender.try_send(ConnectionEvent::Error(
                             tab_id_clone,
                             "没有可用的客户端连接".to_string(),
                         ));
@@ -658,13 +650,13 @@ impl NetAssistantApp {
                     debug!("[send_message_bytes] 发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
                 error!("[send_message_bytes] 服务器客户端映射不可用");
                 if let Some(sender) = sender {
-                    let _ = sender.send(ConnectionEvent::Error(
+                    let _ = sender.try_send(ConnectionEvent::Error(
                         tab_id_clone,
                         "服务器客户端映射不可用".to_string(),
                     ));
@@ -707,7 +699,7 @@ impl NetAssistantApp {
         if !tab_state.is_connected && !tab_state.connection_config.is_server() {
             error!("[send_message_to_client] 连接未建立");
             if let Some(sender) = sender {
-                let _ = sender.send(ConnectionEvent::Error(
+                let _ = sender.try_send(ConnectionEvent::Error(
                     tab_id_clone,
                     "连接未建立".to_string(),
                 ));
@@ -751,7 +743,7 @@ impl NetAssistantApp {
                             if write_sender.try_send(bytes.clone()).is_err() {
                                 error!("[send_message_to_client] 发送失败");
                                 if let Some(sender) = sender {
-                                    let _ = sender.send(ConnectionEvent::Error(
+                                    let _ = sender.try_send(ConnectionEvent::Error(
                                         tab_id_clone,
                                         "发送消息失败".to_string(),
                                     ));
@@ -765,7 +757,7 @@ impl NetAssistantApp {
                                         message_type,
                                     )
                                     .with_source(source_str);
-                                    let _ = sender.send(ConnectionEvent::MessageReceived(
+                                    let _ = sender.try_send(ConnectionEvent::MessageReceived(
                                         tab_id_clone,
                                         message,
                                     ));
@@ -774,7 +766,7 @@ impl NetAssistantApp {
                         } else {
                             error!("[send_message_to_client] 客户端 {} 不存在", addr);
                             if let Some(sender) = sender {
-                                let _ = sender.send(ConnectionEvent::Error(
+                                let _ = sender.try_send(ConnectionEvent::Error(
                                     tab_id_clone,
                                     format!("客户端 {} 不存在", addr),
                                 ));
@@ -783,7 +775,7 @@ impl NetAssistantApp {
                     } else {
                         error!("[send_message_to_client] 服务器客户端映射不可用");
                         if let Some(sender) = sender {
-                            let _ = sender.send(ConnectionEvent::Error(
+                            let _ = sender.try_send(ConnectionEvent::Error(
                                 tab_id_clone,
                                 "服务器客户端映射不可用".to_string(),
                             ));
@@ -797,7 +789,7 @@ impl NetAssistantApp {
         } else {
             error!("[send_message_to_client] 没有指定客户端，无法发送自动回复");
             if let Some(sender) = sender {
-                let _ = sender.send(ConnectionEvent::Error(
+                let _ = sender.try_send(ConnectionEvent::Error(
                     tab_id_clone,
                     "无法确定目标客户端".to_string(),
                 ));

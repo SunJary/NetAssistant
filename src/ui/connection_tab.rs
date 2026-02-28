@@ -791,6 +791,35 @@ impl<'a> ConnectionTab<'a> {
             )
     }
 
+    /// 计算消息高度（带缓存）
+    fn calculate_message_height(
+        &self,
+        window: &mut Window,
+        message: &Message,
+        bubble_width: Pixels,
+    ) -> Pixels {
+        let bubble_width_f32 = bubble_width.as_f32();
+        
+        if let Some(cached_height) = message.message_height.get() {
+            if let Some(cached_width) = message.bubble_width.get() {
+                if (cached_width - bubble_width_f32).abs() < 10.0 {
+                    return px(cached_height);
+                }
+            }
+        }
+        
+        let message_content = message.get_content_by_type();
+        let height = self.app.text_measurement.calculate_text_height(
+            window,
+            &message_content,
+            bubble_width,
+            Some(px(14.0)),
+        );
+        message.message_height.set(Some(height.as_f32()));
+        message.bubble_width.set(Some(bubble_width_f32));
+        height
+    }
+
     /// 渲染报文记录区域（聊天样式）- 使用虚拟列表优化性能
     fn render_message_area(&self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let theme = cx.theme().clone();
@@ -801,6 +830,10 @@ impl<'a> ConnectionTab<'a> {
         let filtered_messages: Vec<&Message> = messages
             .iter()
             .filter(|m| {
+                // 消息没有source（客户端发送的消息），始终显示
+                if m.source.is_none() {
+                    return true;
+                }
                 // 如果没有选中客户端，显示所有消息
                 // 如果选中了客户端，只显示该客户端的消息
                 self.tab_state
@@ -828,48 +861,18 @@ impl<'a> ConnectionTab<'a> {
         // 为虚拟列表计算消息的高度，使用缓存优化性能
         let item_sizes = if !is_empty {
             let cached = self.tab_state.item_sizes.borrow();
-            debug!("缓存检查: cached.is_empty()={}, cached.len()={}, filtered_messages.len()={}", 
-                   cached.is_empty(), cached.len(), filtered_messages.len());
             
             if !cached.is_empty() && cached.len() == filtered_messages.len() {
-                debug!("使用缓存，跳过计算");
-                Some(cached.clone())
+                cached.clone()
             } else if !cached.is_empty() && cached.len() < filtered_messages.len() {
-                debug!("增量计算: 缓存={}, 消息={}, 新增={}", cached.len(), filtered_messages.len(), filtered_messages.len() - cached.len());
-                
                 let cached_clone = cached.clone();
                 drop(cached);
                 
                 let new_items: Vec<Size<Pixels>> = filtered_messages[cached_clone.len()..]
                     .iter()
                     .map(|m| {
-                        let message_content = m.get_content_by_type();
-                        let bubble_width_f32 = bubble_width.as_f32();
-                        
-                        let complete_message_height = if let Some(cached_height) = m.message_height.get() {
-                            if let Some(cached_width) = m.bubble_width.get() {
-                                if (cached_width - bubble_width_f32).abs() < 10.0 {
-                                    px(cached_height)
-                                } else {
-                                    let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                    m.message_height.set(Some(height.as_f32()));
-                                    m.bubble_width.set(Some(bubble_width_f32));
-                                    height
-                                }
-                            } else {
-                                let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                m.message_height.set(Some(height.as_f32()));
-                                m.bubble_width.set(Some(bubble_width_f32));
-                                height
-                            }
-                        } else {
-                            let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                            m.message_height.set(Some(height.as_f32()));
-                            m.bubble_width.set(Some(bubble_width_f32));
-                            height
-                        };
-                        
-                        size(bubble_width, complete_message_height)
+                        let height = self.calculate_message_height(window, m, bubble_width);
+                        size(bubble_width, height)
                     })
                     .collect();
                 
@@ -878,51 +881,25 @@ impl<'a> ConnectionTab<'a> {
                 let new_sizes = Rc::new(combined);
                 
                 *self.tab_state.item_sizes.borrow_mut() = new_sizes.clone();
-                Some(new_sizes)
+                new_sizes
             } else {
                 drop(cached);
-                debug!("缓存失效，重新计算所有消息高度");
                 
                 let new_sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
                     filtered_messages
                         .iter()
                         .map(|m| {
-                            let message_content = m.get_content_by_type();
-                            let bubble_width_f32 = bubble_width.as_f32();
-                            
-                            let complete_message_height = if let Some(cached_height) = m.message_height.get() {
-                                if let Some(cached_width) = m.bubble_width.get() {
-                                    if (cached_width - bubble_width_f32).abs() < 10.0 {
-                                        px(cached_height)
-                                    } else {
-                                        let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                        m.message_height.set(Some(height.as_f32()));
-                                        m.bubble_width.set(Some(bubble_width_f32));
-                                        height
-                                    }
-                                } else {
-                                    let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                    m.message_height.set(Some(height.as_f32()));
-                                    m.bubble_width.set(Some(bubble_width_f32));
-                                    height
-                                }
-                            } else {
-                                let height = self.app.text_measurement.calculate_text_height(window, &message_content, bubble_width, Some(px(14.0)));
-                                m.message_height.set(Some(height.as_f32()));
-                                m.bubble_width.set(Some(bubble_width_f32));
-                                height
-                            };
-                            
-                            size(bubble_width, complete_message_height)
+                            let height = self.calculate_message_height(window, m, bubble_width);
+                            size(bubble_width, height)
                         })
                         .collect(),
                 );
                 
                 *self.tab_state.item_sizes.borrow_mut() = new_sizes.clone();
-                Some(new_sizes)
+                new_sizes
             }
         } else {
-            None
+            Rc::new(Vec::new())
         };
 
         let filtered_messages_clone: Vec<Message> =
@@ -998,7 +975,7 @@ impl<'a> ConnectionTab<'a> {
                             v_virtual_list(
                                 cx.entity().clone(),
                                 "message-list",
-                                item_sizes.unwrap(),
+                                item_sizes,
                                 move |_view, visible_range, _, _cx| {
                                     visible_range
                                         .map(|ix| {

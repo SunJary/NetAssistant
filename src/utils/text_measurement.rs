@@ -42,28 +42,36 @@ impl TextMeasurement {
     ) -> Pixels {
         let actual_font_size = font_size.unwrap_or(self.default_font_size);
         
-        // 创建文本样式并设置字体大小和换行属性
+        let outer_gap = px(4.);
+        let header_height = px(20.);
+        let gap_between_header_and_content = px(4.);
+        let content_padding_top = px(12.);
+        let content_padding_bottom = px(12.);
+        
+        let base_height = outer_gap + header_height + gap_between_header_and_content + content_padding_top + content_padding_bottom;
+        
+        if content.len() < 10 {
+            let line_height = actual_font_size * 1.5;
+            return base_height + line_height;
+        }
+        
         let mut text_style = TextStyle::default();
         text_style.font_size = actual_font_size.into();
         text_style.white_space = gpui::WhiteSpace::Normal;
         
-        // 创建TextRun
         let text = SharedString::new(content);
         let run = text_style.to_run(text.len());
         
-        // 动态计算需要减去的内边距值
         let padding_to_subtract = if width < px(250.0) {
-            px(60.0) // 宽度小于130px时，减去更大的内边距值
+            px(60.0)
         } else if width < px(300.0) {
             px(40.0)
         } else {
             px(20.0)
         };
         
-        // 使用GPUI的文本系统进行精确测量，减去计算得到的内边距
         let measured_width = width * 0.9 - padding_to_subtract;
         
-        // 打印测量开始日志
         debug!("文本测量开始: 文本长度={}, 容器宽度={:.2}px, 测量宽度={:.2}px, 字体大小={:.2}px",
               content.len(), width.as_f32(), measured_width.as_f32(), actual_font_size.as_f32());
         
@@ -75,24 +83,14 @@ impl TextMeasurement {
             None
         ).expect("文本测量失败");
         
-        // 计算总高度：遍历每个WrappedLine，累加其size方法返回的高度
         let line_height = text_style.line_height_in_pixels(window.rem_size());
         let mut total_height = px(0.0);
         for line in &wrapped_lines {
             total_height += line.size(line_height).height;
         }
         
+        let complete_message_height = base_height + total_height;
         
-        // 计算完整消息高度（包含所有布局元素）
-        let outer_gap = px(4.);
-        let header_height = px(20.);
-        let gap_between_header_and_content = px(4.);
-        let content_padding_top = px(12.);
-        let content_padding_bottom = px(12.);
-        
-        let complete_message_height = outer_gap + header_height + gap_between_header_and_content + content_padding_top + total_height + content_padding_bottom;
-        
-        // 打印测量结束日志
         debug!("文本测量结束: 完整消息高度={:.2}px, 文本行数={}", 
               complete_message_height.as_f32(),
               wrapped_lines.len());
