@@ -55,7 +55,7 @@ impl Message {
     pub fn new(direction: MessageDirection, raw_data: Vec<u8>, message_type: MessageType) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S.%3f").to_string(),
             direction,
             message_type,
             raw_data,

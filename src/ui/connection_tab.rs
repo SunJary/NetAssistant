@@ -926,30 +926,79 @@ impl<'a> ConnectionTab<'a> {
                     )
                     .child(
                         div()
-                            .cursor_pointer()
-                            .text_xs()
-                            .font_medium()
-                            .text_color(theme.secondary_foreground)
-                            .bg(theme.secondary)
-                            .border(px(1.0))
-                            .border_color(theme.secondary)
-                            .rounded(px(2.0))
-                            .px(px(10.0))
-                            .py(px(4.0))
-                            .hover(|style| {
-                                style.bg(theme.secondary_hover)
-                                    .border_color(theme.secondary_hover)
-                            })
-                            .child("清空")
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |app, _event, _window, cx| {
-                                    app.connection_tabs.get_mut(&tab_id).map(|tab_state| {
-                                        tab_state.message_list.clear_messages();
-                                        *tab_state.item_sizes.borrow_mut() = Rc::new(Vec::new());
-                                        cx.notify();
-                                    });
-                                }),
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .w_4()
+                                            .h_4()
+                                            .border_1()
+                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .rounded(px(4.))
+                                            .cursor_pointer()
+                                            .when(self.tab_state.auto_scroll_enabled, |this| {
+                                                this.bg(gpui::rgb(0x3b82f6))
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .font_bold()
+                                                            .child("✓"),
+                                                    )
+                                            })
+                                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                                let tab_id = tab_id.clone();
+                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                                        tab_state.auto_scroll_enabled = !tab_state.auto_scroll_enabled;
+                                                        cx.notify();
+                                                    }
+                                                }
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(gpui::rgb(0x6b7280))
+                                            .child("自动滚动"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(theme.secondary_foreground)
+                                    .bg(theme.secondary)
+                                    .border(px(1.0))
+                                    .border_color(theme.secondary)
+                                    .rounded(px(2.0))
+                                    .px(px(10.0))
+                                    .py(px(4.0))
+                                    .hover(|style| {
+                                        style.bg(theme.secondary_hover)
+                                            .border_color(theme.secondary_hover)
+                                    })
+                                    .child("清空")
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |app, _event, _window, cx| {
+                                            app.connection_tabs.get_mut(&tab_id).map(|tab_state| {
+                                                tab_state.message_list.clear_messages();
+                                                *tab_state.item_sizes.borrow_mut() = Rc::new(Vec::new());
+                                                cx.notify();
+                                            });
+                                        }),
+                                    ),
                             ),
                     ),
             )
