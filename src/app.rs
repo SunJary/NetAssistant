@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::input::InputState;
-use log::{debug, error, info};
+use log::{debug, error};
 
 use crate::utils::text_measurement::TextMeasurement;
 
@@ -212,7 +212,7 @@ impl NetAssistantApp {
                 if let Ok(mut timer) = timer_arc.lock() {
                     if let Some(timer_handle) = timer.take() {
                         timer_handle.abort();
-                        info!("[周期发送] 已停止旧的周期发送任务");
+                        debug!("[周期发送] 已停止旧的周期发送任务");
                     }
                 }
             }
@@ -309,31 +309,31 @@ impl NetAssistantApp {
     }
 
     pub fn close_tab(&mut self, tab_id: String, _cx: &mut Context<Self>) {
-        info!("[关闭标签页] 开始关闭标签页: {}", tab_id);
+        debug!("[关闭标签页] 开始关闭标签页: {}", tab_id);
 
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
             tab_state.disconnect();
         }
 
         if self.connection_tabs.remove(&tab_id).is_some() {
-            info!("[关闭标签页] 移除标签页状态: {}", tab_id);
+            debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
         }
 
         if self.auto_reply_inputs.remove(&tab_id).is_some() {
-            info!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
+            debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
         }
 
         // 清理客户端连接发送器
         if self.client_write_senders.remove(&tab_id).is_some() {
-            info!("[关闭标签页] 移除客户端连接发送器: {}", tab_id);
+            debug!("[关闭标签页] 移除客户端连接发送器: {}", tab_id);
         }
 
         // 清理服务端客户端连接
         if self.server_clients.remove(&tab_id).is_some() {
-            info!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);
+            debug!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);
         }
 
-        info!("[关闭标签页] 标签页 {} 已关闭", tab_id);
+        debug!("[关闭标签页] 标签页 {} 已关闭", tab_id);
     }
 
 
@@ -431,7 +431,7 @@ impl NetAssistantApp {
     }
 
     pub fn send_message(&mut self, tab_id: String, content: String) {
-        info!(
+        debug!(
             "[send_message] 开始，tab_id: {}, content: '{}'",
             tab_id, content
         );
@@ -440,34 +440,34 @@ impl NetAssistantApp {
         let content_clone = content.clone();
         
         // 保存message_type用于后续事件发送
-        let message_type_result = self.connection_tabs.get(&tab_id)
+        let tab_info = self.connection_tabs.get(&tab_id)
             .map(|tab_state| {
-                if tab_state.message_input_mode == "text" {
+                let message_type = if tab_state.message_input_mode == "text" {
                     MessageType::Text
                 } else {
                     MessageType::Hex
-                }
+                };
+                let is_client = tab_state.connection_config.is_client();
+                let selected_client = tab_state.selected_client;
+                (message_type, is_client, selected_client)
             });
         
-        if message_type_result.is_none() {
+        if tab_info.is_none() {
             error!("[send_message] 未找到标签页: {}", tab_id);
             return;
         }
         
-        let message_type = message_type_result.unwrap();
+        let (message_type, is_client, selected_client) = tab_info.unwrap();
         
         // 在闭包外部获取必要的信息
         let is_connected_result = self.connection_tabs.get(&tab_id).map(|tab| tab.is_connected);
-        let is_client_result = self.connection_tabs.get(&tab_id)
-            .map(|tab| tab.connection_config.is_client());
         
-        if is_connected_result.is_none() || is_client_result.is_none() {
+        if is_connected_result.is_none() {
             error!("[send_message] 未找到标签页: {}", tab_id);
             return;
         }
         
         let is_connected = is_connected_result.unwrap();
-        let is_client = is_client_result.unwrap();
         
         if !is_connected {
             if let Some(sender) = sender {
@@ -512,9 +512,7 @@ impl NetAssistantApp {
                 }
             }
         } else {
-            // 服务器模式：广播给所有客户端
-            debug!("[send_message] 服务端模式，广播给所有客户端");
-            
+            // 服务器模式：根据selected_client决定定向发送还是广播
             if let Some(clients) = self.server_clients.get(&tab_id) {
                 if clients.is_empty() {
                     error!("[send_message] 没有可用的客户端连接");
@@ -524,14 +522,52 @@ impl NetAssistantApp {
                             "没有可用的客户端连接".to_string(),
                         ));
                     }
-                } else {
-                    for (_, write_sender) in clients {
+                } else if let Some(target_addr) = selected_client {
+                    // 定向发送给选中的客户端
+                    debug!("[send_message] 服务端模式，定向发送给: {}", target_addr);
+                    if let Some(write_sender) = clients.get(&target_addr) {
                         if write_sender.try_send(bytes.clone()).is_err() {
-                            error!("[send_message] 发送给客户端失败");
+                            error!("[send_message] 发送给客户端 {} 失败", target_addr);
+                            if let Some(sender) = sender {
+                                let _ = sender.try_send(ConnectionEvent::Error(
+                                    tab_id_clone,
+                                    format!("发送给客户端 {} 失败", target_addr),
+                                ));
+                            }
+                        } else {
+                            debug!("[send_message] 定向发送成功");
+                            if let Some(sender) = sender {
+                                let message = Message::new(MessageDirection::Sent, bytes, message_type)
+                                    .with_source(target_addr.to_string());
+                                let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                            }
+                        }
+                    } else {
+                        error!("[send_message] 客户端 {} 不存在或已断开", target_addr);
+                        if let Some(sender) = sender {
+                            let _ = sender.try_send(ConnectionEvent::Error(
+                                tab_id_clone,
+                                format!("客户端 {} 不存在或已断开", target_addr),
+                            ));
                         }
                     }
+                } else {
+                    // 广播给所有客户端（并行发送）
+                    debug!("[send_message] 服务端模式，广播给所有客户端，共 {} 个", clients.len());
+                    let bytes_arc = std::sync::Arc::new(bytes.clone());
                     
-                    debug!("[send_message] 发送成功");
+                    for (addr, write_sender) in clients.iter() {
+                        let sender_clone = write_sender.clone();
+                        let bytes_clone = bytes_arc.clone();
+                        let addr_str = addr.to_string();
+                        tokio::spawn(async move {
+                            if sender_clone.send((*bytes_clone).clone()).await.is_err() {
+                                error!("[send_message] 广播发送给客户端 {} 失败", addr_str);
+                            }
+                        });
+                    }
+                    
+                    debug!("[send_message] 广播发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
                         let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
@@ -550,42 +586,42 @@ impl NetAssistantApp {
     }
 
     pub fn send_message_bytes(&mut self, tab_id: String, bytes: Vec<u8>, hex_input: String) {
-        info!(
+        debug!(
             "[send_message_bytes] 开始，tab_id: {}, bytes: {:?}, hex_input: '{}'",
             tab_id, bytes, hex_input
         );
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
         
-        // 保存message_type用于后续事件发送
-        let message_type_result = self.connection_tabs.get(&tab_id)
+        // 保存message_type和selected_client用于后续事件发送
+        let tab_info = self.connection_tabs.get(&tab_id)
             .map(|tab_state| {
-                if tab_state.message_input_mode == "text" {
+                let message_type = if tab_state.message_input_mode == "text" {
                     MessageType::Text
                 } else {
                     MessageType::Hex
-                }
+                };
+                let is_client = tab_state.connection_config.is_client();
+                let selected_client = tab_state.selected_client;
+                (message_type, is_client, selected_client)
             });
         
-        if message_type_result.is_none() {
+        if tab_info.is_none() {
             error!("[send_message_bytes] 未找到标签页: {}", tab_id);
             return;
         }
         
-        let message_type = message_type_result.unwrap();
+        let (message_type, is_client, selected_client) = tab_info.unwrap();
         
         // 在闭包外部获取必要的信息
         let is_connected_result = self.connection_tabs.get(&tab_id).map(|tab| tab.is_connected);
-        let is_client_result = self.connection_tabs.get(&tab_id)
-            .map(|tab| tab.connection_config.is_client());
         
-        if is_connected_result.is_none() || is_client_result.is_none() {
+        if is_connected_result.is_none() {
             error!("[send_message_bytes] 未找到标签页: {}", tab_id);
             return;
         }
         
         let is_connected = is_connected_result.unwrap();
-        let is_client = is_client_result.unwrap();
         
         if !is_connected {
             if let Some(sender) = sender {
@@ -628,9 +664,7 @@ impl NetAssistantApp {
                 }
             }
         } else {
-            // 服务器模式：广播给所有客户端
-            debug!("[send_message_bytes] 服务端模式，广播给所有客户端");
-            
+            // 服务器模式：根据selected_client决定定向发送还是广播
             if let Some(clients) = self.server_clients.get(&tab_id) {
                 if clients.is_empty() {
                     error!("[send_message_bytes] 没有可用的客户端连接");
@@ -640,14 +674,52 @@ impl NetAssistantApp {
                             "没有可用的客户端连接".to_string(),
                         ));
                     }
-                } else {
-                    for (_, write_sender) in clients {
+                } else if let Some(target_addr) = selected_client {
+                    // 定向发送给选中的客户端
+                    debug!("[send_message_bytes] 服务端模式，定向发送给: {}", target_addr);
+                    if let Some(write_sender) = clients.get(&target_addr) {
                         if write_sender.try_send(bytes.clone()).is_err() {
-                            error!("[send_message_bytes] 发送给客户端失败");
+                            error!("[send_message_bytes] 发送给客户端 {} 失败", target_addr);
+                            if let Some(sender) = sender {
+                                let _ = sender.try_send(ConnectionEvent::Error(
+                                    tab_id_clone,
+                                    format!("发送给客户端 {} 失败", target_addr),
+                                ));
+                            }
+                        } else {
+                            debug!("[send_message_bytes] 定向发送成功");
+                            if let Some(sender) = sender {
+                                let message = Message::new(MessageDirection::Sent, bytes, message_type)
+                                    .with_source(target_addr.to_string());
+                                let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                            }
+                        }
+                    } else {
+                        error!("[send_message_bytes] 客户端 {} 不存在或已断开", target_addr);
+                        if let Some(sender) = sender {
+                            let _ = sender.try_send(ConnectionEvent::Error(
+                                tab_id_clone,
+                                format!("客户端 {} 不存在或已断开", target_addr),
+                            ));
                         }
                     }
+                } else {
+                    // 广播给所有客户端（并行发送）
+                    debug!("[send_message_bytes] 服务端模式，广播给所有客户端，共 {} 个", clients.len());
+                    let bytes_arc = std::sync::Arc::new(bytes.clone());
                     
-                    debug!("[send_message_bytes] 发送成功");
+                    for (addr, write_sender) in clients.iter() {
+                        let sender_clone = write_sender.clone();
+                        let bytes_clone = bytes_arc.clone();
+                        let addr_str = addr.to_string();
+                        tokio::spawn(async move {
+                            if sender_clone.send((*bytes_clone).clone()).await.is_err() {
+                                error!("[send_message_bytes] 广播发送给客户端 {} 失败", addr_str);
+                            }
+                        });
+                    }
+                    
+                    debug!("[send_message_bytes] 广播发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
                         let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
@@ -672,7 +744,7 @@ impl NetAssistantApp {
         source: Option<String>,
         _cx: &mut Context<Self>,
     ) {
-        info!(
+        debug!(
             "[send_message_to_client] 开始，tab_id: {}, content: '{}', source: {:?}",
             tab_id, content, source
         );
@@ -728,7 +800,7 @@ impl NetAssistantApp {
             // 解析客户端地址
             match source_str.parse::<std::net::SocketAddr>() {
                 Ok(addr) => {
-                    info!("[send_message_to_client] 发送给指定客户端: {}", addr);
+                    debug!("[send_message_to_client] 发送给指定客户端: {}", addr);
                     let bytes = if tab_state.message_input_mode == "hex" {
                         // 十六进制模式：解析十六进制内容
                         crate::utils::hex::hex_to_bytes(&content_clone)
@@ -899,14 +971,14 @@ impl NetAssistantApp {
                 self.server_clients.remove(&tab_id);
             }
             ConnectionEvent::ClientWriteSenderReady(tab_id, write_sender) => {
-                info!(
+                debug!(
                     "[handle_connection_events] 客户端写入发送器就绪: {}",
                     tab_id
                 );
                 self.client_write_senders.insert(tab_id, write_sender);
             }
             ConnectionEvent::ServerClientConnected(tab_id, addr, write_sender) => {
-                info!(
+                debug!(
                     "[handle_connection_events] 服务端客户端连接: tab_id={}, addr={}",
                     tab_id, addr
                 );
@@ -925,7 +997,7 @@ impl NetAssistantApp {
                 }
             }
             ConnectionEvent::ServerClientDisconnected(tab_id, addr) => {
-                info!(
+                debug!(
                     "[handle_connection_events] 服务端客户端断开: tab_id={}, addr={}",
                     tab_id, addr
                 );
@@ -988,7 +1060,7 @@ impl NetAssistantApp {
 
 impl Drop for NetAssistantApp {
     fn drop(&mut self) {
-        info!("[应用关闭] 开始关闭所有连接");
+        debug!("[应用关闭] 开始关闭所有连接");
 
         let tab_ids: Vec<String> = self.connection_tabs.keys().cloned().collect();
         for tab_id in tab_ids {
@@ -999,25 +1071,25 @@ impl Drop for NetAssistantApp {
             }
             
             if self.connection_tabs.remove(&tab_id).is_some() {
-                info!("[关闭标签页] 移除标签页状态: {}", tab_id);
+                debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
             }
             
             if self.auto_reply_inputs.remove(&tab_id).is_some() {
-                info!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
+                debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
             }
             
             // 清理客户端连接发送器
             if self.client_write_senders.remove(&tab_id).is_some() {
-                info!("[关闭标签页] 移除客户端连接发送器: {}", tab_id);
+                debug!("[关闭标签页] 移除客户端连接发送器: {}", tab_id);
             }
             
             // 清理服务端客户端连接
             if self.server_clients.remove(&tab_id).is_some() {
-                info!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);
+                debug!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);
             }
         }
 
-        info!("[应用关闭] 所有连接已关闭");
+        debug!("[应用关闭] 所有连接已关闭");
     }
 }
 

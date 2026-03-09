@@ -229,7 +229,6 @@ impl<'a> ConnectionTab<'a> {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
-        let is_client = self.tab_state.connection_config.is_client();
 
         div()
             .flex()
@@ -243,7 +242,7 @@ impl<'a> ConnectionTab<'a> {
                     .flex_col()
                     .flex_1()
                     .child(self.render_message_area(window, cx))
-                    .when(is_client, |div| div.child(self.render_send_area(cx))),
+                    .child(self.render_send_area(cx)),
             )
     }
 
@@ -1138,6 +1137,9 @@ impl<'a> ConnectionTab<'a> {
         let tab_id_auto_clear = tab_id.clone();
         let tab_id_send = tab_id.clone();
 
+        let is_client = self.tab_state.connection_config.is_client();
+        let selected_client = &self.tab_state.selected_client;
+
         div()
             .flex()
             .flex_col()
@@ -1146,6 +1148,19 @@ impl<'a> ConnectionTab<'a> {
             .border_t_1()
             .border_color(theme.border)
             .bg(theme.background)
+            .when(!is_client, |el| {
+                let target_text = if let Some(addr) = selected_client {
+                    format!("发送给：{}", addr)
+                } else {
+                    "发送给：全部客户端".to_string()
+                };
+                el.child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(target_text),
+                )
+            })
             .child(
                 div()
                     .flex_1()
