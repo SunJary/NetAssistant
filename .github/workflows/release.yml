@@ -84,6 +84,8 @@ jobs:
           brew install openssl
 
       - name: Build release
+        env:
+          BUILD_VERSION: ${{ inputs.version || github.ref_name }}
         run: |
           cargo build --release --target ${{ matrix.target }}
 

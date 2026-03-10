@@ -1,9 +1,14 @@
 fn main() {
+    let version = std::env::var("BUILD_VERSION")
+        .ok()
+        .unwrap_or_else(|| {
+            chrono::Utc::now().format("%Y%m%d").to_string()
+        });
+    
+    println!("cargo:rustc-env=APP_VERSION={}", version);
+
     #[cfg(target_os = "windows")]
     {
-        // 根据构建模式设置不同的子系统
-        // debug模式使用控制台子系统（有命令行窗口）
-        // release模式使用Windows子系统（无命令行窗口）
         if cfg!(debug_assertions) {
             println!("cargo:rustc-link-arg=/SUBSYSTEM:CONSOLE");
         } else {

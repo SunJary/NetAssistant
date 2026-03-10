@@ -34,6 +34,7 @@ winapi = { version = "0.3", features = ["winreg", "handleapi", "synchapi", "wine
 
 [build-dependencies]
 winres = "0.1"
+chrono = "0.4"
 
 [package.metadata.appimage]
 name = "NetAssistant"

@@ -61,7 +61,7 @@ impl<'a> MainWindow<'a> {
                             .text_lg()
                             .font_semibold()
                             .text_color(theme.foreground)
-                            .child("NetAssistant"),
+                            .child(format!("NetAssistant v{}", env!("APP_VERSION"))),
                     )
                     .child(
                         div()
