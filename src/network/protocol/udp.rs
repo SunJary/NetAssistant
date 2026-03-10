@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
+use std::str::FromStr;
 use log::{debug, error, info};
 use tokio::sync::Mutex;
 use std::pin::Pin;
@@ -28,9 +29,16 @@ impl UdpClient {
         config: ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>
     ) -> Self {
-        let server_addr = format!("{}:{}", config.server_address, config.server_port)
-            .parse::<SocketAddr>()
-            .expect("无效的UDP服务器地址");
+        // 解析地址，支持IPv4和IPv6
+        let address = if config.server_address.contains(':') && !config.server_address.contains('[') {
+            // IPv6地址需要方括号
+            format!("[{}]:{}", config.server_address, config.server_port)
+        } else {
+            format!("{}:{}", config.server_address, config.server_port)
+        };
+        
+        let server_addr = SocketAddr::from_str(&address)
+            .expect(&format!("无效的UDP服务器地址: {}", address));
             
         UdpClient {
             config,
@@ -65,8 +73,9 @@ impl NetworkConnection for UdpClient {
         Pin::from(Box::new(async move {
             info!("UDP客户端连接到地址: {}", server_addr);
             
-            // 绑定到本地随机端口
-            let socket = UdpSocket::bind("0.0.0.0:0").await?;
+            // 绑定到本地随机端口，支持IPv4和IPv6
+            let bind_addr = if server_addr.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
+            let socket = UdpSocket::bind(bind_addr).await?;
             let local_addr = socket.local_addr()
                 .map_err(|e| {
                     error!("获取UDP套接字本地地址失败: {:?}", e);
@@ -251,11 +260,26 @@ impl NetworkServer for UdpServer {
         let clients = self.clients.clone();
         
         Pin::from(Box::new(async move {
-            let address = format!("{}:{}", config.listen_address, config.listen_port);
-            info!("UDP服务器启动在地址: {}", address);
+            // 绑定地址，支持IPv4和IPv6
+            let address = if config.listen_address.contains(':') && !config.listen_address.contains('[') {
+                // IPv6地址需要方括号
+                format!("[{}]:{}", config.listen_address, config.listen_port)
+            } else {
+                format!("{}:{}", config.listen_address, config.listen_port)
+            };
+            
+            let socket_addr = match SocketAddr::from_str(&address) {
+                Ok(addr) => addr,
+                Err(e) => {
+                    error!("无效的UDP监听地址格式 '{}': {}", address, e);
+                    return Err(format!("无效的监听地址格式: {}", e).into());
+                }
+            };
+            
+            info!("UDP服务器启动在地址: {}", socket_addr);
             debug!("UDP服务器配置: {:?}", config);
             
-            let socket = UdpSocket::bind(&address).await?;
+            let socket = UdpSocket::bind(socket_addr).await?;
             info!("UDP服务器成功绑定到地址: {}", address);
             debug!("UDP套接字创建成功: {:?}", socket);
             

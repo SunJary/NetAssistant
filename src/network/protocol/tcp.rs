@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use std::str::FromStr;
 use log::{debug, error, info};
 use std::pin::Pin;
 use std::net::SocketAddr;
@@ -53,7 +54,7 @@ fn process_decoded_data_with_addr(
             hex.join(" ")
         }
     };
-    info!("TCP服务器从 {} 收到消息: {}", addr, message_str);
+    debug!("TCP服务器从 {} 收到消息: {}", addr, message_str);
     
     // 创建消息对象
     let message = processor.process_received_message(raw_data, MessageType::Text).with_source(addr.to_string());
@@ -95,22 +96,32 @@ impl NetworkConnection for TcpClient {
         let message_processor = self.message_processor.clone();
         
         Pin::from(Box::new(async move {
-            let address = format!("{}:{}", config.server_address, config.server_port);
-            info!("TCP客户端连接到地址: {}", address);
+            // 解析地址，支持IPv4和IPv6
+            let address = if config.server_address.contains(':') && !config.server_address.contains('[') {
+                // IPv6地址需要方括号
+                format!("[{}]:{}", config.server_address, config.server_port)
+            } else {
+                format!("{}:{}", config.server_address, config.server_port)
+            };
             
-            let socket = TcpStream::connect(&address).await?;
-            info!("TCP客户端连接成功: {}", address);
+            let socket_addr = SocketAddr::from_str(&address)
+                .map_err(|e| format!("无效的地址格式 '{}': {}", address, e))?;
+            
+            info!("TCP客户端连接到地址: {}", socket_addr);
+            
+            let socket = TcpStream::connect(socket_addr).await?;
+            info!("TCP客户端连接成功: {}", socket_addr);
             
             // 创建发送器和接收器
             let (tx, rx) = smol_unbounded::<Vec<u8>>();
             
             // 发送连接成功事件到UI线程
             if let Some(sender) = &event_sender {
-                info!("[TCP客户端] 发送 Connected 事件");
+                debug!("[TCP客户端] 发送 Connected 事件");
                 if let Err(e) = sender.send(ConnectionEvent::Connected(config.id.clone())).await {
                     error!("[TCP客户端] 发送 Connected 事件失败: {:?}", e);
                 }
-                info!("[TCP客户端] 发送 ClientWriteSenderReady 事件");
+                debug!("[TCP客户端] 发送 ClientWriteSenderReady 事件");
                 if let Err(e) = sender.send(ConnectionEvent::ClientWriteSenderReady(config.id.clone(), tx)).await {
                     error!("[TCP客户端] 发送 ClientWriteSenderReady 事件失败: {:?}", e);
                 }
@@ -222,7 +233,7 @@ impl NetworkConnection for TcpClient {
                             }
                         },
                         Err(_) => {
-                            info!("消息发送通道已关闭");
+                            debug!("消息发送通道已关闭");
                             break;
                         }
                     }
@@ -277,7 +288,7 @@ impl Drop for TcpServer {
         // 当服务器实例被销毁时，取消监听任务
         if let Some(handle) = self.listener_handle.take() {
             handle.abort();
-            info!("TCP服务器监听任务已取消");
+            debug!("TCP服务器监听任务已取消");
         }
     }
 }
@@ -304,13 +315,28 @@ impl NetworkServer for TcpServer {
     fn start(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send + '_>> {
         // 如果服务器已经在运行，直接返回
         if self.is_running {
-            info!("TCP服务器已经在运行中");
+            debug!("TCP服务器已经在运行中");
             return Pin::from(Box::new(async move { Ok(()) }));
         }
         
-        // 绑定地址
-        let address = format!("{}:{}", self.config.listen_address, self.config.listen_port);
-        info!("TCP服务器启动在地址: {}", address);
+        // 绑定地址，支持IPv4和IPv6
+        let address = if self.config.listen_address.contains(':') && !self.config.listen_address.contains('[') {
+            // IPv6地址需要方括号
+            format!("[{}]:{}", self.config.listen_address, self.config.listen_port)
+        } else {
+            format!("{}:{}", self.config.listen_address, self.config.listen_port)
+        };
+        
+        let socket_addr = match SocketAddr::from_str(&address) {
+            Ok(addr) => addr,
+            Err(e) => {
+                error!("无效的监听地址格式 '{}': {}", address, e);
+                let error_msg = format!("无效的监听地址格式: {}", e);
+                return Pin::from(Box::new(async move { Err(error_msg.into()) }));
+            }
+        };
+        
+        info!("TCP服务器启动在地址: {}", socket_addr);
         
         // 更新状态为运行中
         self.is_running = true;
@@ -328,7 +354,7 @@ impl NetworkServer for TcpServer {
         // 启动一个任务来创建listener并启动监听
         tokio::spawn(async move {
             // 绑定地址
-            match TcpListener::bind(&address).await {
+            match TcpListener::bind(socket_addr).await {
                 Ok(listener) => {
                     info!("TCP服务器开始监听: {}", address);
                     
@@ -406,7 +432,7 @@ impl NetworkServer for TcpServer {
                                                             match result {
                                                                 Ok(0) => {
                                                                     // 客户端关闭连接
-                                                                    info!("TCP客户端 {} 断开连接", addr);
+                                                                    debug!("TCP客户端 {} 断开连接", addr);
                                                                     break;
                                                                 },
                                                                 Ok(n) => {
@@ -493,10 +519,10 @@ impl NetworkServer for TcpServer {
                                                                     hex.join(" ")
                                                                 }
                                                             };
-                                                            info!("TCP服务器向 {} 发送消息: {}", addr, send_message_str);
+                                                            debug!("TCP服务器向 {} 发送消息: {}", addr, send_message_str);
                                                         },
                                                         Err(_) => {
-                                                            info!("TCP服务器发送消息通道已关闭");
+                                                            debug!("TCP服务器发送消息通道已关闭");
                                                             break;
                                                         }
                                                     }
@@ -600,7 +626,7 @@ impl NetworkServer for TcpServer {
         
         // 如果服务器已经停止，直接返回
         if !self.is_running {
-            info!("TCP服务器已经停止");
+            debug!("TCP服务器已经停止");
             return Pin::from(Box::new(async move {
                 Ok(())
             }));
@@ -609,14 +635,14 @@ impl NetworkServer for TcpServer {
         // 取消监听任务
         if let Some(handle) = self.listener_handle.take() {
             handle.abort();
-            info!("TCP服务器监听任务已取消");
+            debug!("TCP服务器监听任务已取消");
         }
         
         // 关闭监听套接字
         if let Some(_listener) = self.listener.take() {
             // 当我们从self.listener中取出listener并drop它时，会自动关闭监听套接字
             // 这将导致所有正在进行的accept()调用返回错误，从而停止接收新连接
-            info!("TCP服务器监听套接字已关闭");
+            debug!("TCP服务器监听套接字已关闭");
         }
         
         // 更新状态为停止
@@ -651,8 +677,8 @@ impl NetworkServer for TcpServer {
                 }
             }
             
-            info!("TCP服务器已停止");
-            info!("TCP服务器已停止监听端口");
+            debug!("TCP服务器已停止");
+            debug!("TCP服务器已停止监听端口");
             Ok(())
         }))
     }

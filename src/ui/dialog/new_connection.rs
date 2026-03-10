@@ -61,7 +61,15 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_color(theme.foreground)
                                             .child("主机地址"),
                                     )
-                                    .child(Input::new(&self.app.host_input)),
+                                    .child(Input::new(&self.app.host_input))
+                                    .when(!self.app.new_connection_is_client, |this| {
+                                        this.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(gpui::rgb(0x9ca3af))
+                                                .child("IPv4: 127.0.0.1(本地) | 0.0.0.0(全局) | IPv6: ::1(本地) | ::(全局)"),
+                                        )
+                                    }),
                             )
                             .child(
                                 div()

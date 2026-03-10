@@ -1016,13 +1016,12 @@ impl NetAssistantApp {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     let mut message = message.clone();
                     let message_for_auto_reply = message.clone();
-                    if message.direction == MessageDirection::Received {
-                        message.message_type = if tab_state.message_input_mode == "text" {
-                            MessageType::Text
-                        } else {
-                            MessageType::Hex
-                        };
-                    }
+                    // 设置消息类型（对接收和发送的消息都设置）
+                    message.message_type = if tab_state.message_input_mode == "text" {
+                        MessageType::Text
+                    } else {
+                        MessageType::Hex
+                    };
                     // 计算消息气泡宽度并使用带宽度参数的方法
                     let container_width = self.message_container_width.unwrap_or(px(800.0));
                     let bubble_width = container_width * 0.6;
