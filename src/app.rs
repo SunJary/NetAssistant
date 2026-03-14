@@ -2,9 +2,6 @@ use gpui::*;
 use gpui_component::input::InputState;
 use log::{debug, error};
 
-use crate::utils::text_measurement::TextMeasurement;
-
-
 use crate::config;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus};
 use crate::config::storage::ConfigStorage;
@@ -77,9 +74,6 @@ pub struct NetAssistantApp {
     
     // 消息容器尺寸信息（用于计算消息气泡宽度）
     pub message_container_width: Option<Pixels>,
-    
-    // 文本测量工具实例
-    pub text_measurement: TextMeasurement,
 }
 
 impl NetAssistantApp {
@@ -145,8 +139,6 @@ impl NetAssistantApp {
             last_update_time: Instant::now(),
             // 初始化消息容器宽度
             message_container_width: None,
-            // 初始化文本测量工具
-            text_measurement: TextMeasurement::new(),
         };
 
         // 创建专门的异步任务来处理连接事件
@@ -1022,10 +1014,8 @@ impl NetAssistantApp {
                     } else {
                         MessageType::Hex
                     };
-                    // 计算消息气泡宽度并使用带宽度参数的方法
-                    let container_width = self.message_container_width.unwrap_or(px(800.0));
-                    let bubble_width = container_width * 0.6;
-                    tab_state.add_message_with_width(message, bubble_width);
+                    // 使用 GPUI list 自动测量高度，无需手动计算宽度
+                    tab_state.add_message(message);
                     // 消息接收是关键事件，立即触发UI更新
                     cx.notify();
 
