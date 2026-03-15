@@ -136,7 +136,10 @@ impl ConnectionTabState {
         }
 
         if self.auto_scroll_enabled && new_count > 0 {
-            self.message_list_state.scroll_to_reveal_item(new_count - 1);
+            self.message_list_state.scroll_to(gpui::ListOffset {
+                item_ix: new_count,
+                offset_in_item: px(0.),
+            });
         }
     }
 
@@ -898,117 +901,122 @@ impl<'a> ConnectionTab<'a> {
                     .w_full()
                     .flex_1()
                     .child(
-                        list(
-                            self.tab_state.message_list_state.clone(),
-                            move |ix, _window, _cx| {
-                                if let Some(message) = messages.get(ix) {
-                                    let is_sent = message.direction == MessageDirection::Sent;
-                                    let should_show = if message.source.is_none() {
-                                        true
-                                    } else {
-                                        selected_client.as_ref().map_or(true, |selected| {
-                                            message.source.as_ref() == Some(&selected.to_string())
-                                        })
-                                    };
-                                    
-                                    if !should_show {
-                                        return div().into_any();
-                                    }
-                                    
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_1()
-                                        .w_full()
-                                        .when(is_sent, |div| div.items_end())
-                                        .when(!is_sent, |div| div.items_start())
-                                        .child(
+                        div()
+                            .pr_8()
+                            .size_full()
+                            .child(
+                                list(
+                                    self.tab_state.message_list_state.clone(),
+                                    move |ix, _window, _cx| {
+                                        if let Some(message) = messages.get(ix) {
+                                            let is_sent = message.direction == MessageDirection::Sent;
+                                            let should_show = if message.source.is_none() {
+                                                true
+                                            } else {
+                                                selected_client.as_ref().map_or(true, |selected| {
+                                                    message.source.as_ref() == Some(&selected.to_string())
+                                                })
+                                            };
+                                            
+                                            if !should_show {
+                                                return div().into_any();
+                                            }
+                                            
                                             div()
                                                 .flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child(
-                                                    div()
-                                                            .text_xs()
-                                                            .font_semibold()
-                                                            .when(is_sent, |div| {
-                                                                div.text_color(gpui::rgb(0x3b82f6))
-                                                            })
-                                                            .when(!is_sent, |div| {
-                                                                div.text_color(gpui::rgb(0x10b981))
-                                                            })
-                                                            .child(if is_sent {
-                                                                "发送"
-                                                            } else {
-                                                                "接收"
-                                                            }),
-                                                )
-                                                .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .text_color(gpui::rgb(0x9ca3af))
-                                                            .child(message.timestamp.clone()),
-                                                )
-                                                .when(
-                                                    message.source.is_some(),
-                                                    |this_div| {
-                                                        if let Some(source) = &message.source {
-                                                            this_div.child(
-                                                                div()
-                                                                    .text_xs()
-                                                                    .text_color(gpui::rgb(0x6b7280))
-                                                                    .child(format!("({})", source)),
-                                                            )
-                                                        } else {
-                                                            this_div
-                                                        }
-                                                    },
-                                                ),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_2()
+                                                .flex_col()
+                                                .gap_1()
                                                 .w_full()
-                                                .when(!is_sent, |div| {
-                                                    div.flex_row()
-                                                })
-                                                .when(is_sent, |div| {
-                                                    div.flex_row_reverse()
-                                                })
+                                                .when(is_sent, |div| div.items_end())
+                                                .when(!is_sent, |div| div.items_start())
                                                 .child(
                                                     div()
-                                                            .max_w_3_5()
-                                                            .p_3()
-                                                            .rounded_md()
-                                                            .when(is_sent, |div| {
-                                                                div.bg(gpui::rgb(0x3b82f6))
-                                                            })
-                                                            .when(!is_sent, |div| {
-                                                                div.bg(gpui::rgb(0xf3f4f6))
-                                                            })
-                                                            .child(
-                                                                div()
-                                                                    .text_sm()
-                                                                    .whitespace_normal()
-                                                                    .when(is_sent, |div| {
-                                                                        div.text_color(gpui::rgb(0xffffff))
-                                                                    })
-                                                                    .when(!is_sent, |div| {
-                                                                        div.text_color(gpui::rgb(0x111827))
-                                                                    })
-                                                                    .child(message.get_content_by_type()),
-                                                            ),
-                                                ),
-                                        )
-                                        .into_any()
-                                } else {
-                                    div().into_any()
-                                }
-                            },
-                        )
-                        .size_full(),
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_2()
+                                                        .child(
+                                                            div()
+                                                                .text_xs()
+                                                                .font_semibold()
+                                                                .when(is_sent, |div| {
+                                                                    div.text_color(gpui::rgb(0x3b82f6))
+                                                                })
+                                                                .when(!is_sent, |div| {
+                                                                    div.text_color(gpui::rgb(0x10b981))
+                                                                })
+                                                                .child(if is_sent {
+                                                                    "发送"
+                                                                } else {
+                                                                    "接收"
+                                                                }),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .text_xs()
+                                                                .text_color(gpui::rgb(0x9ca3af))
+                                                                .child(message.timestamp.clone()),
+                                                        )
+                                                        .when(
+                                                            message.source.is_some(),
+                                                            |this_div| {
+                                                                if let Some(source) = &message.source {
+                                                                    this_div.child(
+                                                                        div()
+                                                                            .text_xs()
+                                                                            .text_color(gpui::rgb(0x6b7280))
+                                                                            .child(format!("({})", source)),
+                                                                    )
+                                                                } else {
+                                                                    this_div
+                                                                }
+                                                            },
+                                                        ),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap_2()
+                                                        .w_full()
+                                                        .when(!is_sent, |div| {
+                                                            div.flex_row()
+                                                        })
+                                                        .when(is_sent, |div| {
+                                                            div.flex_row_reverse()
+                                                        })
+                                                        .child(
+                                                            div()
+                                                                .max_w_3_5()
+                                                                .p_3()
+                                                                .rounded_md()
+                                                                .when(is_sent, |div| {
+                                                                    div.bg(gpui::rgb(0x3b82f6))
+                                                                })
+                                                                .when(!is_sent, |div| {
+                                                                    div.bg(gpui::rgb(0xf3f4f6))
+                                                                })
+                                                                .child(
+                                                                    div()
+                                                                        .text_sm()
+                                                                        .whitespace_normal()
+                                                                        .when(is_sent, |div| {
+                                                                            div.text_color(gpui::rgb(0xffffff))
+                                                                        })
+                                                                        .when(!is_sent, |div| {
+                                                                            div.text_color(gpui::rgb(0x111827))
+                                                                        })
+                                                                        .child(message.get_content_by_type()),
+                                                                ),
+                                                        ),
+                                                )
+                                                .into_any()
+                                        } else {
+                                            div().into_any()
+                                        }
+                                    },
+                                )
+                                .size_full(),
+                            ),
                     )
                     .child(
                         div()
@@ -1016,9 +1024,10 @@ impl<'a> ConnectionTab<'a> {
                             .top_0()
                             .right_0()
                             .bottom_0()
+                            .w(px(12.0))
                             .child(
                                 Scrollbar::vertical(&scrollbar_state)
-                                    .scrollbar_show(ScrollbarShow::Scrolling),
+                                    .scrollbar_show(ScrollbarShow::Always),
                             ),
                     )
                     .into_any()
