@@ -15,23 +15,31 @@ English | [中文](README.md)
 
 ## Introduction
 
-NetAssistant is a high-performance, modern network debugging tool built with Rust. It provides an intuitive interface for testing and debugging network communications, supporting TCP/UDP client and server modes.
+NetAssistant is a high-performance, modern **cross-platform** network debugging tool built with Rust, **supporting Windows, Linux, and macOS systems**. It provides an intuitive interface for testing and debugging network communications, supporting TCP/UDP client and server modes, making it a powerful tool for network application development, hardware debugging, and embedded system development.
 
 ## ✨ Features
 
-- **Multi-protocol support**: TCP/UDP client and server modes
-- **Chat-style message logging**: Intuitive display of message interactions
-- **Configuration persistence**: Automatically saves connection configurations
-- **Auto-reply functionality**: Supports test auto-replies
-- **Periodic send functionality**: Supports timed periodic message sending
-- **Multi-tab management**: Manage multiple connections simultaneously
-- **Client message viewing**: Select specific clients to view their messages
+### Core Features
+- **Multi-protocol support**: Complete TCP/UDP client and server modes
+- **Cross-platform compatibility**: Supports Windows, Linux, and macOS operating systems
+- **IPv4/IPv6 dual stack**: Supports both IPv4 and IPv6 protocols, adapting to various network environments
+- **Multiple TCP decoders**: Supports raw data, line-based decoding, length-prefixed decoding, and JSON decoding to meet different protocol format requirements, effectively solving TCP sticky packet issues
+- **Chat-style message logging**: Intuitive display of message interactions, facilitating debugging and analysis
+- **Configuration persistence**: Automatically saves connection configurations for direct use next time
+
+### Automated Testing Features
+- **Auto-reply functionality**: Supports test auto-replies, simulating server or client responses
+- **Periodic send functionality**: Supports timed periodic message sending for stress testing or long-term stability testing
+
+### Modern Interface
+- **Dark mode support**: Automatically adapts to system themes, providing a comfortable night-time experience
+- **Multi-tab management**: Manage multiple connections simultaneously for easy switching and comparison
+- **Client message viewing**: Select specific clients to view their messages in server mode
 
 ## 🎯 Use Cases
 
-- ✅ **IoT device integration testing**: Test communication with various IoT devices and verify device responses and data formats
-- ✅ **Network application development debugging**: Quickly test communication logic and verify data transfer formats during network application development
-- ✅ **Embedded device communication verification**: Verify the correctness of network communication protocol implementations in embedded systems
+- **Developer Communication Verification**: Including backend developers simulating hardware data before hardware integration, and network application developers testing communication logic and data formats between clients and servers, verifying the correctness and robustness of servers or applications
+- **Hardware Device Testing**: Covering hardware engineers testing conventional hardware devices (such as sensors, controllers, etc.), and embedded developers verifying network protocol stack implementation, data transmission efficiency, and memory usage of resource-constrained embedded systems, ensuring normal operation of device network functions
 
 ## 📸 Interface Preview
 
@@ -41,33 +49,72 @@ NetAssistant is a high-performance, modern network debugging tool built with Rus
 ### Server Mode
 ![Server Screenshot](assets/screenshots/screenshot_server.png)
 
+### IPv6 Support
+![IPv6 Screenshot](assets/screenshots/screenshot_ipv6.png)
+
+### TCP Decoder
+![TCP Decoder Screenshot](assets/screenshots/screenshot_tcp_decoder.png)
+
+### UDP Client Dark Mode
+![UDP Client Dark Mode Screenshot](assets/screenshots/screenshot_udp_client_dark.png)
+
+### UDP Server Dark Mode
+![UDP Server Dark Mode Screenshot](assets/screenshots/screenshot_udp_server_dark.png)
+
+### Collapsed Mode
+![Collapsed Mode Screenshot](assets/screenshots/screenshot_collapsed.png)
+
 ## 🚀 Quick Start
 
-### Prerequisites
+### System Requirements
 
-- Rust 1.70 or higher
-- Windows 10/11 or Linux
+- **Windows**: 10 or later
+- **Linux**: Requires GTK3 library (e.g., Ubuntu 22.04 and above)
+- **macOS**: 10.15 or later
 
 ### Installation
 
-#### Recommended Method: Install via winget
-**Advantages**: Supports automatic upgrades, easier installation and management
-1. First install winget (built-in on Windows 10 1809+ or Windows 11, or refer to [Microsoft official documentation](https://learn.microsoft.com/en-us/windows/package-manager/winget/) for installation methods)
-2. Open Command Prompt or PowerShell and run:
-   ```bash
-   winget install SunJary.NetAssistant
-   ```
-3. To upgrade later, simply run:
-   ```bash
-   winget upgrade SunJary.NetAssistant
-   ```
+#### Windows
+**Recommended Method: Install via winget**
+- Advantages: Supports automatic upgrades, easier installation and management
+- Steps:
+  1. First install winget (built-in on Windows 10 1809+ or Windows 11, or refer to [Microsoft official documentation](https://learn.microsoft.com/en-us/windows/package-manager/winget/) for installation methods)
+  2. Open Command Prompt or PowerShell and run:
+     ```bash
+     winget install SunJary.NetAssistant
+     ```
+  3. To upgrade later, simply run:
+     ```bash
+     winget upgrade SunJary.NetAssistant
+     ```
 
 #### Alternative Method: Download from GitHub Release
 Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version.
 
+#### Linux
+**Recommended Method: Download from GitHub Release**
+- Steps:
+  1. Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest Linux compressed package
+  2. Extract the installation package:
+     ```bash
+     tar -xzf netassistant-linux-x64.tar.gz
+     ```
+  3. Run the executable file:
+     ```bash
+     ./netassistant
+     ```
+
+#### macOS
+**Recommended Method: Download from GitHub Release**
+- Steps:
+  1. Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest macOS compressed package
+  2. Extract the installation package
+  3. Drag NetAssistant to the Applications folder
+  4. Right-click the application and select "Open" to run (required for first run)
+
 ### Running
 
-After downloading, extract the package and run the executable file.
+Run the corresponding executable file according to the installation method for different operating systems.
 
 ## 💡 Usage
 
@@ -76,32 +123,38 @@ After downloading, extract the package and run the executable file.
    - Select connection type (Client/Server)
    - Select protocol (TCP/UDP)
    - Fill in address and port
+   - After creation, you can configure TCP decoder type in the connection details page
 
 2. **Connect to Server**
    - For client connections, click the `[Connect]` button
    - For server connections, click the `[Start]` button
 
-3. **Send Messages**
+3. **Select Message Mode**
+   - Above the bottom input box, select the message sending mode: Text mode or Hex mode
+   - Text mode: Directly enter string messages
+   - Hex mode: Enter hexadecimal format data, such as "0A0B0C"
+
+4. **Send Messages**
    - Enter message content in the bottom input box
    - Click the `[Send]` button or press Enter to send
 
-4. **Periodic Send**
+5. **Periodic Send**
    - Enable periodic send functionality in the connection tab
    - Set send interval (milliseconds)
    - Click the `[Send]` button to start periodic sending
    - Uncheck periodic send to stop the sending task
 
-5. **Auto-reply**
+6. **Auto-reply**
    - Enable auto-reply functionality in the connection tab
    - Set auto-reply content
    - Auto-reply when receiving messages
 
-6. **Manage Connections**
+7. **Manage Connections**
    - Use tabs to switch between different connections
    - Click the `×` on the tab to close the connection
    - Right-click on the connection to delete saved configuration
 
-7. **Client Message Viewing**
+8. **Client Message Viewing**
    - In server mode, the left panel displays the list of connected clients
    - Click a single client address to select it, and the right message list will only show messages from that client
    - Click the selected client again to deselect and restore all messages
@@ -170,14 +223,8 @@ After downloading, extract the package and run the executable file.
   - Mature production-ready solution
 
 ### Data Processing
-- [Serde](https://serde.rs/) - Data persistence serialization framework
-  - Efficient serialization/deserialization
-  - Supports multiple data formats
-  - Zero-cost abstractions
-
-- [UUID](https://docs.rs/uuid/) - Unique identifier generation
-  - Standard UUID v4 implementation
-  - Used for connection and message identification
+- Uses Serde for efficient data persistence serialization
+- Uses UUID to generate unique identifiers for connections and messages
 
 ## 📊 Performance Metrics
 
@@ -189,7 +236,7 @@ After downloading, extract the package and run the executable file.
   - High-concurrency message processing
   - Low-latency message transmission
 
-- **Memory usage**: < 50MB (idle state)
+- **Memory usage**: < 20MB (idle state)
   - Lightweight resource usage
   - Efficient memory management
 
@@ -239,9 +286,19 @@ netassistant/
 
 ## 🔮 Future Plans
 
-- [ ] Support WebSocket protocol
-- [ ] Add message filtering and search functionality
-- [ ] Add clear history messages functionality
+- [ ] Support more data format encoding and decoding
+
+## 📦 Compile from Source Code (Optional)
+
+If you need custom compilation or want to get the latest development version, you can compile from source code:
+
+```bash
+git clone https://github.com/sunjary/netassistant.git
+cd netassistant
+cargo build --release
+```
+
+After compilation is complete, the executable file will be located in the `target/release` directory.
 
 ## 🤝 Contribution
 
