@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use tokio::net::UdpSocket;
 use smol::channel::{Sender, unbounded as smol_unbounded};
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use crate::config::connection::{ClientConfig, ServerConfig};
 use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
@@ -22,6 +23,7 @@ pub struct UdpClient {
     event_sender: Option<Sender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
     is_connected: bool,
+    cancel_token: CancellationToken,
 }
 
 impl UdpClient {
@@ -46,13 +48,13 @@ impl UdpClient {
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
             is_connected: false,
+            cancel_token: CancellationToken::new(),
         }
     }
 }
 
 impl NetworkConnection for UdpClient {
     fn connect(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
-        // 如果已经连接，直接返回
         if self.is_connected {
             return Pin::from(Box::new(async move {
                 Ok(())
@@ -63,17 +65,13 @@ impl NetworkConnection for UdpClient {
         let server_addr = self.server_addr;
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
+        let cancel_token = self.cancel_token.clone();
         
-        // 创建一个Arc<Mutex<bool>>来共享连接状态
-        let is_connected_flag = Arc::new(std::sync::Mutex::new(true));
-        
-        // 更新连接状态
         self.is_connected = true;
         
         Pin::from(Box::new(async move {
             info!("UDP客户端连接到地址: {}", server_addr);
             
-            // 绑定到本地随机端口，支持IPv4和IPv6
             let bind_addr = if server_addr.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
             let socket = UdpSocket::bind(bind_addr).await?;
             let local_addr = socket.local_addr()
@@ -83,10 +81,8 @@ impl NetworkConnection for UdpClient {
                 })?;
             info!("UDP客户端绑定到本地端口: {:?}", local_addr);
             
-            // 创建发送器和接收器
             let (tx, rx) = smol_unbounded::<Vec<u8>>();
             
-            // 发送连接成功事件到UI线程
             if let Some(sender) = &event_sender {
                 info!("[UDP客户端] 发送 Connected 事件");
                 if let Err(e) = sender.send(ConnectionEvent::Connected(config.id.clone())).await {
@@ -100,88 +96,84 @@ impl NetworkConnection for UdpClient {
                 error!("[UDP客户端] event_sender 为空，无法发送事件");
             }
             
-            // 将socket包装在Arc中以便共享
             let shared_socket = Arc::new(socket);
             let socket_read = shared_socket.clone();
             let socket_write = shared_socket.clone();
             
-            // 创建消息接收任务
             let event_sender_clone = event_sender.clone();
             let id_clone = config.id.clone();
             let message_processor_clone = message_processor.clone();
-            let is_connected_flag_read = is_connected_flag.clone();
+            let read_cancel_token = cancel_token.clone();
             
             tokio::spawn(async move {
                 let mut buffer = [0; 1024];
                 loop {
-                    // 检查连接状态
-                    let is_connected = match is_connected_flag_read.lock() {
-                        Ok(guard) => *guard,
-                        Err(e) => {
-                            error!("获取UDP连接状态锁失败: {:?}", e);
+                    tokio::select! {
+                        result = socket_read.recv_from(&mut buffer) => {
+                            match result {
+                                Ok((n, addr)) => {
+                                    if addr == server_addr {
+                                        let raw_data = buffer[..n].to_vec();
+                                        let message = message_processor_clone.process_received_message(raw_data, MessageType::Text);
+                                        
+                                        if let Some(sender) = &event_sender_clone {
+                                            if let Err(e) = sender.send(ConnectionEvent::MessageReceived(id_clone.clone(), message)).await {
+                                                error!("[UDP客户端] 发送 MessageReceived 事件失败: {:?}", e);
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    error!("UDP读取错误: {:?}", e);
+                                    if let Some(sender) = &event_sender_clone {
+                                        if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone.clone())).await {
+                                            error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", e);
+                                        }
+                                    }
+                                    break;
+                                },
+                            }
+                        }
+                        
+                        _ = read_cancel_token.cancelled() => {
+                            info!("UDP客户端读任务收到取消信号，退出");
                             break;
                         }
-                    };
-                    if !is_connected {
-                        break;
-                    }
-                    
-                    match socket_read.recv_from(&mut buffer).await {
-                        Ok((n, addr)) => {
-                            // 只处理来自目标服务器的消息
-                            if addr == server_addr {
-                                let raw_data = buffer[..n].to_vec();
-                                let message = message_processor_clone.process_received_message(raw_data, MessageType::Text);
-                                
-                                if let Some(sender) = &event_sender_clone {
-                                    if let Err(e) = sender.send(ConnectionEvent::MessageReceived(id_clone.clone(), message)).await {
-                                        error!("[UDP客户端] 发送 MessageReceived 事件失败: {:?}", e);
-                                    }
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            error!("UDP读取错误: {:?}", e);
-                            // 发送断开连接事件
-                            if let Some(sender) = &event_sender_clone {
-                                if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone.clone())).await {
-                                    error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", e);
-                                }
-                            }
-                            break;
-                        },
                     }
                 }
             });
             
-            // 创建消息发送任务
             let event_sender_clone_write = event_sender.clone();
             let id_clone_write = config.id.clone();
-            let is_connected_flag_write = is_connected_flag.clone();
+            let write_cancel_token = cancel_token.clone();
             
             tokio::spawn(async move {
-                while let Ok(data) = rx.recv().await {
-                    // 检查连接状态
-                    let is_connected = match is_connected_flag_write.lock() {
-                        Ok(guard) => *guard,
-                        Err(e) => {
-                            error!("获取UDP连接状态锁失败: {:?}", e);
-                            break;
-                        }
-                    };
-                    if !is_connected {
-                        break;
-                    }
-                    
-                    if let Err(e) = socket_write.send_to(&data, &server_addr).await {
-                        error!("UDP发送错误: {:?}", e);
-                        // 发送断开连接事件
-                        if let Some(sender) = &event_sender_clone_write {
-                            if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone_write.clone())).await {
-                                error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", e);
+                loop {
+                    tokio::select! {
+                        data = rx.recv() => {
+                            match data {
+                                Ok(data) => {
+                                    if let Err(e) = socket_write.send_to(&data, &server_addr).await {
+                                        error!("UDP发送错误: {:?}", e);
+                                        if let Some(sender) = &event_sender_clone_write {
+                                            if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone_write.clone())).await {
+                                                error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", e);
+                                            }
+                                        }
+                                        break;
+                                    }
+                                },
+                                Err(_) => {
+                                    debug!("UDP消息发送通道已关闭");
+                                    break;
+                                }
                             }
                         }
-                        break;
+                        
+                        _ = write_cancel_token.cancelled() => {
+                            info!("UDP客户端写任务收到取消信号，退出");
+                            break;
+                        }
                     }
                 }
             });
@@ -191,30 +183,16 @@ impl NetworkConnection for UdpClient {
     }
     
     fn disconnect(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
-        // 如果没有连接，直接返回
         if !self.is_connected {
             return Pin::from(Box::new(async move {
                 Ok(())
             }));
         }
         
-        let config = self.config.clone();
-        let event_sender = self.event_sender.clone();
-        
-        // 更新连接状态
         self.is_connected = false;
+        self.cancel_token.cancel();
         
         Pin::from(Box::new(async move {
-            // 发送断开连接事件
-            if let Some(sender) = &event_sender {
-                if let Err(e) = sender.send(ConnectionEvent::Disconnected(config.id.clone())).await {
-                    error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", e);
-                }
-            }
-            
-            // 注意：UDP套接字会在socket_read/socket_write被drop时自动关闭
-            // 任务会在socket关闭时自动退出循环
-            
             Ok(())
         }))
     }

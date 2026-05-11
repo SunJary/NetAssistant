@@ -11,6 +11,7 @@ use smol::channel::{Sender, unbounded as smol_unbounded};
 use tokio::task::JoinHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use bytes::{BytesMut};
+use tokio_util::sync::CancellationToken;
 use crate::config::connection::{ClientConfig, ServerConfig};
 use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
@@ -73,6 +74,7 @@ pub struct TcpClient {
     event_sender: Option<Sender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
     is_connected: bool,
+    cancel_token: CancellationToken,
 }
 
 impl TcpClient {
@@ -85,6 +87,7 @@ impl TcpClient {
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
             is_connected: false,
+            cancel_token: CancellationToken::new(),
         }
     }
 }
@@ -94,6 +97,7 @@ impl NetworkConnection for TcpClient {
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
+        let cancel_token = self.cancel_token.clone();
         
         Pin::from(Box::new(async move {
             // 解析地址，支持IPv4和IPv6
@@ -137,26 +141,23 @@ impl NetworkConnection for TcpClient {
             let config_clone = config.clone();
             let message_processor_clone = message_processor.clone();
             let decoder_config = config.decoder_config.clone();
+            let read_cancel_token = cancel_token.clone();
             tokio::spawn(async move {
-                let mut buffer = BytesMut::with_capacity(16384); // 16KB缓冲区
+                let mut buffer = BytesMut::with_capacity(16384);
                 
-                // 使用CodecFactory创建解码器（所有解码器现在都支持force_flush）
                 let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&decoder_config);
                 
                 loop {
                     tokio::select! {
-                        // 数据读取事件
                         result = socket_read.read_buf(&mut buffer) => {
                             match result {
                                 Ok(0) => {
-                                    // 连接关闭
                                     info!("TCP连接已关闭");
                                     break;
                                 },
                                 Ok(n) => {
                                     debug!("TCP客户端读取了 {} 字节数据", n);
                                     
-                                    // 使用decoder解码数据，循环处理所有可用消息
                                     loop {
                                         match decoder.decode(&mut buffer) {
                                             Ok(Some(data)) => {
@@ -169,7 +170,6 @@ impl NetworkConnection for TcpClient {
                                                 );
                                             },
                                             Ok(None) => {
-                                                // 解码器需要更多数据，退出循环
                                                 break;
                                             },
                                             Err(e) => {
@@ -186,9 +186,7 @@ impl NetworkConnection for TcpClient {
                             }
                         }
                         
-                        // 50ms超时事件 - 强制刷新缓冲区
                         _ = tokio::time::sleep(Duration::from_millis(50)) => {
-                            // 强制刷新解码器缓冲区
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;
                                 process_decoded_data(
@@ -199,10 +197,14 @@ impl NetworkConnection for TcpClient {
                                 );
                             }
                         }
+                        
+                        _ = read_cancel_token.cancelled() => {
+                            info!("TCP客户端读任务收到取消信号，退出");
+                            break;
+                        }
                     }
                 }
                 
-                // 发送断开连接事件
                 if let Some(sender) = &event_sender_clone {
                     if let Err(e) = sender.send(ConnectionEvent::Disconnected(config_clone.id.clone())).await {
                         error!("[TCP客户端] 发送 Disconnected 事件失败: {:?}", e);
@@ -212,28 +214,37 @@ impl NetworkConnection for TcpClient {
             
             // 启动发送消息任务
             let encoder_for_write = CodecFactory::create_encoder(&config.decoder_config);
+            let write_cancel_token = cancel_token.clone();
             tokio::spawn(async move {
                 let mut encoder = encoder_for_write;
                 loop {
-                    match rx.recv().await {
-                        Ok(data) => {
-                            let mut buffer = BytesMut::with_capacity(data.len());
-                            let data_bytes = BytesMut::from(data.as_slice());
-                            
-                            // 使用encoder编码数据
-                            if let Err(e) = encoder.encode(data_bytes, &mut buffer) {
-                                error!("TCP编码错误: {:?}", e);
-                                break;
+                    tokio::select! {
+                        data = rx.recv() => {
+                            match data {
+                                Ok(data) => {
+                                    let mut buffer = BytesMut::with_capacity(data.len());
+                                    let data_bytes = BytesMut::from(data.as_slice());
+                                    
+                                    if let Err(e) = encoder.encode(data_bytes, &mut buffer) {
+                                        error!("TCP编码错误: {:?}", e);
+                                        break;
+                                    }
+                                    
+                                    if let Err(e) = socket_write.write_all(&buffer).await {
+                                        error!("TCP写入错误: {:?}", e);
+                                        break;
+                                    }
+                                },
+                                Err(_) => {
+                                    debug!("消息发送通道已关闭");
+                                    break;
+                                }
                             }
-                            
-                            // 写入数据
-                            if let Err(e) = socket_write.write_all(&buffer).await {
-                                error!("TCP写入错误: {:?}", e);
-                                break;
-                            }
-                        },
-                        Err(_) => {
-                            debug!("消息发送通道已关闭");
+                        }
+                        
+                        _ = write_cancel_token.cancelled() => {
+                            info!("TCP客户端写任务收到取消信号，执行优雅关闭");
+                            let _ = socket_write.shutdown().await;
                             break;
                         }
                     }
@@ -245,24 +256,10 @@ impl NetworkConnection for TcpClient {
     }
     
     fn disconnect(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
-        // 在异步闭包外修改连接状态
         self.is_connected = false;
-        
-        let event_sender = self.event_sender.clone();
-        let config = self.config.clone();
+        self.cancel_token.cancel();
         
         Pin::from(Box::new(async move {
-            // 发送断开连接事件
-            if let Some(sender) = &event_sender {
-                if let Err(e) = sender.send(ConnectionEvent::Disconnected(config.id.clone())).await {
-                    error!("[TCP客户端] 发送 Disconnected 事件失败: {:?}", e);
-                }
-            }
-            
-            // 注意：socket已经被移动到其他任务中
-            // 当socket_read/socket_write被drop时，连接会自动关闭
-            // 任务会在socket关闭时自动退出循环
-            
             Ok(())
         }))
     }
