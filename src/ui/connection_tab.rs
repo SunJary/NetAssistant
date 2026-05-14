@@ -4,6 +4,7 @@ use gpui::*;
 use gpui_component::{ActiveTheme as _, StyledExt};
 use gpui_component::{
     Theme,
+    clipboard::Clipboard,
     input::{Input, InputState},
     scroll::{Scrollbar, ScrollbarShow, ScrollableElement},
 };
@@ -1007,6 +1008,20 @@ impl<'a> ConnectionTab<'a> {
                                                                         })
                                                                         .child(message.get_content_by_type()),
                                                                 ),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .opacity(0.2)
+                                                                .hover(|div| {
+                                                                    div.opacity(1.0)
+                                                                })
+                                                                .child(
+                                                                    Clipboard::new(ElementId::named_usize("copy-message", ix))
+                                                                        .value(message.get_content_by_type())
+                                                                        .on_copied(|value, _, _| {
+                                                                            debug!("Copied message content: {}", value);
+                                                                        })
+                                                                )
                                                         ),
                                                 )
                                                 .into_any()
