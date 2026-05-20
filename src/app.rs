@@ -74,6 +74,19 @@ pub struct NetAssistantApp {
     
     // 消息容器尺寸信息（用于计算消息气泡宽度）
     pub message_container_width: Option<Pixels>,
+
+    // 收藏功能状态
+    pub show_favorite_remark: bool,
+    pub favorite_remark_content: Option<String>,
+    pub favorite_remark_message_type: Option<MessageType>,
+    pub favorite_remark_tab_id: Option<String>,
+    pub favorite_remark_input: Entity<InputState>,
+
+    pub show_favorite_list: bool,
+    pub favorite_list_tab_id: Option<String>,
+    pub favorite_list_search_input: Entity<InputState>,
+    pub favorite_list_position: Option<Pixels>,
+    pub favorite_list_position_y: Option<Pixels>,
 }
 
 impl NetAssistantApp {
@@ -139,6 +152,17 @@ impl NetAssistantApp {
             last_update_time: Instant::now(),
             // 初始化消息容器宽度
             message_container_width: None,
+            // 初始化收藏功能状态
+            show_favorite_remark: false,
+            favorite_remark_content: None,
+            favorite_remark_message_type: None,
+            favorite_remark_tab_id: None,
+            favorite_remark_input: cx.new(|cx| InputState::new(window, cx)),
+            show_favorite_list: false,
+            favorite_list_tab_id: None,
+            favorite_list_search_input: cx.new(|cx| InputState::new(window, cx)),
+            favorite_list_position: None,
+            favorite_list_position_y: None,
         };
 
         // 创建专门的异步任务来处理连接事件
@@ -1009,11 +1033,11 @@ impl NetAssistantApp {
                     let mut message = message.clone();
                     let message_for_auto_reply = message.clone();
                     // 设置消息类型（对接收和发送的消息都设置）
-                    message.message_type = if tab_state.message_input_mode == "text" {
+                    message.set_message_type(if tab_state.message_input_mode == "text" {
                         MessageType::Text
                     } else {
                         MessageType::Hex
-                    };
+                    });
                     // 使用 GPUI list 自动测量高度，无需手动计算宽度
                     tab_state.add_message(message);
                     // 消息接收是关键事件，立即触发UI更新

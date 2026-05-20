@@ -8,7 +8,7 @@ use gpui_component::tooltip::Tooltip;
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog};
+use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog, FavoriteRemarkDialog, FavoriteListPanel};
 use crate::ui::tab_container::TabContainer;
 
 pub struct MainWindow<'a> {
@@ -33,7 +33,14 @@ impl<'a> MainWindow<'a> {
             .flex()
             .flex_col()
             .bg(theme.background)
-            // 在整个窗口区域监听鼠标移动和释放事件，确保在任何位置都能正确处理调整大小
+            .on_key_down(cx.listener(|app, event: &KeyDownEvent, _window, cx| {
+                if event.keystroke.key.as_str() == "escape" {
+                    if app.show_favorite_list {
+                        app.show_favorite_list = false;
+                        cx.notify();
+                    }
+                }
+            }))
             .on_mouse_move(cx.listener(|app, event: &MouseMoveEvent, _window, cx| {
                 if app.sidebar_resizing {
                     let mouse_x = event.position.x;
@@ -87,7 +94,7 @@ impl<'a> MainWindow<'a> {
                                     )
                                     .id("github-link")
                                     .tooltip(|window, cx| {
-                                        Tooltip::new("来 GitHub 看看我们的项目吧").build(window, cx)
+                                        Tooltip::new("来 GitHub Star 一下我们的项目吧").build(window, cx)
                                     })
                             )
                             .child(
@@ -182,6 +189,12 @@ impl<'a> MainWindow<'a> {
             })
             .when(self.app.show_decoder_selection, |this_div| {
                 this_div.child(DecoderSelectionDialog::new(self.app).render(window, cx))
+            })
+            .when(self.app.show_favorite_remark, |this_div| {
+                this_div.child(FavoriteRemarkDialog::new(self.app, self.app.favorite_remark_input.clone()).render(window, cx))
+            })
+            .when(self.app.show_favorite_list, |this_div| {
+                this_div.child(FavoriteListPanel::new(self.app, self.app.favorite_list_search_input.clone()).render(window, cx))
             })
             .when(self.app.show_context_menu, |this_div| {
                 let menu_x = self.app.context_menu_position.unwrap_or_else(|| px(0.0));

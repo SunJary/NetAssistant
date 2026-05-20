@@ -3,6 +3,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, StyledExt};
 use gpui_component::{
+    Icon, IconName,
     Theme,
     clipboard::Clipboard,
     input::{Input, InputState},
@@ -10,6 +11,7 @@ use gpui_component::{
 };
 
 use log::{debug, error, info, warn};
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
@@ -47,6 +49,8 @@ pub struct ConnectionTabState {
     // 服务端和客户端的控制句柄
     pub server_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
     pub client_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
+
+    pub favorited_contents: HashSet<String>,
 }
 
 impl ConnectionTabState {
@@ -91,6 +95,8 @@ impl ConnectionTabState {
             // 初始化服务端和客户端的控制句柄
             server_handle: None,
             client_handle: None,
+
+            favorited_contents: HashSet::new(),
         }
     }
 
@@ -233,7 +239,7 @@ impl<'a> ConnectionTab<'a> {
                     .flex_col()
                     .flex_1()
                     .child(self.render_message_area(window, cx))
-                    .child(self.render_send_area(cx)),
+                    .child(self.render_send_area(window, cx)),
             )
     }
 
@@ -873,12 +879,15 @@ impl<'a> ConnectionTab<'a> {
                                     .child("清空")
                                     .on_mouse_down(
                                         MouseButton::Left,
-                                        cx.listener(move |app, _event, _window, cx| {
-                                            app.connection_tabs.get_mut(&tab_id).map(|tab_state| {
-                                                tab_state.message_list.clear_messages();
-                                                tab_state.message_list_state.reset(0);
-                                                cx.notify();
-                                            });
+                                        cx.listener({
+                                            let tab_id_clear = tab_id.clone();
+                                            move |app, _event, _window, cx| {
+                                                app.connection_tabs.get_mut(&tab_id_clear).map(|tab_state| {
+                                                    tab_state.message_list.clear_messages();
+                                                    tab_state.message_list_state.reset(0);
+                                                    cx.notify();
+                                                });
+                                            }
                                         }),
                                     ),
                             ),
@@ -896,6 +905,9 @@ impl<'a> ConnectionTab<'a> {
                 let messages = self.tab_state.message_list.messages.clone();
                 let selected_client = self.tab_state.selected_client.clone();
                 let scrollbar_state = self.tab_state.message_list_state.clone();
+                let tab_id_for_list = tab_id.clone();
+                let app_entity = cx.entity().clone();
+                let favorited_contents = self.tab_state.favorited_contents.clone();
                
                 div()
                     .relative()
@@ -911,6 +923,7 @@ impl<'a> ConnectionTab<'a> {
                                     move |ix, _window, _cx| {
                                         if let Some(message) = messages.get(ix) {
                                             let is_sent = message.direction == MessageDirection::Sent;
+                                            let is_favorited = favorited_contents.contains(message.get_content_by_type());
                                             let should_show = if message.source.is_none() {
                                                 true
                                             } else {
@@ -1006,22 +1019,66 @@ impl<'a> ConnectionTab<'a> {
                                                                         .when(!is_sent, |div| {
                                                                             div.text_color(gpui::rgb(0x111827))
                                                                         })
-                                                                        .child(message.get_content_by_type()),
+                                                                        .child(message.get_content_by_type().to_string()),
                                                                 ),
                                                         )
                                                         .child(
                                                             div()
-                                                                .opacity(0.2)
-                                                                .hover(|div| {
-                                                                    div.opacity(1.0)
-                                                                })
+                                                                .flex()
+                                                                .items_center()
+                                                                .gap_1()
                                                                 .child(
-                                                                    Clipboard::new(ElementId::named_usize("copy-message", ix))
-                                                                        .value(message.get_content_by_type())
-                                                                        .on_copied(|value, _, _| {
-                                                                            debug!("Copied message content: {}", value);
+                                                                    div()
+                                                                        .opacity(0.2)
+                                                                        .hover(|div| {
+                                                                            div.opacity(1.0)
                                                                         })
+                                                                        .child(
+                                                                            Clipboard::new(ElementId::named_usize("copy-message", ix))
+                                                                                .value(message.get_content_by_type().to_string())
+                                                                                .on_copied(|value, _, _| {
+                                                                                    debug!("Copied message content: {}", value);
+                                                                                })
+                                                                        )
                                                                 )
+                                                                .child({
+                                                                    let tab_id_fav = tab_id_for_list.clone();
+                                                                    let content = message.get_content_by_type().to_string();
+                                                                    let is_fav = is_favorited;
+                                                                    let message_type = message.message_type;
+                                                                    let entity = app_entity.clone();
+                                                                    div()
+                                                                        .id(ElementId::named_usize("fav-message", ix))
+                                                                        .cursor_pointer()
+                                                                        .when(!is_fav, |el| el.opacity(0.2).hover(|el| el.opacity(1.0)))
+                                                                        .child(
+                                                                            Icon::new(IconName::Star)
+                                                                                .size(px(14.0))
+                                                                                .when(is_fav, |icon| icon.text_color(gpui::rgb(0xf59e0b)))
+                                                                        )
+                                                                        .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
+                                                                            entity.update(cx, |app, cx| {
+                                                                                if is_fav {
+                                                                                    if let Some(fav) = app.storage.find_favorite_by_content(&tab_id_fav, &content) {
+                                                                                        app.storage.remove_favorite(&tab_id_fav, &fav.id);
+                                                                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_fav) {
+                                                                                            tab_state.favorited_contents.remove(&content);
+                                                                                        }
+                                                                                        cx.notify();
+                                                                                    }
+                                                                                } else {
+                                                                                    app.show_favorite_remark = true;
+                                                                                    app.favorite_remark_content = Some(content.clone());
+                                                                                    app.favorite_remark_message_type = Some(message_type);
+                                                                                    app.favorite_remark_tab_id = Some(tab_id_fav.clone());
+                                                                                    app.favorite_remark_input.update(cx, |state, inner_cx| {
+                                                                                        state.set_value("", window, inner_cx);
+                                                                                    });
+                                                                                    cx.notify();
+                                                                                }
+                                                                            });
+                                                                        })
+                                                                }),
                                                         ),
                                                 )
                                                 .into_any()
@@ -1050,7 +1107,7 @@ impl<'a> ConnectionTab<'a> {
     }
 
     /// 渲染发送区域
-    fn render_send_area(&self, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_send_area(&self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let tab_id = self.tab_id.clone();
         let tab_id_periodic = tab_id.clone();
@@ -1098,10 +1155,11 @@ impl<'a> ConnectionTab<'a> {
             )
             .child(
                 div()
+                    .relative()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .justify_between() // 两端对齐，发送按钮在右侧
+                    .justify_between()
                     .child(
                         div()
                             .flex()
@@ -1119,18 +1177,18 @@ impl<'a> ConnectionTab<'a> {
                                         style.bg(theme.secondary_hover)
                                     })
                                     .on_mouse_down(MouseButton::Left, cx.listener({
-                                    let tab_id = tab_id.clone();
-                                    move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                        // 清空输入框内容
-                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                            if let Some(message_input) = &tab_state.message_input {
-                                                message_input.update(cx, |input: &mut InputState, cx| {
-                                                    input.set_value("", window, cx);
-                                                });
+                                        let tab_id = tab_id.clone();
+                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            // 清空输入框内容
+                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
+                                                if let Some(message_input) = &tab_state.message_input {
+                                                    message_input.update(cx, |input: &mut InputState, cx| {
+                                                        input.set_value("", window, cx);
+                                                    });
+                                                }
                                             }
                                         }
-                                    }
-                                }))
+                                    }))
                                 .child(
                                     div()
                                         .text_xs()
@@ -1272,6 +1330,43 @@ impl<'a> ConnectionTab<'a> {
                             .flex()
                             .items_center()
                             .gap_2()
+                            .child({
+                                let tab_id_fav = tab_id.clone();
+                                div()
+                                    .relative()
+                                    .child(
+                                        div()
+                                            .px_3()
+                                            .py_2()
+                                            .bg(theme.secondary)
+                                            .rounded_md()
+                                            .cursor_pointer()
+                                            .hover(|style| {
+                                                style.bg(theme.secondary_hover)
+                                            })
+                                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                                let tab_id_fav = tab_id_fav.clone();
+                                                move |app: &mut NetAssistantApp, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    app.show_favorite_list = !app.show_favorite_list;
+                                                    app.favorite_list_tab_id = Some(tab_id_fav.clone());
+                                                    app.favorite_list_position = Some(event.position.x);
+                                                    app.favorite_list_position_y = Some(event.position.y);
+                                                    app.favorite_list_search_input.update(cx, |state, inner_cx| {
+                                                        state.set_value("", window, inner_cx);
+                                                    });
+                                                    cx.notify();
+                                                }
+                                            }))
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap_1()
+                                                    .child(Icon::new(IconName::Star).size(px(12.0)))
+                                                    .child(Icon::new(if self.app.show_favorite_list { IconName::ChevronDown } else { IconName::ChevronUp }).size(px(10.0))),
+                                            )
+                                    )
+                            })
                             .child(
                                 div()
                                     .px_4()

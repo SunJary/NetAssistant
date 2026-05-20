@@ -1,5 +1,7 @@
 use crate::config::connection::ConnectionConfig;
+use crate::message::{FavoriteItem, FavoritesMap};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -19,15 +21,15 @@ pub enum StorageError {
 pub struct AppConfig {
     pub connections: Vec<ConnectionConfig>,
     pub auto_save: bool,
-    pub save_interval: u64, // 秒
-    // 窗口配置
+    pub save_interval: u64,
     pub window_x: Option<f64>,
     pub window_y: Option<f64>,
     pub window_width: Option<f64>,
     pub window_height: Option<f64>,
-    // 侧边栏配置
     pub sidebar_width: Option<f64>,
     pub sidebar_collapsed: Option<bool>,
+    #[serde(default)]
+    pub favorites: FavoritesMap,
 }
 
 impl Default for AppConfig {
@@ -42,6 +44,7 @@ impl Default for AppConfig {
             window_height: None,
             sidebar_width: None,
             sidebar_collapsed: None,
+            favorites: HashMap::new(),
         }
     }
 }
@@ -222,7 +225,6 @@ impl ConfigStorage {
     
     /// 更新连接配置
     pub fn update_connection(&mut self, connection: ConnectionConfig) {
-        // 找到并替换现有的连接配置
         if let Some(index) = self.config.connections
             .iter()
             .position(|c| c.id() == connection.id()) {
@@ -231,6 +233,44 @@ impl ConfigStorage {
                 let _ = self.save();
             }
         }
+    }
+
+    pub fn add_favorite(&mut self, connection_id: &str, item: FavoriteItem) {
+        self.config
+            .favorites
+            .entry(connection_id.to_string())
+            .or_default()
+            .push(item);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    pub fn remove_favorite(&mut self, connection_id: &str, favorite_id: &str) {
+        if let Some(list) = self.config.favorites.get_mut(connection_id) {
+            list.retain(|item| item.id != favorite_id);
+            if list.is_empty() {
+                self.config.favorites.remove(connection_id);
+            }
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    pub fn get_favorites_ref(&self, connection_id: &str) -> &[FavoriteItem] {
+        self.config
+            .favorites
+            .get(connection_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub fn find_favorite_by_content(&self, connection_id: &str, content: &str) -> Option<FavoriteItem> {
+        self.config
+            .favorites
+            .get(connection_id)
+            .and_then(|list| list.iter().find(|item| item.content == content).cloned())
     }
 }
 

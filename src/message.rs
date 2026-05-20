@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 
 /// 消息方向
@@ -44,10 +45,17 @@ pub struct Message {
     pub message_type: MessageType,
     pub raw_data: Vec<u8>,
     pub source: Option<String>,
+    #[serde(default = "default_cached_content")]
+    cached_content: String,
+}
+
+fn default_cached_content() -> String {
+    String::new()
 }
 
 impl Message {
     pub fn new(direction: MessageDirection, raw_data: Vec<u8>, message_type: MessageType) -> Self {
+        let cached_content = Self::compute_content(&raw_data, message_type);
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S.%3f").to_string(),
@@ -55,6 +63,7 @@ impl Message {
             message_type,
             raw_data,
             source: None,
+            cached_content,
         }
     }
 
@@ -63,14 +72,13 @@ impl Message {
         self
     }
 
-    pub fn get_content_by_type(&self) -> String {
-        match self.message_type {
-            MessageType::Text => match String::from_utf8(self.raw_data.clone()) {
+    fn compute_content(raw_data: &[u8], message_type: MessageType) -> String {
+        match message_type {
+            MessageType::Text => match String::from_utf8(raw_data.to_vec()) {
                 Ok(text) => text,
                 Err(_) => "[非UTF-8数据]".to_string(),
             },
-            MessageType::Hex => self
-                .raw_data
+            MessageType::Hex => raw_data
                 .iter()
                 .map(|b| format!("{:02X}", b))
                 .collect::<Vec<String>>()
@@ -78,8 +86,38 @@ impl Message {
         }
     }
 
-    // 移除了calculate_content_height方法，因为在渲染时无法修改消息对象
+    pub fn get_content_by_type(&self) -> &str {
+        &self.cached_content
+    }
+
+    pub fn set_message_type(&mut self, message_type: MessageType) {
+        self.message_type = message_type;
+        self.cached_content = Self::compute_content(&self.raw_data, message_type);
+    }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FavoriteItem {
+    pub id: String,
+    pub content: String,
+    pub message_type: MessageType,
+    pub remark: String,
+    pub created_at: String,
+}
+
+impl FavoriteItem {
+    pub fn new(content: String, message_type: MessageType, remark: String) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            content,
+            message_type,
+            remark,
+            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        }
+    }
+}
+
+pub type FavoritesMap = HashMap<String, Vec<FavoriteItem>>;
 
 /// 消息列表状态
 #[derive(Debug, Clone, Default)]
