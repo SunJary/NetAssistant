@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui_component::TitleBar;
 use log::{error, info};
 use simple_logger::SimpleLogger;
 
@@ -106,11 +107,7 @@ async fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(window_bounds)),
                 window_min_size: Some(gpui::Size { width: px(600.0), height: px(300.0) }),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("NetAssistant".into()),
-                    appears_transparent: false,
-                    traffic_light_position: None,
-                }),
+                titlebar: Some(TitleBar::title_bar_options()),
                 ..Default::default()
             },
             |window, cx| {

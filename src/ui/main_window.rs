@@ -4,6 +4,7 @@ use gpui_component::StyledExt;
 use gpui_component::IconName;
 use gpui_component::ActiveTheme;
 use gpui_component::scroll::ScrollableElement;
+use gpui_component::TitleBar;
 use gpui_component::tooltip::Tooltip;
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
@@ -53,16 +54,10 @@ impl<'a> MainWindow<'a> {
                 }
             }))
             .child(
-                div()
-                    .h_12()
-                    .bg(theme.background)
-                    .border_b_1()
-                    .border_color(theme.border)
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px_4()
-                    .flex_shrink_0()
+                TitleBar::new()
+                    .on_close_window(|_, window: &mut Window, _cx| {
+                        window.remove_window();
+                    })
                     .child(
                         div()
                             .text_lg()
