@@ -14,6 +14,8 @@ mod assets;
 mod config;
 mod core;
 mod custom_icons;
+mod export;
+mod log_writer;
 mod message;
 mod network;
 mod ui;

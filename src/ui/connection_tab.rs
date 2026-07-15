@@ -18,6 +18,8 @@ use tokio::task::JoinHandle;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
+use crate::custom_icons::CustomIconName;
+use crate::log_writer::LogWriter;
 use crate::message::{Message, MessageDirection, MessageListState};
 use crate::utils::hex::hex_to_bytes;
 
@@ -51,6 +53,12 @@ pub struct ConnectionTabState {
     pub client_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
 
     pub favorited_contents: HashSet<String>,
+
+    // 日志记录相关
+    pub log_enabled: bool,
+    pub log_file_path: Option<String>,
+    pub custom_log_path: Option<String>,
+    pub log_writer: Option<Arc<tokio::sync::Mutex<LogWriter>>>,
 }
 
 impl ConnectionTabState {
@@ -97,6 +105,12 @@ impl ConnectionTabState {
             client_handle: None,
 
             favorited_contents: HashSet::new(),
+
+            // 初始化日志记录
+            log_enabled: false,
+            log_file_path: None,
+            custom_log_path: None,
+            log_writer: None,
         }
     }
 
@@ -134,10 +148,22 @@ impl ConnectionTabState {
     }
 
     pub fn add_message(&mut self, message: Message) {
+        // 日志记录：异步写入文件
+        if self.log_enabled {
+            if let Some(log_writer) = &self.log_writer {
+                let writer = log_writer.clone();
+                let msg = message.clone();
+                tokio::spawn(async move {
+                    let writer = writer.lock().await;
+                    writer.write_message(&msg).await;
+                });
+            }
+        }
+
         let old_count = self.message_list.messages.len();
         self.message_list.add_message(message);
         let new_count = self.message_list.messages.len();
-        
+
         if new_count > old_count {
             self.message_list_state.splice(old_count..old_count, new_count - old_count);
         }
@@ -154,6 +180,15 @@ impl ConnectionTabState {
         self.is_connected = false;
         self.connection_status = ConnectionStatus::Disconnected;
         self.client_connections.clear();
+
+        // 关闭日志文件
+        if let Some(log_writer) = self.log_writer.take() {
+            tokio::spawn(async move {
+                let mut writer = log_writer.lock().await;
+                writer.close().await;
+            });
+        }
+        self.log_enabled = false;
 
         // 停止服务端任务
         if let Some(handle) = &self.server_handle {
@@ -496,6 +531,95 @@ impl<'a> ConnectionTab<'a> {
                                     .text_color(gpui::rgb(0x6b7280))
                                     .child(format!("总计: {}", self.tab_state.message_list.total_messages())),
                             ),
+                    )
+                    // 日志记录开关
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .mt_2()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .w_4()
+                                            .h_4()
+                                            .border_1()
+                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .rounded(px(4.))
+                                            .cursor_pointer()
+                                            .when(self.tab_state.log_enabled, |this| {
+                                                this.bg(gpui::rgb(0x3b82f6))
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .font_bold()
+                                                            .child("✓"),
+                                                    )
+                                            })
+                                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                                let tab_id_log = tab_id.clone();
+                                                move |app, _event, _window, cx| {
+                                                    app.toggle_log(tab_id_log.clone(), cx);
+                                                }
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(gpui::rgb(0x6b7280))
+                                            .child("日志记录"),
+                                    )
+                                    // 修改路径按钮
+                                    .child(
+                                        div()
+                                            .cursor_pointer()
+                                            .text_color(gpui::rgb(0x9ca3af))
+                                            .hover(|style| style.text_color(gpui::rgb(0x6b7280)))
+                                            .child(Icon::new(CustomIconName::Pencil).size(px(12.0)))
+                                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                                let tab_id_path = tab_id.clone();
+                                                move |app, _event, _window, cx| {
+                                                    app.change_log_path(tab_id_path.clone(), cx);
+                                                }
+                                            })),
+                                    ),
+                            )
+                            // 日志文件路径：可点击打开目录
+                            .when(self.tab_state.log_file_path.is_some(), |this| {
+                                let display_name = self.tab_state.log_file_path.as_ref().map(|path| {
+                                    std::path::Path::new(path)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or(path)
+                                        .to_string()
+                                }).unwrap_or_default();
+                                this.child(
+                                    div()
+                                        .cursor_pointer()
+                                        .text_xs()
+                                        .text_color(gpui::rgb(0x3b82f6))
+                                        .hover(|style| style.text_color(gpui::rgb(0x2563eb)))
+                                        .max_w(px(150.0))
+                                        .overflow_x_hidden()
+                                        .whitespace_nowrap()
+                                        .child(display_name)
+                                        .on_mouse_down(MouseButton::Left, cx.listener({
+                                            let tab_id_dir = tab_id.clone();
+                                            move |app, _event, _window, _cx| {
+                                                app.open_log_directory(tab_id_dir.clone());
+                                            }
+                                        })),
+                                )
+                            }),
                     )
                     .child(
                         div()
@@ -876,6 +1000,33 @@ impl<'a> ConnectionTab<'a> {
                                         style.bg(theme.secondary_hover)
                                             .border_color(theme.secondary_hover)
                                     })
+                                    .child("导出")
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener({
+                                            let tab_id_export = tab_id.clone();
+                                            move |app, _event, _window, cx| {
+                                                app.export_messages(tab_id_export.clone(), cx);
+                                            }
+                                        }),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(theme.secondary_foreground)
+                                    .bg(theme.secondary)
+                                    .border(px(1.0))
+                                    .border_color(theme.secondary)
+                                    .rounded(px(2.0))
+                                    .px(px(10.0))
+                                    .py(px(4.0))
+                                    .hover(|style| {
+                                        style.bg(theme.secondary_hover)
+                                            .border_color(theme.secondary_hover)
+                                    })
                                     .child("清空")
                                     .on_mouse_down(
                                         MouseButton::Left,
@@ -1107,7 +1258,7 @@ impl<'a> ConnectionTab<'a> {
     }
 
     /// 渲染发送区域
-    fn render_send_area(&self, window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_send_area(&self, _window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let tab_id = self.tab_id.clone();
         let tab_id_periodic = tab_id.clone();

@@ -8,6 +8,7 @@ pub enum CustomIconName {
     IconName(IconName),
     // 添加自定义图标
     FilePlusCorner,
+    Pencil,
 }
 
 impl From<IconName> for CustomIconName {
@@ -23,6 +24,7 @@ impl IconNamed for CustomIconName {
             CustomIconName::IconName(icon_name) => icon_name.path(),
             // 自定义图标路径（使用与内置图标相同的格式）
             CustomIconName::FilePlusCorner => "icons/file-plus-corner.svg".into(),
+            CustomIconName::Pencil => "icons/pencil.svg".into(),
         }
     }
 }

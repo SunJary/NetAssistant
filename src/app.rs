@@ -5,6 +5,8 @@ use log::{debug, error};
 use crate::config;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus};
 use crate::config::storage::ConfigStorage;
+use crate::export::{self, ExportFormat};
+use crate::log_writer::LogWriter;
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::ConnectionEvent;
 
@@ -885,6 +887,196 @@ impl NetAssistantApp {
         }
     }
 
+
+    /// 导出指定标签页的通信记录
+    pub fn export_messages(&mut self, tab_id: String, _cx: &mut Context<Self>) {
+        // 获取消息列表的克隆，避免长期借用
+        let messages = match self.connection_tabs.get(&tab_id) {
+            Some(tab_state) => tab_state.message_list.messages.clone(),
+            None => {
+                error!("[导出] 未找到标签页: {}", tab_id);
+                return;
+            }
+        };
+
+        if messages.is_empty() {
+            debug!("[导出] 没有可导出的消息记录");
+            return;
+        }
+
+        // 获取连接地址标识用于默认文件名（如 TCP_127.0.0.1_8080）
+        let address_label = self.connection_tabs.get(&tab_id)
+            .map(|t| t.connection_config.address_label())
+            .unwrap_or_else(|| "export".to_string());
+
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let default_filename = format!("{}_{}.txt", address_label, timestamp);
+
+        // 在异步任务中弹出文件对话框并保存
+        tokio::spawn(async move {
+            let file_path = rfd::AsyncFileDialog::new()
+                .set_file_name(&default_filename)
+                .add_filter("纯文本文件", &["txt"])
+                .add_filter("JSON 文件", &["json"])
+                .add_filter("CSV 文件", &["csv"])
+                .save_file()
+                .await;
+
+            if let Some(file_path) = file_path {
+                let path = file_path.path();
+
+                // 根据扩展名确定格式，默认为 txt
+                let format = ExportFormat::from_extension(path)
+                    .unwrap_or(ExportFormat::Txt);
+
+                match export::format_messages(&messages, format) {
+                    Ok(content) => {
+                        match std::fs::write(path, content) {
+                            Ok(_) => {
+                                debug!("[导出] 消息记录已导出到: {:?}", path);
+                            }
+                            Err(e) => {
+                                error!("[导出] 写入文件失败: {:?}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("[导出] 格式化消息失败: {}", e);
+                    }
+                }
+            }
+        });
+    }
+
+    /// 切换日志记录开关
+    pub fn toggle_log(&mut self, tab_id: String, cx: &mut Context<Self>) {
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            if tab_state.log_enabled {
+                // 关闭日志记录
+                if let Some(log_writer) = tab_state.log_writer.take() {
+                    tokio::spawn(async move {
+                        let mut writer = log_writer.lock().await;
+                        writer.close().await;
+                    });
+                }
+                tab_state.log_enabled = false;
+                tab_state.log_file_path = None;
+                debug!("[日志记录] 已关闭: {}", tab_id);
+            } else {
+                // 开启日志记录：优先使用自定义路径
+                let log_path = tab_state.custom_log_path.as_ref()
+                    .map(|p| std::path::PathBuf::from(p))
+                    .unwrap_or_else(|| LogWriter::default_log_path(&tab_state.connection_config.address_label()));
+
+                // 确保日志目录存在（同步创建，很快）
+                if let Some(parent) = log_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+
+                let log_path_display = log_path.display().to_string();
+                let log_path_for_writer = log_path.clone();
+
+                // 使用 cx.spawn 异步打开文件并更新状态
+                let tab_id_clone = tab_id.clone();
+                cx.spawn(async move |this, cx| {
+                    match LogWriter::open(log_path_for_writer).await {
+                        Ok(log_writer) => {
+                            let writer_arc = std::sync::Arc::new(tokio::sync::Mutex::new(log_writer));
+                            let _ = this.update(cx, |app, cx| {
+                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone) {
+                                    tab_state.log_writer = Some(writer_arc);
+                                    tab_state.log_enabled = true;
+                                    cx.notify();
+                                }
+                            });
+                            debug!("[日志记录] 已开启: {:?}", log_path);
+                        }
+                        Err(e) => {
+                            error!("[日志记录] 打开日志文件失败: {:?}", e);
+                        }
+                    }
+                }).detach();
+
+                // 先设置路径显示（文件在后台异步打开）
+                tab_state.log_file_path = Some(log_path_display);
+                debug!("[日志记录] 正在开启: {}", tab_id);
+            }
+            cx.notify();
+        }
+    }
+
+    /// 打开日志文件所在目录
+    pub fn open_log_directory(&self, tab_id: String) {
+        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
+            if let Some(path) = &tab_state.log_file_path {
+                let path = std::path::Path::new(path);
+                let dir = if path.is_file() || !path.exists() {
+                    path.parent().unwrap_or(path)
+                } else {
+                    path
+                };
+
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = std::process::Command::new("explorer")
+                        .arg(dir)
+                        .spawn();
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = std::process::Command::new("open")
+                        .arg(dir)
+                        .spawn();
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    let _ = std::process::Command::new("xdg-open")
+                        .arg(dir)
+                        .spawn();
+                }
+            }
+        }
+    }
+
+    /// 修改日志保存路径
+    pub fn change_log_path(&mut self, tab_id: String, cx: &mut Context<Self>) {
+        // 先关闭当前日志
+        let was_enabled = self.connection_tabs.get(&tab_id)
+            .map(|t| t.log_enabled)
+            .unwrap_or(false);
+
+        if was_enabled {
+            self.toggle_log(tab_id.clone(), cx);
+        }
+
+        let address_label = self.connection_tabs.get(&tab_id)
+            .map(|t| t.connection_config.address_label())
+            .unwrap_or_else(|| "log".to_string());
+
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let default_filename = format!("{}_{}.log", address_label, timestamp);
+
+        let tab_id_clone = tab_id.clone();
+        cx.spawn(async move |this, cx| {
+            let file_path = rfd::AsyncFileDialog::new()
+                .set_file_name(&default_filename)
+                .add_filter("日志文件", &["log"])
+                .add_filter("所有文件", &["*"])
+                .save_file()
+                .await;
+
+            if let Some(file_path) = file_path {
+                let path = file_path.path().display().to_string();
+                let _ = this.update(cx, |app, cx| {
+                    if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone) {
+                        tab_state.custom_log_path = Some(path);
+                        // 自动以新路径开启日志记录
+                        app.toggle_log(tab_id_clone.clone(), cx);
+                    }
+                });
+            }
+        }).detach();
+    }
 
     // 侧边栏调整大小相关方法
     pub fn start_sidebar_resize(&mut self, cx: &mut Context<Self>) {

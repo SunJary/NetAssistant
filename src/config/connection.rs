@@ -194,6 +194,18 @@ impl ConnectionConfig {
             ConnectionConfig::Server(config) => &config.id,
         }
     }
+
+    /// 获取包含地址端口的标识字符串，格式如 TCP_127.0.0.1_8080
+    pub fn address_label(&self) -> String {
+        match self {
+            ConnectionConfig::Client(config) => {
+                format!("{}_{}_{}", config.protocol, config.server_address, config.server_port)
+            }
+            ConnectionConfig::Server(config) => {
+                format!("{}_{}_{}", config.protocol, config.listen_address, config.listen_port)
+            }
+        }
+    }
     
     /// 设置连接名称
     // pub fn set_name(&mut self, name: String) {
