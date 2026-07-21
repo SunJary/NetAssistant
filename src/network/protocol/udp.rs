@@ -112,14 +112,17 @@ impl NetworkConnection for UdpClient {
                         result = socket_read.recv_from(&mut buffer) => {
                             match result {
                                 Ok((n, addr)) => {
-                                    if addr == server_addr {
-                                        let raw_data = buffer[..n].to_vec();
-                                        let message = message_processor_clone.process_received_message(raw_data, MessageType::Text);
-                                        
-                                        if let Some(sender) = &event_sender_clone {
-                                            if let Err(e) = sender.send(ConnectionEvent::MessageReceived(id_clone.clone(), message)).await {
-                                                error!("[UDP客户端] 发送 MessageReceived 事件失败: {:?}", e);
-                                            }
+                                    // 移除源地址过滤，允许接收来自任何地址的回复
+                                    // 这对于广播场景很重要：下位机回复来自其真实IP而非广播地址
+                                    let raw_data = buffer[..n].to_vec();
+                                    let mut message = message_processor_clone.process_received_message(raw_data, MessageType::Text);
+                                    message = message.with_source(addr.to_string());
+                                    
+                                    info!("UDP客户端从 {} 收到 {} 字节", addr, n);
+                                    
+                                    if let Some(sender) = &event_sender_clone {
+                                        if let Err(e) = sender.send(ConnectionEvent::MessageReceived(id_clone.clone(), message)).await {
+                                            error!("[UDP客户端] 发送 MessageReceived 事件失败: {:?}", e);
                                         }
                                     }
                                 },
