@@ -1154,11 +1154,27 @@ impl<'a> ConnectionTab<'a> {
                                                             message.source.is_some(),
                                                             |this_div| {
                                                                 if let Some(source) = &message.source {
+                                                                    let is_unexpected = message.source_unexpected;
+
+                                                                    let source_div = div()
+                                                                        .id(ElementId::named_usize("source", ix))
+                                                                        .text_xs()
+                                                                        .text_color(if is_unexpected {
+                                                                            gpui::rgb(0xf87171) // 淡红色
+                                                                        } else {
+                                                                            gpui::rgb(0x6b7280)
+                                                                        });
+
+                                                                    let source_div = if is_unexpected {
+                                                                        source_div.tooltip(|window, cx| {
+                                                                            Tooltip::new("非预期地址的回复").build(window, cx)
+                                                                        })
+                                                                    } else {
+                                                                        source_div
+                                                                    };
+
                                                                     this_div.child(
-                                                                        div()
-                                                                            .text_xs()
-                                                                            .text_color(gpui::rgb(0x6b7280))
-                                                                            .child(format!("({})", source)),
+                                                                        source_div.child(format!("({})", source)),
                                                                     )
                                                                 } else {
                                                                     this_div

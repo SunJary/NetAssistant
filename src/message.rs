@@ -45,6 +45,9 @@ pub struct Message {
     pub message_type: MessageType,
     pub raw_data: Vec<u8>,
     pub source: Option<String>,
+    /// 源地址是否为非预期地址（如UDP广播场景下，回复来自非目标地址）
+    #[serde(default)]
+    pub source_unexpected: bool,
     #[serde(default = "default_cached_content")]
     cached_content: String,
 }
@@ -63,12 +66,24 @@ impl Message {
             message_type,
             raw_data,
             source: None,
+            source_unexpected: false,
             cached_content,
         }
     }
 
     pub fn with_source(mut self, source: String) -> Self {
         self.source = Some(source);
+        self
+    }
+
+    /// 设置来源并标记是否为非预期地址（IP部分与 expected_host 不匹配时为 true）
+    pub fn with_unexpected_source(mut self, source: String, expected_host: &str) -> Self {
+        let is_unexpected = match source.split(':').next() {
+            Some(source_ip) => source_ip != expected_host,
+            None => false,
+        };
+        self.source = Some(source);
+        self.source_unexpected = is_unexpected;
         self
     }
 

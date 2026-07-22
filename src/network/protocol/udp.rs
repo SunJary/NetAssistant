@@ -63,6 +63,7 @@ impl NetworkConnection for UdpClient {
         
         let config = self.config.clone();
         let server_addr = self.server_addr;
+        let server_host = self.config.server_address.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
         let cancel_token = self.cancel_token.clone();
@@ -104,6 +105,7 @@ impl NetworkConnection for UdpClient {
             let id_clone = config.id.clone();
             let message_processor_clone = message_processor.clone();
             let read_cancel_token = cancel_token.clone();
+            let expected_host = server_host;
             
             tokio::spawn(async move {
                 let mut buffer = [0; 1024];
@@ -115,8 +117,8 @@ impl NetworkConnection for UdpClient {
                                     // 移除源地址过滤，允许接收来自任何地址的回复
                                     // 这对于广播场景很重要：下位机回复来自其真实IP而非广播地址
                                     let raw_data = buffer[..n].to_vec();
-                                    let mut message = message_processor_clone.process_received_message(raw_data, MessageType::Text);
-                                    message = message.with_source(addr.to_string());
+                                    let message = message_processor_clone.process_received_message(raw_data, MessageType::Text)
+                                        .with_unexpected_source(addr.to_string(), &expected_host);
                                     
                                     info!("UDP客户端从 {} 收到 {} 字节", addr, n);
                                     
