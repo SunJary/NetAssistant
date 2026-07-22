@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::input::InputState;
-use log::{debug, error};
+use log::{debug, error, info};
 
 use crate::config;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus};
@@ -65,6 +65,12 @@ pub struct NetAssistantApp {
     pub context_menu_is_client: bool,
     pub context_menu_position: Option<Pixels>,
     pub context_menu_position_y: Option<Pixels>,
+    
+    // 添加客户端对话框状态（UDP服务端专用）
+    pub show_add_client_dialog: bool,
+    pub add_client_dialog_tab_id: String,
+    pub add_client_dialog_input: Option<Entity<InputState>>,
+    pub add_client_dialog_error: Option<String>,
     
     // 侧边栏布局状态
     pub sidebar_width: Option<Pixels>,
@@ -146,6 +152,11 @@ impl NetAssistantApp {
             context_menu_is_client: false,
             context_menu_position: None,
             context_menu_position_y: None,
+            // 添加客户端对话框状态（UDP服务端专用）
+            show_add_client_dialog: false,
+            add_client_dialog_tab_id: String::new(),
+            add_client_dialog_input: None,
+            add_client_dialog_error: None,
             // 初始化侧边栏布局状态
             sidebar_width,
             sidebar_resizing: false,
@@ -885,6 +896,46 @@ impl NetAssistantApp {
                 ));
             }
         }
+    }
+
+    /// 向UDP服务端手动添加客户端地址
+    pub fn add_client_to_server(&mut self, tab_id: String, addr_str: String, cx: &mut Context<Self>) {
+        let addr: std::net::SocketAddr = match addr_str.parse() {
+            Ok(a) => a,
+            Err(_) => {
+                error!("[add_client_to_server] 无效的地址格式: {}", addr_str);
+                if let Some(sender) = &self.connection_event_sender {
+                    let _ = sender.try_send(ConnectionEvent::Error(
+                        tab_id,
+                        format!("无效的地址格式: {}", addr_str),
+                    ));
+                }
+                return;
+            }
+        };
+
+        let manager = self.network_manager.clone();
+        let event_sender = self.connection_event_sender.clone();
+
+        tokio::spawn(async move {
+            let mgr = manager.lock().await;
+            match mgr.add_udp_client(&tab_id, addr).await {
+                Ok(_) => {
+                    info!("[add_client_to_server] 成功添加客户端: {}", addr);
+                }
+                Err(e) => {
+                    error!("[add_client_to_server] 添加客户端失败: {}", e);
+                    if let Some(sender) = &event_sender {
+                        let _ = sender.try_send(ConnectionEvent::Error(
+                            tab_id,
+                            format!("添加客户端失败: {}", e),
+                        ));
+                    }
+                }
+            }
+        });
+
+        cx.notify();
     }
 
 

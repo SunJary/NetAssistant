@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use smol::channel::Sender;
 use crate::config::connection::{ClientConfig, ServerConfig, ConnectionType};
 use crate::network::events::ConnectionEvent;
@@ -116,5 +117,23 @@ impl NetworkConnectionManager {
         Ok(())
     }
     
+    /// 手动向UDP服务端添加客户端地址
+    /// 仅对UDP协议有效，TCP服务端不支持此操作
+    pub async fn add_udp_client(
+        &self,
+        server_id: &str,
+        addr: SocketAddr,
+    ) -> Result<Sender<Vec<u8>>, String> {
+        let server = self.servers.get(server_id)
+            .ok_or_else(|| format!("服务器 {} 不存在", server_id))?;
+        
+        let any_ref = (**server).as_any();
+        
+        if let Some(udp_server) = any_ref.downcast_ref::<UdpServer>() {
+            udp_server.add_client(addr).await
+        } else {
+            Err("仅UDP服务端支持手动添加客户端".to_string())
+        }
+    }
 
 }

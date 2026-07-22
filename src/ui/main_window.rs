@@ -9,7 +9,7 @@ use gpui_component::tooltip::Tooltip;
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog, FavoriteRemarkDialog, FavoriteListPanel};
+use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog, FavoriteRemarkDialog, FavoriteListPanel, AddClientDialog};
 use crate::ui::tab_container::TabContainer;
 
 pub struct MainWindow<'a> {
@@ -184,6 +184,14 @@ impl<'a> MainWindow<'a> {
             })
             .when(self.app.show_decoder_selection, |this_div| {
                 this_div.child(DecoderSelectionDialog::new(self.app).render(window, cx))
+            })
+            .when(self.app.show_add_client_dialog, |this_div| {
+                if let Some(input) = self.app.add_client_dialog_input.clone() {
+                    let error = self.app.add_client_dialog_error.clone();
+                    this_div.child(AddClientDialog::new(self.app, input, error).render(window, cx))
+                } else {
+                    this_div
+                }
             })
             .when(self.app.show_favorite_remark, |this_div| {
                 this_div.child(FavoriteRemarkDialog::new(self.app, self.app.favorite_remark_input.clone()).render(window, cx))

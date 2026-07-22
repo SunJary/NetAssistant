@@ -8,6 +8,7 @@ use gpui_component::{
     clipboard::Clipboard,
     input::{Input, InputState},
     scroll::{Scrollbar, ScrollbarShow, ScrollableElement},
+    tooltip::Tooltip,
 };
 
 use log::{debug, error, info, warn};
@@ -725,6 +726,8 @@ impl<'a> ConnectionTab<'a> {
         let tab_id = self.tab_id.clone();
         let tab_id_for_toggle = tab_id.clone();
         let auto_reply_enabled = self.tab_state.auto_reply_enabled;
+        let is_connected = self.tab_state.is_connected;
+        let is_udp_server = self.tab_state.connection_config.protocol() == crate::config::connection::ConnectionType::Udp;
 
         div()
             .flex()
@@ -826,7 +829,33 @@ impl<'a> ConnectionTab<'a> {
                                     .font_semibold()
                                     .text_color(theme.foreground)
                                     .child("客户端连接"),
-                            ),
+                            )
+                            // 添加客户端按钮（仅UDP服务端显示）
+                            .when(is_udp_server && is_connected, |this| {
+                                let tab_id_for_add = tab_id.clone();
+                                this.child(
+                                    div()
+                                        .id("add-client-btn")
+                                        .ml_auto()
+                                        .cursor_pointer()
+                                        .hover(|style| style.opacity(0.7))
+                                        .tooltip(|window, cx| {
+                                            Tooltip::new("添加客户端").build(window, cx)
+                                        })
+                                        .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            let input = cx.new(|cx| {
+                                                InputState::new(window, cx)
+                                            });
+                                            app.show_add_client_dialog = true;
+                                            app.add_client_dialog_tab_id = tab_id_for_add.clone();
+                                            app.add_client_dialog_input = Some(input);
+                                            cx.notify();
+                                        }))
+                                        .child(
+                                            Icon::new(IconName::Plus).size(px(12.0)),
+                                        )
+                                )
+                            }),
                     )
                     .child(
                         div()

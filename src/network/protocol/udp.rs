@@ -212,6 +212,8 @@ pub struct UdpServer {
     is_running: bool,
     read_handle: Option<JoinHandle<()>>,
     write_handle: Option<JoinHandle<()>>,
+    /// 主发送通道，用于手动添加客户端时接入发送链路
+    main_send_tx: Arc<Mutex<Option<Sender<(SocketAddr, Vec<u8>)>>>>,
 }
 
 impl UdpServer {
@@ -227,7 +229,64 @@ impl UdpServer {
             is_running: false,
             read_handle: None,
             write_handle: None,
+            main_send_tx: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// 手动添加客户端地址（仅UDP有效，不需要真实网络连接）
+    /// 本质：在 clients 列表中注册一个地址，创建发送通道接入 socket 发送链路
+    pub async fn add_client(&self, addr: SocketAddr) -> Result<Sender<Vec<u8>>, String> {
+        // 检查是否已存在
+        {
+            let clients = self.clients.lock().await;
+            if clients.contains_key(&addr) {
+                return Err(format!("客户端 {} 已存在", addr));
+            }
+        }
+
+        // 获取主发送通道
+        let main_tx = {
+            let guard = self.main_send_tx.lock().await;
+            guard.clone()
+        };
+        let main_tx = match main_tx {
+            Some(tx) => tx,
+            None => return Err("服务器未启动".to_string()),
+        };
+
+        // 创建客户端发送通道
+        let (client_tx, client_rx) = smol_unbounded::<Vec<u8>>();
+
+        // 转发任务：client_rx → main_tx(主发送通道) → socket.send_to
+        let main_tx_clone = main_tx.clone();
+        let addr_clone = addr;
+        tokio::spawn(async move {
+            while let Ok(data) = client_rx.recv().await {
+                if main_tx_clone.send((addr_clone, data)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // 添加到 clients 列表
+        {
+            let mut clients = self.clients.lock().await;
+            clients.insert(addr, client_tx.clone());
+        }
+
+        // 通知 UI 层
+        if let Some(sender) = &self.event_sender {
+            if let Err(e) = sender.send(ConnectionEvent::ServerClientConnected(
+                self.config.id.clone(),
+                addr,
+                client_tx.clone(),
+            )).await {
+                error!("[UDP服务器] 发送 ServerClientConnected 事件失败: {:?}", e);
+            }
+        }
+
+        info!("[UDP服务器] 手动添加客户端: {}", addr);
+        Ok(client_tx)
     }
 }
 
@@ -239,6 +298,8 @@ impl NetworkServer for UdpServer {
         
         // 使用现有的clients字段
         let clients = self.clients.clone();
+        // 保存主发送通道，用于手动添加客户端
+        let main_send_tx = self.main_send_tx.clone();
         
         Pin::from(Box::new(async move {
             // 绑定地址，支持IPv4和IPv6
@@ -276,6 +337,12 @@ impl NetworkServer for UdpServer {
             
             // 创建发送器和接收器
             let (tx, rx) = smol_unbounded::<(SocketAddr, Vec<u8>)>();
+            
+            // 保存主发送通道，供 add_client 使用
+            {
+                let mut guard = main_send_tx.lock().await;
+                *guard = Some(tx.clone());
+            }
             
             let clients_clone = clients.clone();
             
@@ -378,6 +445,7 @@ impl NetworkServer for UdpServer {
         let event_sender = self.event_sender.clone();
         let server_id = self.config.id.clone();
         let clients = self.clients.clone();
+        let main_send_tx = self.main_send_tx.clone();
         
         // 取消接收任务
         if let Some(handle) = self.read_handle.take() {
@@ -395,6 +463,12 @@ impl NetworkServer for UdpServer {
         self.is_running = false;
         
         Pin::from(Box::new(async move {
+            // 清空主发送通道
+            {
+                let mut guard = main_send_tx.lock().await;
+                *guard = None;
+            }
+            
             // 清空客户端列表
             let mut clients_guard = clients.lock().await;
             clients_guard.clear();
@@ -412,5 +486,8 @@ impl NetworkServer for UdpServer {
         }))
     }
     
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
 }
