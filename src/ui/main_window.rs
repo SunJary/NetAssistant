@@ -80,7 +80,7 @@ impl<'a> MainWindow<'a> {
                                     .cursor_pointer()
                                     .rounded_md()
                                     .hover(|style| style.bg(theme.border))
-                                    .child(IconName::GitHub)
+                                    .child(IconName::Github)
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(move |_app, _event, _window, cx| {

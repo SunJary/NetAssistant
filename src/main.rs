@@ -37,7 +37,7 @@ async fn main() {
         .unwrap();
 
     info!("=== 应用程序启动 ===");
-    let app = Application::new().with_assets(CustomAssets::new());
+    let app = gpui_platform::application().with_assets(CustomAssets::new());
     info!("=== Application::new() 创建成功 ===");
 
     app.run(move |cx| {
