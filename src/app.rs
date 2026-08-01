@@ -1000,6 +1000,20 @@ impl NetAssistantApp {
         });
     }
 
+    /// 切换消息显示模式（原始/美化/压缩），并重算所有消息的 cached_content
+    pub fn toggle_message_display_mode(&mut self, tab_id: String, cx: &mut Context<Self>) {
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            let new_mode = tab_state.message_display_mode.next();
+            tab_state.message_display_mode = new_mode;
+            // 遍历所有消息，从 raw_data 重新计算 cached_content
+            for message in &mut tab_state.message_list.messages {
+                message.recompute_content_for_display(new_mode);
+            }
+            debug!("[消息显示模式] 标签页 {} 切换为: {:?}", tab_id, new_mode);
+            cx.notify();
+        }
+    }
+
     /// 切换日志记录开关
     pub fn toggle_log(&mut self, tab_id: String, cx: &mut Context<Self>) {
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {

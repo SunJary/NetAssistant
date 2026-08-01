@@ -21,7 +21,7 @@ use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::custom_icons::CustomIconName;
 use crate::log_writer::LogWriter;
-use crate::message::{Message, MessageDirection, MessageListState};
+use crate::message::{Message, MessageDirection, MessageDisplayMode, MessageListState};
 use crate::utils::hex::hex_to_bytes;
 
 /// 连接标签页状态
@@ -39,6 +39,9 @@ pub struct ConnectionTabState {
 
     // GPUI List 状态
     pub message_list_state: ListState,
+
+    // 消息显示模式（原始/美化/压缩）
+    pub message_display_mode: MessageDisplayMode,
 
     // 每个标签页独立的功能
     pub message_input: Option<Entity<InputState>>,
@@ -81,6 +84,9 @@ impl ConnectionTabState {
 
             // GPUI List 状态
             message_list_state: ListState::new(0, ListAlignment::Top, px(100.)).measure_all(),
+
+            // 消息显示模式默认为原始
+            message_display_mode: MessageDisplayMode::Normal,
 
             // 初始化每个标签页独立的功能
             message_input: Some(cx.new(|cx| {
@@ -167,6 +173,13 @@ impl ConnectionTabState {
         let old_count = self.message_list.messages.len();
         self.message_list.add_message(message);
         let new_count = self.message_list.messages.len();
+
+        // 非原始显示模式下，重算新消息的内容以保持一致的格式化
+        if new_count > old_count && self.message_display_mode != MessageDisplayMode::Normal {
+            if let Some(last) = self.message_list.messages.last_mut() {
+                last.recompute_content_for_display(self.message_display_mode);
+            }
+        }
 
         if new_count > old_count {
             self.message_list_state.splice(old_count..old_count, new_count - old_count);
@@ -1014,6 +1027,38 @@ impl<'a> ConnectionTab<'a> {
                                             .text_xs()
                                             .text_color(gpui::rgb(0x6b7280))
                                             .child("自动滚动"),
+                                    ),
+                            )
+                            // 消息显示模式切换按钮（原始/美化/压缩）
+                            .child(
+                                div()
+                                    .id("msg-format-toggle")
+                                    .cursor_pointer()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(theme.secondary_foreground)
+                                    .bg(theme.secondary)
+                                    .border(px(1.0))
+                                    .border_color(theme.secondary)
+                                    .rounded(px(2.0))
+                                    .px(px(10.0))
+                                    .py(px(4.0))
+                                    .hover(|style| {
+                                        style.bg(theme.secondary_hover)
+                                            .border_color(theme.secondary_hover)
+                                    })
+                                    .child(format!("格式:{}", self.tab_state.message_display_mode.label()))
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new("切换消息显示格式（原始/美化/压缩）").build(window, cx)
+                                    })
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener({
+                                            let tab_id_format = tab_id.clone();
+                                            move |app, _event, _window, cx| {
+                                                app.toggle_message_display_mode(tab_id_format.clone(), cx);
+                                            }
+                                        }),
                                     ),
                             )
                             .child(

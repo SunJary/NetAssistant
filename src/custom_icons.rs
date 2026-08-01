@@ -9,6 +9,8 @@ pub enum CustomIconName {
     // 添加自定义图标
     FilePlusCorner,
     Pencil,
+    Braces,
+    Minimize2,
 }
 
 impl From<IconName> for CustomIconName {
@@ -25,6 +27,8 @@ impl IconNamed for CustomIconName {
             // 自定义图标路径（使用与内置图标相同的格式）
             CustomIconName::FilePlusCorner => "icons/file-plus-corner.svg".into(),
             CustomIconName::Pencil => "icons/pencil.svg".into(),
+            CustomIconName::Braces => "icons/braces.svg".into(),
+            CustomIconName::Minimize2 => "icons/minimize-2.svg".into(),
         }
     }
 }

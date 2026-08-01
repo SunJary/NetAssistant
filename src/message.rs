@@ -27,6 +27,38 @@ pub enum MessageType {
     Hex,
 }
 
+/// 消息显示模式（用于消息列表内容格式化切换）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MessageDisplayMode {
+    /// 原始内容
+    #[default]
+    Normal,
+    /// JSON 美化格式（2空格缩进、换行）
+    JsonPretty,
+    /// JSON 压缩格式（无空格无换行）
+    JsonMinified,
+}
+
+impl MessageDisplayMode {
+    /// 切换到下一个显示模式：Normal -> JsonPretty -> JsonMinified -> Normal
+    pub fn next(self) -> Self {
+        match self {
+            Self::Normal => Self::JsonPretty,
+            Self::JsonPretty => Self::JsonMinified,
+            Self::JsonMinified => Self::Normal,
+        }
+    }
+
+    /// 显示标签
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "原始",
+            Self::JsonPretty => "美化",
+            Self::JsonMinified => "压缩",
+        }
+    }
+}
+
 impl fmt::Display for MessageType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -108,6 +140,45 @@ impl Message {
     pub fn set_message_type(&mut self, message_type: MessageType) {
         self.message_type = message_type;
         self.cached_content = Self::compute_content(&self.raw_data, message_type);
+    }
+
+    /// 根据显示模式重算 cached_content（从 raw_data 重新生成，保留原始字节）
+    pub fn recompute_content_for_display(&mut self, mode: MessageDisplayMode) {
+        // 先还原为基础内容
+        let base = Self::compute_content(&self.raw_data, self.message_type);
+        self.cached_content = match mode {
+            MessageDisplayMode::Normal => base,
+            MessageDisplayMode::JsonPretty | MessageDisplayMode::JsonMinified => {
+                if self.message_type == MessageType::Text {
+                    format_json_text(&base, mode)
+                } else {
+                    base
+                }
+            }
+        };
+    }
+}
+
+/// 对文本进行 JSON 格式化处理。
+/// - `JsonPretty`：美化（2空格缩进、换行）
+/// - `JsonMinified`：压缩（无空格无换行）
+/// - `Normal`：原样返回
+/// 解析失败时原样返回。
+pub fn format_json_text(text: &str, mode: MessageDisplayMode) -> String {
+    match mode {
+        MessageDisplayMode::Normal => text.to_string(),
+        MessageDisplayMode::JsonPretty => {
+            match serde_json::from_str::<serde_json::Value>(text) {
+                Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| text.to_string()),
+                Err(_) => text.to_string(),
+            }
+        }
+        MessageDisplayMode::JsonMinified => {
+            match serde_json::from_str::<serde_json::Value>(text) {
+                Ok(value) => serde_json::to_string(&value).unwrap_or_else(|_| text.to_string()),
+                Err(_) => text.to_string(),
+            }
+        }
     }
 }
 
