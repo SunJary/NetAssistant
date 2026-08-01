@@ -54,6 +54,7 @@ impl InputWithMode {
                         .w_full()
                         .h_full()
                         .p_2()
+                        .font_family("JetBrains Mono")
                         .bg(theme.background)
                         .rounded_md()
                         .border_0()

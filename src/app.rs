@@ -326,6 +326,7 @@ impl NetAssistantApp {
                 InputState::new(window, cx)
                     .code_editor("json")
                     .line_number(false)
+                    .folding(false)
                     // .rows(5)
                     .multi_line(true)
                     .placeholder("输入自动回复内容...")

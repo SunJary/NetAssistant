@@ -2,12 +2,13 @@ use gpui::*;
 use gpui_component::TitleBar;
 use log::{error, info};
 use simple_logger::SimpleLogger;
+use std::borrow::Cow;
 
 // 导入配置存储
 use crate::config::storage::ConfigStorage;
 
 // 导入自定义资产
-use crate::assets::CustomAssets;
+use crate::assets::{CustomAssets, Fonts};
 
 mod app;
 mod assets;
@@ -45,6 +46,16 @@ async fn main() {
         // 必须在使用任何 GPUI Component 功能之前调用
         gpui_component::init(cx);
         info!("=== gpui_component::init() 完成 ===");
+
+        // 加载嵌入的 JetBrains Mono 等宽字体
+        // 非英文字符（如中文）由系统字体自动回退渲染
+        let font_data: Vec<Cow<'static, [u8]>> = Fonts::iter()
+            .filter_map(|path| Fonts::get(&path).map(|f| Cow::Owned(f.data.to_vec())))
+            .collect();
+        match cx.text_system().add_fonts(font_data) {
+            Ok(_) => info!("=== JetBrains Mono 字体加载完成 ==="),
+            Err(e) => error!("=== 字体加载失败: {:?} ===", e),
+        }
 
         // 初始化主题管理器
         let mut theme_manager = ThemeManager::new();

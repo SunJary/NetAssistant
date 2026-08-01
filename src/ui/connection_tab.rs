@@ -85,6 +85,9 @@ impl ConnectionTabState {
             // 初始化每个标签页独立的功能
             message_input: Some(cx.new(|cx| {
                 InputState::new(window, cx)
+                    .code_editor("json")
+                    .line_number(false)
+                    .folding(false)
                     .multi_line(true)
                     .placeholder("输入消息内容...")
             })),
@@ -1208,6 +1211,7 @@ impl<'a> ConnectionTab<'a> {
                                                                 .child(
                                                                     div()
                                                                         .text_sm()
+                                                                        .font_family("JetBrains Mono")
                                                                         .whitespace_normal()
                                                                         .when(is_sent, |div| {
                                                                             div.text_color(gpui::rgb(0xffffff))

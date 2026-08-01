@@ -8,6 +8,12 @@ use std::borrow::Cow;
 #[folder = "assets/icons"]
 pub struct CustomIcons;
 
+// 字体资源（JetBrains Mono 等宽字体，仅含拉丁字符，非英文字符由系统字体自动回退）
+#[derive(RustEmbed)]
+#[folder = "assets/fonts"]
+#[include = "*.ttf"]
+pub struct Fonts;
+
 // 组合自定义图标和默认图标
 pub struct CustomAssets {
     default_assets: DefaultAssets,

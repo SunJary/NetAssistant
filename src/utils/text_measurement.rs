@@ -56,6 +56,7 @@ impl TextMeasurement {
         }
         
         let mut text_style = TextStyle::default();
+        text_style.font_family = "JetBrains Mono".into();
         text_style.font_size = actual_font_size.into();
         text_style.white_space = gpui::WhiteSpace::Normal;
         
