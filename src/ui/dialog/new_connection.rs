@@ -5,7 +5,7 @@ use gpui_component::input::Input;
 use gpui_component::ActiveTheme as _;
 
 use crate::app::NetAssistantApp;
-use crate::config::connection::{ConnectionConfig, ConnectionType};
+use crate::config::connection::DecoderConfig;
 
 pub struct NewConnectionDialog<'a> {
     app: &'a NetAssistantApp,
@@ -22,6 +22,11 @@ impl<'a> NewConnectionDialog<'a> {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
+        let is_edit = self.app.editing_connection_id.is_some();
+        let is_client = self.app.new_connection_is_client;
+        let title = if is_edit { "编辑连接" } else { "新建连接" };
+        let show_advanced = self.app.show_connection_advanced;
+
         div()
             .absolute()
             .inset_0()
@@ -36,19 +41,21 @@ impl<'a> NewConnectionDialog<'a> {
                     .rounded_lg()
                     .shadow_2xl()
                     .p_6()
+                    // 标题
                     .child(
                         div()
                             .text_lg()
                             .font_semibold()
                             .mb_4()
                             .text_color(theme.foreground)
-                            .child("新建连接"),
+                            .child(title),
                     )
                     .child(
                         div()
                             .flex()
                             .flex_col()
                             .gap_4()
+                            // 主机地址（必填）
                             .child(
                                 div()
                                     .flex()
@@ -61,8 +68,8 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_color(theme.foreground)
                                             .child("主机地址"),
                                     )
-                                    .child(Input::new(&self.app.host_input))
-                                    .when(!self.app.new_connection_is_client, |this| {
+                                    .child(Input::new(&self.app.host_input).cleanable(true))
+                                    .when(!is_client, |this| {
                                         this.child(
                                             div()
                                                 .text_xs()
@@ -71,6 +78,7 @@ impl<'a> NewConnectionDialog<'a> {
                                         )
                                     }),
                             )
+                            // 端口（必填）
                             .child(
                                 div()
                                     .flex()
@@ -83,8 +91,9 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_color(theme.foreground)
                                             .child("端口"),
                                     )
-                                    .child(Input::new(&self.app.port_input)),
+                                    .child(Input::new(&self.app.port_input).cleanable(true)),
                             )
+                            // 协议（必填，编辑模式下锁定）
                             .child(
                                 div()
                                     .flex()
@@ -101,59 +110,90 @@ impl<'a> NewConnectionDialog<'a> {
                                         div()
                                             .flex()
                                             .gap_2()
-                                            .child(
-                                                div()
-                                                    .px_3()
-                                                    .py_1()
-                                                    .cursor_pointer()
-                                                    .when(self.app.new_connection_protocol == "TCP", |div| {
-                                                        div.bg(theme.primary)
-                                                            .text_color(theme.background)
-                                                    })
-                                                    .when(self.app.new_connection_protocol != "TCP", |div| {
-                                                        div.bg(theme.border)
-                                                            .text_color(theme.foreground)
-                                                    })
-                                                    .rounded_md()
-                                                    .child(
-                                                        div()
-                                                            .text_sm()
-                                                            .font_medium()
-                                                            .child("TCP"),
-                                                    )
-                                                    .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                        app.new_connection_protocol = String::from("TCP");
-                                                        cx.notify();
-                                                    })),
-                                            )
-                                            .child(
-                                                div()
-                                                    .px_3()
-                                                    .py_1()
-                                                    .cursor_pointer()
-                                                    .when(self.app.new_connection_protocol == "UDP", |div| {
-                                                        div.bg(theme.primary)
-                                                            .text_color(theme.background)
-                                                    })
-                                                    .when(self.app.new_connection_protocol != "UDP", |div| {
-                                                        div.bg(theme.border)
-                                                            .text_color(theme.foreground)
-                                                    })
-                                                    .rounded_md()
-                                                    .child(
-                                                        div()
-                                                            .text_sm()
-                                                            .font_medium()
-                                                            .child("UDP"),
-                                                    )
-                                                    .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                        app.new_connection_protocol = String::from("UDP");
-                                                        cx.notify();
-                                                    })),
-                                            ),
+                                            .child(self.render_protocol_chip("TCP", cx))
+                                            .child(self.render_protocol_chip("UDP", cx)),
                                     ),
+                            )
+                            // 更多设置折叠区
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_medium()
+                                            .text_color(theme.foreground)
+                                            .cursor_pointer()
+                                            .child(if show_advanced {
+                                                "▼ 更多设置"
+                                            } else {
+                                                "▶ 更多设置"
+                                            })
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    app.show_connection_advanced = !app.show_connection_advanced;
+                                                    cx.notify();
+                                                }),
+                                            ),
+                                    )
+                                    .when(show_advanced, |this| {
+                                        this.child(
+                                            div()
+                                                .flex()
+                                                .flex_col()
+                                                .gap_3()
+                                                .pl_2()
+                                                // 消息模式（发送格式）
+                                                .child(
+                                                    div()
+                                                        .flex()
+                                                        .flex_col()
+                                                        .gap_1()
+                                                        .child(
+                                                            div()
+                                                                .text_sm()
+                                                                .font_semibold()
+                                                                .text_color(theme.foreground)
+                                                                .child("消息模式"),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .flex()
+                                                                .gap_2()
+                                                                .child(self.render_mode_chip("text", "文本", cx))
+                                                                .child(self.render_mode_chip("hex", "十六进制", cx)),
+                                                        ),
+                                                )
+                                                // 解码器
+                                                .child(
+                                                    div()
+                                                        .flex()
+                                                        .flex_col()
+                                                        .gap_1()
+                                                        .child(
+                                                            div()
+                                                                .text_sm()
+                                                                .font_semibold()
+                                                                .text_color(theme.foreground)
+                                                                .child("解码器"),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .flex()
+                                                                .gap_2()
+                                                                .child(self.render_decoder_chip("原始数据", DecoderConfig::Bytes, cx))
+                                                                .child(self.render_decoder_chip("换行符", DecoderConfig::LineBased, cx))
+                                                                .child(self.render_decoder_chip("JSON", DecoderConfig::Json, cx)),
+                                                        ),
+                                                ),
+                                        )
+                                    }),
                             ),
                     )
+                    // 取消 / 确定
                     .child(
                         div()
                             .flex()
@@ -172,10 +212,14 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_color(theme.foreground)
                                             .child("取消"),
                                     )
-                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                        app.show_new_connection = false;
-                                        cx.notify();
-                                    })),
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            app.show_new_connection = false;
+                                            app.editing_connection_id = None;
+                                            cx.notify();
+                                        }),
+                                    ),
                             )
                             .child(
                                 div()
@@ -188,72 +232,111 @@ impl<'a> NewConnectionDialog<'a> {
                                         div()
                                             .text_sm()
                                             .text_color(theme.background)
-                                            .child("确定"),
+                                            .child(if is_edit { "保存" } else { "确定" }),
                                     )
-                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                        // 从InputState读取值
-                                        let host = app.host_input.read(cx).value().to_string();
-                                        let port_str = app.port_input.read(cx).value().to_string();
-
-                                        // 验证必填字段
-                                        if host.is_empty() || port_str.is_empty() {
-                                            return;
-                                        }
-
-                                        // 解析端口
-                                        let port: u16 = match port_str.parse() {
-                                            Ok(p) => p,
-                                            Err(_) => return,
-                                        };
-
-                                        // 根据协议类型创建连接配置
-                                        let connection_type = if app.new_connection_protocol == "TCP" {
-                                            ConnectionType::Tcp
-                                        } else {
-                                            ConnectionType::Udp
-                                        };
-
-                                        // 根据new_connection_is_client创建客户端或服务端连接
-                                        let connection_config = if app.new_connection_is_client {
-                                            // 创建客户端连接配置（自动生成ID）
-                                            let config = ConnectionConfig::new_client(
-                                                String::new(),
-                                                host,
-                                                port,
-                                                connection_type,
-                                            );
-                                            
-                                            // 添加到配置存储
-                                            app.storage.add_connection(config.clone());
-                                            config
-                                        } else {
-                                            // 创建服务端连接配置（自动生成ID）
-                                            let config = ConnectionConfig::new_server(
-                                                String::new(),
-                                                host,
-                                                port,
-                                                connection_type,
-                                            );
-                                            
-                                            // 添加到配置存储
-                                            app.storage.add_connection(config.clone());
-                                            config
-                                        };
-                                        
-                                        // 使用连接配置中的ID作为标签页ID
-                                        let new_tab_id = connection_config.id().to_string();
-                                                                                // 确保标签页存在并切换到该标签页
-                                        app.ensure_tab_exists(new_tab_id.clone(), connection_config, window, cx);
-                                        app.active_tab = new_tab_id;
-                                        // 重置协议
-                                        app.new_connection_protocol = String::from("TCP");
-
-                                        // 关闭对话框
-                                        app.show_new_connection = false;
-                                        cx.notify();
-                                    })),
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            app.confirm_connection_form(window, cx);
+                                        }),
+                                    ),
                             ),
                     ),
+            )
+    }
+
+    /// 渲染协议选择芯片（编辑模式下禁用切换）
+    fn render_protocol_chip(
+        &self,
+        protocol: &str,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let theme = cx.theme().clone();
+        let is_edit = self.app.editing_connection_id.is_some();
+        let selected = self.app.new_connection_protocol == protocol;
+        let protocol_owned = protocol.to_string();
+        div()
+            .px_3()
+            .py_1()
+            .when(selected, |div| {
+                div.bg(theme.primary).text_color(theme.background)
+            })
+            .when(!selected, |div| {
+                div.bg(theme.border).text_color(theme.foreground)
+            })
+            .rounded_md()
+            .when(!is_edit, |div| div.cursor_pointer())
+            .when(is_edit, |div| div.opacity(0.6))
+            .child(div().text_sm().font_medium().child(protocol_owned.clone()))
+            .when(!is_edit, |div| {
+                div.on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                        app.new_connection_protocol = protocol_owned.clone();
+                        cx.notify();
+                    }),
+                )
+            })
+    }
+
+    /// 渲染消息模式选择芯片
+    fn render_mode_chip(
+        &self,
+        mode: &str,
+        label: &str,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let theme = cx.theme().clone();
+        let selected = self.app.edit_message_input_mode == mode;
+        let mode_owned = mode.to_string();
+        div()
+            .px_3()
+            .py_1()
+            .when(selected, |div| {
+                div.bg(theme.primary).text_color(theme.background)
+            })
+            .when(!selected, |div| {
+                div.bg(theme.border).text_color(theme.foreground)
+            })
+            .rounded_md()
+            .cursor_pointer()
+            .child(div().text_sm().font_medium().child(label.to_string()))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                    app.edit_message_input_mode = mode_owned.clone();
+                    cx.notify();
+                }),
+            )
+    }
+
+    /// 渲染解码器选择芯片
+    fn render_decoder_chip(
+        &self,
+        label: &str,
+        config: DecoderConfig,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let theme = cx.theme().clone();
+        let selected = self.app.edit_decoder_config == config;
+        div()
+            .px_3()
+            .py_1()
+            .when(selected, |div| {
+                div.bg(theme.primary).text_color(theme.background)
+            })
+            .when(!selected, |div| {
+                div.bg(theme.border).text_color(theme.foreground)
+            })
+            .rounded_md()
+            .cursor_pointer()
+            .child(div().text_sm().font_medium().child(label.to_string()))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                    app.edit_decoder_config = config.clone();
+                    cx.notify();
+                }),
             )
     }
 }

@@ -222,31 +222,19 @@ impl<'a> ConnectionPanel<'a> {
                     .text_color(theme.primary) // 设置图标颜色为主题的主色调（蓝色）
             )
             .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(
-                    move |app: &mut NetAssistantApp,
-                          _event: &MouseDownEvent,
-                          window: &mut Window,
-                          cx: &mut Context<NetAssistantApp>| {
-                        // 阻止事件传播，防止点击穿透到展开事件
-                        cx.stop_propagation();
-                        
-                        app.show_new_connection = true;
-                        app.new_connection_is_client = is_client_clone;
+                        MouseButton::Left,
+                        cx.listener(
+                            move |app: &mut NetAssistantApp,
+                                  _event: &MouseDownEvent,
+                                  window: &mut Window,
+                                  cx: &mut Context<NetAssistantApp>| {
+                                // 阻止事件传播，防止点击穿透到展开事件
+                                cx.stop_propagation();
 
-                        let default_host = if is_client_clone {
-                            "127.0.0.1"
-                        } else {
-                            "0.0.0.0"
-                        };
-
-                        app.host_input.update(cx, |input, cx| {
-                            input.set_value(default_host.to_string(), window, cx);
-                            cx.notify();
-                        });
-                    },
-                ),
-            );
+                                app.open_new_connection(is_client_clone, window, cx);
+                            },
+                        ),
+                    );
 
         div()
             .flex()

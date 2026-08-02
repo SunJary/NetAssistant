@@ -219,6 +219,31 @@ impl<'a> MainWindow<'a> {
                                 .rounded_md()
                                 .shadow_lg()
                                 .w_48()
+                                .flex()
+                                .flex_col()
+                                // 编辑连接
+                                .child(
+                                    div()
+                                        .px_4()
+                                        .py_3()
+                                        .text_sm()
+                                        .text_color(theme.foreground)
+                                        .cursor_pointer()
+                                        .hover(|style| {
+                                            style.bg(theme.border)
+                                        })
+                                        .child("编辑连接")
+                                        .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            if let Some(connection_id) = app.context_menu_connection.clone() {
+                                                app.show_context_menu = false;
+                                                app.context_menu_connection = None;
+                                                app.context_menu_position = None;
+                                                app.context_menu_position_y = None;
+                                                app.open_edit_connection(connection_id, window, cx);
+                                            }
+                                        })),
+                                )
+                                // 删除连接
                                 .child(
                                     div()
                                         .px_4()
@@ -233,11 +258,11 @@ impl<'a> MainWindow<'a> {
                                         .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                             if let Some(connection_name) = app.context_menu_connection.clone() {
                                                 let is_client = app.context_menu_is_client;
-                                                
+
                                                 // 直接使用连接配置的原始ID作为标签页ID
                                                 let tab_id = connection_name.clone();
                                                 app.close_tab(tab_id, cx);
-                                                
+
                                                 // 然后删除连接配置
                                                 if is_client {
                                                     app.storage.remove_client_connection(&connection_name);

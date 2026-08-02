@@ -3,7 +3,7 @@ use gpui_component::input::InputState;
 use log::{debug, error, info};
 
 use crate::config;
-use crate::config::connection::{ConnectionConfig, ConnectionStatus};
+use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig};
 use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
@@ -30,6 +30,13 @@ pub struct NetAssistantApp {
     pub host_input: Entity<InputState>,
     pub port_input: Entity<InputState>,
     pub new_connection_protocol: String,
+
+    // 连接编辑对话框状态（新建/编辑共用）
+    // None=新建模式, Some(id)=编辑模式
+    pub editing_connection_id: Option<String>,
+    pub edit_message_input_mode: String,
+    pub edit_decoder_config: DecoderConfig,
+    pub show_connection_advanced: bool,
 
     // 解码器选择对话框状态
     pub show_decoder_selection: bool,
@@ -133,6 +140,11 @@ impl NetAssistantApp {
             host_input,
             port_input,
             new_connection_protocol: String::from("TCP"),
+            // 初始化连接编辑对话框状态
+            editing_connection_id: None,
+            edit_message_input_mode: String::from("text"),
+            edit_decoder_config: DecoderConfig::default(),
+            show_connection_advanced: false,
             // 初始化解码器选择对话框状态
             show_decoder_selection: false,
             decoder_selection_tab_id: None,
@@ -336,6 +348,153 @@ impl NetAssistantApp {
             });
             self.auto_reply_inputs.insert(tab_id, auto_reply_input);
         }
+    }
+
+    /// 打开「新建连接」对话框（重置为新建模式）
+    pub fn open_new_connection(&mut self, is_client: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.editing_connection_id = None;
+        self.new_connection_is_client = is_client;
+        self.new_connection_protocol = String::from("TCP");
+        self.show_connection_advanced = false;
+        self.edit_message_input_mode = String::from("text");
+        self.edit_decoder_config = DecoderConfig::default();
+
+        let default_host = if is_client { "127.0.0.1" } else { "0.0.0.0" };
+        self.host_input.update(cx, |i, cx| i.set_value(default_host.to_string(), window, cx));
+        self.port_input.update(cx, |i, cx| i.set_value(String::new(), window, cx));
+
+        self.show_new_connection = true;
+        cx.notify();
+    }
+
+    /// 打开「编辑连接」对话框（从现有配置回填）
+    pub fn open_edit_connection(&mut self, connection_id: String, window: &mut Window, cx: &mut Context<Self>) {
+        let config = self
+            .storage
+            .client_connections()
+            .iter()
+            .chain(self.storage.server_connections().iter())
+            .find(|c| c.id() == connection_id)
+            .map(|c| (*c).clone());
+
+        let Some(config) = config else { return };
+
+        self.editing_connection_id = Some(connection_id);
+        self.new_connection_is_client = config.is_client();
+        self.new_connection_protocol = match config.protocol() {
+            ConnectionType::Tcp => "TCP".to_string(),
+            ConnectionType::Udp => "UDP".to_string(),
+        };
+
+        let (address, port, message_input_mode, decoder) = match &config {
+            ConnectionConfig::Client(c) => (
+                c.server_address.clone(),
+                c.server_port,
+                c.message_input_mode.clone(),
+                c.decoder_config.clone(),
+            ),
+            ConnectionConfig::Server(c) => (
+                c.listen_address.clone(),
+                c.listen_port,
+                c.message_input_mode.clone(),
+                c.decoder_config.clone(),
+            ),
+        };
+
+        self.host_input.update(cx, |i, cx| i.set_value(address, window, cx));
+        self.port_input.update(cx, |i, cx| i.set_value(port.to_string(), window, cx));
+        self.edit_message_input_mode = message_input_mode;
+        self.edit_decoder_config = decoder;
+        self.show_connection_advanced = true;
+
+        self.show_new_connection = true;
+        cx.notify();
+    }
+
+    /// 确认连接表单（新建或编辑）
+    pub fn confirm_connection_form(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let host = self.host_input.read(cx).value().to_string();
+        let port_str = self.port_input.read(cx).value().to_string();
+        if host.is_empty() || port_str.is_empty() {
+            return;
+        }
+        let Ok(port) = port_str.parse::<u16>() else { return };
+
+        let message_input_mode = self.edit_message_input_mode.clone();
+        let decoder_config = self.edit_decoder_config.clone();
+        let connection_type = if self.new_connection_protocol == "TCP" {
+            ConnectionType::Tcp
+        } else {
+            ConnectionType::Udp
+        };
+        let is_client = self.new_connection_is_client;
+
+        if let Some(edit_id) = self.editing_connection_id.take() {
+            // 编辑模式：保留 id / 类型 / 协议，更新其余字段
+            let existing = self
+                .storage
+                .client_connections()
+                .iter()
+                .chain(self.storage.server_connections().iter())
+                .find(|c| c.id() == edit_id)
+                .map(|c| (*c).clone());
+
+            if let Some(mut existing) = existing {
+                match &mut existing {
+                    ConnectionConfig::Client(c) => {
+                        c.server_address = host;
+                        c.server_port = port;
+                        c.message_input_mode = message_input_mode;
+                        c.decoder_config = decoder_config;
+                    }
+                    ConnectionConfig::Server(c) => {
+                        c.listen_address = host;
+                        c.listen_port = port;
+                        c.message_input_mode = message_input_mode;
+                        c.decoder_config = decoder_config;
+                    }
+                }
+                let updated_config = existing.clone();
+                self.storage.update_connection(updated_config.clone());
+                // 同步已打开的标签页
+                if let Some(tab_state) = self.connection_tabs.get_mut(&edit_id) {
+                    tab_state.connection_config = updated_config.clone();
+                    tab_state.message_input_mode = updated_config.message_input_mode().to_string();
+                }
+            }
+        } else {
+            // 新建模式
+            let mut config = if is_client {
+                ConnectionConfig::new_client(host, port, connection_type)
+            } else {
+                ConnectionConfig::new_server(host, port, connection_type)
+            };
+            match &mut config {
+                ConnectionConfig::Client(c) => {
+                    c.message_input_mode = message_input_mode;
+                    c.decoder_config = decoder_config;
+                }
+                ConnectionConfig::Server(c) => {
+                    c.message_input_mode = message_input_mode;
+                    c.decoder_config = decoder_config;
+                }
+            }
+            self.storage.add_connection(config.clone());
+
+            let new_tab_id = config.id().to_string();
+            self.ensure_tab_exists(new_tab_id.clone(), config, window, cx);
+            self.active_tab = new_tab_id;
+        }
+
+        // 重置协议为默认
+        self.new_connection_protocol = String::from("TCP");
+        // 关闭对话框
+        self.show_new_connection = false;
+        cx.notify();
     }
 
     pub fn close_tab(&mut self, tab_id: String, _cx: &mut Context<Self>) {

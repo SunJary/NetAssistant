@@ -71,6 +71,8 @@ impl ConnectionTabState {
         window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> Self {
+        // 从连接配置中恢复发送消息输入模式
+        let message_input_mode = connection_config.message_input_mode().to_string();
         Self {
             connection_config,
             connection_status: ConnectionStatus::NotConnected,
@@ -97,7 +99,7 @@ impl ConnectionTabState {
                     .multi_line(true)
                     .placeholder("输入消息内容...")
             })),
-            message_input_mode: String::from("text"),
+            message_input_mode,
             auto_clear_input: true,
             periodic_send_enabled: false,
             periodic_interval_input: {
@@ -122,10 +124,6 @@ impl ConnectionTabState {
             custom_log_path: None,
             log_writer: None,
         }
-    }
-
-    pub fn name(&self) -> &str {
-        self.connection_config.name()
     }
 
     pub fn protocol(&self) -> &str {
@@ -328,7 +326,7 @@ impl<'a> ConnectionTab<'a> {
                             .text_lg()
                             .font_semibold()
                             .text_color(theme.foreground)
-                            .child(self.tab_state.name().to_string()),
+                            .child(self.tab_state.address()),
                     )
                     .child(
                         div()
@@ -675,7 +673,17 @@ impl<'a> ConnectionTab<'a> {
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_text = tab_id.clone();
                                                 move |app, _event, _window, cx| {
-                                                    app.connection_tabs.get_mut(&tab_id_text).unwrap().message_input_mode = String::from("text");
+                                                    let updated = app.connection_tabs.get_mut(&tab_id_text).map(|tab_state| {
+                                                        tab_state.message_input_mode = String::from("text");
+                                                        match &mut tab_state.connection_config {
+                                                            ConnectionConfig::Client(c) => c.message_input_mode = "text".to_string(),
+                                                            ConnectionConfig::Server(c) => c.message_input_mode = "text".to_string(),
+                                                        }
+                                                        tab_state.connection_config.clone()
+                                                    });
+                                                    if let Some(cfg) = updated {
+                                                        app.storage.update_connection(cfg);
+                                                    }
                                                     cx.notify();
                                                 }
                                             })),
@@ -706,7 +714,17 @@ impl<'a> ConnectionTab<'a> {
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_hex = tab_id.clone();
                                                 move |app, _event, window, cx| {
-                                                    app.connection_tabs.get_mut(&tab_id_hex).unwrap().message_input_mode = String::from("hex");
+                                                    let updated = app.connection_tabs.get_mut(&tab_id_hex).map(|tab_state| {
+                                                        tab_state.message_input_mode = String::from("hex");
+                                                        match &mut tab_state.connection_config {
+                                                            ConnectionConfig::Client(c) => c.message_input_mode = "hex".to_string(),
+                                                            ConnectionConfig::Server(c) => c.message_input_mode = "hex".to_string(),
+                                                        }
+                                                        tab_state.connection_config.clone()
+                                                    });
+                                                    if let Some(cfg) = updated {
+                                                        app.storage.update_connection(cfg);
+                                                    }
                                                     app.sanitize_hex_input(window, cx);
                                                     cx.notify();
                                                 }
