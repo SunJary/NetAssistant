@@ -31,13 +31,27 @@ use theme_event_handler::{ThemeEventHandler, apply_theme};
 #[tokio::main]
 async fn main() {
     // 初始化日志
+    // - debug 构建: DEBUG 级别（cosmic_text 过滤到 Info 避免字体回退噪音）
+    // - release 构建: ERROR 级别（输出干净，只显示错误）
+    // - 环境变量 NETASSISTANT_LOG 可覆盖（如 NETASSISTANT_LOG=debug 调试 release 版）
+    let default_level = if cfg!(debug_assertions) {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Error
+    };
+    let level = std::env::var("NETASSISTANT_LOG")
+        .ok()
+        .and_then(|v| v.parse::<log::LevelFilter>().ok())
+        .unwrap_or(default_level);
+
     SimpleLogger::new()
-        .with_level(log::LevelFilter::Debug) // 提高日志级别到 Debug，确保所有日志都能显示
+        .with_level(level)
+        .with_module_level("cosmic_text", log::LevelFilter::Info)
         .with_utc_timestamps()
         .init()
         .unwrap();
 
-    info!("=== 应用程序启动 ===");
+    info!("=== 应用程序启动 (日志级别: {}) ===", level);
     let app = gpui_platform::application().with_assets(CustomAssets::new());
     info!("=== Application::new() 创建成功 ===");
 

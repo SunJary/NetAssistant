@@ -49,9 +49,9 @@ impl InputWithMode {
             .border_1()
             // 根据验证结果设置边框颜色
             .border_color(if !is_valid && mode == "hex" {
-                gpui::rgb(0xef4444) // 红色边框表示无效
+                theme.danger // 红色边框表示无效
             } else {
-                theme.border.to_rgb() // 转换为Rgb类型以匹配
+                theme.border
             })
             .child(
                 Input::new(input_state)
@@ -80,7 +80,7 @@ impl InputWithMode {
                         div()
                             .id("json-pretty-btn")
                             .p_1()
-                            .text_color(gpui::rgb(0x6b7280))
+                            .text_color(theme.muted_foreground)
                             .opacity(0.4)
                             .hover(|s| s.opacity(1.0))
                             .cursor_pointer()
@@ -104,7 +104,7 @@ impl InputWithMode {
                         div()
                             .id("json-minify-btn")
                             .p_1()
-                            .text_color(gpui::rgb(0x6b7280))
+                            .text_color(theme.muted_foreground)
                             .opacity(0.4)
                             .hover(|s| s.opacity(1.0))
                             .cursor_pointer()
@@ -134,7 +134,7 @@ impl InputWithMode {
                 div()
                     .text_xs()
                     .font_medium()
-                    .text_color(gpui::rgb(0xef4444))
+                    .text_color(theme.danger)
                     .child("十六进制输入格式错误，包含非法字符或长度为奇数")
             );
         }

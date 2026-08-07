@@ -1,5 +1,5 @@
 use gpui::App;
-use gpui_component::{Theme, ThemeSet};
+use gpui_component::{Theme, ThemeRegistry, ThemeSet};
 use std::rc::Rc;
 use log::info;
 
@@ -16,24 +16,21 @@ impl ThemeManager {
 
     pub fn init(&mut self, cx: &mut App) {
         info!("初始化主题系统...");
-        
-        // 解析内嵌主题JSON
-        let theme_set: ThemeSet = match serde_json::from_str(NETASSISTANT_THEME) {
-            Ok(set) => set,
-            Err(err) => {
-                info!("解析内嵌主题失败: {}", err);
-                // 如果解析失败，使用默认主题
-                return;
+
+        // 注册内嵌主题到 ThemeRegistry，使后续 apply_theme 可直接从 Registry 查找
+        if let Err(err) = ThemeRegistry::global_mut(cx).load_themes_from_str(NETASSISTANT_THEME) {
+            info!("注册内嵌主题失败: {}", err);
+            return;
+        }
+        info!("=== 内嵌主题已注册到 ThemeRegistry ===");
+
+        // 应用第一个主题作为初始主题
+        if let Ok(theme_set) = serde_json::from_str::<ThemeSet>(NETASSISTANT_THEME) {
+            if let Some(theme) = theme_set.themes.first() {
+                let theme_rc = Rc::new(theme.clone());
+                Theme::global_mut(cx).apply_config(&theme_rc);
+                info!("使用内嵌主题: {}", theme.name);
             }
-        };
-        
-        // 手动应用主题配置
-        for theme in &theme_set.themes {
-            // 应用主题到当前活动主题
-            let theme_rc = Rc::new(theme.clone());
-            Theme::global_mut(cx).apply_config(&theme_rc);
-            info!("使用内嵌主题: {}", theme.name);
-            break;
         }
     }
 }

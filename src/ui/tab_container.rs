@@ -105,18 +105,16 @@ impl<'a> TabContainer<'a> {
 
             tabs_container = tabs_container.child(
                 div()
+                    .id(("tab", index))
                     .flex()
                     .items_center()
                     .gap_2()
                     .px_3()
                     .py_1()
                     .cursor_pointer()
-                    .hover(|style| {
-                        style.bg(theme.border)
-                    })
                     .when(is_active, |div| {
                         div.bg(theme.primary)
-                            .text_color(theme.background)
+                            .text_color(theme.primary_foreground)
                             .border_1()
                             .border_color(theme.primary)
                             .border_b_0()
@@ -124,6 +122,9 @@ impl<'a> TabContainer<'a> {
                     .when(!is_active, |div| {
                         div.bg(theme.secondary)
                             .text_color(theme.muted_foreground)
+                            .hover(|style| {
+                                style.bg(theme.border)
+                            })
                     })
                     .on_mouse_down(MouseButton::Left, {
                         let tab_id_clone = tab_id.clone();
@@ -147,13 +148,14 @@ impl<'a> TabContainer<'a> {
                             .id(("close-tab", index))
                             .text_xs()
                             .when(is_active, |div| {
-                                div.text_color(theme.background)
+                                div.text_color(theme.primary_foreground)
                             })
                             .when(!is_active, |div| {
+                                // TODO: 等待主题增加 disabled.foreground 键后迁移
                                 div.text_color(gpui::rgb(0x9ca3af))
                             })
                             .hover(|style| {
-                                style.text_color(gpui::rgb(0xef4444))
+                                style.text_color(theme.danger)
                             })
                             .cursor_pointer()
                             .child("×")
@@ -226,6 +228,7 @@ impl<'a> TabContainer<'a> {
                 div().flex().items_center().justify_center().flex_1().child(
                     div()
                         .text_sm()
+                        // TODO: 等待主题增加 disabled.foreground 键后迁移
                         .text_color(gpui::rgb(0x9ca3af))
                         .child("请先创建连接"),
                 ),

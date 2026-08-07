@@ -319,13 +319,19 @@ impl<'a> ConnectionTab<'a> {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .items_center()
-                    .justify_between()
+                    .gap_2()
                     .child(
                         div()
                             .text_lg()
                             .font_semibold()
                             .text_color(theme.foreground)
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
                             .child(self.tab_state.address()),
                     )
                     .child(
@@ -334,6 +340,7 @@ impl<'a> ConnectionTab<'a> {
                             .py_1()
                             .rounded_md()
                             .cursor_pointer()
+                            .flex_shrink_0()
                             .when(is_connected, |div| {
                                 div.bg(theme.danger)
                                     .hover(|style| style.bg(theme.danger_hover))
@@ -374,14 +381,12 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(gpui::rgb(0x6b7280))
                                     .child("协议:"),
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .font_medium()
-                                    .text_color(gpui::rgb(0x111827))
                                     .child(self.tab_state.protocol().to_string()),
                             ),
                     )
@@ -393,14 +398,14 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(gpui::rgb(0x6b7280))
+                                    .text_color(theme.muted_foreground)
                                     .child("地址:"),
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .font_medium()
-                                    .text_color(gpui::rgb(0x111827))
+                                    .text_color(theme.foreground)
                                     .child(self.tab_state.address()),
                             ),
                     )
@@ -412,7 +417,7 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(gpui::rgb(0x6b7280))
+                                    .text_color(theme.muted_foreground)
                                     .child("状态:"),
                             )
                             .child(
@@ -420,9 +425,10 @@ impl<'a> ConnectionTab<'a> {
                                     .text_xs()
                                     .font_medium()
                                     .when(self.tab_state.is_connected, |div| {
-                                        div.text_color(gpui::rgb(0x22c55e))
+                                        div.text_color(theme.success)
                                     })
                                     .when(!self.tab_state.is_connected, |div| {
+                                        // TODO: 等待主题增加 disabled.foreground 键后迁移
                                         div.text_color(gpui::rgb(0x9ca3af))
                                     })
                                     .child(format!("{}", self.tab_state.connection_status)),
@@ -438,14 +444,13 @@ impl<'a> ConnectionTab<'a> {
                                 .child(
                                     div()
                                         .text_xs()
-                                        .text_color(gpui::rgb(0x6b7280))
                                         .child("解码器:"),
                                 )
                                 .child(
                                     div()
                                         .text_xs()
                                         .font_medium()
-                                        .text_color(gpui::rgb(0x111827))
+                                        .text_color(theme.foreground)
                                         .child(self.tab_state.decoder()),
                                 )
                                 // 只在断开连接时显示编辑按钮
@@ -455,8 +460,8 @@ impl<'a> ConnectionTab<'a> {
                                             .text_xs()
                                             .px_1()
                                             .py_0()
-                                            .bg(gpui::rgb(0x3b82f6))
-                                            .text_color(gpui::rgb(0xffffff))
+                                            .bg(theme.primary)
+                                            .text_color(theme.primary_foreground)
                                             .rounded_md()
                                             .cursor_pointer()
                                             .child(div().text_xs().font_medium().child("编辑"))
@@ -500,12 +505,12 @@ impl<'a> ConnectionTab<'a> {
                                     .w_2()
                                     .h_2()
                                     .rounded_full()
-                                    .bg(gpui::rgb(0x3b82f6)),
+                                    .bg(theme.primary),
                             )
                             .child(
                                 div()
                                     .text_xs() // 使用gpui支持的最小字体
-                                    .text_color(gpui::rgb(0x6b7280))
+                                    .text_color(theme.muted_foreground)
                                     .child(format!("发送: {}", self.tab_state.message_list.total_sent)),
                             ),
                     )
@@ -519,12 +524,12 @@ impl<'a> ConnectionTab<'a> {
                                     .w_2()
                                     .h_2()
                                     .rounded_full()
-                                    .bg(gpui::rgb(0x10b981)),
+                                    .bg(theme.green),
                             )
                             .child(
                                 div()
                                     .text_xs() // 使用gpui支持的最小字体
-                                    .text_color(gpui::rgb(0x6b7280))
+                                    .text_color(theme.muted_foreground)
                                     .child(format!("接收: {}", self.tab_state.message_list.total_received)),
                             ),
                     )
@@ -543,7 +548,7 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(gpui::rgb(0x6b7280))
+                                    .text_color(theme.muted_foreground)
                                     .child(format!("总计: {}", self.tab_state.message_list.total_messages())),
                             ),
                     )
@@ -564,18 +569,18 @@ impl<'a> ConnectionTab<'a> {
                                             .w_4()
                                             .h_4()
                                             .border_1()
-                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .border_color(theme.border)
                                             .rounded(px(4.))
                                             .cursor_pointer()
                                             .when(self.tab_state.log_enabled, |this| {
-                                                this.bg(gpui::rgb(0x3b82f6))
+                                                this.bg(theme.primary)
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
                                                     .child(
                                                         div()
                                                             .text_xs()
-                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .text_color(theme.primary_foreground)
                                                             .font_bold()
                                                             .child("✓"),
                                                     )
@@ -590,7 +595,7 @@ impl<'a> ConnectionTab<'a> {
                                     .child(
                                         div()
                                             .text_xs()
-                                            .text_color(gpui::rgb(0x6b7280))
+                                            .text_color(theme.muted_foreground)
                                             .child("日志记录"),
                                     )
                                     // 修改路径按钮
@@ -598,7 +603,7 @@ impl<'a> ConnectionTab<'a> {
                                         div()
                                             .cursor_pointer()
                                             .text_color(gpui::rgb(0x9ca3af))
-                                            .hover(|style| style.text_color(gpui::rgb(0x6b7280)))
+                                            .hover(|style| style.text_color(theme.muted_foreground))
                                             .child(Icon::new(CustomIconName::Pencil).size(px(12.0)))
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_path = tab_id.clone();
@@ -621,8 +626,8 @@ impl<'a> ConnectionTab<'a> {
                                     div()
                                         .cursor_pointer()
                                         .text_xs()
-                                        .text_color(gpui::rgb(0x3b82f6))
-                                        .hover(|style| style.text_color(gpui::rgb(0x2563eb)))
+                                        .text_color(theme.primary)
+                                        .hover(|style| style.text_color(theme.primary_hover))
                                         .max_w(px(150.0))
                                         .overflow_x_hidden()
                                         .whitespace_nowrap()
@@ -647,7 +652,7 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(gpui::rgb(0x6b7280))
+                                    .text_color(theme.muted_foreground)
                                     .child("消息模式:"),
                             )
                             .child(
@@ -659,16 +664,17 @@ impl<'a> ConnectionTab<'a> {
                                             .px_2()
                                             .py_1()
                                             .when(self.tab_state.message_input_mode == "text", |div| {
-                                                div.bg(gpui::rgb(0x3b82f6))
-                                                    .text_color(gpui::rgb(0xffffff))
+                                                div.bg(theme.primary)
+                                                    .text_color(theme.primary_foreground)
+                                                    .hover(|style| style.bg(theme.primary_hover))
                                             })
                                             .when(self.tab_state.message_input_mode != "text", |div| {
-                                                div.bg(gpui::rgb(0xe5e7eb))
-                                                    .text_color(gpui::rgb(0x6b7280))
+                                                div.bg(theme.secondary)
+                                                    .text_color(theme.muted_foreground)
+                                                    .hover(|style| style.bg(theme.border))
                                             })
                                             .rounded_md()
                                             .cursor_pointer()
-                                            .hover(|style| style.bg(gpui::rgb(0xd1d5db)))
                                             .child(div().text_xs().font_medium().child("文本"))
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_text = tab_id.clone();
@@ -693,18 +699,17 @@ impl<'a> ConnectionTab<'a> {
                                             .px_2()
                                             .py_1()
                                             .when(self.tab_state.message_input_mode == "hex", |div| {
-                                                div.bg(gpui::rgb(0x3b82f6))
-                                                    .text_color(gpui::rgb(0xffffff))
+                                                div.bg(theme.primary)
+                                                    .text_color(theme.primary_foreground)
+                                                    .hover(|style| style.bg(theme.primary_hover))
                                             })
                                             .when(self.tab_state.message_input_mode != "hex", |div| {
-                                                div.bg(gpui::rgb(0xe5e7eb))
-                                                    .text_color(gpui::rgb(0x6b7280))
+                                                div.bg(theme.secondary)
+                                                    .text_color(theme.muted_foreground)
+                                                    .hover(|style| style.bg(theme.border))
                                             })
                                             .rounded_md()
                                             .cursor_pointer()
-                                            .hover(|style| {
-                                                style.bg(gpui::rgb(0xd1d5db))
-                                            })
                                             .child(
                                                 div()
                                                     .text_xs()
@@ -744,7 +749,7 @@ impl<'a> ConnectionTab<'a> {
                         .mt_3()
                         .text_xs()
                         .font_medium()
-                        .text_color(gpui::rgb(0xef4444))
+                        .text_color(theme.danger)
                         .child(error_msg.to_string()),
                 )
             })
@@ -795,14 +800,14 @@ impl<'a> ConnectionTab<'a> {
                             .rounded(px(4.))
                             .cursor_pointer()
                             .when(auto_reply_enabled, |this| {
-                                this.bg(gpui::rgb(0x3b82f6))
+                                this.bg(theme.primary)
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .child(
                                         div()
                                             .text_xs()
-                                            .text_color(gpui::rgb(0xffffff))
+                                            .text_color(theme.primary_foreground)
                                             .font_bold()
                                             .child("✓"),
                                     )
@@ -933,13 +938,13 @@ impl<'a> ConnectionTab<'a> {
                                                             .gap_2()
                                                             .p_2()
                                                             .bg(if Some(addr) == self.tab_state.selected_client.as_ref() {
-                                                                gpui::rgb(0x22c55e)
+                                                                theme.success
                                                             } else {
-                                                                theme.secondary.to_rgb()
+                                                                theme.secondary
                                                             })
                                                             .rounded_md()
                                                             .hover(|style| {
-                                                                style.bg(theme.border.to_rgb())
+                                                                style.bg(theme.border)
                                                             })
                                                             .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                                                 if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone) {
@@ -957,7 +962,7 @@ impl<'a> ConnectionTab<'a> {
                                                                     .w_2()
                                                                     .h_2()
                                                                     .rounded_full()
-                                                                    .bg(gpui::rgb(0x22c55e)),
+                                                                    .bg(theme.success),
                                                             )
                                                             .child(
                                                                 div()
@@ -996,7 +1001,7 @@ impl<'a> ConnectionTab<'a> {
                         div()
                             .text_sm()
                             .font_medium()
-                            .text_color(gpui::rgb(0x6b7280))
+                            .text_color(theme.muted_foreground)
                             .child("消息记录"),
                     )
                     .child(
@@ -1014,18 +1019,18 @@ impl<'a> ConnectionTab<'a> {
                                             .w_4()
                                             .h_4()
                                             .border_1()
-                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .border_color(theme.border)
                                             .rounded(px(4.))
                                             .cursor_pointer()
                                             .when(self.tab_state.auto_scroll_enabled, |this| {
-                                                this.bg(gpui::rgb(0x3b82f6))
+                                                this.bg(theme.primary)
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
                                                     .child(
                                                         div()
                                                             .text_xs()
-                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .text_color(theme.primary_foreground)
                                                             .font_bold()
                                                             .child("✓"),
                                                     )
@@ -1043,7 +1048,7 @@ impl<'a> ConnectionTab<'a> {
                                     .child(
                                         div()
                                             .text_xs()
-                                            .text_color(gpui::rgb(0x6b7280))
+                                            .text_color(theme.muted_foreground)
                                             .child("自动滚动"),
                                     ),
                             )
@@ -1199,10 +1204,10 @@ impl<'a> ConnectionTab<'a> {
                                                                 .text_xs()
                                                                 .font_semibold()
                                                                 .when(is_sent, |div| {
-                                                                    div.text_color(gpui::rgb(0x3b82f6))
+                                                                    div.text_color(theme.primary)
                                                                 })
                                                                 .when(!is_sent, |div| {
-                                                                    div.text_color(gpui::rgb(0x10b981))
+                                                                    div.text_color(theme.green)
                                                                 })
                                                                 .child(if is_sent {
                                                                     "发送"
@@ -1226,9 +1231,9 @@ impl<'a> ConnectionTab<'a> {
                                                                         .id(ElementId::named_usize("source", ix))
                                                                         .text_xs()
                                                                         .text_color(if is_unexpected {
-                                                                            gpui::rgb(0xf87171) // 淡红色
+                                                                            theme.danger
                                                                         } else {
-                                                                            gpui::rgb(0x6b7280)
+                                                                            theme.muted_foreground
                                                                         });
 
                                                                     let source_div = if is_unexpected {
@@ -1266,10 +1271,10 @@ impl<'a> ConnectionTab<'a> {
                                                                 .p_3()
                                                                 .rounded_md()
                                                                 .when(is_sent, |div| {
-                                                                    div.bg(gpui::rgb(0x3b82f6))
+                                                                    div.bg(theme.primary)
                                                                 })
                                                                 .when(!is_sent, |div| {
-                                                                    div.bg(gpui::rgb(0xf3f4f6))
+                                                                    div.bg(theme.secondary)
                                                                 })
                                                                 .child(
                                                                     div()
@@ -1277,10 +1282,10 @@ impl<'a> ConnectionTab<'a> {
                                                                         .font_family("JetBrains Mono")
                                                                         .whitespace_normal()
                                                                         .when(is_sent, |div| {
-                                                                            div.text_color(gpui::rgb(0xffffff))
+                                                                            div.text_color(theme.primary_foreground)
                                                                         })
                                                                         .when(!is_sent, |div| {
-                                                                            div.text_color(gpui::rgb(0x111827))
+                                                                            div.text_color(theme.foreground)
                                                                         })
                                                                         .child(message.get_content_by_type().to_string()),
                                                                 ),
@@ -1317,7 +1322,7 @@ impl<'a> ConnectionTab<'a> {
                                                                         .child(
                                                                             Icon::new(IconName::Star)
                                                                                 .size(px(14.0))
-                                                                                .when(is_fav, |icon| icon.text_color(gpui::rgb(0xf59e0b)))
+                                                                                .when(is_fav, |icon| icon.text_color(theme.yellow))
                                                                         )
                                                                         .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
                                                                             entity.update(cx, |app, cx| {
@@ -1470,18 +1475,18 @@ impl<'a> ConnectionTab<'a> {
                                             .w_4()
                                             .h_4()
                                             .border_1()
-                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .border_color(theme.border)
                                             .rounded(px(4.))
                                             .cursor_pointer()
                                             .when(self.tab_state.auto_clear_input, |this| {
-                                                this.bg(gpui::rgb(0x3b82f6))
+                                                this.bg(theme.primary)
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
                                                     .child(
                                                         div()
                                                             .text_xs()
-                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .text_color(theme.primary_foreground)
                                                             .font_bold()
                                                             .child("✓"),
                                                     )
@@ -1504,7 +1509,7 @@ impl<'a> ConnectionTab<'a> {
                                     .child(
                                         div()
                                             .text_xs()
-                                            .text_color(gpui::rgb(0x6b7280))
+                                            .text_color(theme.muted_foreground)
                                             .child("自动清空"),
                                     ),
                             )
@@ -1518,18 +1523,18 @@ impl<'a> ConnectionTab<'a> {
                                             .w_4()
                                             .h_4()
                                             .border_1()
-                                            .border_color(gpui::rgb(0xd1d5db))
+                                            .border_color(theme.border)
                                             .rounded(px(4.))
                                             .cursor_pointer()
                                             .when(self.tab_state.periodic_send_enabled, |this| {
-                                                this.bg(gpui::rgb(0x3b82f6))
+                                                this.bg(theme.primary)
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
                                                     .child(
                                                         div()
                                                             .text_xs()
-                                                            .text_color(gpui::rgb(0xffffff))
+                                                            .text_color(theme.primary_foreground)
                                                             .font_bold()
                                                             .child("✓"),
                                                     )
@@ -1561,7 +1566,7 @@ impl<'a> ConnectionTab<'a> {
                                     .child(
                                         div()
                                             .text_xs()
-                                            .text_color(gpui::rgb(0x6b7280))
+                                            .text_color(theme.muted_foreground)
                                             .child("周期发送"),
                                     )
                                     // 只有在周期发送选中时才显示时间间隔输入框

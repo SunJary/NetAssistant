@@ -73,6 +73,7 @@ impl<'a> NewConnectionDialog<'a> {
                                         this.child(
                                             div()
                                                 .text_xs()
+                                                // TODO: 等待主题增加 disabled.foreground 键后迁移
                                                 .text_color(gpui::rgb(0x9ca3af))
                                                 .child("IPv4: 127.0.0.1(本地) | 0.0.0.0(全局) | IPv6: ::1(本地) | ::(全局)"),
                                         )
@@ -231,7 +232,7 @@ impl<'a> NewConnectionDialog<'a> {
                                     .child(
                                         div()
                                             .text_sm()
-                                            .text_color(theme.background)
+                                            .text_color(theme.primary_foreground)
                                             .child(if is_edit { "保存" } else { "确定" }),
                                     )
                                     .on_mouse_down(
@@ -259,7 +260,7 @@ impl<'a> NewConnectionDialog<'a> {
             .px_3()
             .py_1()
             .when(selected, |div| {
-                div.bg(theme.primary).text_color(theme.background)
+                div.bg(theme.primary).text_color(theme.primary_foreground)
             })
             .when(!selected, |div| {
                 div.bg(theme.border).text_color(theme.foreground)
@@ -293,7 +294,7 @@ impl<'a> NewConnectionDialog<'a> {
             .px_3()
             .py_1()
             .when(selected, |div| {
-                div.bg(theme.primary).text_color(theme.background)
+                div.bg(theme.primary).text_color(theme.primary_foreground)
             })
             .when(!selected, |div| {
                 div.bg(theme.border).text_color(theme.foreground)
@@ -323,7 +324,7 @@ impl<'a> NewConnectionDialog<'a> {
             .px_3()
             .py_1()
             .when(selected, |div| {
-                div.bg(theme.primary).text_color(theme.background)
+                div.bg(theme.primary).text_color(theme.primary_foreground)
             })
             .when(!selected, |div| {
                 div.bg(theme.border).text_color(theme.foreground)

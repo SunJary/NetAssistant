@@ -419,7 +419,7 @@ impl<'a> DecoderSelectionDialog<'a> {
                                     .child(
                                         div()
                                             .text_sm()
-                                            .text_color(theme.background)
+                                            .text_color(theme.primary_foreground)
                                             .child("关闭")
                                     )
                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {

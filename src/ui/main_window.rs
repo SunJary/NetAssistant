@@ -249,10 +249,10 @@ impl<'a> MainWindow<'a> {
                                         .px_4()
                                         .py_3()
                                         .text_sm()
-                                        .text_color(gpui::rgb(0xef4444))
+                                        .text_color(theme.danger)
                                         .cursor_pointer()
                                         .hover(|style| {
-                                            style.bg(gpui::rgb(0xfef2f2))
+                                            style.bg(theme.muted)
                                         })
                                         .child("删除连接")
                                         .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {

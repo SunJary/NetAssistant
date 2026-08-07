@@ -106,7 +106,7 @@ impl AddClientDialog {
                             div()
                                 .mb_2()
                                 .text_xs()
-                                .text_color(gpui::rgb(0xef4444))
+                                .text_color(theme.danger)
                                 .child(err)
                         )
                     })
@@ -139,8 +139,8 @@ impl AddClientDialog {
                                     .cursor_pointer()
                                     .text_sm()
                                     .bg(theme.primary)
-                                    .text_color(theme.background)
-                                    .hover(|s| s.opacity(0.8))
+                                    .text_color(theme.primary_foreground)
+                                    .hover(|s| s.bg(theme.primary_hover))
                                     .child("确定")
                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
                                         let addr_str = input.read(cx).value().to_string();
