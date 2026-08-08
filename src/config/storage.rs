@@ -134,7 +134,7 @@ impl ConfigStorage {
     }
 
     /// 获取配置目录路径
-    fn get_config_dir() -> PathBuf {
+    pub fn get_config_dir() -> PathBuf {
         if cfg!(windows) {
             let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
             PathBuf::from(appdata).join("NetAssistant")

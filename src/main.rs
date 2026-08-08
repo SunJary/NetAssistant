@@ -23,6 +23,7 @@ mod ui;
 mod utils;
 mod theme_manager;
 mod theme_event_handler;
+mod update_checker;
 
 use app::NetAssistantApp;
 use theme_manager::ThemeManager;

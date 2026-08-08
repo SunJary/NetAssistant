@@ -27,6 +27,9 @@ impl<'a> MainWindow<'a> {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
+        let update_available = self.app.update_available;
+        let latest_version = self.app.latest_version.clone();
+        let star_count = self.app.star_count;
         
         div()
             .w_full()
@@ -67,11 +70,14 @@ impl<'a> MainWindow<'a> {
                     )
                     .child(
                         div()
+                            .relative()
                             .flex()
                             .items_center()
                             .gap_2()
+                            // GitHub 图标 + 红点（star 数和引导放在 tooltip 里）
                             .child(
                                 div()
+                                    .relative()
                                     .w_8()
                                     .h_8()
                                     .flex()
@@ -81,16 +87,50 @@ impl<'a> MainWindow<'a> {
                                     .rounded_md()
                                     .hover(|style| style.bg(theme.border))
                                     .child(IconName::Github)
+                                    .when(update_available, |this_div| {
+                                        this_div.child(
+                                            div()
+                                                .absolute()
+                                                .top(px(2.0))
+                                                .right(px(2.0))
+                                                .w_2()
+                                                .h_2()
+                                                .rounded_full()
+                                                .bg(gpui::rgb(0xE5484D)),
+                                        )
+                                    })
                                     .on_mouse_down(
                                         MouseButton::Left,
-                                        cx.listener(move |_app, _event, _window, cx| {
-                                            cx.open_url("https://github.com/SunJary/NetAssistant/");
+                                        cx.listener(move |app, _event, _window, cx| {
+                                            let url = if app.update_available {
+                                                "https://github.com/SunJary/NetAssistant/releases/latest"
+                                            } else {
+                                                "https://github.com/SunJary/NetAssistant"
+                                            };
+                                            cx.open_url(url);
                                         }),
                                     )
                                     .id("github-link")
-                                    .tooltip(|window, cx| {
-                                        Tooltip::new("来 GitHub Star 一下我们的项目吧").build(window, cx)
-                                    })
+                                    .tooltip(move |window, cx| {
+                                        // tooltip 始终展示星数 + 引导，有更新时附加版本提示
+                                        let star_text = match star_count {
+                                            Some(n) => format!("已有 {} 位用户 Star，觉得有用的话也来Star下吧", n),
+                                            None => "如果本项目对你有帮助，欢迎来 GitHub Star 一下".to_string(),
+                                        };
+                                        let text = if update_available {
+                                            let update_msg = latest_version
+                                                .as_ref()
+                                                .map(|v| format!("发现新版本 {}，点击查看", v))
+                                                .unwrap_or_else(|| "发现新版本，点击查看".to_string());
+                                            match star_count {
+                                                Some(_) => format!("{}\n{}", update_msg, star_text),
+                                                None => update_msg,
+                                            }
+                                        } else {
+                                            star_text
+                                        };
+                                        Tooltip::new(text).build(window, cx)
+                                    }),
                             )
                             .child(
                                 div()
@@ -199,6 +239,81 @@ impl<'a> MainWindow<'a> {
             .when(self.app.show_favorite_list, |this_div| {
                 this_div.child(FavoriteListPanel::new(self.app, self.app.favorite_list_search_input.clone()).render(window, cx))
             })
+            .when(self.app.show_star_prompt, |this_div| {
+                this_div.child(
+                    div()
+                        .absolute()
+                        .top(px(48.0))
+                        .right(px(16.0))
+                        .w_72()
+                        .p_4()
+                        .rounded_md()
+                        .bg(theme.background)
+                        .shadow_lg()
+                        .border_1()
+                        .border_color(theme.border)
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_semibold()
+                                .text_color(theme.foreground)
+                                .child("喜欢 NetAssistant？"),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("给项目加个 Star 支持一下吧！"),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .gap_2()
+                                // 给个 Star
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .py_2()
+                                        .text_center()
+                                        .text_xs()
+                                        .text_color(gpui::white())
+                                        .bg(gpui::rgb(0x238636))
+                                        .rounded_md()
+                                        .cursor_pointer()
+                                        .child("⭐ 给个 Star")
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(|app, _event, _window, cx| {
+                                                app.accept_star_prompt(cx);
+                                            }),
+                                        ),
+                                )
+                                // 近期不再提示
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .py_2()
+                                        .text_center()
+                                        .text_xs()
+                                        .text_color(theme.foreground)
+                                        .border_1()
+                                        .border_color(theme.border)
+                                        .rounded_md()
+                                        .cursor_pointer()
+                                        .child("近期不再提示")
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(|app, _event, _window, cx| {
+                                                app.dismiss_star_prompt(cx);
+                                            }),
+                                        ),
+                                ),
+                        ),
+                )
+            })
             .when(self.app.show_context_menu, |this_div| {
                 let menu_x = self.app.context_menu_position.unwrap_or_else(|| px(0.0));
                 let menu_y = self.app.context_menu_position_y.unwrap_or_else(|| px(0.0));
@@ -285,6 +400,31 @@ impl<'a> MainWindow<'a> {
                             app.context_menu_position_y = None;
                             cx.notify();
                         })),
+                )
+            })
+            // 自动显示的更新提示（10 秒后消失，放在最后确保不被遮挡）
+            .when(self.app.show_update_tooltip, |this_div| {
+                let version_text = self
+                    .app
+                    .latest_version
+                    .as_ref()
+                    .map(|v| format!("发现新版本 {}，点击查看", v))
+                    .unwrap_or_else(|| "发现新版本，点击查看".to_string());
+                this_div.child(
+                    div()
+                        .absolute()
+                        .top(px(40.0))
+                        .right(px(16.0))
+                        .px_3()
+                        .py_2()
+                        .rounded_md()
+                        .bg(theme.background)
+                        .shadow_lg()
+                        .border_1()
+                        .border_color(theme.border)
+                        .text_sm()
+                        .text_color(theme.foreground)
+                        .child(version_text),
                 )
             })
     }

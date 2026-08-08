@@ -3,6 +3,7 @@ use gpui_component::input::InputState;
 use log::{debug, error, info};
 
 use crate::config;
+use crate::config::app_stats::AppStats;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig};
 use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
@@ -102,6 +103,20 @@ pub struct NetAssistantApp {
     pub favorite_list_search_input: Entity<InputState>,
     pub favorite_list_position: Option<Pixels>,
     pub favorite_list_position_y: Option<Pixels>,
+
+    // 版本更新检查状态
+    pub update_available: bool,
+    pub latest_version: Option<String>,
+    pub show_update_tooltip: bool,
+
+    // GitHub Star 数
+    pub star_count: Option<u32>,
+
+    // Star 引导提示
+    pub show_star_prompt: bool,
+
+    // 统计存储
+    pub stats: AppStats,
 }
 
 impl NetAssistantApp {
@@ -188,6 +203,16 @@ impl NetAssistantApp {
             favorite_list_search_input: cx.new(|cx| InputState::new(window, cx)),
             favorite_list_position: None,
             favorite_list_position_y: None,
+            // 版本更新检查状态
+            update_available: false,
+            latest_version: None,
+            show_update_tooltip: false,
+            // GitHub Star 数
+            star_count: None,
+            // Star 引导提示
+            show_star_prompt: false,
+            // 统计存储
+            stats: AppStats::default(),
         };
 
         // 创建专门的异步任务来处理连接事件
@@ -214,6 +239,69 @@ impl NetAssistantApp {
         }).detach();
 
         // 主题事件处理已由GPUI窗口的observe_window_appearance处理，不再需要定期检查
+
+        // 加载统计信息，记录打开天数，判断是否显示 Star 提示
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        app.stats = AppStats::load();
+        app.stats.record_open_day(&today);
+        app.show_star_prompt = app.stats.should_show_star_prompt(&today);
+        app.star_count = app.stats.cached_star_count;
+
+        // 后台检查版本 + 获取 star 数（在 tokio 运行时上发起 HTTP 请求）
+        let weak_app_update = cx.entity().clone().downgrade();
+        let current_version = env!("APP_VERSION").to_string();
+        let tokio_handle = tokio::runtime::Handle::current();
+
+        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+            // 在 tokio 运行时上并行发起两个 HTTP 请求
+            let version_handle = tokio_handle.spawn(async move {
+                crate::update_checker::check_latest_version().await
+            });
+            let star_handle = tokio_handle.spawn(async {
+                crate::update_checker::fetch_star_count().await
+            });
+
+            // 等待结果（两个请求并行执行）
+            let latest_version = version_handle.await.ok().flatten();
+            let star_count = star_handle.await.ok().flatten();
+
+            let mut has_update = false;
+
+            if let Some(app) = weak_app_update.upgrade() {
+                let _ = app.update(async_app, |app, cx| {
+                    // 更新 star 数并写入缓存
+                    if let Some(stars) = star_count {
+                        app.star_count = Some(stars);
+                        app.stats.cached_star_count = Some(stars);
+                        app.stats.save();
+                    }
+
+                    // 版本检查（开发版日期号也检查，直接认为需要更新）
+                    if let Some(latest) = &latest_version {
+                        if crate::update_checker::should_show_update(&current_version, latest) {
+                            app.update_available = true;
+                            app.latest_version = Some(latest.clone());
+                            app.show_update_tooltip = true;
+                            has_update = true;
+                        }
+                    }
+
+                    cx.notify();
+                });
+            }
+
+            // 10 秒后自动隐藏 tooltip
+            if has_update {
+                smol::Timer::after(std::time::Duration::from_secs(10)).await;
+                if let Some(app) = weak_app_update.upgrade() {
+                    let _ = app.update(async_app, |app, cx| {
+                        app.show_update_tooltip = false;
+                        cx.notify();
+                    });
+                }
+            }
+        })
+        .detach();
 
         app
     }
@@ -1364,7 +1452,22 @@ impl NetAssistantApp {
         self.storage.save_sidebar_collapsed(self.sidebar_collapsed);
         cx.notify();
     }
-    
+
+    /// 用户点击「给个 Star」按钮：跳转 repo 页面 + 关闭提示（不触发 snooze）
+    pub fn accept_star_prompt(&mut self, cx: &mut Context<Self>) {
+        cx.open_url("https://github.com/SunJary/NetAssistant");
+        self.show_star_prompt = false;
+        cx.notify();
+    }
+
+    /// 用户点击「近期不再提示」：触发 snooze（递增关闭次数 + 记录日期）
+    pub fn dismiss_star_prompt(&mut self, cx: &mut Context<Self>) {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.stats.dismiss_star_prompt(&today);
+        self.show_star_prompt = false;
+        cx.notify();
+    }
+
     pub fn handle_single_connection_event(&mut self, event: ConnectionEvent, cx: &mut Context<Self>) {
         match event {
             ConnectionEvent::Connected(tab_id) => {
