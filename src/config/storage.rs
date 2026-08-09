@@ -1,5 +1,6 @@
 use crate::config::connection::ConnectionConfig;
 use crate::message::{FavoriteItem, FavoritesMap};
+use crate::stress::config::StressTestConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -30,6 +31,9 @@ pub struct AppConfig {
     pub sidebar_collapsed: Option<bool>,
     #[serde(default)]
     pub favorites: FavoritesMap,
+    /// 压测配置(按 connection_id 索引)
+    #[serde(default)]
+    pub stress_profiles: HashMap<String, StressTestConfig>,
 }
 
 impl Default for AppConfig {
@@ -45,6 +49,7 @@ impl Default for AppConfig {
             sidebar_width: None,
             sidebar_collapsed: None,
             favorites: HashMap::new(),
+            stress_profiles: HashMap::new(),
         }
     }
 }
@@ -271,6 +276,30 @@ impl ConfigStorage {
             .favorites
             .get(connection_id)
             .and_then(|list| list.iter().find(|item| item.content == content).cloned())
+    }
+
+    /// 获取指定连接的压测配置(回填用)
+    pub fn get_stress_profile(&self, connection_id: &str) -> Option<&StressTestConfig> {
+        self.config.stress_profiles.get(connection_id)
+    }
+
+    /// 保存(或更新)指定连接的压测配置
+    pub fn save_stress_profile(&mut self, connection_id: &str, config: StressTestConfig) {
+        self.config
+            .stress_profiles
+            .insert(connection_id.to_string(), config);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 删除指定连接的压测配置
+    #[allow(dead_code)]
+    pub fn remove_stress_profile(&mut self, connection_id: &str) {
+        self.config.stress_profiles.remove(connection_id);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
     }
 }
 

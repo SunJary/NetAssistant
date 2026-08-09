@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::input::InputState;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 
 use crate::config;
 use crate::config::app_stats::AppStats;
@@ -10,8 +10,11 @@ use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::ConnectionEvent;
+use crate::stress::engine::StressTestEngine;
+use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 
 use crate::ui::connection_tab::ConnectionTabState;
+use crate::ui::dialog::StressConfigDialogState;
 use crate::ui::main_window::MainWindow;
 
 use std::collections::HashMap;
@@ -58,6 +61,13 @@ pub struct NetAssistantApp {
     // 连接事件通道（用于通知UI更新）- 使用smol channel与GPUI兼容
     pub connection_event_sender: Option<Sender<ConnectionEvent>>,
     pub connection_event_receiver: Option<Receiver<ConnectionEvent>>,
+
+    // 压测事件通道（引擎→UI，同 smol channel 模式）
+    pub stress_event_sender: Option<Sender<StressEvent>>,
+    pub stress_event_receiver: Option<Receiver<StressEvent>>,
+
+    // 压测配置弹窗状态(打开时创建, 关闭时置 None)
+    pub stress_config_dialog: Option<StressConfigDialogState>,
 
     // 网络连接管理器
     pub network_manager: std::sync::Arc<tokio::sync::Mutex<crate::network::connection::manager::NetworkConnectionManager>>,
@@ -134,6 +144,9 @@ impl NetAssistantApp {
         // 创建连接事件通道 - 使用smol channel与GPUI兼容
         let (connection_event_sender, connection_event_receiver) = smol_unbounded::<ConnectionEvent>();
 
+        // 创建压测事件通道（引擎→UI，同 smol channel 模式）
+        let (stress_event_sender, stress_event_receiver) = smol_unbounded::<StressEvent>();
+
         // 初始化网络连接管理器
         let network_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
             crate::network::connection::manager::NetworkConnectionManager::new()
@@ -171,6 +184,9 @@ impl NetAssistantApp {
             auto_reply_inputs: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
+            stress_event_sender: Some(stress_event_sender),
+            stress_event_receiver: Some(stress_event_receiver),
+            stress_config_dialog: None,
             network_manager,
             client_write_senders,
             server_clients,
@@ -234,6 +250,24 @@ impl NetAssistantApp {
                         app.handle_single_connection_event(event, cx);
                     });
                 } else {
+                }
+            }
+        }).detach();
+
+        // 创建压测事件泵任务（引擎→UI，同 smol channel 模式）
+        let weak_app_stress = cx.entity().clone().downgrade();
+        let stress_receiver = app.stress_event_receiver.take();
+        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+            let receiver = if let Some(receiver) = stress_receiver {
+                receiver
+            } else {
+                return;
+            };
+            while let Ok(event) = receiver.recv().await {
+                if let Some(app) = weak_app_stress.upgrade() {
+                    let _ = app.update(async_app, |app, cx| {
+                        app.handle_stress_event(event, cx);
+                    });
                 }
             }
         }).detach();
@@ -614,6 +648,211 @@ impl NetAssistantApp {
     }
 
 
+    // ============== 压测相关方法 ==============
+
+    /// 处理压测事件(由压测事件泵调用)
+    pub fn handle_stress_event(&mut self, event: StressEvent, cx: &mut Context<Self>) {
+        match event {
+            StressEvent::StatsSnapshot(stats) => {
+                if let Some(tab) = self.connection_tabs.get_mut(&self.active_tab) {
+                    tab.stress_stats = stats;
+                    cx.notify();
+                }
+            }
+            StressEvent::Finished(report) => {
+                if let Some(tab) = self.connection_tabs.get_mut(&self.active_tab) {
+                    tab.stress_report = Some(report);
+                    tab.stress_engine = None;
+                    info!("[压测] 已完成，报告已存档");
+                    cx.notify();
+                }
+            }
+            StressEvent::Error(msg) => {
+                if let Some(tab) = self.connection_tabs.get_mut(&self.active_tab) {
+                    tab.error_message = Some(msg);
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    /// 从连接配置回填压测目标(地址/端口/协议)，优先用已保存的压测配置
+    pub fn build_stress_config_for_tab(&self, tab_id: &str) -> Option<StressTestConfig> {
+        let tab = self.connection_tabs.get(tab_id)?;
+        let (address, port, protocol) = match &tab.connection_config {
+            ConnectionConfig::Client(c) => (c.server_address.clone(), c.server_port, c.protocol),
+            ConnectionConfig::Server(c) => {
+                // 服务端监听 0.0.0.0 时回填 127.0.0.1 作为压测目标
+                let addr = if c.listen_address == "0.0.0.0" || c.listen_address.is_empty() {
+                    "127.0.0.1".to_string()
+                } else {
+                    c.listen_address.clone()
+                };
+                (addr, c.listen_port, c.protocol)
+            }
+        };
+        let mut config = self
+            .storage
+            .get_stress_profile(tab.connection_config.id())
+            .cloned()
+            .unwrap_or_else(|| StressTestConfig::for_target(address.clone(), port, protocol));
+        // 确保目标地址/端口/协议与当前连接一致
+        config.target_address = address;
+        config.target_port = port;
+        config.protocol = protocol;
+        Some(config)
+    }
+
+    /// 打开压测配置弹窗(回填目标 + 已保存配置)
+    pub fn open_stress_config(&mut self, tab_id: String, window: &mut Window, cx: &mut Context<Self>) {
+        let config = match self.build_stress_config_for_tab(&tab_id) {
+            Some(c) => c,
+            None => {
+                error!("[压测] 未找到标签页: {}", tab_id);
+                return;
+            }
+        };
+        self.stress_config_dialog = Some(StressConfigDialogState::new(tab_id, config, window, cx));
+        cx.notify();
+    }
+
+    /// 启动压测
+    pub fn start_stress(&mut self, tab_id: String, config: StressTestConfig, cx: &mut Context<Self>) {
+        let sender = match &self.stress_event_sender {
+            Some(s) => s.clone(),
+            None => {
+                error!("[压测] 事件通道未初始化");
+                return;
+            }
+        };
+
+        // 持久化压测配置(按 connection_id)
+        let connection_id = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|t| t.connection_config.id().to_string())
+            .unwrap_or_default();
+        if !connection_id.is_empty() {
+            self.storage.save_stress_profile(&connection_id, config.clone());
+        }
+
+        if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
+            // 若已有引擎在运行，先停止
+            if let Some(engine_arc) = &tab.stress_engine {
+                if let Ok(mut guard) = engine_arc.lock() {
+                    if let Some(mut engine) = guard.take() {
+                        engine.stop();
+                    }
+                }
+            }
+            // 重置状态
+            tab.stress_stats = StressStats::default();
+            tab.stress_report = None;
+            tab.error_message = None;
+            tab.stress_config_snapshot = Some(config.clone());
+            tab.view_mode = TabViewMode::Stress;
+
+            // 启动引擎
+            let engine = StressTestEngine::start(config, sender);
+            tab.stress_engine = Some(Arc::new(Mutex::new(Some(engine))));
+            info!("[压测] 引擎已启动 (tab={})", tab_id);
+        }
+
+        // 渲染节拍: smol::Timer 定期唤醒 GPUI 事件循环
+        // 引擎的 tokio 任务通过 smol channel 发送事件，但跨 runtime 时 GPUI 事件循环可能不被唤醒。
+        // 此定时器运行在 GPUI runtime 上，每 250ms 触发 cx.notify() 确保 UI 刷新。
+        let weak_app_render = cx.entity().downgrade();
+        let render_tab_id = tab_id.clone();
+        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+            loop {
+                smol::Timer::after(Duration::from_millis(250)).await;
+                let keep_going = if let Some(app) = weak_app_render.upgrade() {
+                    app.update(async_app, |app, cx| {
+                        if let Some(tab) = app.connection_tabs.get(&render_tab_id) {
+                            if tab.stress_engine.is_some() && tab.stress_report.is_none() {
+                                cx.notify();
+                                return true;
+                            }
+                        }
+                        false
+                    })
+                } else {
+                    false
+                };
+                if !keep_going {
+                    break;
+                }
+            }
+        }).detach();
+
+        cx.notify();
+    }
+
+    /// 停止压测
+    pub fn stop_stress(&mut self, tab_id: String, cx: &mut Context<Self>) {
+        if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
+            if let Some(engine_arc) = &tab.stress_engine {
+                if let Ok(mut guard) = engine_arc.lock() {
+                    if let Some(mut engine) = guard.take() {
+                        engine.stop();
+                        info!("[压测] 引擎已停止 (tab={})", tab_id);
+                    }
+                }
+            }
+            // 清除外层 Option，让 UI 正确反映已停止状态
+            tab.stress_engine = None;
+        }
+        cx.notify();
+    }
+
+    /// 导出压测 CSV 报告
+    pub fn export_stress_report(&mut self, tab_id: String, _cx: &mut Context<Self>) {
+        let report = match self
+            .connection_tabs
+            .get(&tab_id)
+            .and_then(|t| t.stress_report.clone())
+        {
+            Some(r) => r,
+            None => {
+                debug!("[压测导出] 无可导出的报告");
+                return;
+            }
+        };
+
+        let address_label = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|t| t.connection_config.address_label())
+            .unwrap_or_else(|| "stress".to_string());
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let default_filename = format!("{}_stress_{}.csv", address_label, timestamp);
+
+        tokio::spawn(async move {
+            let file_path = rfd::AsyncFileDialog::new()
+                .set_file_name(&default_filename)
+                .add_filter("CSV 文件", &["csv"])
+                .save_file()
+                .await;
+
+            if let Some(file_path) = file_path {
+                let path = file_path.path();
+                let content = crate::stress::report::format_stress_csv(&report);
+                match std::fs::write(path, content) {
+                    Ok(_) => debug!("[压测导出] 报告已导出到: {:?}", path),
+                    Err(e) => error!("[压测导出] 写入文件失败: {:?}", e),
+                }
+            }
+        });
+    }
+
+    /// 切换 Tab 视图模式(调试/压测)
+    pub fn switch_tab_view_mode(&mut self, tab_id: String, view_mode: TabViewMode, cx: &mut Context<Self>) {
+        if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
+            tab.view_mode = view_mode;
+            cx.notify();
+        }
+    }
+
     pub fn disconnect_client(&mut self, tab_id: String, cx: &mut Context<Self>) {
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
@@ -792,25 +1031,16 @@ impl NetAssistantApp {
             // 服务器模式：根据selected_client决定定向发送还是广播
             if let Some(clients) = self.server_clients.get(&tab_id) {
                 if clients.is_empty() {
-                    error!("[send_message] 没有可用的客户端连接");
-                    if let Some(sender) = sender {
-                        let _ = sender.try_send(ConnectionEvent::Error(
-                            tab_id_clone,
-                            "没有可用的客户端连接".to_string(),
-                        ));
-                    }
+                    // 服务端没有客户端连接，不应标记整个服务端为错误
+                    warn!("[send_message] 没有可用的客户端连接");
                 } else if let Some(target_addr) = selected_client {
                     // 定向发送给选中的客户端
                     debug!("[send_message] 服务端模式，定向发送给: {}", target_addr);
                     if let Some(write_sender) = clients.get(&target_addr) {
                         if write_sender.try_send(bytes.clone()).is_err() {
-                            error!("[send_message] 发送给客户端 {} 失败", target_addr);
-                            if let Some(sender) = sender {
-                                let _ = sender.try_send(ConnectionEvent::Error(
-                                    tab_id_clone,
-                                    format!("发送给客户端 {} 失败", target_addr),
-                                ));
-                            }
+                            // 单个客户端发送失败不应影响整个服务端，仅记录日志
+                            // TCP/UDP 层会通过 ServerClientDisconnected 事件清理该客户端
+                            warn!("[send_message] 发送给客户端 {} 失败（客户端可能已断开）", target_addr);
                         } else {
                             debug!("[send_message] 定向发送成功");
                             if let Some(sender) = sender {
@@ -820,13 +1050,7 @@ impl NetAssistantApp {
                             }
                         }
                     } else {
-                        error!("[send_message] 客户端 {} 不存在或已断开", target_addr);
-                        if let Some(sender) = sender {
-                            let _ = sender.try_send(ConnectionEvent::Error(
-                                tab_id_clone,
-                                format!("客户端 {} 不存在或已断开", target_addr),
-                            ));
-                        }
+                        warn!("[send_message] 客户端 {} 不存在或已断开", target_addr);
                     }
                 } else {
                     // 广播给所有客户端（并行发送）
@@ -851,13 +1075,7 @@ impl NetAssistantApp {
                     }
                 }
             } else {
-                error!("[send_message] 服务器客户端映射不可用");
-                if let Some(sender) = sender {
-                    let _ = sender.try_send(ConnectionEvent::Error(
-                        tab_id_clone,
-                        "服务器客户端映射不可用".to_string(),
-                    ));
-                }
+                warn!("[send_message] 服务器客户端映射不可用");
             }
         }
     }
@@ -944,25 +1162,14 @@ impl NetAssistantApp {
             // 服务器模式：根据selected_client决定定向发送还是广播
             if let Some(clients) = self.server_clients.get(&tab_id) {
                 if clients.is_empty() {
-                    error!("[send_message_bytes] 没有可用的客户端连接");
-                    if let Some(sender) = sender {
-                        let _ = sender.try_send(ConnectionEvent::Error(
-                            tab_id_clone,
-                            "没有可用的客户端连接".to_string(),
-                        ));
-                    }
+                    warn!("[send_message_bytes] 没有可用的客户端连接");
                 } else if let Some(target_addr) = selected_client {
                     // 定向发送给选中的客户端
                     debug!("[send_message_bytes] 服务端模式，定向发送给: {}", target_addr);
                     if let Some(write_sender) = clients.get(&target_addr) {
                         if write_sender.try_send(bytes.clone()).is_err() {
-                            error!("[send_message_bytes] 发送给客户端 {} 失败", target_addr);
-                            if let Some(sender) = sender {
-                                let _ = sender.try_send(ConnectionEvent::Error(
-                                    tab_id_clone,
-                                    format!("发送给客户端 {} 失败", target_addr),
-                                ));
-                            }
+                            // 单个客户端发送失败不应影响整个服务端，仅记录日志
+                            warn!("[send_message_bytes] 发送给客户端 {} 失败（客户端可能已断开）", target_addr);
                         } else {
                             debug!("[send_message_bytes] 定向发送成功");
                             if let Some(sender) = sender {
@@ -972,13 +1179,7 @@ impl NetAssistantApp {
                             }
                         }
                     } else {
-                        error!("[send_message_bytes] 客户端 {} 不存在或已断开", target_addr);
-                        if let Some(sender) = sender {
-                            let _ = sender.try_send(ConnectionEvent::Error(
-                                tab_id_clone,
-                                format!("客户端 {} 不存在或已断开", target_addr),
-                            ));
-                        }
+                        warn!("[send_message_bytes] 客户端 {} 不存在或已断开", target_addr);
                     }
                 } else {
                     // 广播给所有客户端（并行发送）
@@ -1003,13 +1204,7 @@ impl NetAssistantApp {
                     }
                 }
             } else {
-                error!("[send_message_bytes] 服务器客户端映射不可用");
-                if let Some(sender) = sender {
-                    let _ = sender.try_send(ConnectionEvent::Error(
-                        tab_id_clone,
-                        "服务器客户端映射不可用".to_string(),
-                    ));
-                }
+                warn!("[send_message_bytes] 服务器客户端映射不可用");
             }
         }
     }
@@ -1090,13 +1285,8 @@ impl NetAssistantApp {
                     if let Some(clients) = self.server_clients.get(&tab_id) {
                         if let Some(write_sender) = clients.get(&addr) {
                             if write_sender.try_send(bytes.clone()).is_err() {
-                                error!("[send_message_to_client] 发送失败");
-                                if let Some(sender) = sender {
-                                    let _ = sender.try_send(ConnectionEvent::Error(
-                                        tab_id_clone,
-                                        "发送消息失败".to_string(),
-                                    ));
-                                }
+                                // 单个客户端发送失败不应影响整个服务端，仅记录日志
+                                warn!("[send_message_to_client] 发送给客户端 {} 失败（客户端可能已断开）", addr);
                             } else {
                                 debug!("[send_message_to_client] 发送成功");
                                 if let Some(sender) = sender {
@@ -1113,22 +1303,10 @@ impl NetAssistantApp {
                                 }
                             }
                         } else {
-                            error!("[send_message_to_client] 客户端 {} 不存在", addr);
-                            if let Some(sender) = sender {
-                                let _ = sender.try_send(ConnectionEvent::Error(
-                                    tab_id_clone,
-                                    format!("客户端 {} 不存在", addr),
-                                ));
-                            }
+                            warn!("[send_message_to_client] 客户端 {} 不存在", addr);
                         }
                     } else {
-                        error!("[send_message_to_client] 服务器客户端映射不可用");
-                        if let Some(sender) = sender {
-                            let _ = sender.try_send(ConnectionEvent::Error(
-                                tab_id_clone,
-                                "服务器客户端映射不可用".to_string(),
-                            ));
-                        }
+                        warn!("[send_message_to_client] 服务器客户端映射不可用");
                     }
                 },
                 Err(_) => {
@@ -1136,13 +1314,7 @@ impl NetAssistantApp {
                 },
             }
         } else {
-            error!("[send_message_to_client] 没有指定客户端，无法发送自动回复");
-            if let Some(sender) = sender {
-                let _ = sender.try_send(ConnectionEvent::Error(
-                    tab_id_clone,
-                    "无法确定目标客户端".to_string(),
-                ));
-            }
+            warn!("[send_message_to_client] 没有指定客户端，无法发送自动回复");
         }
     }
 
@@ -1527,7 +1699,9 @@ impl NetAssistantApp {
                 // 更新 ConnectionTabState 中的客户端连接列表
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     if !tab_state.client_connections.contains(&addr) {
+                        let old_len = tab_state.client_connections.len();
                         tab_state.client_connections.push(addr);
+                        tab_state.client_list_state.splice(old_len..old_len, 1);
                         cx.notify();
                     }
                 }
@@ -1542,9 +1716,15 @@ impl NetAssistantApp {
                 }
                 // 更新 ConnectionTabState 中的客户端连接列表
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                    tab_state
-                        .client_connections
-                        .retain(|&client_addr| client_addr != addr);
+                    if let Some(idx) =
+                        tab_state.client_connections.iter().position(|&c| c == addr)
+                    {
+                        tab_state.client_connections.remove(idx);
+                        tab_state.client_list_state.splice(idx..idx + 1, 0);
+                    }
+                    if tab_state.selected_client.as_ref() == Some(&addr) {
+                        tab_state.selected_client = None;
+                    }
                     cx.notify();
                 }
             }

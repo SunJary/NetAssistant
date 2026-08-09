@@ -130,6 +130,7 @@ impl<'a> ConnectionPanel<'a> {
 
             content_div = content_div.child(
                 div()
+                    .w_full()
                     .px_3()
                     .py_2()
                     .text_sm()

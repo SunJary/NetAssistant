@@ -19,6 +19,7 @@ mod export;
 mod log_writer;
 mod message;
 mod network;
+mod stress;
 mod ui;
 mod utils;
 mod theme_manager;

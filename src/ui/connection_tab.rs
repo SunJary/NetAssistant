@@ -7,7 +7,7 @@ use gpui_component::{
     Theme,
     clipboard::Clipboard,
     input::{Input, InputState},
-    scroll::{Scrollbar, ScrollbarShow, ScrollableElement},
+    scroll::{Scrollbar, ScrollbarShow},
     tooltip::Tooltip,
 };
 
@@ -20,8 +20,11 @@ use tokio::task::JoinHandle;
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::custom_icons::CustomIconName;
+use crate::stress::engine::StressTestEngine;
+use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
 use crate::log_writer::LogWriter;
 use crate::message::{Message, MessageDirection, MessageDisplayMode, MessageListState};
+use crate::ui::stress_panel::StressPanel;
 use crate::utils::hex::hex_to_bytes;
 
 /// 连接标签页状态
@@ -39,6 +42,8 @@ pub struct ConnectionTabState {
 
     // GPUI List 状态
     pub message_list_state: ListState,
+    // GPUI List 状态 - 客户端列表（虚拟化渲染，避免大量客户端时卡顿）
+    pub client_list_state: ListState,
 
     // 消息显示模式（原始/美化/压缩）
     pub message_display_mode: MessageDisplayMode,
@@ -63,6 +68,18 @@ pub struct ConnectionTabState {
     pub log_file_path: Option<String>,
     pub custom_log_path: Option<String>,
     pub log_writer: Option<Arc<tokio::sync::Mutex<LogWriter>>>,
+
+    // 压测相关状态
+    /// Tab 视图模式: 调试 / 压测
+    pub view_mode: TabViewMode,
+    /// 压测引擎句柄(因 ConnectionTabState: Clone, 用 Arc<Mutex<Option<...>>>)
+    pub stress_engine: Option<Arc<Mutex<Option<StressTestEngine>>>>,
+    /// 最新统计快照(由事件泵写入, render 同步读)
+    pub stress_stats: StressStats,
+    /// 最终报告(压测结束后存档)
+    pub stress_report: Option<StressReport>,
+    /// 当前运行的压测配置快照
+    pub stress_config_snapshot: Option<StressTestConfig>,
 }
 
 impl ConnectionTabState {
@@ -86,6 +103,8 @@ impl ConnectionTabState {
 
             // GPUI List 状态
             message_list_state: ListState::new(0, ListAlignment::Top, px(100.)).measure_all(),
+            // 客户端列表：与消息列表一致使用 measure_all，预测量所有项高度
+            client_list_state: ListState::new(0, ListAlignment::Top, px(32.)).measure_all(),
 
             // 消息显示模式默认为原始
             message_display_mode: MessageDisplayMode::Normal,
@@ -123,6 +142,13 @@ impl ConnectionTabState {
             log_file_path: None,
             custom_log_path: None,
             log_writer: None,
+
+            // 初始化压测状态
+            view_mode: TabViewMode::Debug,
+            stress_engine: None,
+            stress_stats: StressStats::default(),
+            stress_report: None,
+            stress_config_snapshot: None,
         }
     }
 
@@ -169,19 +195,22 @@ impl ConnectionTabState {
         }
 
         let old_count = self.message_list.messages.len();
-        self.message_list.add_message(message);
+        let dropped = self.message_list.add_message(message);
         let new_count = self.message_list.messages.len();
 
         // 非原始显示模式下，重算新消息的内容以保持一致的格式化
-        if new_count > old_count && self.message_display_mode != MessageDisplayMode::Normal {
+        if self.message_display_mode != MessageDisplayMode::Normal {
             if let Some(last) = self.message_list.messages.last_mut() {
                 last.recompute_content_for_display(self.message_display_mode);
             }
         }
 
-        if new_count > old_count {
-            self.message_list_state.splice(old_count..old_count, new_count - old_count);
+        // 更新 GPUI 列表状态：先移除头部丢弃项，再在尾部追加新项
+        if dropped > 0 {
+            self.message_list_state.splice(0..dropped, 0);
         }
+        let insert_pos = old_count - dropped;
+        self.message_list_state.splice(insert_pos..insert_pos, 1);
 
         if self.auto_scroll_enabled && new_count > 0 {
             self.message_list_state.scroll_to(gpui::ListOffset {
@@ -195,6 +224,8 @@ impl ConnectionTabState {
         self.is_connected = false;
         self.connection_status = ConnectionStatus::Disconnected;
         self.client_connections.clear();
+        self.client_list_state.reset(0);
+        self.selected_client = None;
 
         // 关闭日志文件
         if let Some(log_writer) = self.log_writer.take() {
@@ -236,6 +267,17 @@ impl ConnectionTabState {
                 }
             }
         }
+
+        // 停止压测引擎(协作取消 + abort 兜底)
+        if let Some(engine_arc) = &self.stress_engine {
+            if let Ok(mut engine_guard) = engine_arc.lock() {
+                if let Some(mut engine) = engine_guard.take() {
+                    engine.stop();
+                    info!("[ConnectionTabState] 压测引擎已停止");
+                }
+            }
+        }
+        self.stress_engine = None;
     }
 }
 
@@ -283,13 +325,124 @@ impl<'a> ConnectionTab<'a> {
             .flex_1()
             .bg(theme.background)
             .child(self.render_connection_info(window, cx))
-            .child(
+            .child(self.render_right_panel(window, cx))
+    }
+
+    /// 右侧面板: 顶部 调试/压测 tab 切换 + 内容区
+    fn render_right_panel(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> AnyElement {
+        let theme = cx.theme().clone();
+        let is_client = self.tab_state.connection_config.is_client();
+        let view_mode = self.tab_state.view_mode;
+        let tab_id = self.tab_id.clone();
+
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            // 顶部 tab 切换栏(仅客户端显示压测 tab)
+            .when(is_client, |d| {
+                d.child(self.render_view_mode_tabs(&theme, view_mode, tab_id.clone(), cx))
+            })
+            // 内容区
+            .child(if view_mode == TabViewMode::Stress {
+                StressPanel::new(tab_id.clone(), self.tab_state)
+                    .render(window, cx)
+                    .into_any_element()
+            } else {
                 div()
                     .flex()
                     .flex_col()
                     .flex_1()
+                    .min_h_0()
                     .child(self.render_message_area(window, cx))
-                    .child(self.render_send_area(window, cx)),
+                    .child(self.render_send_area(window, cx))
+                    .into_any_element()
+            })
+            .into_any_element()
+    }
+
+    /// 渲染 调试/压测 视图模式 tab 切换栏
+    fn render_view_mode_tabs(
+        &self,
+        theme: &Theme,
+        view_mode: TabViewMode,
+        tab_id: String,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let is_debug = view_mode == TabViewMode::Debug;
+        let is_stress = view_mode == TabViewMode::Stress;
+        let tab_id_debug = tab_id.clone();
+        let tab_id_stress = tab_id.clone();
+
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .py_1()
+            .border_b_1()
+            .border_color(theme.border)
+            .bg(theme.secondary)
+            // 调试 tab
+            .child(
+                div()
+                    .id("tab-debug")
+                    .px_4()
+                    .py_1()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .when(is_debug, |d| {
+                        d.bg(theme.primary).hover(|s| s.opacity(0.9))
+                    })
+                    .when(!is_debug, |d| {
+                        d.hover(|s| s.bg(theme.border))
+                    })
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(if is_debug { theme.primary_foreground } else { theme.muted_foreground })
+                            .child("调试"),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |app: &mut NetAssistantApp, _, _, cx| {
+                            app.switch_tab_view_mode(tab_id_debug.clone(), TabViewMode::Debug, cx);
+                        }),
+                    ),
+            )
+            // 压测 tab
+            .child(
+                div()
+                    .id("tab-stress")
+                    .px_4()
+                    .py_1()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .when(is_stress, |d| {
+                        d.bg(theme.primary).hover(|s| s.opacity(0.9))
+                    })
+                    .when(!is_stress, |d| {
+                        d.hover(|s| s.bg(theme.border))
+                    })
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(if is_stress { theme.primary_foreground } else { theme.muted_foreground })
+                            .child("压测"),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |app: &mut NetAssistantApp, _, _, cx| {
+                            app.switch_tab_view_mode(tab_id_stress.clone(), TabViewMode::Stress, cx);
+                        }),
+                    ),
             )
     }
 
@@ -308,6 +461,7 @@ impl<'a> ConnectionTab<'a> {
         div()
             .flex()
             .flex_col()
+            .h_full() // 显式撑满 flex row 高度
             .min_w_40() // 最小宽度
             .w_1_4()   // 默认宽度为父容器的1/4
             .max_w_64() // 最大宽度
@@ -773,6 +927,7 @@ impl<'a> ConnectionTab<'a> {
             .flex_col()
             .gap_2()
             .flex_1()
+            .min_h_0() // 允许 flex 子项收缩
             .child(
                 div()
                     .flex()
@@ -784,13 +939,7 @@ impl<'a> ConnectionTab<'a> {
                             .font_semibold()
                             .text_color(theme.foreground)
                             .child("自动回复"),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
+                    )
                     .child(
                         div()
                             .w_4()
@@ -900,80 +1049,124 @@ impl<'a> ConnectionTab<'a> {
                         div()
                             .w_full()
                             .flex_1()
+                            .flex()
+                            .flex_col()
                             .bg(theme.background)
                             .rounded_md()
                             .border_1()
                             .border_color(theme.border)
                             .child(
-                                div()
-                                    .w_full()
-                                    .h_full()
-                                    .overflow_y_scrollbar()
-                                    .child(
-                                        if self.tab_state.client_connections.is_empty() {
+                                if self.tab_state.client_connections.is_empty() {
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .flex_1()
+                                        .child(
                                             div()
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .h_full()
+                                                .text_xs()
+                                                .text_color(theme.muted_foreground)
+                                                .child("暂无客户端连接"),
+                                        )
+                                        .into_any()
+                                } else {
+                                    let client_connections = self.tab_state.client_connections.clone();
+                                    let selected_client = self.tab_state.selected_client.clone();
+                                    let scrollbar_state = self.tab_state.client_list_state.clone();
+                                    let app_entity = cx.entity().clone();
+                                    let tab_id_for_clients = tab_id.clone();
+
+                                    div()
+                                        .relative()
+                                        .w_full()
+                                        .flex_1()
+                                        .child(
+                                            div()
+                                                .pr_8()
+                                                .size_full()
                                                 .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .text_color(theme.muted_foreground)
-                                                        .child("暂无客户端连接"),
-                                                )
-                                        } else {
+                                                    list(
+                                                        self.tab_state.client_list_state.clone(),
+                                                        move |ix, _window, _cx| {
+                                                            let addr = match client_connections.get(ix) {
+                                                                Some(a) => a.clone(),
+                                                                None => return div().into_any(),
+                                                            };
+                                                            let is_selected = Some(&addr) == selected_client.as_ref();
+                                                            let addr_for_click = addr.clone();
+                                                            let tab_id_clone = tab_id_for_clients.clone();
+                                                            let entity = app_entity.clone();
+
+                                                            div()
+                                                                .id(ElementId::named_usize("client-item", ix))
+                                                                .w_full()
+                                                                .py_1()
+                                                                .on_mouse_down(
+                                                                    MouseButton::Left,
+                                                                    move |_event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+                                                                        entity.update(cx, |app, cx| {
+                                                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone) {
+                                                                                // 切换选中状态：如果已经选中则取消选中，否则选中
+                                                                                tab_state.selected_client = if tab_state.selected_client.as_ref() == Some(&addr_for_click) {
+                                                                                    None
+                                                                                } else {
+                                                                                    Some(addr_for_click)
+                                                                                };
+                                                                                cx.notify();
+                                                                            }
+                                                                        });
+                                                                    },
+                                                                )
+                                                                .child(
+                                                                    div()
+                                                                        .flex_1()
+                                                                        .flex()
+                                                                        .items_center()
+                                                                        .gap_2()
+                                                                        .p_2()
+                                                                        .bg(if is_selected {
+                                                                            theme.success
+                                                                        } else {
+                                                                            theme.secondary
+                                                                        })
+                                                                        .rounded_md()
+                                                                        .hover(|style| {
+                                                                            style.bg(theme.border)
+                                                                        })
+                                                                        .child(
+                                                                            div()
+                                                                                .w_2()
+                                                                                .h_2()
+                                                                                .rounded_full()
+                                                                                .bg(theme.success),
+                                                                        )
+                                                                        .child(
+                                                                            div()
+                                                                                .text_xs()
+                                                                                .text_color(theme.foreground)
+                                                                                .child(addr.to_string()),
+                                                                        ),
+                                                                )
+                                                                .into_any()
+                                                        },
+                                                    )
+                                                    .size_full(),
+                                                ),
+                                        )
+                                        .child(
                                             div()
-                                                .flex()
-                                                .flex_col()
-                                                .p_2()
-                                                .gap_1()
-                                                .children(
-                                                    self.tab_state.client_connections.iter().map(|addr| {
-                                                        let addr_clone = addr.clone();
-                                                        let tab_id_clone = tab_id.clone();
-                                                        div()
-                                                            .flex()
-                                                            .items_center()
-                                                            .gap_2()
-                                                            .p_2()
-                                                            .bg(if Some(addr) == self.tab_state.selected_client.as_ref() {
-                                                                theme.success
-                                                            } else {
-                                                                theme.secondary
-                                                            })
-                                                            .rounded_md()
-                                                            .hover(|style| {
-                                                                style.bg(theme.border)
-                                                            })
-                                                            .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone) {
-                                                                    // 切换选中状态：如果已经选中则取消选中，否则选中
-                                                                    tab_state.selected_client = if tab_state.selected_client.as_ref() == Some(&addr_clone) {
-                                                                        None
-                                                                    } else {
-                                                                        Some(addr_clone)
-                                                                    };
-                                                                    cx.notify();
-                                                                }
-                                                            }))
-                                                            .child(
-                                                                div()
-                                                                    .w_2()
-                                                                    .h_2()
-                                                                    .rounded_full()
-                                                                    .bg(theme.success),
-                                                            )
-                                                            .child(
-                                                                div()
-                                                                    .text_xs()
-                                                                    .text_color(theme.foreground)
-                                                                    .child(addr.to_string()),
-                                                            )
-                                                    })
-                                                )
-                                        }
-                                    ),
+                                                .absolute()
+                                                .top_0()
+                                                .right_0()
+                                                .bottom_0()
+                                                .w(px(12.0))
+                                                .child(
+                                                    Scrollbar::vertical(&scrollbar_state)
+                                                        .scrollbar_show(ScrollbarShow::Always),
+                                                ),
+                                        )
+                                        .into_any()
+                                },
                             ),
                     )
             )

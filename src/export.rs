@@ -140,7 +140,7 @@ pub fn format_as_csv(messages: &[Message]) -> String {
 }
 
 /// CSV 字段转义：如果包含逗号、引号或换行，则用双引号包裹
-fn csv_escape(field: &str) -> String {
+pub(crate) fn csv_escape(field: &str) -> String {
     if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
         format!("\"{}\"", field.replace('"', "\"\""))
     } else {

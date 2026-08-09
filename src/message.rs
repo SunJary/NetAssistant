@@ -205,12 +205,28 @@ impl FavoriteItem {
 
 pub type FavoritesMap = HashMap<String, Vec<FavoriteItem>>;
 
+/// 默认消息列表最大保留条数（超出后丢弃最旧的消息以控制内存占用）
+const DEFAULT_MAX_MESSAGES: usize = 10000;
+
 /// 消息列表状态
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MessageListState {
     pub messages: Vec<Message>,
     pub total_sent: usize,
     pub total_received: usize,
+    /// 消息列表最大保留条数，0 表示不限制。超出后丢弃最旧的消息。
+    pub max_messages: usize,
+}
+
+impl Default for MessageListState {
+    fn default() -> Self {
+        Self {
+            messages: Vec::new(),
+            total_sent: 0,
+            total_received: 0,
+            max_messages: DEFAULT_MAX_MESSAGES,
+        }
+    }
 }
 
 impl MessageListState {
@@ -218,16 +234,27 @@ impl MessageListState {
         Self::default()
     }
 
-    pub fn add_message(&mut self, message: Message) {
+    /// 添加一条消息，返回因超出上限而从列表头部丢弃的消息条数。
+    pub fn add_message(&mut self, message: Message) -> usize {
         match message.direction {
             MessageDirection::Sent => self.total_sent += 1,
             MessageDirection::Received => self.total_received += 1,
         }
+        let dropped = if self.max_messages > 0 && self.messages.len() >= self.max_messages {
+            // 分批丢弃最旧的消息以分摊开销（10% 或至少 1 条）
+            let drop_count = (self.max_messages / 30).max(1).min(self.messages.len());
+            self.messages.drain(0..drop_count);
+            drop_count
+        } else {
+            0
+        };
         self.messages.push(message);
+        dropped
     }
 
+    /// 累计消息总数（含已丢弃的）
     pub fn total_messages(&self) -> usize {
-        self.messages.len()
+        self.total_sent + self.total_received
     }
 
     pub fn clear_messages(&mut self) {
@@ -308,5 +335,73 @@ mod tests {
         assert_eq!(state.total_sent, 1);
         assert_eq!(state.total_received, 1);
         assert_eq!(state.total_messages(), 2);
+    }
+
+    #[test]
+    fn test_message_list_max_limit() {
+        let mut state = MessageListState::new();
+        state.max_messages = 5;
+
+        // 添加 5 条消息（未超限，不丢弃）
+        for i in 0..5u8 {
+            let dropped = state.add_message(Message::new(
+                MessageDirection::Received,
+                vec![i],
+                MessageType::Hex,
+            ));
+            assert_eq!(dropped, 0);
+        }
+        assert_eq!(state.messages.len(), 5);
+        assert_eq!(state.total_messages(), 5);
+
+        // 添加第 6 条，触发丢弃（max_messages/10=0，至少丢弃 1 条）
+        let dropped = state.add_message(Message::new(
+            MessageDirection::Received,
+            vec![5],
+            MessageType::Hex,
+        ));
+        assert_eq!(dropped, 1);
+        assert_eq!(state.messages.len(), 5);
+        // 最旧的消息（vec![0]）已被丢弃
+        assert_eq!(state.messages[0].raw_data, vec![1]);
+        assert_eq!(state.messages.last().unwrap().raw_data, vec![5]);
+        // 累计总数仍为 6（含已丢弃的）
+        assert_eq!(state.total_messages(), 6);
+
+        // 再添加一条，继续丢弃最旧的
+        let dropped = state.add_message(Message::new(
+            MessageDirection::Sent,
+            vec![6],
+            MessageType::Hex,
+        ));
+        assert_eq!(dropped, 1);
+        assert_eq!(state.messages.len(), 5);
+        assert_eq!(state.messages[0].raw_data, vec![2]);
+        // 累计：5 接收 + 1 发送 = 6，加新发送 = 7
+        assert_eq!(state.total_messages(), 7);
+    }
+
+    #[test]
+    fn test_message_list_unlimited() {
+        let mut state = MessageListState::new();
+        state.max_messages = 0; // 不限制
+
+        for i in 0..100u8 {
+            let dropped = state.add_message(Message::new(
+                MessageDirection::Received,
+                vec![i],
+                MessageType::Hex,
+            ));
+            assert_eq!(dropped, 0);
+        }
+        assert_eq!(state.messages.len(), 100);
+        assert_eq!(state.total_messages(), 100);
+    }
+
+    #[test]
+    fn test_message_list_default_max() {
+        // 默认上限应为 10000
+        let state = MessageListState::new();
+        assert_eq!(state.max_messages, 10000);
     }
 }

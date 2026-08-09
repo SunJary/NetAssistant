@@ -9,7 +9,7 @@ use gpui_component::tooltip::Tooltip;
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog, FavoriteRemarkDialog, FavoriteListPanel, AddClientDialog};
+use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog, FavoriteRemarkDialog, FavoriteListPanel, AddClientDialog, StressConfigDialog};
 use crate::ui::tab_container::TabContainer;
 
 pub struct MainWindow<'a> {
@@ -239,6 +239,9 @@ impl<'a> MainWindow<'a> {
             .when(self.app.show_favorite_list, |this_div| {
                 this_div.child(FavoriteListPanel::new(self.app, self.app.favorite_list_search_input.clone()).render(window, cx))
             })
+            .when(self.app.stress_config_dialog.is_some(), |this_div| {
+                this_div.child(StressConfigDialog::render(self.app, window, cx))
+            })
             .when(self.app.show_star_prompt, |this_div| {
                 this_div.child(
                     div()
@@ -325,6 +328,7 @@ impl<'a> MainWindow<'a> {
                         .items_start()
                         .justify_start()
                         .bg(gpui::rgba(0x80000000))
+                        .occlude()
                         .child(
                             div()
                                 .absolute()
@@ -339,6 +343,8 @@ impl<'a> MainWindow<'a> {
                                 // 编辑连接
                                 .child(
                                     div()
+                                        .id("ctx-menu-edit")
+                                        .w_full()
                                         .px_4()
                                         .py_3()
                                         .text_sm()
@@ -361,13 +367,15 @@ impl<'a> MainWindow<'a> {
                                 // 删除连接
                                 .child(
                                     div()
+                                        .id("ctx-menu-delete")
+                                        .w_full()
                                         .px_4()
                                         .py_3()
                                         .text_sm()
                                         .text_color(theme.danger)
                                         .cursor_pointer()
                                         .hover(|style| {
-                                            style.bg(theme.muted)
+                                            style.bg(theme.border)
                                         })
                                         .child("删除连接")
                                         .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {

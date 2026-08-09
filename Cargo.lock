@@ -3907,6 +3907,7 @@ dependencies = [
  "lazy_static",
  "log",
  "objc",
+ "regex",
  "reqwest",
  "rfd",
  "rust-embed",

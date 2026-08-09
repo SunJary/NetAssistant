@@ -20,6 +20,9 @@ pub fn hex_to_bytes(hex: &str) -> Vec<u8> {
 }
 
 /// 验证十六进制输入
+///
+/// 支持变量占位符 `${...}`: 含变量时仅验证非变量部分的字符合法性，
+/// 跳过长度检查(变量输出长度在运行时才能确定)。
 pub fn validate_hex_input(input: &str) -> bool {
     let cleaned = input
         .replace(" ", "")
@@ -29,10 +32,40 @@ pub fn validate_hex_input(input: &str) -> bool {
     if cleaned.is_empty() {
         return true;
     }
-    if cleaned.len() % 2 != 0 {
+    let has_vars = cleaned.contains("${");
+    // 跳过变量占位符，仅验证 hex 部分
+    let hex_only = strip_variables(&cleaned);
+    if hex_only.is_empty() {
+        return true;
+    }
+    // 含变量时仅检查字符合法性(长度在运行时才能确定)
+    if has_vars {
+        return hex_only.chars().all(|c| c.is_ascii_hexdigit());
+    }
+    // 无变量时检查长度 + 字符
+    if hex_only.len() % 2 != 0 {
         return false;
     }
-    cleaned.chars().all(|c| c.is_ascii_hexdigit())
+    hex_only.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// 移除 ${...} 变量占位符，返回剩余内容
+fn strip_variables(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '$' && chars.peek() == Some(&'{') {
+            chars.next(); // consume '{'
+            for inner in chars.by_ref() {
+                if inner == '}' {
+                    break;
+                }
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -72,5 +105,20 @@ mod tests {
         assert!(!validate_hex_input("invalid"));
         assert!(!validate_hex_input("48656c6c6")); // 奇数长度
         assert!(!validate_hex_input("48656c6c6g")); // 包含非十六进制字符
+    }
+
+    #[test]
+    /// 测试含变量占位符的十六进制验证
+    fn test_validate_hex_input_with_variables() {
+        // 变量占位符应被跳过，仅验证 hex 部分
+        assert!(validate_hex_input("50494E47${seq}"));
+        assert!(validate_hex_input("${seq}"));
+        assert!(validate_hex_input("50494E47${worker_id}${seq}"));
+        // 含变量时，非变量部分奇数长度也可通过(变量输出长度运行时确定)
+        assert!(validate_hex_input("50494E4${seq}"));
+        // 非变量部分含非法字符仍应失败
+        assert!(!validate_hex_input("50494E4G${seq}"));
+        // 未闭合的变量占位符: $ 后面没有完整 ${...}，$ 不是 hex 字符
+        assert!(!validate_hex_input("50494E47$"));
     }
 }
