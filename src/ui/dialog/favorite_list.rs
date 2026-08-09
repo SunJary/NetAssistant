@@ -148,7 +148,6 @@ impl<'a> FavoriteListPanel<'a> {
                         let item_content_for_click = item.content.clone();
                         let item_content_for_delete = item.content.clone();
                         let item_remark = item.remark.clone();
-                        let item_created_at = item.created_at.clone();
                         let full_content = item.content.clone();
 
                         div()
@@ -163,34 +162,28 @@ impl<'a> FavoriteListPanel<'a> {
                             .child(
                                 div()
                                     .flex()
-                                    .items_start()
+                                    .items_center()
                                     .gap_2()
                                     .child(
                                         div()
-                                            .flex_shrink_0()
-                                            .px_1()
-                                            .py(px(1.0))
-                                            .rounded(px(3.0))
-                                            .bg(theme.primary)
-                                            .text_xs()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .text_sm()
                                             .font_medium()
-                                            .text_color(theme.primary_foreground)
-                                            .max_w(px(60.0))
+                                            .text_color(theme.foreground)
                                             .whitespace_nowrap()
                                             .overflow_x_hidden()
                                             .child(item_remark.clone())
                                     )
                                     .child(
                                         div()
-                                            .flex_1()
-                                            .min_w_0()
+                                            .flex_shrink_0()
+                                            .px_1()
+                                            .rounded(px(2.0))
+                                            .bg(theme.secondary)
                                             .text_xs()
                                             .text_color(theme.muted_foreground)
-                                            .whitespace_normal()
-                                            .overflow_hidden()
-                                            .max_h(px(36.0))
-                                            .hover(|s| s.max_h(px(600.0)))
-                                            .child(full_content.clone())
+                                            .child(format!("{:?}", item_message_type))
                                     )
                                     .child(
                                         div()
@@ -217,24 +210,13 @@ impl<'a> FavoriteListPanel<'a> {
                             .child(
                                 div()
                                     .mt_1()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .px_1()
-                                            .rounded(px(2.0))
-                                            .bg(theme.secondary)
-                                            .text_color(theme.muted_foreground)
-                                            .child(format!("{:?}", item_message_type))
-                                    )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(theme.muted_foreground)
-                                            .child(item_created_at)
-                                    )
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .whitespace_normal()
+                                    .overflow_hidden()
+                                    .max_h(px(36.0))
+                                    .hover(|s| s.max_h(px(600.0)))
+                                    .child(full_content.clone())
                             )
                             .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                 if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_for_click) {

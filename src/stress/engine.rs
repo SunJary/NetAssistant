@@ -37,11 +37,12 @@ pub struct StressTestEngine {
 
 impl StressTestEngine {
     /// 启动压测。event_sender 由 App 层提供(smol channel)。
-    pub fn start(config: StressTestConfig, event_sender: Sender<StressEvent>) -> Self {
+    /// `tab_id` 用于事件路由(App 层按 tab_id 投递, 不依赖 active_tab)。
+    pub fn start(config: StressTestConfig, tab_id: String, event_sender: Sender<StressEvent>) -> Self {
         let cancel = CancellationToken::new();
         let cancel_clone = cancel.clone();
         let orchestrator = tokio::spawn(async move {
-            Self::run(config, event_sender, cancel_clone).await;
+            Self::run(config, tab_id, event_sender, cancel_clone).await;
         });
         Self {
             cancel,
@@ -66,7 +67,7 @@ impl StressTestEngine {
         }
     }
 
-    async fn run(config: StressTestConfig, event_sender: Sender<StressEvent>, cancel: CancellationToken) {
+    async fn run(config: StressTestConfig, tab_id: String, event_sender: Sender<StressEvent>, cancel: CancellationToken) {
         let start_time_str = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let start_instant = Instant::now();
 
@@ -116,6 +117,7 @@ impl StressTestEngine {
         let agg_hist = histogram.clone();
         let agg_samples = per_second_samples.clone();
         let agg_sender = event_sender.clone();
+        let agg_tab_id = tab_id.clone();
         let aggregator = tokio::spawn(async move {
             let mut last_second_mark = 0u64;
             loop {
@@ -124,13 +126,19 @@ impl StressTestEngine {
                         // 最终快照
                         let snapshot = build_snapshot(&agg_stats, &agg_hist, start_instant);
                         push_per_second(&agg_samples, &mut last_second_mark, &snapshot);
-                        let _ = agg_sender.send(StressEvent::StatsSnapshot(snapshot)).await;
+                        let _ = agg_sender.send(StressEvent::StatsSnapshot {
+                            tab_id: agg_tab_id.clone(),
+                            stats: snapshot,
+                        }).await;
                         break;
                     }
                     _ = sleep(SNAPSHOT_INTERVAL) => {
                         let snapshot = build_snapshot(&agg_stats, &agg_hist, start_instant);
                         push_per_second(&agg_samples, &mut last_second_mark, &snapshot);
-                        let _ = agg_sender.send(StressEvent::StatsSnapshot(snapshot.clone())).await;
+                        let _ = agg_sender.send(StressEvent::StatsSnapshot {
+                            tab_id: agg_tab_id.clone(),
+                            stats: snapshot.clone(),
+                        }).await;
                     }
                 }
             }
@@ -245,7 +253,10 @@ impl StressTestEngine {
             "[压测] 结束: 发送={}, 成功={}, 失败={}, 平均QPS={:.1}",
             report.total_sent, report.total_success, report.total_failure, report.avg_qps
         );
-        let _ = event_sender.send(StressEvent::Finished(report)).await;
+        let _ = event_sender.send(StressEvent::Finished {
+            tab_id,
+            report,
+        }).await;
     }
 }
 
@@ -439,7 +450,7 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, sender);
+        let mut engine = StressTestEngine::start(config, "test".to_string(), sender);
 
         // 收集事件直到 Finished
         let mut got_finished = false;
@@ -449,15 +460,15 @@ mod tests {
             receiver.recv(),
         ).await {
             match event {
-                Ok(StressEvent::StatsSnapshot(_)) => snapshot_count += 1,
-                Ok(StressEvent::Finished(report)) => {
+                Ok(StressEvent::StatsSnapshot { .. }) => snapshot_count += 1,
+                Ok(StressEvent::Finished { report, .. }) => {
                     assert!(report.total_sent >= 50, "应至少发送 50, 实际 {}", report.total_sent);
                     assert!(report.total_success > 0, "应有成功包");
                     assert!(report.latency_p50_us.is_some(), "应有延迟统计");
                     got_finished = true;
                     break;
                 }
-                Ok(StressEvent::Error(e)) => panic!("引擎错误: {}", e),
+                Ok(StressEvent::Error { msg, .. }) => panic!("引擎错误: {}", msg),
                 Err(_) => break, // timeout
             }
         }
@@ -511,7 +522,7 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, sender);
+        let mut engine = StressTestEngine::start(config, "test".to_string(), sender);
 
         let mut got_finished = false;
         while let Ok(event) = tokio::time::timeout(
@@ -519,14 +530,14 @@ mod tests {
             receiver.recv(),
         ).await {
             match event {
-                Ok(StressEvent::Finished(report)) => {
+                Ok(StressEvent::Finished { report, .. }) => {
                     assert!(report.total_sent >= 30, "UDP 应至少发送 30, 实际 {}", report.total_sent);
                     assert!(report.total_success >= 30, "吞吐模式成功数应等于发送数");
                     got_finished = true;
                     break;
                 }
-                Ok(StressEvent::Error(e)) => panic!("引擎错误: {}", e),
-                Ok(StressEvent::StatsSnapshot(_)) => {}
+                Ok(StressEvent::Error { msg, .. }) => panic!("引擎错误: {}", msg),
+                Ok(StressEvent::StatsSnapshot { .. }) => {}
                 Err(_) => break,
             }
         }

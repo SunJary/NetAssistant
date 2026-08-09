@@ -200,7 +200,8 @@ impl ConnectionTabState {
 
         // 非原始显示模式下，重算新消息的内容以保持一致的格式化
         if self.message_display_mode != MessageDisplayMode::Normal {
-            if let Some(last) = self.message_list.messages.last_mut() {
+            let messages = std::sync::Arc::make_mut(&mut self.message_list.messages);
+            if let Some(last) = messages.last_mut() {
                 last.recompute_content_for_display(self.message_display_mode);
             }
         }
@@ -212,6 +213,59 @@ impl ConnectionTabState {
         let insert_pos = old_count - dropped;
         self.message_list_state.splice(insert_pos..insert_pos, 1);
 
+        if self.auto_scroll_enabled && new_count > 0 {
+            self.message_list_state.scroll_to(gpui::ListOffset {
+                item_ix: new_count,
+                offset_in_item: px(0.),
+            });
+        }
+    }
+
+    /// 批量添加消息：仅触发一次列表状态更新 + 一次滚动，用于高并发消息洪泛场景。
+    /// 日志记录同样批量触发，避免逐条 spawn。
+    pub fn add_messages_batch(&mut self, messages: Vec<Message>) {
+        if messages.is_empty() {
+            return;
+        }
+
+        // 日志记录：批量异步写入
+        if self.log_enabled {
+            if let Some(log_writer) = &self.log_writer {
+                let writer = log_writer.clone();
+                let msgs = messages.clone();
+                tokio::spawn(async move {
+                    let writer = writer.lock().await;
+                    for msg in &msgs {
+                        writer.write_message(msg).await;
+                    }
+                });
+            }
+        }
+
+        let old_count = self.message_list.messages.len();
+        let dropped = self.message_list.add_messages_batch(messages);
+        let new_count = self.message_list.messages.len();
+
+        // 非原始显示模式下，重算新增消息的内容
+        if self.message_display_mode != MessageDisplayMode::Normal {
+            let start = old_count.saturating_sub(dropped);
+            let vec = std::sync::Arc::make_mut(&mut self.message_list.messages);
+            for msg in vec[start..].iter_mut() {
+                msg.recompute_content_for_display(self.message_display_mode);
+            }
+        }
+
+        // 批量更新列表状态：先移除丢弃项，再追加新增项（一次 splice）
+        if dropped > 0 {
+            self.message_list_state.splice(0..dropped, 0);
+        }
+        let added = new_count - (old_count - dropped);
+        let insert_pos = old_count - dropped;
+        if added > 0 {
+            self.message_list_state.splice(insert_pos..insert_pos, added);
+        }
+
+        // 批末单次滚动
         if self.auto_scroll_enabled && new_count > 0 {
             self.message_list_state.scroll_to(gpui::ListOffset {
                 item_ix: new_count,
@@ -1082,7 +1136,8 @@ impl<'a> ConnectionTab<'a> {
                                         .flex_1()
                                         .child(
                                             div()
-                                                .pr_8()
+                                                .pr_1()
+                                                .pl_1()
                                                 .size_full()
                                                 .child(
                                                     list(

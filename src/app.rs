@@ -234,22 +234,32 @@ impl NetAssistantApp {
         // 创建专门的异步任务来处理连接事件
         let weak_app = cx.entity().clone().downgrade();
         let event_receiver = app.connection_event_receiver.take();
-        
+
         cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
             let receiver = if let Some(receiver) = event_receiver {
                 receiver
             } else {
                 return;
             };
-            
-            // 异步处理连接事件
-            while let Ok(event) = receiver.recv().await {
-                // 尝试获取应用实例并更新状态
+
+            // 批量处理连接事件: 先 recv().await 等待首条事件唤醒,
+            // 再用 try_recv 排空已积压的事件, 一次性传入 app.update 批量处理。
+            // 单批上限 500 条, 防止主线程长占用。
+            while let Ok(first_event) = receiver.recv().await {
                 if let Some(app) = weak_app.upgrade() {
                     let _ = app.update(async_app, |app, cx| {
-                        app.handle_single_connection_event(event, cx);
+                        let mut batch = Vec::with_capacity(64);
+                        batch.push(first_event);
+                        while let Ok(event) = receiver.try_recv() {
+                            batch.push(event);
+                            if batch.len() >= 500 {
+                                break;
+                            }
+                        }
+                        app.handle_connection_events_batch(batch, cx);
                     });
                 } else {
+                    return;
                 }
             }
         }).detach();
@@ -651,24 +661,25 @@ impl NetAssistantApp {
     // ============== 压测相关方法 ==============
 
     /// 处理压测事件(由压测事件泵调用)
+    /// 按 event 携带的 tab_id 路由, 而非 active_tab —— 用户切走 tab 后事件仍能投递到发起压测的 tab。
     pub fn handle_stress_event(&mut self, event: StressEvent, cx: &mut Context<Self>) {
         match event {
-            StressEvent::StatsSnapshot(stats) => {
-                if let Some(tab) = self.connection_tabs.get_mut(&self.active_tab) {
+            StressEvent::StatsSnapshot { tab_id, stats } => {
+                if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
                     tab.stress_stats = stats;
                     cx.notify();
                 }
             }
-            StressEvent::Finished(report) => {
-                if let Some(tab) = self.connection_tabs.get_mut(&self.active_tab) {
+            StressEvent::Finished { tab_id, report } => {
+                if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
                     tab.stress_report = Some(report);
                     tab.stress_engine = None;
-                    info!("[压测] 已完成，报告已存档");
+                    info!("[压测] 已完成，报告已存档 (tab={})", tab_id);
                     cx.notify();
                 }
             }
-            StressEvent::Error(msg) => {
-                if let Some(tab) = self.connection_tabs.get_mut(&self.active_tab) {
+            StressEvent::Error { tab_id, msg } => {
+                if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
                     tab.error_message = Some(msg);
                     cx.notify();
                 }
@@ -753,7 +764,7 @@ impl NetAssistantApp {
             tab.view_mode = TabViewMode::Stress;
 
             // 启动引擎
-            let engine = StressTestEngine::start(config, sender);
+            let engine = StressTestEngine::start(config, tab_id.clone(), sender);
             tab.stress_engine = Some(Arc::new(Mutex::new(Some(engine))));
             info!("[压测] 引擎已启动 (tab={})", tab_id);
         }
@@ -1425,7 +1436,8 @@ impl NetAssistantApp {
             let new_mode = tab_state.message_display_mode.next();
             tab_state.message_display_mode = new_mode;
             // 遍历所有消息，从 raw_data 重新计算 cached_content
-            for message in &mut tab_state.message_list.messages {
+            let messages = std::sync::Arc::make_mut(&mut tab_state.message_list.messages);
+            for message in messages {
                 message.recompute_content_for_display(new_mode);
             }
             debug!("[消息显示模式] 标签页 {} 切换为: {:?}", tab_id, new_mode);
@@ -1638,6 +1650,114 @@ impl NetAssistantApp {
         self.stats.dismiss_star_prompt(&today);
         self.show_star_prompt = false;
         cx.notify();
+    }
+
+    /// 批量处理连接事件: 聚合同 tab 的 MessageReceived 一次添加,其他事件走单条处理。
+    /// 整批仅触发一次 cx.notify(),大幅降低高并发消息洪泛下的 UI 开销。
+    pub fn handle_connection_events_batch(&mut self, events: Vec<ConnectionEvent>, cx: &mut Context<Self>) {
+        let mut need_notify = false;
+        // 聚合同 tab 的消息,延迟批量添加
+        let mut message_batch: Vec<Message> = Vec::new();
+        let mut batch_tab_id: Option<String> = None;
+        // 记录最后一条 Received 消息的 source,用于批末触发一次自动回复
+        let mut last_received_source: Option<String> = None;
+
+        for event in events {
+            match event {
+                ConnectionEvent::MessageReceived(tab_id, mut message) => {
+                    // tab 切换时先 flush 已收集的消息
+                    if batch_tab_id.as_ref() != Some(&tab_id) {
+                        self.flush_message_batch(
+                            batch_tab_id.take(),
+                            std::mem::take(&mut message_batch),
+                            &mut need_notify,
+                        );
+                        last_received_source = None;
+                    }
+                    batch_tab_id = Some(tab_id.clone());
+
+                    if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                        // 设置消息类型
+                        message.set_message_type(if tab_state.message_input_mode == "text" {
+                            MessageType::Text
+                        } else {
+                            MessageType::Hex
+                        });
+                        // 记录最后一条 Received 消息的 source 用于自动回复
+                        if message.direction == MessageDirection::Received {
+                            last_received_source = message.source.clone();
+                        }
+                        message_batch.push(message);
+                    }
+                }
+                // 其他事件: 先 flush 待处理消息批, 再走单条处理
+                other => {
+                    self.flush_message_batch(
+                        batch_tab_id.take(),
+                        std::mem::take(&mut message_batch),
+                        &mut need_notify,
+                    );
+                    last_received_source = None;
+                    self.handle_single_connection_event(other, cx);
+                    need_notify = true;
+                }
+            }
+        }
+
+        // flush 末尾消息批
+        let flush_tab_id = batch_tab_id.take();
+        self.flush_message_batch(
+            flush_tab_id.clone(),
+            std::mem::take(&mut message_batch),
+            &mut need_notify,
+        );
+
+        // 批末统一触发一次自动回复(仅最后一条 Received 消息,避免压测场景下自动回复洪泛)
+        if let Some(tab_id) = flush_tab_id {
+            if let Some(source) = last_received_source {
+                self.try_trigger_auto_reply(&tab_id, source, cx);
+            }
+        }
+
+        if need_notify {
+            cx.notify();
+        }
+    }
+
+    /// flush 一批待处理消息到对应 tab
+    fn flush_message_batch(
+        &mut self,
+        tab_id: Option<String>,
+        messages: Vec<Message>,
+        need_notify: &mut bool,
+    ) {
+        if messages.is_empty() {
+            return;
+        }
+        if let Some(tab_id) = tab_id {
+            if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                tab_state.add_messages_batch(messages);
+                *need_notify = true;
+            }
+        }
+    }
+
+    /// 尝试触发自动回复(仅当启用且内容非空时)
+    fn try_trigger_auto_reply(&mut self, tab_id: &str, source: String, cx: &mut Context<Self>) {
+        let should_reply = self
+            .connection_tabs
+            .get(tab_id)
+            .map(|t| t.auto_reply_enabled)
+            .unwrap_or(false);
+        if !should_reply {
+            return;
+        }
+        if let Some(auto_reply_input) = self.auto_reply_inputs.get(tab_id) {
+            let auto_reply_content = auto_reply_input.read(cx).text().to_string();
+            if !auto_reply_content.trim().is_empty() {
+                self.send_message_to_client(tab_id.to_string(), auto_reply_content, Some(source), cx);
+            }
+        }
     }
 
     pub fn handle_single_connection_event(&mut self, event: ConnectionEvent, cx: &mut Context<Self>) {

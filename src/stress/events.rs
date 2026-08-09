@@ -6,15 +6,18 @@ use crate::stress::config::StressTestConfig;
 use crate::stress::stats::StressStats;
 
 /// 引擎→App 事件
+///
+/// 每个变体携带 `tab_id` 以便 App 层按发起压测的 tab 路由,
+/// 而非依赖 `active_tab`(用户可能已切换到其他 tab)。
 #[derive(Debug)]
 pub enum StressEvent {
     /// 周期统计快照(250ms)
-    StatsSnapshot(StressStats),
+    StatsSnapshot { tab_id: String, stats: StressStats },
     /// 压测结束(含最终报告)
-    Finished(StressReport),
+    Finished { tab_id: String, report: StressReport },
     /// 致命错误(引擎无法继续)
     #[allow(dead_code)]
-    Error(String),
+    Error { tab_id: String, msg: String },
 }
 
 /// 最终报告(结束后发送 + CSV 导出源)
