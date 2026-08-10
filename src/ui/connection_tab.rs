@@ -282,11 +282,20 @@ impl ConnectionTabState {
         self.client_list_state.reset(0);
         self.selected_client = None;
 
-        // 关闭日志文件
+        // 关闭日志文件（同步等待 close/flush，确保日志数据不丢失）
+        // 使用 block_in_place + block_on 同步执行，避免 fire-and-forget spawn 在进程退出时没机会执行
         if let Some(log_writer) = self.log_writer.take() {
-            tokio::spawn(async move {
-                let mut writer = log_writer.lock().await;
-                writer.close().await;
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async move {
+                    // 1 秒超时，避免文件系统异常时卡住退出流程
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(1),
+                        async {
+                            let mut writer = log_writer.lock().await;
+                            writer.close().await;
+                        },
+                    ).await;
+                });
             });
         }
         self.log_enabled = false;

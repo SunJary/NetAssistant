@@ -1641,9 +1641,11 @@ impl NetAssistantApp {
         cx.notify();
     }
 
-    /// 用户点击「给个 Star」按钮：跳转 repo 页面 + 关闭提示（不触发 snooze）
+    /// 用户点击「给个 Star」按钮：跳转 repo 页面 + 关闭提示并持久化（用户已点 Star，不再骚扰）
     pub fn accept_star_prompt(&mut self, cx: &mut Context<Self>) {
         cx.open_url("https://github.com/SunJary/NetAssistant");
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.stats.dismiss_star_prompt(&today);
         self.show_star_prompt = false;
         cx.notify();
     }

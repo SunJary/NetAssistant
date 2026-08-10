@@ -30,8 +30,7 @@ use app::NetAssistantApp;
 use theme_manager::ThemeManager;
 use theme_event_handler::{ThemeEventHandler, apply_theme};
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // 初始化日志
     // - debug 构建: DEBUG 级别（cosmic_text 过滤到 Info 避免字体回退噪音）
     // - release 构建: ERROR 级别（输出干净，只显示错误）
@@ -54,6 +53,39 @@ async fn main() {
         .unwrap();
 
     info!("=== 应用程序启动 (日志级别: {}) ===", level);
+
+    // 手动创建 tokio runtime（替代 #[tokio::main]）
+    // 目的：在 app.run() 返回后能用 shutdown_timeout 给后台任务优雅退出时间，
+    // 并用 std::process::exit(0) 兜底终止 GPUI dispatcher 等非 tokio 线程
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("创建 tokio runtime 失败");
+
+    // 进入 runtime context，让 app.run 闭包内能调用 tokio::runtime::Handle::current()
+    let _guard = runtime.enter();
+
+    run_app();
+
+    // app.run() 已返回：GPUI 已销毁窗口和 entity，Drop 已清理连接
+    info!("=== app.run 已返回，准备关闭 tokio runtime ===");
+
+    // 给后台任务 3 秒优雅退出时间：
+    // - 日志文件 close/flush
+    // - 网络 task 通过 cancel_token 协作取消后退出
+    // - 压测引擎 stop 后的清理
+    // 超时后 tokio 强制取消剩余 task
+    runtime.shutdown_timeout(std::time::Duration::from_secs(3));
+
+    // 兜底：强制退出进程
+    // 终止 GPUI dispatcher 等非 tokio 线程（dispatcher 偶尔在窗口销毁后不退出消息循环，导致进程残留）
+    // OS 会回收所有资源（socket、文件句柄、内存）
+    info!("=== 强制退出进程 ===");
+    std::process::exit(0);
+}
+
+/// 运行 GPUI 应用
+fn run_app() {
     let app = gpui_platform::application().with_assets(CustomAssets::new());
     info!("=== Application::new() 创建成功 ===");
 
@@ -240,5 +272,4 @@ async fn main() {
         
         info!("=== open_window 调用完成 ===");
     });
-    info!("=== app.run 调用完成 ===");
 }
