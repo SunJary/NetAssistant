@@ -1,4 +1,5 @@
 use crate::ui::components::input_with_mode::InputWithMode;
+use crate::ui::dialog::DecoderSelectionDialogState;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, StyledExt};
@@ -661,37 +662,40 @@ impl<'a> ConnectionTab<'a> {
                                         .text_color(theme.foreground)
                                         .child(self.tab_state.decoder()),
                                 )
-                                // 只在断开连接时显示编辑按钮
-                                .when(!self.tab_state.is_connected, |div_builder| {
-                                    div_builder.child(
-                                        div()
-                                            .text_xs()
-                                            .px_1()
-                                            .py_0()
-                                            .bg(theme.primary)
-                                            .text_color(theme.primary_foreground)
-                                            .rounded_md()
-                                            .cursor_pointer()
-                                            .child(div().text_xs().font_medium().child("编辑"))
-                                            .on_mouse_down(MouseButton::Left, cx.listener({
-                                                let tab_id_clone = tab_id.clone();
-                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                    // 打开解码器选择对话框
-                                                    debug!("Edit decoder clicked for tab: {}", tab_id_clone);
-                                                    let tab_state = app.connection_tabs.get(&tab_id_clone).unwrap();
-                                                    let current_config = match &tab_state.connection_config {
-                                                        ConnectionConfig::Client(config) => config.decoder_config.clone(),
-                                                        ConnectionConfig::Server(config) => config.decoder_config.clone(),
-                                                    };
-                                                    
-                                                    app.show_decoder_selection = true;
-                                                    app.decoder_selection_tab_id = Some(tab_id_clone.clone());
-                                                    app.decoder_selection_config = Some(current_config);
-                                                    cx.notify();
-                                                }
-                                            }))
-                                    )
-                                }),
+                                // 编辑解码器配置(运行中也可修改, 即时下发到在线连接)
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .px_1()
+                                        .py_0()
+                                        .bg(theme.primary)
+                                        .text_color(theme.primary_foreground)
+                                        .rounded_md()
+                                        .cursor_pointer()
+                                        .child(div().text_xs().font_medium().child("编辑"))
+                                        .on_mouse_down(MouseButton::Left, cx.listener({
+                                            let tab_id_clone = tab_id.clone();
+                                            move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                // 打开解码器选择对话框
+                                                debug!("Edit decoder clicked for tab: {}", tab_id_clone);
+                                                let tab_state = app.connection_tabs.get(&tab_id_clone).unwrap();
+                                                let current_config = match &tab_state.connection_config {
+                                                    ConnectionConfig::Client(config) => config.decoder_config.clone(),
+                                                    ConnectionConfig::Server(config) => config.decoder_config.clone(),
+                                                };
+
+                                                app.decoder_selection_dialog = Some(
+                                                    DecoderSelectionDialogState::new(
+                                                        tab_id_clone.clone(),
+                                                        current_config,
+                                                        window,
+                                                        cx,
+                                                    ),
+                                                );
+                                                cx.notify();
+                                            }
+                                        }))
+                                ),
                         )
                     }),
             )

@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use smol::channel::Sender;
 use crate::message::Message;
+use crate::config::connection::DecoderConfig;
 
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
 #[derive(Debug)]
@@ -25,4 +26,8 @@ pub enum ConnectionEvent {
     PeriodicSend(String, String),
     /// 周期发送字节消息
     PeriodicSendBytes(String, Vec<u8>, String),
+    /// 客户端解码器控制发送器就绪(用于运行时下发解码器配置, 无需重连)
+    DecoderControlSenderReady(String, Sender<DecoderConfig>),
+    /// 服务端某客户端的解码器控制发送器就绪
+    ServerDecoderControlSenderReady(String, SocketAddr, Sender<DecoderConfig>),
 }

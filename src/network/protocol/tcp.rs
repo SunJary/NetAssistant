@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use bytes::{BytesMut};
 use tokio_util::sync::CancellationToken;
-use crate::config::connection::{ClientConfig, ServerConfig};
+use crate::config::connection::{ClientConfig, ServerConfig, DecoderConfig};
 use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
@@ -118,7 +118,9 @@ impl NetworkConnection for TcpClient {
             
             // 创建发送器和接收器
             let (tx, rx) = smol_unbounded::<Vec<u8>>();
-            
+            // 创建解码器控制通道(用于运行时下发解码器配置, 无需重连)
+            let (decoder_control_tx, decoder_control_rx) = smol_unbounded::<DecoderConfig>();
+
             // 发送连接成功事件到UI线程
             if let Some(sender) = &event_sender {
                 debug!("[TCP客户端] 发送 Connected 事件");
@@ -128,6 +130,10 @@ impl NetworkConnection for TcpClient {
                 debug!("[TCP客户端] 发送 ClientWriteSenderReady 事件");
                 if let Err(e) = sender.send(ConnectionEvent::ClientWriteSenderReady(config.id.clone(), tx)).await {
                     error!("[TCP客户端] 发送 ClientWriteSenderReady 事件失败: {:?}", e);
+                }
+                debug!("[TCP客户端] 发送 DecoderControlSenderReady 事件");
+                if let Err(e) = sender.send(ConnectionEvent::DecoderControlSenderReady(config.id.clone(), decoder_control_tx)).await {
+                    error!("[TCP客户端] 发送 DecoderControlSenderReady 事件失败: {:?}", e);
                 }
             } else {
                 error!("[TCP客户端] event_sender 为空，无法发送事件");
@@ -142,11 +148,12 @@ impl NetworkConnection for TcpClient {
             let message_processor_clone = message_processor.clone();
             let decoder_config = config.decoder_config.clone();
             let read_cancel_token = cancel_token.clone();
+            let decoder_control_rx = decoder_control_rx;
             tokio::spawn(async move {
                 let mut buffer = BytesMut::with_capacity(16384);
-                
+
                 let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&decoder_config);
-                
+
                 loop {
                     tokio::select! {
                         result = socket_read.read_buf(&mut buffer) => {
@@ -157,15 +164,15 @@ impl NetworkConnection for TcpClient {
                                 },
                                 Ok(n) => {
                                     debug!("TCP客户端读取了 {} 字节数据", n);
-                                    
+
                                     loop {
                                         match decoder.decode(&mut buffer) {
                                             Ok(Some(data)) => {
                                                 let data: BytesMut = data;
                                                 process_decoded_data(
-                                                    data, 
-                                                    &message_processor_clone, 
-                                                    &event_sender_clone, 
+                                                    data,
+                                                    &message_processor_clone,
+                                                    &event_sender_clone,
                                                     &config_clone.id
                                                 );
                                             },
@@ -185,26 +192,44 @@ impl NetworkConnection for TcpClient {
                                 }
                             }
                         }
-                        
+
                         _ = tokio::time::sleep(Duration::from_millis(50)) => {
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;
                                 process_decoded_data(
-                                    data, 
-                                    &message_processor_clone, 
-                                    &event_sender_clone, 
+                                    data,
+                                    &message_processor_clone,
+                                    &event_sender_clone,
                                     &config_clone.id
                                 );
                             }
                         }
-                        
+
+                        // 运行时下发解码器配置: 先刷新旧解码器待处理数据, 再替换为新解码器
+                        new_config = decoder_control_rx.recv() => {
+                            if let Ok(new_config) = new_config {
+                                debug!("[TCP客户端] 收到运行时解码器配置更新: {:?}", new_config);
+                                if let Some(data) = decoder.force_flush() {
+                                    let data: BytesMut = data;
+                                    process_decoded_data(
+                                        data,
+                                        &message_processor_clone,
+                                        &event_sender_clone,
+                                        &config_clone.id
+                                    );
+                                }
+                                decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
+                                info!("[TCP客户端] 解码器已运行时更新");
+                            }
+                        }
+
                         _ = read_cancel_token.cancelled() => {
                             info!("TCP客户端读任务收到取消信号，退出");
                             break;
                         }
                     }
                 }
-                
+
                 if let Some(sender) = &event_sender_clone {
                     if let Err(e) = sender.send(ConnectionEvent::Disconnected(config_clone.id.clone())).await {
                         error!("[TCP客户端] 发送 Disconnected 事件失败: {:?}", e);
@@ -381,12 +406,14 @@ impl NetworkServer for TcpServer {
                                         
                                         // 创建客户端连接的发送器和接收器
                                         let (tx, rx) = smol_unbounded::<Vec<u8>>();
-                                        
+                                        // 创建解码器控制通道(用于运行时下发解码器配置, 无需重连)
+                                        let (decoder_control_tx, decoder_control_rx) = smol_unbounded::<DecoderConfig>();
+
                                         // 保存客户端连接到共享的clients哈希表
                                         let mut clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, Sender<Vec<u8>>>> = clients.lock().await;
                                         clients_guard.insert(addr, tx.clone());
                                         drop(clients_guard);
-                                        
+
                                         // 发送客户端连接事件到UI线程
                                         if let Some(sender) = &event_sender {
                                             if let Err(e) = sender.send(ConnectionEvent::ServerClientConnected(
@@ -396,8 +423,16 @@ impl NetworkServer for TcpServer {
                                             )).await {
                                                 error!("[TCP服务器] 发送 ServerClientConnected 事件失败: {:?}", e);
                                             }
+                                            debug!("[TCP服务器] 发送 ServerDecoderControlSenderReady 事件");
+                                            if let Err(e) = sender.send(ConnectionEvent::ServerDecoderControlSenderReady(
+                                                config.id.clone(),
+                                                addr,
+                                                decoder_control_tx,
+                                            )).await {
+                                                error!("[TCP服务器] 发送 ServerDecoderControlSenderReady 事件失败: {:?}", e);
+                                            }
                                         }
-                                        
+
                                         // 处理客户端连接
                                         let client_id_clone = config.id.clone();
                                         let client_event_sender = event_sender.clone();
@@ -407,21 +442,22 @@ impl NetworkServer for TcpServer {
                                         let client_handles_clone_for_client = client_handles.clone();
                                         
                                         // 创建客户端连接的任务句柄
-                                        let client_task = tokio::spawn(async move { 
+                                        let client_task = tokio::spawn(async move {
                                             // 创建decoder和encoder
                                             let (mut socket_read, mut socket_write) = tokio::io::split(socket);
-                                            
+
                                             // 根据配置创建具体的解码器
                                             let decoder_config = config_clone_for_client.decoder_config.clone();
                                             let encoder = CodecFactory::create_encoder(&config_clone_for_client.decoder_config);
-                                            
+                                            let decoder_control_rx = decoder_control_rx;
+
                                             // 启动接收消息循环
-                                            let recv_fut = async { 
+                                            let recv_fut = async {
                                                 let mut buffer = BytesMut::with_capacity(16384); // 16KB缓冲区
-                                                
+
                                                 // 使用CodecFactory创建解码器（所有解码器现在都支持force_flush）
                                                 let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&decoder_config);
-                                                
+
                                                 loop {
                                                     tokio::select! {
                                                         // 数据读取事件
@@ -434,7 +470,7 @@ impl NetworkServer for TcpServer {
                                                                 },
                                                                 Ok(n) => {
                                                                     debug!("TCP服务器从 {} 读取了 {} 字节数据", addr, n);
-                                                                        
+
                                                                     // 使用decoder解码数据，循环处理所有可用消息
                                                                     loop {
                                                                         match decoder.decode(&mut buffer) {
@@ -467,7 +503,7 @@ impl NetworkServer for TcpServer {
                                                                 }
                                                             }
                                                         }
-                                                        
+
                                                         // 50ms超时事件 - 强制刷新缓冲区
                                                         _ = tokio::time::sleep(Duration::from_millis(50)) => {
                                                             // 强制刷新解码器缓冲区
@@ -480,6 +516,25 @@ impl NetworkServer for TcpServer {
                                                                     &client_id_clone,
                                                                     &addr.to_string()
                                                                 );
+                                                            }
+                                                        }
+
+                                                        // 运行时下发解码器配置: 先刷新旧解码器待处理数据, 再替换为新解码器
+                                                        new_config = decoder_control_rx.recv() => {
+                                                            if let Ok(new_config) = new_config {
+                                                                debug!("[TCP服务器] 客户端 {} 收到运行时解码器配置更新: {:?}", addr, new_config);
+                                                                if let Some(data) = decoder.force_flush() {
+                                                                    let data: BytesMut = data;
+                                                                    process_decoded_data_with_addr(
+                                                                        data,
+                                                                        &client_message_processor,
+                                                                        &client_event_sender,
+                                                                        &client_id_clone,
+                                                                        &addr.to_string()
+                                                                    );
+                                                                }
+                                                                decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
+                                                                info!("[TCP服务器] 客户端 {} 解码器已运行时更新", addr);
                                                             }
                                                         }
                                                     }

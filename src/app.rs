@@ -14,7 +14,7 @@ use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 
 use crate::ui::connection_tab::ConnectionTabState;
-use crate::ui::dialog::StressConfigDialogState;
+use crate::ui::dialog::{StressConfigDialogState, DecoderSelectionDialogState};
 use crate::ui::main_window::MainWindow;
 
 use std::collections::HashMap;
@@ -42,10 +42,8 @@ pub struct NetAssistantApp {
     pub edit_decoder_config: DecoderConfig,
     pub show_connection_advanced: bool,
 
-    // 解码器选择对话框状态
-    pub show_decoder_selection: bool,
-    pub decoder_selection_tab_id: Option<String>,
-    pub decoder_selection_config: Option<crate::config::connection::DecoderConfig>,
+    // 解码器选择对话框状态(打开时创建, 关闭时置 None)
+    pub decoder_selection_dialog: Option<DecoderSelectionDialogState>,
 
     // 服务端连接相关状态
     pub server_expanded: bool,
@@ -76,6 +74,9 @@ pub struct NetAssistantApp {
     // 写入发送器映射（无锁设计，每个标签页独立管理）- 使用smol channel
     pub client_write_senders: HashMap<String, Sender<Vec<u8>>>,
     pub server_clients: HashMap<String, HashMap<SocketAddr, Sender<Vec<u8>>>>,
+    // 解码器控制发送器映射（用于运行时下发解码器配置，无需重连）
+    pub decoder_control_senders: HashMap<String, Sender<DecoderConfig>>,
+    pub server_decoder_controls: HashMap<String, HashMap<SocketAddr, Sender<DecoderConfig>>>,
 
     // 右键菜单状态
     pub show_context_menu: bool,
@@ -155,6 +156,9 @@ impl NetAssistantApp {
         // 初始化写入发送器映射
         let client_write_senders = HashMap::new();
         let server_clients = HashMap::new();
+        // 初始化解码器控制发送器映射
+        let decoder_control_senders = HashMap::new();
+        let server_decoder_controls = HashMap::new();
 
         // 从配置加载侧边栏宽度和折叠状态
         let sidebar_width = storage.load_sidebar_width().map(|w| gpui::px(w as f32));
@@ -174,9 +178,7 @@ impl NetAssistantApp {
             edit_decoder_config: DecoderConfig::default(),
             show_connection_advanced: false,
             // 初始化解码器选择对话框状态
-            show_decoder_selection: false,
-            decoder_selection_tab_id: None,
-            decoder_selection_config: None,
+            decoder_selection_dialog: None,
             server_expanded: true,
             active_tab,
             connection_tabs,
@@ -190,6 +192,8 @@ impl NetAssistantApp {
             network_manager,
             client_write_senders,
             server_clients,
+            decoder_control_senders,
+            server_decoder_controls,
             show_context_menu: false,
             context_menu_connection: None,
             context_menu_is_client: false,
@@ -1760,6 +1764,25 @@ impl NetAssistantApp {
         }
     }
 
+    /// 运行时下发解码器配置到在线连接(客户端或服务端所有已连接客户端)，无需重连。
+    /// 仅对 TCP 生效(UDP 为数据报，无分帧解码器)。
+    pub fn apply_decoder_config_to_connection(&mut self, tab_id: &str, config: &DecoderConfig) {
+        // 客户端: 下发给单条读任务
+        if let Some(sender) = self.decoder_control_senders.get(tab_id) {
+            debug!("[apply_decoder_config] 下发解码器配置到客户端 {}: {:?}", tab_id, config);
+            if let Err(e) = sender.try_send(config.clone()) {
+                error!("[apply_decoder_config] 下发解码器配置失败(客户端 {}): {:?}", tab_id, e);
+            }
+        }
+        // 服务端: 下发给该 tab 下所有已连接客户端的读任务
+        if let Some(map) = self.server_decoder_controls.get(tab_id) {
+            for sender in map.values() {
+                let _ = sender.try_send(config.clone());
+            }
+            debug!("[apply_decoder_config] 下发解码器配置到服务端 {} 的 {} 个客户端", tab_id, map.len());
+        }
+    }
+
     pub fn handle_single_connection_event(&mut self, event: ConnectionEvent, cx: &mut Context<Self>) {
         match event {
             ConnectionEvent::Connected(tab_id) => {
@@ -1778,6 +1801,8 @@ impl NetAssistantApp {
                 }
                 self.client_write_senders.remove(&tab_id);
                 self.server_clients.remove(&tab_id);
+                self.decoder_control_senders.remove(&tab_id);
+                self.server_decoder_controls.remove(&tab_id);
             }
             ConnectionEvent::Listening(tab_id) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -1797,6 +1822,8 @@ impl NetAssistantApp {
                 // 清理连接信息，确保下次发送时直接失败
                 self.client_write_senders.remove(&tab_id);
                 self.server_clients.remove(&tab_id);
+                self.decoder_control_senders.remove(&tab_id);
+                self.server_decoder_controls.remove(&tab_id);
             }
             ConnectionEvent::ClientWriteSenderReady(tab_id, write_sender) => {
                 debug!(
@@ -1804,6 +1831,25 @@ impl NetAssistantApp {
                     tab_id
                 );
                 self.client_write_senders.insert(tab_id, write_sender);
+            }
+            ConnectionEvent::DecoderControlSenderReady(tab_id, control_sender) => {
+                debug!(
+                    "[handle_connection_events] 客户端解码器控制发送器就绪: {}",
+                    tab_id
+                );
+                self.decoder_control_senders.insert(tab_id, control_sender);
+            }
+            ConnectionEvent::ServerDecoderControlSenderReady(tab_id, addr, control_sender) => {
+                debug!(
+                    "[handle_connection_events] 服务端解码器控制发送器就绪: tab_id={}, addr={}",
+                    tab_id, addr
+                );
+                if !self.server_decoder_controls.contains_key(&tab_id) {
+                    self.server_decoder_controls.insert(tab_id.clone(), HashMap::new());
+                }
+                if let Some(map) = self.server_decoder_controls.get_mut(&tab_id) {
+                    map.insert(addr, control_sender);
+                }
             }
             ConnectionEvent::ServerClientConnected(tab_id, addr, write_sender) => {
                 debug!(
@@ -1833,6 +1879,9 @@ impl NetAssistantApp {
                 );
                 if let Some(clients) = self.server_clients.get_mut(&tab_id) {
                     clients.remove(&addr);
+                }
+                if let Some(map) = self.server_decoder_controls.get_mut(&tab_id) {
+                    map.remove(&addr);
                 }
                 // 更新 ConnectionTabState 中的客户端连接列表
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {

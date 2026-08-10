@@ -222,8 +222,8 @@ impl<'a> MainWindow<'a> {
             .when(self.app.show_new_connection, |this_div| {
                 this_div.child(NewConnectionDialog::new(self.app).render(window, cx))
             })
-            .when(self.app.show_decoder_selection, |this_div| {
-                this_div.child(DecoderSelectionDialog::new(self.app).render(window, cx))
+            .when(self.app.decoder_selection_dialog.is_some(), |this_div| {
+                this_div.child(DecoderSelectionDialog::render(self.app, window, cx))
             })
             .when(self.app.show_add_client_dialog, |this_div| {
                 if let Some(input) = self.app.add_client_dialog_input.clone() {

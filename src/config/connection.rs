@@ -51,6 +51,14 @@ pub struct LengthDelimitedConfig {
     pub length_field_length: u8, // 长度字段长度
     pub length_adjustment: i32,  // 长度调整值
     pub length_field_is_including_length_field: bool, // 长度字段是否包含自身长度
+    #[serde(default)]
+    pub length_field_is_little_endian: bool, // 长度字段字节序: true=小端, false=大端(默认)
+    #[serde(default = "default_true")]
+    pub length_field_keep_full_frame: bool, // 输出是否保留完整帧(含偏移与长度字段), 默认true=保留完整帧
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for LengthDelimitedConfig {
@@ -61,6 +69,8 @@ impl Default for LengthDelimitedConfig {
             length_field_length: 4,
             length_adjustment: 0,
             length_field_is_including_length_field: false,
+            length_field_is_little_endian: false,
+            length_field_keep_full_frame: true,
         }
     }
 }
@@ -71,6 +81,8 @@ pub enum DecoderConfig {
     Bytes,
     LineBased,
     LengthDelimited(LengthDelimitedConfig),
+    /// 固定字节长度分帧，每个报文固定 N 字节
+    FixedLength(usize),
     Json,
 }
 
@@ -86,6 +98,7 @@ impl fmt::Display for DecoderConfig {
             DecoderConfig::Bytes => write!(f, "原始数据"),
             DecoderConfig::LineBased => write!(f, "换行符"),
             DecoderConfig::LengthDelimited(_) => write!(f, "长度前缀"),
+            DecoderConfig::FixedLength(_) => write!(f, "固定长度"),
             DecoderConfig::Json => write!(f, "JSON"),
         }
     }

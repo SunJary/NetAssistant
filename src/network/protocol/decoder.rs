@@ -41,13 +41,46 @@ impl CodecFactory {
             }
             DecoderConfig::LengthDelimited(config) => {
                 debug!("CodecFactory: 使用LengthDelimited解码器，配置: {:?}", config);
-                let length_delimited = LengthDelimitedDecoder::builder()
-                    .max_frame_length(config.max_frame_length)
-                    .length_field_offset(config.length_field_offset.into())
-                    .length_field_length(config.length_field_length.into())
-                    .length_adjustment(config.length_adjustment.try_into().unwrap_or(0))
-                    .new_codec();
+                // tokio-util 0.7 的 Builder 没有 length_field_includes_self 方法,
+                // 通过调整 length_adjustment 来补偿: 长度字段包含自身时, 需减去长度字段本身的字节数
+                let effective_adjustment = if config.length_field_is_including_length_field {
+                    config.length_adjustment - config.length_field_length as i32
+                } else {
+                    config.length_adjustment
+                };
+                // 保留完整帧: 默认 tokio-util 会跳过 offset+长度字段, 仅返回载荷.
+                // 保留完整帧时: num_skip=0(不跳过头部), 并把 offset+长度字段 加回 adjustment,
+                // 使返回字节数 n = 完整帧长(offset+长度字段+载荷).
+                let (final_adjustment, num_skip) = if config.length_field_keep_full_frame {
+                    let adj = effective_adjustment
+                        + config.length_field_offset as i32
+                        + config.length_field_length as i32;
+                    (adj, Some(0usize))
+                } else {
+                    (effective_adjustment, None)
+                };
+                let length_delimited = {
+                    let mut builder = LengthDelimitedDecoder::builder();
+                    builder
+                        .max_frame_length(config.max_frame_length)
+                        .length_field_offset(config.length_field_offset.into())
+                        .length_field_length((config.length_field_length as usize).max(1).min(8))
+                        .length_adjustment(final_adjustment.try_into().unwrap_or(0));
+                    // 根据配置选择字节序: 默认大端, 配置为小端时切换
+                    if config.length_field_is_little_endian {
+                        builder.little_endian();
+                    }
+                    // 保留完整帧时显式设置 num_skip=0; 否则使用默认(offset+长度字段)
+                    if let Some(skip) = num_skip {
+                        builder.num_skip(skip);
+                    }
+                    builder.new_codec()
+                };
                 Box::new(LengthDelimitedToBytesMutDecoder::new(length_delimited))
+            }
+            DecoderConfig::FixedLength(frame_length) => {
+                debug!("CodecFactory: 使用FixedLength解码器，帧长度: {}", frame_length);
+                Box::new(FixedLengthDecoder::new(*frame_length))
             }
             DecoderConfig::Json => {
                 debug!("CodecFactory: 使用JSON解码器（基于BytesCodec）");
@@ -69,6 +102,10 @@ impl CodecFactory {
             }
             DecoderConfig::LengthDelimited(_) => {
                 // 使用BytesEncoder作为默认编码器
+                Box::new(BytesDecoder::new())
+            }
+            DecoderConfig::FixedLength(_) => {
+                // 固定长度解码只影响接收分帧，发送时原样输出
                 Box::new(BytesDecoder::new())
             }
             DecoderConfig::Json => {
@@ -223,6 +260,55 @@ impl ExtendedDecoder for LengthDelimitedToBytesMutDecoder {
     fn force_flush(&mut self) -> Option<BytesMut> {
         if !self.pending_data.is_empty() {
             debug!("LengthDelimitedToBytesMutDecoder: 强制刷新缓冲区: {:?}, 长度: {}", String::from_utf8_lossy(&self.pending_data), self.pending_data.len());
+            Some(self.pending_data.split_to(self.pending_data.len()))
+        } else {
+            None
+        }
+    }
+}
+
+/// 固定长度解码器
+/// 缓冲数据，每凑够 frame_length 字节切出一帧
+struct FixedLengthDecoder {
+    frame_length: usize,
+    pending_data: BytesMut,
+}
+
+impl FixedLengthDecoder {
+    fn new(frame_length: usize) -> Self {
+        Self {
+            frame_length: frame_length.max(1),
+            pending_data: BytesMut::new(),
+        }
+    }
+}
+
+impl Decoder for FixedLengthDecoder {
+    type Item = BytesMut;
+    type Error = std::io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        // 累积新数据
+        if !src.is_empty() {
+            self.pending_data.extend_from_slice(src);
+            src.clear();
+        }
+
+        // 凑够一帧则切出(即使 src 为空, 也要检查 pending_data 中的剩余数据)
+        if self.pending_data.len() >= self.frame_length {
+            let frame = self.pending_data.split_to(self.frame_length);
+            debug!("FixedLengthDecoder: 解码出帧, 长度: {}", frame.len());
+            Ok(Some(frame))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl ExtendedDecoder for FixedLengthDecoder {
+    fn force_flush(&mut self) -> Option<BytesMut> {
+        if !self.pending_data.is_empty() {
+            debug!("FixedLengthDecoder: 强制刷新缓冲区, 长度: {}", self.pending_data.len());
             Some(self.pending_data.split_to(self.pending_data.len()))
         } else {
             None
