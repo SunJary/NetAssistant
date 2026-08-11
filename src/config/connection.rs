@@ -46,10 +46,10 @@ impl fmt::Display for ConnectionStatus {
 /// 长度前缀解码器配置
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LengthDelimitedConfig {
-    pub max_frame_length: usize, // 最大帧长度
-    pub length_field_offset: u8, // 长度字段偏移量
-    pub length_field_length: u8, // 长度字段长度
-    pub length_adjustment: i32,  // 长度调整值
+    pub max_frame_length: usize,                      // 最大帧长度
+    pub length_field_offset: u8,                      // 长度字段偏移量
+    pub length_field_length: u8,                      // 长度字段长度
+    pub length_adjustment: i32,                       // 长度调整值
     pub length_field_is_including_length_field: bool, // 长度字段是否包含自身长度
     #[serde(default)]
     pub length_field_is_little_endian: bool, // 长度字段字节序: true=小端, false=大端(默认)
@@ -214,20 +214,22 @@ impl ConnectionConfig {
     pub fn address_label(&self) -> String {
         match self {
             ConnectionConfig::Client(config) => {
-                format!("{}_{}_{}", config.protocol, config.server_address, config.server_port)
+                format!(
+                    "{}_{}_{}",
+                    config.protocol, config.server_address, config.server_port
+                )
             }
             ConnectionConfig::Server(config) => {
-                format!("{}_{}_{}", config.protocol, config.listen_address, config.listen_port)
+                format!(
+                    "{}_{}_{}",
+                    config.protocol, config.listen_address, config.listen_port
+                )
             }
         }
     }
 
     /// 创建新的客户端连接配置（自动生成ID）
-    pub fn new_client(
-        server_address: String,
-        server_port: u16,
-        protocol: ConnectionType,
-    ) -> Self {
+    pub fn new_client(server_address: String, server_port: u16, protocol: ConnectionType) -> Self {
         ConnectionConfig::Client(ClientConfig {
             id: generate_uuid(),
             protocol,
@@ -239,11 +241,7 @@ impl ConnectionConfig {
     }
 
     /// 创建新的服务端监听配置（自动生成ID）
-    pub fn new_server(
-        listen_address: String,
-        listen_port: u16,
-        protocol: ConnectionType,
-    ) -> Self {
+    pub fn new_server(listen_address: String, listen_port: u16, protocol: ConnectionType) -> Self {
         ConnectionConfig::Server(ServerConfig {
             id: generate_uuid(),
             protocol,
@@ -254,9 +252,6 @@ impl ConnectionConfig {
         })
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests {
@@ -274,11 +269,8 @@ mod tests {
     #[test]
     /// 测试创建自定义客户端配置
     fn test_client_config_new() {
-        let connection_config = ConnectionConfig::new_client(
-            "192.168.1.1".to_string(),
-            1234,
-            ConnectionType::Udp,
-        );
+        let connection_config =
+            ConnectionConfig::new_client("192.168.1.1".to_string(), 1234, ConnectionType::Udp);
 
         if let ConnectionConfig::Client(custom_config) = connection_config {
             assert_eq!(custom_config.protocol, ConnectionType::Udp);
@@ -301,11 +293,8 @@ mod tests {
     #[test]
     /// 测试创建自定义服务端配置
     fn test_server_config_new() {
-        let connection_config = ConnectionConfig::new_server(
-            "192.168.1.1".to_string(),
-            5678,
-            ConnectionType::Udp,
-        );
+        let connection_config =
+            ConnectionConfig::new_server("192.168.1.1".to_string(), 5678, ConnectionType::Udp);
 
         if let ConnectionConfig::Server(custom_config) = connection_config {
             assert_eq!(custom_config.protocol, ConnectionType::Udp);

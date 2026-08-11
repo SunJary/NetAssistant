@@ -1,8 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::input::Input;
-use gpui_component::ActiveTheme as _;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::DecoderConfig;
@@ -24,7 +24,11 @@ impl<'a> NewConnectionDialog<'a> {
         let theme = cx.theme().clone();
         let is_edit = self.app.editing_connection_id.is_some();
         let is_client = self.app.new_connection_is_client;
-        let title = if is_edit { "编辑连接" } else { "新建连接" };
+        let title = if is_edit {
+            "编辑连接"
+        } else {
+            "新建连接"
+        };
         let show_advanced = self.app.show_connection_advanced;
 
         div()
@@ -247,11 +251,7 @@ impl<'a> NewConnectionDialog<'a> {
     }
 
     /// 渲染协议选择芯片（编辑模式下禁用切换）
-    fn render_protocol_chip(
-        &self,
-        protocol: &str,
-        cx: &mut Context<NetAssistantApp>,
-    ) -> Div {
+    fn render_protocol_chip(&self, protocol: &str, cx: &mut Context<NetAssistantApp>) -> Div {
         let theme = cx.theme().clone();
         let is_edit = self.app.editing_connection_id.is_some();
         let selected = self.app.new_connection_protocol == protocol;
@@ -272,21 +272,21 @@ impl<'a> NewConnectionDialog<'a> {
             .when(!is_edit, |div| {
                 div.on_mouse_down(
                     MouseButton::Left,
-                    cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                        app.new_connection_protocol = protocol_owned.clone();
-                        cx.notify();
-                    }),
+                    cx.listener(
+                        move |app: &mut NetAssistantApp,
+                              _event: &MouseDownEvent,
+                              _window: &mut Window,
+                              cx: &mut Context<NetAssistantApp>| {
+                            app.new_connection_protocol = protocol_owned.clone();
+                            cx.notify();
+                        },
+                    ),
                 )
             })
     }
 
     /// 渲染消息模式选择芯片
-    fn render_mode_chip(
-        &self,
-        mode: &str,
-        label: &str,
-        cx: &mut Context<NetAssistantApp>,
-    ) -> Div {
+    fn render_mode_chip(&self, mode: &str, label: &str, cx: &mut Context<NetAssistantApp>) -> Div {
         let theme = cx.theme().clone();
         let selected = self.app.edit_message_input_mode == mode;
         let mode_owned = mode.to_string();
@@ -304,10 +304,15 @@ impl<'a> NewConnectionDialog<'a> {
             .child(div().text_sm().font_medium().child(label.to_string()))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                    app.edit_message_input_mode = mode_owned.clone();
-                    cx.notify();
-                }),
+                cx.listener(
+                    move |app: &mut NetAssistantApp,
+                          _event: &MouseDownEvent,
+                          _window: &mut Window,
+                          cx: &mut Context<NetAssistantApp>| {
+                        app.edit_message_input_mode = mode_owned.clone();
+                        cx.notify();
+                    },
+                ),
             )
     }
 
@@ -334,10 +339,15 @@ impl<'a> NewConnectionDialog<'a> {
             .child(div().text_sm().font_medium().child(label.to_string()))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                    app.edit_decoder_config = config.clone();
-                    cx.notify();
-                }),
+                cx.listener(
+                    move |app: &mut NetAssistantApp,
+                          _event: &MouseDownEvent,
+                          _window: &mut Window,
+                          cx: &mut Context<NetAssistantApp>| {
+                        app.edit_decoder_config = config.clone();
+                        cx.notify();
+                    },
+                ),
             )
     }
 }

@@ -12,7 +12,12 @@ pub enum ExportFormat {
 impl ExportFormat {
     /// 根据文件扩展名推断导出格式
     pub fn from_extension(path: &Path) -> Option<Self> {
-        match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
+        match path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .as_deref()
+        {
             Some("txt") => Some(Self::Txt),
             Some("json") => Some(Self::Json),
             Some("csv") => Some(Self::Csv),
@@ -156,7 +161,9 @@ pub fn format_messages(messages: &[Message], format: ExportFormat) -> Result<Str
 
     match format {
         ExportFormat::Txt => Ok(format_as_txt(messages)),
-        ExportFormat::Json => format_as_json(messages).map_err(|e| format!("JSON 序列化失败: {}", e)),
+        ExportFormat::Json => {
+            format_as_json(messages).map_err(|e| format!("JSON 序列化失败: {}", e))
+        }
         ExportFormat::Csv => Ok(format_as_csv(messages)),
     }
 }
@@ -166,7 +173,11 @@ mod tests {
     use super::*;
     use crate::message::MessageType;
 
-    fn create_test_message(direction: MessageDirection, data: &[u8], msg_type: MessageType) -> Message {
+    fn create_test_message(
+        direction: MessageDirection,
+        data: &[u8],
+        msg_type: MessageType,
+    ) -> Message {
         Message::new(direction, data.to_vec(), msg_type)
     }
 
@@ -186,9 +197,11 @@ mod tests {
 
     #[test]
     fn test_format_json() {
-        let messages = vec![
-            create_test_message(MessageDirection::Sent, b"Hello", MessageType::Text),
-        ];
+        let messages = vec![create_test_message(
+            MessageDirection::Sent,
+            b"Hello",
+            MessageType::Text,
+        )];
 
         let result = format_as_json(&messages).unwrap();
         assert!(result.contains("\"direction\": \"sent\""));
@@ -227,9 +240,21 @@ mod tests {
 
     #[test]
     fn test_export_format_from_extension() {
-        assert_eq!(ExportFormat::from_extension(Path::new("test.txt")), Some(ExportFormat::Txt));
-        assert_eq!(ExportFormat::from_extension(Path::new("test.JSON")), Some(ExportFormat::Json));
-        assert_eq!(ExportFormat::from_extension(Path::new("test.Csv")), Some(ExportFormat::Csv));
-        assert_eq!(ExportFormat::from_extension(Path::new("test.unknown")), None);
+        assert_eq!(
+            ExportFormat::from_extension(Path::new("test.txt")),
+            Some(ExportFormat::Txt)
+        );
+        assert_eq!(
+            ExportFormat::from_extension(Path::new("test.JSON")),
+            Some(ExportFormat::Json)
+        );
+        assert_eq!(
+            ExportFormat::from_extension(Path::new("test.Csv")),
+            Some(ExportFormat::Csv)
+        );
+        assert_eq!(
+            ExportFormat::from_extension(Path::new("test.unknown")),
+            None
+        );
     }
 }

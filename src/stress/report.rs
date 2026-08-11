@@ -15,11 +15,16 @@ pub fn format_stress_csv(report: &StressReport) -> String {
 
     // ---- 摘要区 ----
     out.push_str("# NetAssistant 压测报告\n");
-    out.push_str(&format!("# 目标: {}:{} ({})\n",
+    out.push_str(&format!(
+        "# 目标: {}:{} ({})\n",
         csv_escape(&report.config.target_address),
         report.config.target_port,
-        report.config.protocol));
-    out.push_str(&format!("# 模式: {} / {}\n", report.config.mode, report.config.connection_mode));
+        report.config.protocol
+    ));
+    out.push_str(&format!(
+        "# 模式: {} / {}\n",
+        report.config.mode, report.config.connection_mode
+    ));
     out.push_str(&format!("# 并发客户端数: {}\n", report.config.concurrency));
     out.push_str(&format!("# 开始时间: {}\n", csv_escape(&report.start_time)));
     out.push_str(&format!("# 结束时间: {}\n", csv_escape(&report.end_time)));
@@ -32,19 +37,31 @@ pub fn format_stress_csv(report: &StressReport) -> String {
     out.push_str(&format!("# 断开连接: {}\n", report.disconnects));
     out.push_str(&format!("# 自动重连: {}\n", report.reconnects));
     if let Some(p) = report.latency_p50_us {
-        out.push_str(&format!("# 延迟 p50/p95/p99/avg/max (us): {}/{}/{}/{}/{}\n",
+        out.push_str(&format!(
+            "# 延迟 p50/p95/p99/avg/max (us): {}/{}/{}/{}/{}\n",
             p,
             report.latency_p95_us.unwrap_or(0),
             report.latency_p99_us.unwrap_or(0),
             report.latency_avg_us.unwrap_or(0),
-            report.latency_max_us.unwrap_or(0)));
+            report.latency_max_us.unwrap_or(0)
+        ));
     }
     out.push_str(&format!("# 发送字节: {}\n", report.bytes_sent));
     out.push_str(&format!("# 接收字节: {}\n", report.bytes_received));
+    // 失败分类(仅在有失败时输出)
+    if report.total_failure > 0 {
+        let f = &report.failures;
+        out.push_str(&format!(
+            "# 失败分类 - 连接失败/发送失败/接收超时/对端关闭/校验失败: {}/{}/{}/{}/{}\n",
+            f.connect_failed, f.send_failed, f.recv_timeout, f.peer_closed, f.validate_failed
+        ));
+    }
     out.push('\n');
 
     // ---- 时序表 ----
-    out.push_str("秒,发送,成功,失败,QPS,活跃连接,断连,重连,p50_us,p95_us,p99_us,发送字节,接收字节\n");
+    out.push_str(
+        "秒,发送,成功,失败,QPS,活跃连接,断连,重连,p50_us,p95_us,p99_us,发送字节,接收字节\n",
+    );
     for (i, s) in report.per_second_samples.iter().enumerate() {
         out.push_str(&format!(
             "{},{},{},{},{:.2},{},{},{},{},{},{},{},{}\n",
@@ -70,9 +87,11 @@ pub fn format_stress_csv(report: &StressReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stress::config::{ConnectionMode, RampUpConfig, StopCondition, StressMode, StressTestConfig};
-    use crate::stress::stats::StressStats;
     use crate::config::connection::ConnectionType;
+    use crate::stress::config::{
+        ConnectionMode, RampUpConfig, StopCondition, StressMode, StressTestConfig,
+    };
+    use crate::stress::stats::StressStats;
 
     fn sample_report() -> StressReport {
         let config = StressTestConfig {
@@ -143,6 +162,7 @@ mod tests {
             latency_max_us: Some(1100),
             bytes_sent: 1000,
             bytes_received: 800,
+            failures: Default::default(),
             per_second_samples: vec![s1, s2],
         }
     }
@@ -160,7 +180,9 @@ mod tests {
     fn test_csv_timeseries_header() {
         let report = sample_report();
         let csv = format_stress_csv(&report);
-        assert!(csv.contains("秒,发送,成功,失败,QPS,活跃连接,断连,重连,p50_us,p95_us,p99_us,发送字节,接收字节"));
+        assert!(csv.contains(
+            "秒,发送,成功,失败,QPS,活跃连接,断连,重连,p50_us,p95_us,p99_us,发送字节,接收字节"
+        ));
     }
 
     #[test]

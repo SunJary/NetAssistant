@@ -5,9 +5,13 @@
 // 当无令牌可用时 acquire 会 sleep 到下一个令牌可用，从而实现全局 QPS 上限。
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 pub struct TokenBucket {
+    /// 无限速模式标志: true 时 acquire() 走无锁快速路径,完全绕过 Mutex。
+    /// 解决高并发(≥10000 worker)下 unbounded 模式仍串行化在 Mutex 上的瓶颈。
+    unbounded: AtomicBool,
     inner: Mutex<Inner>,
 }
 
@@ -20,9 +24,11 @@ struct Inner {
 }
 
 impl TokenBucket {
-    /// 构造一个不限速的令牌桶(refill_rate = f64::MAX，无实际限速)
+    /// 构造一个不限速的令牌桶。
+    /// acquire() 走原子快速路径,零锁开销。
     pub fn unbounded() -> Self {
         Self {
+            unbounded: AtomicBool::new(true),
             inner: Mutex::new(Inner {
                 tokens: f64::MAX,
                 capacity: f64::MAX,
@@ -36,6 +42,7 @@ impl TokenBucket {
     pub fn new(qps: u32) -> Self {
         let rate = qps as f64;
         Self {
+            unbounded: AtomicBool::new(false),
             inner: Mutex::new(Inner {
                 tokens: rate,
                 capacity: rate,
@@ -47,6 +54,10 @@ impl TokenBucket {
 
     /// 获取一个令牌。若需等待则 sleep。
     pub async fn acquire(&self) {
+        // 快速路径: 无限速模式直接返回,避免 20000 worker 串行化在 Mutex 上
+        if self.unbounded.load(Ordering::Relaxed) {
+            return;
+        }
         loop {
             let wait = {
                 let mut inner = self.inner.lock().expect("令牌桶锁中毒");
@@ -108,7 +119,11 @@ mod tests {
         let bucket = TokenBucket::new(100);
         // 初始令牌 = qps (允许 1 秒突发)
         let available = bucket.available_tokens();
-        assert!((available - 100.0).abs() < 1.0, "初始应有约 100 令牌, 实际 {}", available);
+        assert!(
+            (available - 100.0).abs() < 1.0,
+            "初始应有约 100 令牌, 实际 {}",
+            available
+        );
     }
 
     #[tokio::test]
@@ -116,7 +131,11 @@ mod tests {
         let bucket = TokenBucket::new(100);
         bucket.acquire().await;
         let available = bucket.available_tokens();
-        assert!((available - 99.0).abs() < 1.0, "取 1 个后应剩约 99, 实际 {}", available);
+        assert!(
+            (available - 99.0).abs() < 1.0,
+            "取 1 个后应剩约 99, 实际 {}",
+            available
+        );
     }
 
     #[tokio::test]

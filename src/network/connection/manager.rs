@@ -1,28 +1,28 @@
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use smol::channel::Sender;
-use crate::config::connection::{ClientConfig, ServerConfig, ConnectionType};
+use crate::config::connection::{ClientConfig, ConnectionType, ServerConfig};
 use crate::network::events::ConnectionEvent;
-use crate::network::interfaces::{NetworkConnection, NetworkServer, NetworkFactory};
+use crate::network::interfaces::{NetworkConnection, NetworkFactory, NetworkServer};
 use crate::network::protocol::tcp::{TcpClient, TcpServer};
 use crate::network::protocol::udp::{UdpClient, UdpServer};
+use smol::channel::Sender;
+use std::collections::HashMap;
+use std::net::SocketAddr;
 
 /// 默认的网络工厂实现
 pub struct DefaultNetworkFactory;
 impl NetworkFactory for DefaultNetworkFactory {
     fn create_client(
         config: &ClientConfig,
-        event_sender: Option<Sender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>,
     ) -> Box<dyn NetworkConnection> {
         match config.protocol {
             ConnectionType::Tcp => Box::new(TcpClient::new(config.clone(), event_sender)),
             ConnectionType::Udp => Box::new(UdpClient::new(config.clone(), event_sender)),
         }
     }
-    
+
     fn create_server(
         config: &ServerConfig,
-        event_sender: Option<Sender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>,
     ) -> Box<dyn NetworkServer> {
         match config.protocol {
             ConnectionType::Tcp => Box::new(TcpServer::new(config.clone(), event_sender)),
@@ -44,79 +44,76 @@ impl NetworkConnectionManager {
             servers: HashMap::new(),
         }
     }
-    
+
     /// 创建并启动客户端连接
     pub async fn create_and_connect_client(
         &mut self,
         config: &ClientConfig,
-        event_sender: Option<Sender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果连接已存在，则先断开
         if self.clients.contains_key(&config.id) {
             self.disconnect_client(&config.id).await?;
         }
-        
+
         // 创建客户端连接
         let mut client = DefaultNetworkFactory::create_client(config, event_sender);
-        
+
         // 连接到服务器
         let _ = client.connect().await;
-        
+
         // 保存客户端连接
         self.clients.insert(config.id.clone(), client);
-        
+
         Ok(())
     }
-    
+
     /// 创建并启动服务器
     pub async fn create_and_start_server(
         &mut self,
         config: &ServerConfig,
-        event_sender: Option<Sender<ConnectionEvent>>
+        event_sender: Option<Sender<ConnectionEvent>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果服务器已存在，则先停止
         if self.servers.contains_key(&config.id) {
             self.stop_server(&config.id).await?;
         }
-        
+
         // 创建服务器
         let server = DefaultNetworkFactory::create_server(config, event_sender);
-        
+
         // 保存服务器到映射中
         self.servers.insert(config.id.clone(), server);
-        
+
         // 从映射中获取服务器并启动
         if let Some(server) = self.servers.get_mut(&config.id) {
             let _ = server.start().await;
         }
-        
+
         Ok(())
     }
-    
+
     /// 断开客户端连接
     pub async fn disconnect_client(
         &mut self,
-        client_id: &str
+        client_id: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(mut client) = self.clients.remove(client_id) {
             let _ = client.disconnect().await;
         }
-        
+
         Ok(())
     }
-    
+
     /// 停止服务器
-    pub async fn stop_server(
-        &mut self,
-        server_id: &str
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn stop_server(&mut self, server_id: &str) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(mut server) = self.servers.remove(server_id) {
             let _ = server.stop().await;
         }
-        
+
         Ok(())
     }
-    
+
     /// 手动向UDP服务端添加客户端地址
     /// 仅对UDP协议有效，TCP服务端不支持此操作
     pub async fn add_udp_client(
@@ -124,16 +121,17 @@ impl NetworkConnectionManager {
         server_id: &str,
         addr: SocketAddr,
     ) -> Result<Sender<Vec<u8>>, String> {
-        let server = self.servers.get(server_id)
+        let server = self
+            .servers
+            .get(server_id)
             .ok_or_else(|| format!("服务器 {} 不存在", server_id))?;
-        
+
         let any_ref = (**server).as_any();
-        
+
         if let Some(udp_server) = any_ref.downcast_ref::<UdpServer>() {
             udp_server.add_client(addr).await
         } else {
             Err("仅UDP服务端支持手动添加客户端".to_string())
         }
     }
-
 }

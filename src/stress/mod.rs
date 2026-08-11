@@ -7,14 +7,14 @@
 // 引擎层不依赖 GPUI，仅依赖 tokio + smol::channel + CancellationToken，
 // 可脱离 UI 在 #[tokio::test] 中对本地 echo server 测试。
 
-pub mod config;
-pub mod variables;
-pub mod rate_limiter;
-pub mod stats;
-pub mod report;
-pub mod events;
 pub mod client_worker;
+pub mod config;
 pub mod engine;
+pub mod events;
+pub mod rate_limiter;
+pub mod report;
+pub mod stats;
+pub mod variables;
 
 pub use config::{StressTestConfig, TabViewMode};
 pub use events::{StressEvent, StressReport};

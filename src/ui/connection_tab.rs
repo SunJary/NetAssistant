@@ -4,8 +4,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, StyledExt};
 use gpui_component::{
-    Icon, IconName,
-    Theme,
+    Icon, IconName, Theme,
     clipboard::Clipboard,
     input::{Input, InputState},
     scroll::{Scrollbar, ScrollbarShow},
@@ -21,10 +20,10 @@ use tokio::task::JoinHandle;
 use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::custom_icons::CustomIconName;
-use crate::stress::engine::StressTestEngine;
-use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
 use crate::log_writer::LogWriter;
 use crate::message::{Message, MessageDirection, MessageDisplayMode, MessageListState};
+use crate::stress::engine::StressTestEngine;
+use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
 use crate::ui::stress_panel::StressPanel;
 use crate::utils::hex::hex_to_bytes;
 
@@ -263,7 +262,8 @@ impl ConnectionTabState {
         let added = new_count - (old_count - dropped);
         let insert_pos = old_count - dropped;
         if added > 0 {
-            self.message_list_state.splice(insert_pos..insert_pos, added);
+            self.message_list_state
+                .splice(insert_pos..insert_pos, added);
         }
 
         // 批末单次滚动
@@ -288,13 +288,11 @@ impl ConnectionTabState {
             tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async move {
                     // 1 秒超时，避免文件系统异常时卡住退出流程
-                    let _ = tokio::time::timeout(
-                        std::time::Duration::from_secs(1),
-                        async {
-                            let mut writer = log_writer.lock().await;
-                            writer.close().await;
-                        },
-                    ).await;
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                        let mut writer = log_writer.lock().await;
+                        writer.close().await;
+                    })
+                    .await;
                 });
             });
         }
@@ -460,17 +458,17 @@ impl<'a> ConnectionTab<'a> {
                     .py_1()
                     .rounded_md()
                     .cursor_pointer()
-                    .when(is_debug, |d| {
-                        d.bg(theme.primary).hover(|s| s.opacity(0.9))
-                    })
-                    .when(!is_debug, |d| {
-                        d.hover(|s| s.bg(theme.border))
-                    })
+                    .when(is_debug, |d| d.bg(theme.primary).hover(|s| s.opacity(0.9)))
+                    .when(!is_debug, |d| d.hover(|s| s.bg(theme.border)))
                     .child(
                         div()
                             .text_xs()
                             .font_semibold()
-                            .text_color(if is_debug { theme.primary_foreground } else { theme.muted_foreground })
+                            .text_color(if is_debug {
+                                theme.primary_foreground
+                            } else {
+                                theme.muted_foreground
+                            })
                             .child("调试"),
                     )
                     .on_mouse_down(
@@ -488,23 +486,27 @@ impl<'a> ConnectionTab<'a> {
                     .py_1()
                     .rounded_md()
                     .cursor_pointer()
-                    .when(is_stress, |d| {
-                        d.bg(theme.primary).hover(|s| s.opacity(0.9))
-                    })
-                    .when(!is_stress, |d| {
-                        d.hover(|s| s.bg(theme.border))
-                    })
+                    .when(is_stress, |d| d.bg(theme.primary).hover(|s| s.opacity(0.9)))
+                    .when(!is_stress, |d| d.hover(|s| s.bg(theme.border)))
                     .child(
                         div()
                             .text_xs()
                             .font_semibold()
-                            .text_color(if is_stress { theme.primary_foreground } else { theme.muted_foreground })
+                            .text_color(if is_stress {
+                                theme.primary_foreground
+                            } else {
+                                theme.muted_foreground
+                            })
                             .child("压测"),
                     )
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |app: &mut NetAssistantApp, _, _, cx| {
-                            app.switch_tab_view_mode(tab_id_stress.clone(), TabViewMode::Stress, cx);
+                            app.switch_tab_view_mode(
+                                tab_id_stress.clone(),
+                                TabViewMode::Stress,
+                                cx,
+                            );
                         }),
                     ),
             )
@@ -987,7 +989,8 @@ impl<'a> ConnectionTab<'a> {
         let tab_id_for_toggle = tab_id.clone();
         let auto_reply_enabled = self.tab_state.auto_reply_enabled;
         let is_connected = self.tab_state.is_connected;
-        let is_udp_server = self.tab_state.connection_config.protocol() == crate::config::connection::ConnectionType::Udp;
+        let is_udp_server = self.tab_state.connection_config.protocol()
+            == crate::config::connection::ConnectionType::Udp;
 
         div()
             .flex()
@@ -1241,7 +1244,11 @@ impl<'a> ConnectionTab<'a> {
     }
 
     /// 渲染报文记录区域（聊天样式）- 使用 GPUI list 组件
-    fn render_message_area(&self, _window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_message_area(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         let theme = cx.theme().clone();
         let tab_id = self.tab_id.clone();
         let is_empty = self.tab_state.message_list.messages.is_empty();
@@ -1636,7 +1643,11 @@ impl<'a> ConnectionTab<'a> {
     }
 
     /// 渲染发送区域
-    fn render_send_area(&self, _window: &mut Window, cx: &mut Context<NetAssistantApp>) -> impl IntoElement {
+    fn render_send_area(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
         let theme = cx.theme().clone();
         let tab_id = self.tab_id.clone();
         let tab_id_periodic = tab_id.clone();

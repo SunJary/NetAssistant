@@ -1,13 +1,12 @@
 use gpui::App;
 use gpui_component::{Theme, ThemeRegistry, ThemeSet};
-use std::rc::Rc;
 use log::info;
+use std::rc::Rc;
 
 // 使用原始字符串字面量来避免Rust 2021的前缀语法问题
 const NETASSISTANT_THEME: &str = include_str!("../themes/na-theme.json");
 
-pub struct ThemeManager {
-}
+pub struct ThemeManager {}
 
 impl ThemeManager {
     pub fn new() -> Self {

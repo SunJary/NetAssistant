@@ -81,7 +81,7 @@ impl ConfigStorage {
             config,
         })
     }
-    
+
     /// 保存窗口位置和尺寸
     pub fn save_window_bounds(&mut self, x: Option<f64>, y: Option<f64>, width: f64, height: f64) {
         // 只有当位置有效时才更新位置
@@ -98,20 +98,20 @@ impl ConfigStorage {
             let _ = self.save();
         }
     }
-    
+
     /// 加载窗口位置和尺寸
     pub fn load_window_bounds(&self) -> Option<(f64, f64, f64, f64)> {
         match (
             self.config.window_x,
             self.config.window_y,
             self.config.window_width,
-            self.config.window_height
+            self.config.window_height,
         ) {
             (Some(x), Some(y), Some(width), Some(height)) => Some((x, y, width, height)),
-            _ => None
+            _ => None,
         }
     }
-    
+
     /// 保存侧边栏宽度
     pub fn save_sidebar_width(&mut self, width: f64) {
         self.config.sidebar_width = Some(width);
@@ -119,12 +119,12 @@ impl ConfigStorage {
             let _ = self.save();
         }
     }
-    
+
     /// 加载侧边栏宽度
     pub fn load_sidebar_width(&self) -> Option<f64> {
         self.config.sidebar_width
     }
-    
+
     /// 保存侧边栏折叠状态
     pub fn save_sidebar_collapsed(&mut self, collapsed: bool) {
         self.config.sidebar_collapsed = Some(collapsed);
@@ -132,7 +132,7 @@ impl ConfigStorage {
             let _ = self.save();
         }
     }
-    
+
     /// 加载侧边栏折叠状态
     pub fn load_sidebar_collapsed(&self) -> Option<bool> {
         self.config.sidebar_collapsed
@@ -227,12 +227,15 @@ impl ConfigStorage {
             let _ = self.save();
         }
     }
-    
+
     /// 更新连接配置
     pub fn update_connection(&mut self, connection: ConnectionConfig) {
-        if let Some(index) = self.config.connections
+        if let Some(index) = self
+            .config
+            .connections
             .iter()
-            .position(|c| c.id() == connection.id()) {
+            .position(|c| c.id() == connection.id())
+        {
             self.config.connections[index] = connection;
             if self.config.auto_save {
                 let _ = self.save();
@@ -271,7 +274,11 @@ impl ConfigStorage {
             .unwrap_or(&[])
     }
 
-    pub fn find_favorite_by_content(&self, connection_id: &str, content: &str) -> Option<FavoriteItem> {
+    pub fn find_favorite_by_content(
+        &self,
+        connection_id: &str,
+        content: &str,
+    ) -> Option<FavoriteItem> {
         self.config
             .favorites
             .get(connection_id)

@@ -1,6 +1,10 @@
-use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{ActiveTheme, StyledExt, Icon, IconName, input::{Input, InputState}, scroll::ScrollableElement};
+use gpui::*;
+use gpui_component::{
+    ActiveTheme, Icon, IconName, StyledExt,
+    input::{Input, InputState},
+    scroll::ScrollableElement,
+};
 
 use crate::app::NetAssistantApp;
 use crate::message::FavoriteItem;
@@ -27,7 +31,10 @@ impl<'a> FavoriteListPanel<'a> {
         let pos_y = self.app.favorite_list_position_y.unwrap_or(px(0.0));
         let search_keyword = search_input.read(cx).value().to_string().to_lowercase();
 
-        let mut favorites: Vec<FavoriteItem> = self.app.storage.get_favorites_ref(&tab_id)
+        let mut favorites: Vec<FavoriteItem> = self
+            .app
+            .storage
+            .get_favorites_ref(&tab_id)
             .iter()
             .filter(|item| {
                 if search_keyword.is_empty() {

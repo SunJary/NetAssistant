@@ -1,6 +1,9 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::{ActiveTheme, StyledExt, input::{Input, InputState}};
+use gpui_component::{
+    ActiveTheme, StyledExt,
+    input::{Input, InputState},
+};
 
 use crate::app::NetAssistantApp;
 
@@ -84,31 +87,19 @@ impl AddClientDialog {
                             .font_semibold()
                             .mb_3()
                             .text_color(theme.foreground)
-                            .child("添加客户端")
+                            .child("添加客户端"),
                     )
                     .child(
                         div()
                             .text_xs()
                             .mb_2()
                             .text_color(theme.muted_foreground)
-                            .child("输入客户端地址，如 192.168.1.100:8080")
+                            .child("输入客户端地址，如 192.168.1.100:8080"),
                     )
-                    .child(
-                        div()
-                            .mb_3()
-                            .child(
-                                Input::new(&input)
-                            )
-                    )
+                    .child(div().mb_3().child(Input::new(&input)))
                     // 验证错误提示
                     .when_some(self.error.clone(), |el, err| {
-                        el.child(
-                            div()
-                                .mb_2()
-                                .text_xs()
-                                .text_color(theme.danger)
-                                .child(err)
-                        )
+                        el.child(div().mb_2().text_xs().text_color(theme.danger).child(err))
                     })
                     .child(
                         div()
@@ -125,11 +116,14 @@ impl AddClientDialog {
                                     .text_color(theme.muted_foreground)
                                     .hover(|s| s.bg(theme.secondary))
                                     .child("取消")
-                                    .on_mouse_down(MouseButton::Left, cx.listener(|app, _event, _window, cx| {
-                                        app.show_add_client_dialog = false;
-                                        app.add_client_dialog_error = None;
-                                        cx.notify();
-                                    }))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|app, _event, _window, cx| {
+                                            app.show_add_client_dialog = false;
+                                            app.add_client_dialog_error = None;
+                                            cx.notify();
+                                        }),
+                                    ),
                             )
                             .child(
                                 div()
@@ -142,24 +136,33 @@ impl AddClientDialog {
                                     .text_color(theme.primary_foreground)
                                     .hover(|s| s.bg(theme.primary_hover))
                                     .child("确定")
-                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
-                                        let addr_str = input.read(cx).value().to_string();
-                                        match Self::validate_address(&addr_str) {
-                                            Ok(()) => {
-                                                app.add_client_dialog_error = None;
-                                                let tab_id = app.add_client_dialog_tab_id.clone();
-                                                app.add_client_to_server(tab_id, addr_str.trim().to_string(), cx);
-                                                app.show_add_client_dialog = false;
-                                                cx.notify();
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |app, _event, _window, cx| {
+                                            let addr_str = input.read(cx).value().to_string();
+                                            match Self::validate_address(&addr_str) {
+                                                Ok(()) => {
+                                                    app.add_client_dialog_error = None;
+                                                    let tab_id =
+                                                        app.add_client_dialog_tab_id.clone();
+                                                    app.add_client_to_server(
+                                                        tab_id,
+                                                        addr_str.trim().to_string(),
+                                                        cx,
+                                                    );
+                                                    app.show_add_client_dialog = false;
+                                                    cx.notify();
+                                                }
+                                                Err(msg) => {
+                                                    app.add_client_dialog_error =
+                                                        Some(msg.to_string());
+                                                    cx.notify();
+                                                }
                                             }
-                                            Err(msg) => {
-                                                app.add_client_dialog_error = Some(msg.to_string());
-                                                cx.notify();
-                                            }
-                                        }
-                                    }))
-                            )
-                    )
+                                        }),
+                                    ),
+                            ),
+                    ),
             )
     }
 }

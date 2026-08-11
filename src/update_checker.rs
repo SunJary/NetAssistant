@@ -54,7 +54,10 @@ pub fn should_show_update(current: &str, latest: &str) -> bool {
 /// 跟随 302 重定向，从最终 URL `/releases/tag/v1.2.3` 解析 tag。
 /// 不受 API 限流影响。
 pub async fn check_latest_version() -> Option<String> {
-    let url = format!("https://github.com/{}/{}/releases/latest", GITHUB_OWNER, GITHUB_REPO);
+    let url = format!(
+        "https://github.com/{}/{}/releases/latest",
+        GITHUB_OWNER, GITHUB_REPO
+    );
 
     let client = reqwest::Client::builder()
         .timeout(HTTP_TIMEOUT)
@@ -83,7 +86,10 @@ pub async fn check_latest_version() -> Option<String> {
 /// 请求 API 端点 `GET https://api.github.com/repos/{owner}/{repo}`，
 /// 解析 `stargazers_count`。每次启动仅消耗 1 次 API 配额。
 pub async fn fetch_star_count() -> Option<u32> {
-    let url = format!("https://api.github.com/repos/{}/{}", GITHUB_OWNER, GITHUB_REPO);
+    let url = format!(
+        "https://api.github.com/repos/{}/{}",
+        GITHUB_OWNER, GITHUB_REPO
+    );
 
     let client = reqwest::Client::builder()
         .timeout(HTTP_TIMEOUT)
@@ -92,7 +98,10 @@ pub async fn fetch_star_count() -> Option<u32> {
 
     let resp = client
         .get(&url)
-        .header("User-Agent", format!("NetAssistant/{}", env!("APP_VERSION")))
+        .header(
+            "User-Agent",
+            format!("NetAssistant/{}", env!("APP_VERSION")),
+        )
         .header("Accept", "application/vnd.github+json")
         .send()
         .await

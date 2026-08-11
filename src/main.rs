@@ -20,15 +20,15 @@ mod log_writer;
 mod message;
 mod network;
 mod stress;
-mod ui;
-mod utils;
-mod theme_manager;
 mod theme_event_handler;
+mod theme_manager;
+mod ui;
 mod update_checker;
+mod utils;
 
 use app::NetAssistantApp;
-use theme_manager::ThemeManager;
 use theme_event_handler::{ThemeEventHandler, apply_theme};
+use theme_manager::ThemeManager;
 
 fn main() {
     // 初始化日志
@@ -57,8 +57,19 @@ fn main() {
     // 手动创建 tokio runtime（替代 #[tokio::main]）
     // 目的：在 app.run() 返回后能用 shutdown_timeout 给后台任务优雅退出时间，
     // 并用 std::process::exit(0) 兜底终止 GPUI dispatcher 等非 tokio 线程
+    //
+    // 线程数配置: 默认 tokio 多线程 runtime = CPU 核心数(8-16),
+    // 对高并发压测(≥10000 worker)不足。这里取 min(CPU, 32),
+    // 让 20000 tokio task 有更多线程承载,降低调度抖动。
+    // max_blocking_threads 提高到 2048,容纳大量并发连接建立(阻塞操作)。
+    let worker_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(8)
+        .min(32);
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
+        .worker_threads(worker_threads)
+        .max_blocking_threads(2048)
         .build()
         .expect("创建 tokio runtime 失败");
 
@@ -114,15 +125,21 @@ fn run_app() {
         let window_bounds = match ConfigStorage::new() {
             Ok(storage) => {
                 if let Some((x, y, width, height)) = storage.load_window_bounds() {
-                    info!("=== 从配置加载窗口尺寸: {}x{} @ ({}, {}) ===", width, height, x, y);
+                    info!(
+                        "=== 从配置加载窗口尺寸: {}x{} @ ({}, {}) ===",
+                        width, height, x, y
+                    );
                     // 确保窗口在可见区域内，至少x和y坐标为0
                     let visible_x = x.max(0.0);
                     let visible_y = y.max(0.0);
-                    
+
                     if visible_x != x || visible_y != y {
-                        info!("=== 调整窗口位置到可见区域: {}x{} @ ({}, {}) ===", width, height, visible_x, visible_y);
+                        info!(
+                            "=== 调整窗口位置到可见区域: {}x{} @ ({}, {}) ===",
+                            width, height, visible_x, visible_y
+                        );
                     }
-                    
+
                     Bounds {
                         origin: Point {
                             x: px(visible_x as f32),
@@ -147,7 +164,7 @@ fn run_app() {
                         },
                     }
                 }
-            },
+            }
             Err(e) => {
                 error!("=== 加载配置失败，使用默认窗口尺寸: {:?} ===", e);
                 // 使用默认窗口尺寸
@@ -161,13 +178,16 @@ fn run_app() {
                         height: px(600.0),
                     },
                 }
-            },
+            }
         };
-        
+
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-                window_min_size: Some(gpui::Size { width: px(600.0), height: px(300.0) }),
+                window_min_size: Some(gpui::Size {
+                    width: px(600.0),
+                    height: px(300.0),
+                }),
                 titlebar: Some(TitleBar::title_bar_options()),
                 ..Default::default()
             },
@@ -175,41 +195,44 @@ fn run_app() {
                 info!("=== 进入 open_window 回调 ===");
                 // 创建应用实例
                 let app = cx.new(|cx| NetAssistantApp::new(window, cx));
-                
+
                 // 初始化主题处理器
                 let theme_handler = ThemeEventHandler::new();
                 cx.set_global(theme_handler);
-                
+
                 // 注册GPUI窗口主题变化监听
-                window.observe_window_appearance(move |window, cx| {
-                    info!("=== 应用级别主题变化回调被调用 ===");
-                    let is_dark = window.appearance() == gpui::WindowAppearance::Dark;
-                    info!("检测到主题变化: is_dark = {}", is_dark);
-                    apply_theme(is_dark, cx);
-                    cx.global_mut::<ThemeEventHandler>().set_is_dark_mode(is_dark);
-                    info!("=== 应用级别主题变化回调处理完成 ===");
-                })
-                .detach();
-                
+                window
+                    .observe_window_appearance(move |window, cx| {
+                        info!("=== 应用级别主题变化回调被调用 ===");
+                        let is_dark = window.appearance() == gpui::WindowAppearance::Dark;
+                        info!("检测到主题变化: is_dark = {}", is_dark);
+                        apply_theme(is_dark, cx);
+                        cx.global_mut::<ThemeEventHandler>()
+                            .set_is_dark_mode(is_dark);
+                        info!("=== 应用级别主题变化回调处理完成 ===");
+                    })
+                    .detach();
+
                 // 初始化主题状态（根据当前窗口主题）
                 let is_dark = window.appearance() == gpui::WindowAppearance::Dark;
-                cx.global_mut::<ThemeEventHandler>().set_is_dark_mode(is_dark);
+                cx.global_mut::<ThemeEventHandler>()
+                    .set_is_dark_mode(is_dark);
                 apply_theme(is_dark, cx);
-                
+
                 // 使用 gpui_component::Root 包装应用
                 cx.new(|cx| {
                     // 监听窗口大小变化，实现响应式布局和窗口配置保存
                     let app_clone = app.clone();
-                    
+
                     cx.observe_window_bounds(window, move |_, window, cx| {
                         // 获取窗口内容大小和位置
                         let window_bounds = window.bounds();
                         let content_size = window_bounds.size;
                         let origin = window_bounds.origin;
-                        
+
                         // 设置响应式断点（800px）
                         let threshold = px(800.0);
-                        
+
                         // 根据窗口宽度自动隐藏/显示侧边栏
                         app_clone.update(cx, |app, cx| {
                             if content_size.width < threshold && !app.sidebar_collapsed {
@@ -219,7 +242,7 @@ fn run_app() {
                                 app.sidebar_collapsed = false;
                                 cx.notify();
                             }
-                            
+
                             // 计算并更新消息容器宽度
                             let sidebar_width = app.sidebar_width.unwrap_or(px(200.0));
                             // 连接信息面板的宽度特性：
@@ -233,7 +256,8 @@ fn run_app() {
                             };
                             // 根据连接信息面板的实际宽度特性计算可用宽度
                             let connection_info_width = parent_content_width * 0.25;
-                            let connection_info_width = connection_info_width.max(px(160.0)).min(px(256.0));
+                            let connection_info_width =
+                                connection_info_width.max(px(160.0)).min(px(256.0));
                             let available_width = parent_content_width - connection_info_width;
                             let message_width = if available_width > px(0.0) {
                                 available_width
@@ -241,18 +265,18 @@ fn run_app() {
                                 px(800.0)
                             };
                             app.message_container_width = Some(message_width);
-                            
+
                             // 不需要清空缓存，因为消息级别缓存已有宽度判断逻辑
                             // 当宽度变化超过 10px 时会自动重新计算
                         });
-                        
+
                         // 保存窗口配置
                         if let Ok(mut storage) = ConfigStorage::new() {
                             let x = (origin.x / gpui::px(1.0)) as f64;
                             let y = (origin.y / gpui::px(1.0)) as f64;
                             let width = (content_size.width / gpui::px(1.0)) as f64;
                             let height = (content_size.height / gpui::px(1.0)) as f64;
-                            
+
                             // 检查窗口位置是否有效（防止窗口被关闭时保存无效位置）
                             if x > -1000.0 && y > -1000.0 && x < 32768.0 && y < 32768.0 {
                                 storage.save_window_bounds(Some(x), Some(y), width, height);
@@ -263,13 +287,13 @@ fn run_app() {
                         }
                     })
                     .detach();
-                    
+
                     gpui_component::Root::new(app, window, cx)
                 })
             },
         )
         .unwrap();
-        
+
         info!("=== open_window 调用完成 ===");
     });
 }

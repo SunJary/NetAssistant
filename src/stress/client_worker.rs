@@ -6,8 +6,8 @@
 // 与现有 TcpClient/UdpClient 不同: 压测 worker 自管理连接生命周期、
 // 速率控制、ping-pong RTT 测量、自动重连，不复用 NetworkConnectionManager。
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use log::{debug, warn};
@@ -21,9 +21,16 @@ use crate::config::connection::ConnectionType;
 use crate::stress::config::{ResponseValidation, StressMode, StressTestConfig};
 use crate::stress::events::StressEvent;
 use crate::stress::rate_limiter::TokenBucket;
-use crate::stress::stats::{LatencyHistogram, WorkerStats};
-use crate::stress::variables::render_payload;
+use crate::stress::stats::{ShardedHistogram, WorkerStats};
+use crate::stress::variables::CompiledTemplate;
 use crate::utils::hex::hex_to_bytes;
+
+/// 连续连接失败的最大重试次数。
+///
+/// 超过此次数后 worker 退出,避免端口耗尽时永远空转重连。
+/// 配合指数退避(100ms→5s),30 次重试约持续 2 分钟,足以覆盖大多数压测场景。
+/// 压测时长 < 2 分钟时 worker 会一直重试;超长压测时最终放弃,active 自然下降。
+const MAX_CONNECT_RETRIES: u32 = 30;
 
 /// 预编译的响应校验器
 enum Validator {
@@ -82,7 +89,7 @@ pub async fn run_worker(
     global_seq: Arc<AtomicU64>,
     limiter: Arc<TokenBucket>,
     stats: Arc<WorkerStats>,
-    histogram: Arc<Mutex<LatencyHistogram>>,
+    histogram: Arc<ShardedHistogram>,
     cancel: CancellationToken,
     _error_sender: Sender<StressEvent>,
 ) {
@@ -97,6 +104,8 @@ pub async fn run_worker(
     let timeout_dur = Duration::from_millis(config.timeout_ms);
     let send_interval = Duration::from_millis(config.send_interval_ms);
     let mut worker_counter: u64 = 0;
+    // 预编译模板: 启动时解析一次,避免每包重复 char_indices().collect()
+    let compiled = CompiledTemplate::new(&config.payload_template);
 
     debug!(
         "[worker{}] 启动: {} {:?} {} 并发模式",
@@ -119,6 +128,7 @@ pub async fn run_worker(
                     &mut worker_counter,
                     timeout_dur,
                     send_interval,
+                    &compiled,
                 )
                 .await;
             } else {
@@ -135,6 +145,7 @@ pub async fn run_worker(
                     &mut worker_counter,
                     timeout_dur,
                     send_interval,
+                    &compiled,
                 )
                 .await;
             }
@@ -153,6 +164,7 @@ pub async fn run_worker(
                 &mut worker_counter,
                 timeout_dur,
                 send_interval,
+                &compiled,
             )
             .await;
         }
@@ -161,20 +173,21 @@ pub async fn run_worker(
     debug!("[worker{}] 退出", worker_id);
 }
 
-/// 渲染并编码报文为字节
+/// 渲染并编码报文为字节(使用预编译模板,避免每包重复解析)
 fn build_payload(
-    config: &StressTestConfig,
+    compiled: &CompiledTemplate,
     global_seq: &AtomicU64,
     worker_id: usize,
     worker_counter: &mut u64,
+    hex_mode: bool,
 ) -> Vec<u8> {
-    let hex_mode = config.message_input_mode == "hex";
-    let rendered = render_payload(
-        &config.payload_template,
+    let mut rendered = String::with_capacity(compiled.template_len() + 32);
+    compiled.render(
         global_seq,
         worker_id,
         worker_counter,
         hex_mode,
+        &mut rendered,
     );
     if hex_mode {
         hex_to_bytes(&rendered)
@@ -191,17 +204,21 @@ async fn send_and_maybe_recv_tcp(
     validator: &Validator,
     payload: &[u8],
     stats: &WorkerStats,
-    histogram: &Mutex<LatencyHistogram>,
+    histogram: &ShardedHistogram,
+    worker_id: usize,
     timeout_dur: Duration,
 ) -> bool {
     // 发送
     let send_result = timeout(timeout_dur, socket.write_all(payload)).await;
     match send_result {
         Ok(Ok(())) => {
-            stats.bytes_sent.fetch_add(payload.len() as u64, Ordering::Relaxed);
+            stats
+                .bytes_sent
+                .fetch_add(payload.len() as u64, Ordering::Relaxed);
         }
         _ => {
             stats.failure.fetch_add(1, Ordering::Relaxed);
+            stats.failures.send_failed.fetch_add(1, Ordering::Relaxed);
             return false;
         }
     }
@@ -211,34 +228,38 @@ async fn send_and_maybe_recv_tcp(
         return true;
     }
 
-    // ping-pong: 接收响应并计时
+    // ping-pong: 接收响应并计时(栈缓冲,避免每包 8KB 堆分配)
     let start = Instant::now();
-    let mut buf = vec![0u8; 8192];
+    let mut buf = [0u8; 8192];
     let recv_result = timeout(timeout_dur, socket.read(&mut buf)).await;
     let elapsed_us = start.elapsed().as_micros() as u64;
 
     match recv_result {
         Ok(Ok(n)) if n > 0 => {
-            stats.bytes_received
-                .fetch_add(n as u64, Ordering::Relaxed);
+            stats.bytes_received.fetch_add(n as u64, Ordering::Relaxed);
             if validator.validate(&buf[..n]) {
                 stats.success.fetch_add(1, Ordering::Relaxed);
-                if let Ok(mut h) = histogram.lock() {
-                    h.record(elapsed_us);
-                }
+                histogram.record(worker_id, elapsed_us);
                 true
             } else {
                 stats.failure.fetch_add(1, Ordering::Relaxed);
+                stats
+                    .failures
+                    .validate_failed
+                    .fetch_add(1, Ordering::Relaxed);
                 true // 校验失败但连接正常，不重连
             }
         }
         Ok(Ok(0)) => {
             // 对端关闭
             stats.failure.fetch_add(1, Ordering::Relaxed);
+            stats.failures.peer_closed.fetch_add(1, Ordering::Relaxed);
             false
         }
         _ => {
+            // 接收超时或错误
             stats.failure.fetch_add(1, Ordering::Relaxed);
+            stats.failures.recv_timeout.fetch_add(1, Ordering::Relaxed);
             false
         }
     }
@@ -253,14 +274,19 @@ async fn run_tcp_long(
     global_seq: &Arc<AtomicU64>,
     limiter: &Arc<TokenBucket>,
     stats: &Arc<WorkerStats>,
-    histogram: &Arc<Mutex<LatencyHistogram>>,
+    histogram: &Arc<ShardedHistogram>,
     cancel: CancellationToken,
     worker_counter: &mut u64,
     timeout_dur: Duration,
     send_interval: Duration,
+    compiled: &CompiledTemplate,
 ) {
-    stats.active.fetch_add(1, Ordering::Relaxed);
     let mut socket: Option<TcpStream> = None;
+    let hex_mode = config.message_input_mode == "hex";
+    // 连续连接失败次数(成功后重置),用于指数退避
+    let mut consecutive_connect_failures: u32 = 0;
+    // 是否持有活跃连接(用于准确维护 active 计数)
+    let mut is_active = false;
 
     loop {
         // 取消检查
@@ -270,18 +296,45 @@ async fn run_tcp_long(
 
         // 建立连接(首次或重连)
         if socket.is_none() {
+            // 连接断开后递减 active(反映真实活跃连接数,而非配置的并发数)
+            if is_active {
+                stats.active.fetch_sub(1, Ordering::Relaxed);
+                is_active = false;
+            }
             let connect_result = select_connect(&cancel, target_addr, timeout_dur).await;
             match connect_result {
                 ConnectOutcome::Connected(s) => {
                     socket = Some(s);
+                    stats.active.fetch_add(1, Ordering::Relaxed);
+                    is_active = true;
+                    consecutive_connect_failures = 0; // 重置退避计数
                 }
                 ConnectOutcome::Cancelled => break,
-                ConnectOutcome::Failed => {
+                ConnectOutcome::Failed(err) => {
                     stats.failure.fetch_add(1, Ordering::Relaxed);
+                    stats
+                        .failures
+                        .connect_failed
+                        .fetch_add(1, Ordering::Relaxed);
+                    // 记录最近一次连接错误(限频:每 100 次记一条,避免锁竞争)
+                    if stats.failures.connect_failed.load(Ordering::Relaxed) % 100 == 1 {
+                        stats.set_last_connect_error(&err);
+                    }
                     if config.auto_reconnect {
+                        consecutive_connect_failures =
+                            consecutive_connect_failures.saturating_add(1);
+                        // 超过最大重试次数则放弃,避免端口耗尽时永远空转
+                        if consecutive_connect_failures > MAX_CONNECT_RETRIES {
+                            stats.workers_gave_up.fetch_add(1, Ordering::Relaxed);
+                            debug!(
+                                "[worker{}] 连续连接失败 {} 次,超过上限 {},放弃重连",
+                                worker_id, consecutive_connect_failures, MAX_CONNECT_RETRIES
+                            );
+                            break;
+                        }
                         stats.disconnects.fetch_add(1, Ordering::Relaxed);
                         stats.reconnects.fetch_add(1, Ordering::Relaxed);
-                        select_backoff(&cancel, send_interval).await;
+                        backoff_on_failure(&cancel, consecutive_connect_failures).await;
                         continue;
                     } else {
                         break;
@@ -297,11 +350,18 @@ async fn run_tcp_long(
             break;
         }
 
-        let payload = build_payload(config, global_seq, worker_id, worker_counter);
+        let payload = build_payload(compiled, global_seq, worker_id, worker_counter, hex_mode);
         stats.sent.fetch_add(1, Ordering::Relaxed);
 
         let ok = send_and_maybe_recv_tcp(
-            s, config, validator, &payload, stats, histogram, timeout_dur,
+            s,
+            config,
+            validator,
+            &payload,
+            stats,
+            histogram,
+            worker_id,
+            timeout_dur,
         )
         .await;
 
@@ -309,11 +369,15 @@ async fn run_tcp_long(
             // 连接异常，关闭并准备重连
             stats.disconnects.fetch_add(1, Ordering::Relaxed);
             socket.take();
+            // is_active 保持 true,下次循环 socket.is_none() 时会递减 active
             if !config.auto_reconnect {
                 break;
             }
             stats.reconnects.fetch_add(1, Ordering::Relaxed);
-            select_backoff(&cancel, send_interval).await;
+            // 发包失败后的退避:用 send_interval 或至少 100ms
+            if !select_sleep(&cancel, send_interval.max(Duration::from_millis(100))).await {
+                break;
+            }
             continue;
         }
 
@@ -323,7 +387,10 @@ async fn run_tcp_long(
         }
     }
 
-    stats.active.fetch_sub(1, Ordering::Relaxed);
+    // 退出时递减 active(如果还持有连接)
+    if is_active {
+        stats.active.fetch_sub(1, Ordering::Relaxed);
+    }
     debug!("[worker{}] TCP长连接退出", worker_id);
 }
 
@@ -336,12 +403,14 @@ async fn run_tcp_short(
     global_seq: &Arc<AtomicU64>,
     limiter: &Arc<TokenBucket>,
     stats: &Arc<WorkerStats>,
-    histogram: &Arc<Mutex<LatencyHistogram>>,
+    histogram: &Arc<ShardedHistogram>,
     cancel: CancellationToken,
     worker_counter: &mut u64,
     timeout_dur: Duration,
     send_interval: Duration,
+    compiled: &CompiledTemplate,
 ) {
+    let hex_mode = config.message_input_mode == "hex";
     loop {
         if cancel.is_cancelled() {
             break;
@@ -357,17 +426,32 @@ async fn run_tcp_short(
         let mut socket = match connect_result {
             ConnectOutcome::Connected(s) => s,
             ConnectOutcome::Cancelled => break,
-            ConnectOutcome::Failed => {
+            ConnectOutcome::Failed(err) => {
                 stats.failure.fetch_add(1, Ordering::Relaxed);
+                stats
+                    .failures
+                    .connect_failed
+                    .fetch_add(1, Ordering::Relaxed);
+                // 记录最近一次连接错误(限频)
+                if stats.failures.connect_failed.load(Ordering::Relaxed) % 100 == 1 {
+                    stats.set_last_connect_error(&err);
+                }
                 continue;
             }
         };
 
-        let payload = build_payload(config, global_seq, worker_id, worker_counter);
+        let payload = build_payload(compiled, global_seq, worker_id, worker_counter, hex_mode);
         stats.sent.fetch_add(1, Ordering::Relaxed);
 
         let _ = send_and_maybe_recv_tcp(
-            &mut socket, config, validator, &payload, stats, histogram, timeout_dur,
+            &mut socket,
+            config,
+            validator,
+            &payload,
+            stats,
+            histogram,
+            worker_id,
+            timeout_dur,
         )
         .await;
 
@@ -390,11 +474,12 @@ async fn run_udp(
     global_seq: &Arc<AtomicU64>,
     limiter: &Arc<TokenBucket>,
     stats: &Arc<WorkerStats>,
-    histogram: &Arc<Mutex<LatencyHistogram>>,
+    histogram: &Arc<ShardedHistogram>,
     cancel: CancellationToken,
     worker_counter: &mut u64,
     timeout_dur: Duration,
     send_interval: Duration,
+    compiled: &CompiledTemplate,
 ) {
     let bind_addr = if target_addr.is_ipv6() {
         "[::]:0"
@@ -410,6 +495,7 @@ async fn run_udp(
     };
     let _ = socket.connect(target_addr).await;
     stats.active.fetch_add(1, Ordering::Relaxed);
+    let hex_mode = config.message_input_mode == "hex";
 
     loop {
         if cancel.is_cancelled() {
@@ -420,7 +506,7 @@ async fn run_udp(
             break;
         }
 
-        let payload = build_payload(config, global_seq, worker_id, worker_counter);
+        let payload = build_payload(compiled, global_seq, worker_id, worker_counter, hex_mode);
         stats.sent.fetch_add(1, Ordering::Relaxed);
 
         // 发送
@@ -431,6 +517,7 @@ async fn run_udp(
             }
             _ => {
                 stats.failure.fetch_add(1, Ordering::Relaxed);
+                stats.failures.send_failed.fetch_add(1, Ordering::Relaxed);
                 if !select_sleep(&cancel, send_interval).await {
                     break;
                 }
@@ -441,9 +528,9 @@ async fn run_udp(
         if config.mode == StressMode::Throughput {
             stats.success.fetch_add(1, Ordering::Relaxed);
         } else {
-            // ping-pong: 接收
+            // ping-pong: 接收(栈缓冲,避免每包堆分配)
             let start = Instant::now();
-            let mut buf = vec![0u8; 8192];
+            let mut buf = [0u8; 8192];
             let recv_result = timeout(timeout_dur, socket.recv(&mut buf)).await;
             let elapsed_us = start.elapsed().as_micros() as u64;
             match recv_result {
@@ -451,15 +538,18 @@ async fn run_udp(
                     stats.bytes_received.fetch_add(n as u64, Ordering::Relaxed);
                     if validator.validate(&buf[..n]) {
                         stats.success.fetch_add(1, Ordering::Relaxed);
-                        if let Ok(mut h) = histogram.lock() {
-                            h.record(elapsed_us);
-                        }
+                        histogram.record(worker_id, elapsed_us);
                     } else {
                         stats.failure.fetch_add(1, Ordering::Relaxed);
+                        stats
+                            .failures
+                            .validate_failed
+                            .fetch_add(1, Ordering::Relaxed);
                     }
                 }
                 _ => {
                     stats.failure.fetch_add(1, Ordering::Relaxed);
+                    stats.failures.recv_timeout.fetch_add(1, Ordering::Relaxed);
                 }
             }
         }
@@ -475,7 +565,8 @@ async fn run_udp(
 
 enum ConnectOutcome {
     Connected(TcpStream),
-    Failed,
+    /// 携带错误信息,便于写入失败日志定位根因
+    Failed(String),
     Cancelled,
 }
 
@@ -489,9 +580,25 @@ async fn select_connect(
         _ = cancel.cancelled() => ConnectOutcome::Cancelled,
         r = timeout(timeout_dur, TcpStream::connect(target)) => match r {
             Ok(Ok(s)) => ConnectOutcome::Connected(s),
-            _ => ConnectOutcome::Failed,
+            Ok(Err(e)) => ConnectOutcome::Failed(format_io_error(&e)),
+            Err(_) => ConnectOutcome::Failed("连接超时".to_string()),
         },
     }
+}
+
+/// 将 io::Error 格式化为可读字符串(含 ErrorKind 分类)
+fn format_io_error(e: &std::io::Error) -> String {
+    use std::io::ErrorKind;
+    let kind_str = match e.kind() {
+        ErrorKind::ConnectionRefused => "连接被拒绝(ConnectionRefused)",
+        ErrorKind::AddrInUse => "地址被占用(AddrInUse)",
+        ErrorKind::AddrNotAvailable => "地址不可用(AddrNotAvailable, 可能临时端口耗尽)",
+        ErrorKind::TimedOut => "操作超时(TimedOut)",
+        ErrorKind::PermissionDenied => "权限被拒(PermissionDenied)",
+        ErrorKind::ConnectionReset => "连接被重置(ConnectionReset)",
+        _ => "其他",
+    };
+    format!("{}: {}", kind_str, e)
 }
 
 /// 在取消令牌与令牌桶 acquire 之间 select。
@@ -506,6 +613,11 @@ async fn select_acquire(cancel: &CancellationToken, limiter: &Arc<TokenBucket>) 
 /// 在取消令牌与 sleep 之间 select。
 /// 返回 false 表示被取消。
 async fn select_sleep(cancel: &CancellationToken, dur: Duration) -> bool {
+    // 快速路径: 间隔为 0 时不 sleep,直接检查取消并返回。
+    // 避免 20000 task 反复 sleep(0) → yield 导致调度器空转,QPS 被调度开销吃掉。
+    if dur.is_zero() {
+        return !cancel.is_cancelled();
+    }
     tokio::select! {
         _ = cancel.cancelled() => false,
         _ = sleep(dur) => true,
@@ -513,14 +625,18 @@ async fn select_sleep(cancel: &CancellationToken, dur: Duration) -> bool {
 }
 
 /// 指数退避重连等待，可被取消。
-async fn select_backoff(cancel: &CancellationToken, base: Duration) {
-    // 简单线性退避: base, 2*base, 4*base ... 上限 5s
-    let mut delay = base.max(Duration::from_millis(100));
+/// 连续失败退避: 基于连续失败次数递增退避时间。
+///
+/// 与旧的 select_backoff 不同,此函数接受外部维护的 `consecutive_failures` 计数器,
+/// 退避时间随失败次数指数增长(100ms → 200ms → 400ms → ... → 上限 5s),
+/// 且不会在每次调用时重置,避免端口耗尽时疯狂重连产生海量 connect_failed。
+///
+/// 成功连接后调用方应将 consecutive_failures 重置为 0。
+async fn backoff_on_failure(cancel: &CancellationToken, consecutive_failures: u32) {
+    let base = Duration::from_millis(100);
     let max = Duration::from_secs(5);
-    for _ in 0..3 {
-        if !select_sleep(cancel, delay).await {
-            return;
-        }
-        delay = (delay * 2).min(max);
-    }
+    // 退避 = min(100ms * 2^(failures-1), 5s)
+    let exp = consecutive_failures.saturating_sub(1).min(6); // 2^6=64, 100ms*64=6.4s→cap 5s
+    let delay = std::cmp::min(base * (1u32 << exp), max);
+    select_sleep(cancel, delay).await;
 }

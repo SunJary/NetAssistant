@@ -1,8 +1,8 @@
 use crate::message::{Message, MessageDirection};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// 异步日志写入器

@@ -1,9 +1,9 @@
+use crate::custom_icons::CustomIconName;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::{Icon, IconName};
-use gpui_component::ActiveTheme as _;
-use crate::custom_icons::CustomIconName;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::ConnectionConfig;
@@ -23,7 +23,7 @@ impl<'a> ConnectionPanel<'a> {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
-        
+
         // 提取客户端连接信息（ID、IP、端口、类型）
         let client_info: Vec<(String, String, u16, String)> = self
             .app
@@ -197,8 +197,7 @@ impl<'a> ConnectionPanel<'a> {
                                   _window: &mut Window,
                                   cx: &mut Context<NetAssistantApp>| {
                                 app.show_context_menu = true;
-                                app.context_menu_connection =
-                                    Some(conn_id_clone2.clone());
+                                app.context_menu_connection = Some(conn_id_clone2.clone());
                                 app.context_menu_is_client = is_client_clone;
                                 app.context_menu_position = Some(event.position.x);
                                 app.context_menu_position_y = Some(event.position.y);
@@ -219,23 +218,22 @@ impl<'a> ConnectionPanel<'a> {
             .mr_2() // 添加右边距，增加两个图标之间的间距
             .cursor_pointer()
             .child(
-                Icon::new(CustomIconName::FilePlusCorner)
-                    .text_color(theme.primary) // 设置图标颜色为主题的主色调（蓝色）
+                Icon::new(CustomIconName::FilePlusCorner).text_color(theme.primary), // 设置图标颜色为主题的主色调（蓝色）
             )
             .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(
-                            move |app: &mut NetAssistantApp,
-                                  _event: &MouseDownEvent,
-                                  window: &mut Window,
-                                  cx: &mut Context<NetAssistantApp>| {
-                                // 阻止事件传播，防止点击穿透到展开事件
-                                cx.stop_propagation();
+                MouseButton::Left,
+                cx.listener(
+                    move |app: &mut NetAssistantApp,
+                          _event: &MouseDownEvent,
+                          window: &mut Window,
+                          cx: &mut Context<NetAssistantApp>| {
+                        // 阻止事件传播，防止点击穿透到展开事件
+                        cx.stop_propagation();
 
-                                app.open_new_connection(is_client_clone, window, cx);
-                            },
-                        ),
-                    );
+                        app.open_new_connection(is_client_clone, window, cx);
+                    },
+                ),
+            );
 
         div()
             .flex()
@@ -264,19 +262,16 @@ impl<'a> ConnectionPanel<'a> {
                             .items_center()
                             .child(title)
                             .child(
-                                div()
-                                    .w_2() // 使用固定宽度的间隔元素，提供更大的间距
+                                div().w_2(), // 使用固定宽度的间隔元素，提供更大的间距
                             )
-                            .child(new_connection_button)
+                            .child(new_connection_button),
                     )
                     // 展开/折叠按钮放在右侧
-                    .child(
-                        if is_expanded {
-                            IconName::ChevronDown
-                        } else {
-                            IconName::ChevronRight
-                        }
-                    )
+                    .child(if is_expanded {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |app, _event, _window, _cx| {

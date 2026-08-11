@@ -1,5 +1,8 @@
 use gpui::*;
-use gpui_component::{ActiveTheme, StyledExt, input::{Input, InputState}};
+use gpui_component::{
+    ActiveTheme, StyledExt,
+    input::{Input, InputState},
+};
 
 use crate::app::NetAssistantApp;
 use crate::message::FavoriteItem;
@@ -47,7 +50,8 @@ impl FavoriteRemarkDialog {
                             app.favorite_remark_tab_id.take(),
                         ) {
                             let content_for_cache = content.clone();
-                            let item = FavoriteItem::new(content, message_type, remark.trim().to_string());
+                            let item =
+                                FavoriteItem::new(content, message_type, remark.trim().to_string());
                             app.storage.add_favorite(&tab_id, item);
                             if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
                                 tab_state.favorited_contents.insert(content_for_cache);
@@ -74,15 +78,9 @@ impl FavoriteRemarkDialog {
                             .font_semibold()
                             .mb_3()
                             .text_color(theme.foreground)
-                            .child("添加收藏备注")
+                            .child("添加收藏备注"),
                     )
-                    .child(
-                        div()
-                            .mb_3()
-                            .child(
-                                Input::new(&remark_input)
-                            )
-                    )
+                    .child(div().mb_3().child(Input::new(&remark_input)))
                     .child(
                         div()
                             .flex()
@@ -98,10 +96,13 @@ impl FavoriteRemarkDialog {
                                     .text_color(theme.muted_foreground)
                                     .hover(|s| s.bg(theme.secondary))
                                     .child("取消")
-                                    .on_mouse_down(MouseButton::Left, cx.listener(|app, _event, _window, cx| {
-                                        app.show_favorite_remark = false;
-                                        cx.notify();
-                                    }))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|app, _event, _window, cx| {
+                                            app.show_favorite_remark = false;
+                                            cx.notify();
+                                        }),
+                                    ),
                             )
                             .child(
                                 div()
@@ -114,30 +115,45 @@ impl FavoriteRemarkDialog {
                                     .text_color(theme.primary_foreground)
                                     .hover(|s| s.bg(theme.primary_hover))
                                     .child("确定")
-                                    .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, _window, cx| {
-                                        let remark = remark_input.read(cx).value().to_string();
-                                        if remark.trim().is_empty() {
-                                            return;
-                                        }
-
-                                        if let (Some(content), Some(message_type), Some(tab_id)) = (
-                                            app.favorite_remark_content.take(),
-                                            app.favorite_remark_message_type.take(),
-                                            app.favorite_remark_tab_id.take(),
-                                        ) {
-                                            let content_for_cache = content.clone();
-                                            let item = FavoriteItem::new(content, message_type, remark.trim().to_string());
-                                            app.storage.add_favorite(&tab_id, item);
-                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                tab_state.favorited_contents.insert(content_for_cache);
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |app, _event, _window, cx| {
+                                            let remark = remark_input.read(cx).value().to_string();
+                                            if remark.trim().is_empty() {
+                                                return;
                                             }
-                                        }
 
-                                        app.show_favorite_remark = false;
-                                        cx.notify();
-                                    }))
-                            )
-                    )
+                                            if let (
+                                                Some(content),
+                                                Some(message_type),
+                                                Some(tab_id),
+                                            ) = (
+                                                app.favorite_remark_content.take(),
+                                                app.favorite_remark_message_type.take(),
+                                                app.favorite_remark_tab_id.take(),
+                                            ) {
+                                                let content_for_cache = content.clone();
+                                                let item = FavoriteItem::new(
+                                                    content,
+                                                    message_type,
+                                                    remark.trim().to_string(),
+                                                );
+                                                app.storage.add_favorite(&tab_id, item);
+                                                if let Some(tab_state) =
+                                                    app.connection_tabs.get_mut(&tab_id)
+                                                {
+                                                    tab_state
+                                                        .favorited_contents
+                                                        .insert(content_for_cache);
+                                                }
+                                            }
+
+                                            app.show_favorite_remark = false;
+                                            cx.notify();
+                                        }),
+                                    ),
+                            ),
+                    ),
             )
     }
 }

@@ -1,16 +1,19 @@
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::StyledExt;
-use gpui_component::IconName;
-use gpui_component::ActiveTheme;
-use gpui_component::scroll::ScrollableElement;
-use gpui_component::TitleBar;
-use gpui_component::tooltip::Tooltip;
 use crate::app::NetAssistantApp;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::{NewConnectionDialog, DecoderSelectionDialog, FavoriteRemarkDialog, FavoriteListPanel, AddClientDialog, StressConfigDialog};
+use crate::ui::dialog::{
+    AddClientDialog, DecoderSelectionDialog, FavoriteListPanel, FavoriteRemarkDialog,
+    NewConnectionDialog, StressConfigDialog,
+};
 use crate::ui::tab_container::TabContainer;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
+use gpui_component::ActiveTheme;
+use gpui_component::IconName;
+use gpui_component::StyledExt;
+use gpui_component::TitleBar;
+use gpui_component::scroll::ScrollableElement;
+use gpui_component::tooltip::Tooltip;
 
 pub struct MainWindow<'a> {
     app: &'a NetAssistantApp,
@@ -30,7 +33,7 @@ impl<'a> MainWindow<'a> {
         let update_available = self.app.update_available;
         let latest_version = self.app.latest_version.clone();
         let star_count = self.app.star_count;
-        
+
         div()
             .w_full()
             .h_full()

@@ -174,9 +174,7 @@ impl StressTestConfig {
     /// 解析目标地址为 SocketAddr，自动处理 IPv6 方括号
     /// (复用 network/protocol/tcp.rs 的地址拼接逻辑)
     pub fn parse_target_addr(&self) -> Result<std::net::SocketAddr, String> {
-        let address = if self.target_address.contains(':')
-            && !self.target_address.contains('[')
-        {
+        let address = if self.target_address.contains(':') && !self.target_address.contains('[') {
             // IPv6 地址需要方括号
             format!("[{}]:{}", self.target_address, self.target_port)
         } else {
@@ -229,11 +227,8 @@ mod tests {
 
     #[test]
     fn test_for_target_backfill() {
-        let cfg = StressTestConfig::for_target(
-            "192.168.1.1".to_string(),
-            9999,
-            ConnectionType::Udp,
-        );
+        let cfg =
+            StressTestConfig::for_target("192.168.1.1".to_string(), 9999, ConnectionType::Udp);
         assert_eq!(cfg.target_address, "192.168.1.1");
         assert_eq!(cfg.target_port, 9999);
         assert_eq!(cfg.protocol, ConnectionType::Udp);
@@ -266,7 +261,10 @@ mod tests {
         let cases = vec![
             StopCondition::Duration(60),
             StopCondition::Count(100_000),
-            StopCondition::Either { duration_secs: 60, count: 100_000 },
+            StopCondition::Either {
+                duration_secs: 60,
+                count: 100_000,
+            },
             StopCondition::Manual,
         ];
         for c in cases {
@@ -315,8 +313,14 @@ mod tests {
             payload_template: "4142${seq}".to_string(),
             send_interval_ms: 50,
             global_qps_limit: Some(1000),
-            stop_condition: StopCondition::Either { duration_secs: 60, count: 100_000 },
-            ramp_up: RampUpConfig { enabled: true, ramp_up_secs: 10 },
+            stop_condition: StopCondition::Either {
+                duration_secs: 60,
+                count: 100_000,
+            },
+            ramp_up: RampUpConfig {
+                enabled: true,
+                ramp_up_secs: 10,
+            },
             auto_reconnect: false,
             response_validation: Some(ResponseValidation::Contains("OK".to_string())),
             timeout_ms: 5000,

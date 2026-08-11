@@ -1,6 +1,30 @@
 // 压测统计: 实时快照 + 延迟直方图 + worker 共享原子计数器
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, RwLock};
+
+/// 失败分类快照(用于 StressStats / StressReport)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FailureBreakdownSnapshot {
+    pub connect_failed: u64,
+    pub send_failed: u64,
+    pub recv_timeout: u64,
+    pub peer_closed: u64,
+    pub validate_failed: u64,
+}
+
+impl FailureBreakdownSnapshot {
+    pub fn from(stats: &FailureBreakdown) -> Self {
+        let (c, s, r, p, v) = stats.snapshot();
+        Self {
+            connect_failed: c,
+            send_failed: s,
+            recv_timeout: r,
+            peer_closed: p,
+            validate_failed: v,
+        }
+    }
+}
 
 /// 实时统计快照(引擎每 250ms 生成一份，经 channel 推送 UI)
 #[derive(Debug, Clone, Default)]
@@ -20,6 +44,8 @@ pub struct StressStats {
     pub latency_max_us: Option<u64>,
     pub bytes_sent: u64,
     pub bytes_received: u64,
+    /// 失败分类(连接/发送/超时/对端关闭/校验)
+    pub failures: FailureBreakdownSnapshot,
 }
 
 /// 延迟直方图
@@ -74,7 +100,16 @@ impl LatencyHistogram {
     ///
     /// 原地排序(不 clone)，避免每 250ms 快照时分配 800KB 临时内存。
     /// 蓄水池采样不依赖样本顺序，排序不影响后续 record() 的正确性。
-    pub fn percentiles(&mut self) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
+    #[allow(dead_code)]
+    pub fn percentiles(
+        &mut self,
+    ) -> (
+        Option<u64>,
+        Option<u64>,
+        Option<u64>,
+        Option<u64>,
+        Option<u64>,
+    ) {
         if self.samples.is_empty() {
             return (None, None, None, None, None);
         }
@@ -87,7 +122,13 @@ impl LatencyHistogram {
         };
         let avg = self.samples.iter().sum::<u64>() / len as u64;
         let max = *self.samples.last().unwrap();
-        (Some(pct(0.50)), Some(pct(0.95)), Some(pct(0.99)), Some(avg), Some(max))
+        (
+            Some(pct(0.50)),
+            Some(pct(0.95)),
+            Some(pct(0.99)),
+            Some(avg),
+            Some(max),
+        )
     }
 
     /// 样本数
@@ -104,41 +145,185 @@ impl LatencyHistogram {
     }
 }
 
+/// 分片延迟直方图
+///
+/// 将 worker 按 `worker_id % shards.len()` 分到不同分片,各分片独立 Mutex,
+/// 竞争降低 N 倍(默认 32 分片)。聚合时合并各分片样本再算百分位。
+///
+/// 解决高并发(≥10000 worker)下所有 worker 串行抢同一把锁的瓶颈。
+pub struct ShardedHistogram {
+    shards: Vec<Mutex<LatencyHistogram>>,
+}
+
+impl ShardedHistogram {
+    /// 创建分片直方图,分片数 = min(concurrency, 64)
+    pub fn new(concurrency: usize) -> Self {
+        let shard_count = concurrency.clamp(1, 64);
+        let shards = (0..shard_count)
+            .map(|_| Mutex::new(LatencyHistogram::with_default_cap()))
+            .collect();
+        Self { shards }
+    }
+
+    /// 记录一个延迟样本(按 worker_id 分片,降低锁竞争)
+    pub fn record(&self, worker_id: usize, latency_us: u64) {
+        let idx = worker_id % self.shards.len();
+        if let Ok(mut h) = self.shards[idx].lock() {
+            h.record(latency_us);
+        }
+    }
+
+    /// 合并所有分片样本并计算百分位
+    pub fn percentiles(
+        &self,
+    ) -> (
+        Option<u64>,
+        Option<u64>,
+        Option<u64>,
+        Option<u64>,
+        Option<u64>,
+    ) {
+        let mut all: Vec<u64> = Vec::new();
+        for s in &self.shards {
+            if let Ok(h) = s.lock() {
+                all.extend_from_slice(&h.samples);
+            }
+        }
+        if all.is_empty() {
+            return (None, None, None, None, None);
+        }
+        all.sort_unstable();
+        let len = all.len();
+        let pct = |p: f64| -> u64 {
+            let idx = ((len as f64) * p).ceil() as usize;
+            all[idx.saturating_sub(1).min(len - 1)]
+        };
+        let avg = all.iter().sum::<u64>() / len as u64;
+        let max = *all.last().unwrap();
+        (
+            Some(pct(0.50)),
+            Some(pct(0.95)),
+            Some(pct(0.99)),
+            Some(avg),
+            Some(max),
+        )
+    }
+}
+
 /// worker 共享统计(原子计数，无锁)
 ///
 /// 多个 worker 通过 Arc<WorkerStats> 共享，聚合 task 用 load 读取后生成 StressStats。
+///
+/// 高频原子字段(sent/success/failure/active)用缓存行填充,避免 20000 worker
+/// 跨核 fetch_add 时同一缓存行反复失效(伪共享)。
+#[repr(align(64))]
+#[derive(Default)]
+pub struct CacheLinePadded<T>(pub T);
+
+impl<T> std::ops::Deref for CacheLinePadded<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> std::ops::DerefMut for CacheLinePadded<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+/// 失败分类计数(原子,无锁)
+///
+/// 区分失败原因,帮助定位 QPS 下降根因(如大量连接失败 → 端口耗尽/服务端拒绝)。
+/// 所有字段原子累加,聚合时 load 读取。
+#[derive(Debug, Default)]
+pub struct FailureBreakdown {
+    /// TCP/UDP 连接建立失败(目标拒绝/超时/端口耗尽)
+    pub connect_failed: AtomicU64,
+    /// 发送失败(socket write/send 报错)
+    pub send_failed: AtomicU64,
+    /// 接收超时(等待响应超过 timeout_ms)
+    pub recv_timeout: AtomicU64,
+    /// 对端关闭连接(read 返回 0)
+    pub peer_closed: AtomicU64,
+    /// 响应校验失败(连接正常但响应不匹配)
+    pub validate_failed: AtomicU64,
+}
+
+impl FailureBreakdown {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 汇总各分类(load 读取)
+    pub fn snapshot(&self) -> (u64, u64, u64, u64, u64) {
+        (
+            self.connect_failed.load(Ordering::Relaxed),
+            self.send_failed.load(Ordering::Relaxed),
+            self.recv_timeout.load(Ordering::Relaxed),
+            self.peer_closed.load(Ordering::Relaxed),
+            self.validate_failed.load(Ordering::Relaxed),
+        )
+    }
+}
+
 pub struct WorkerStats {
-    pub sent: AtomicU64,
-    pub success: AtomicU64,
-    pub failure: AtomicU64,
-    pub active: AtomicU64,
+    pub sent: CacheLinePadded<AtomicU64>,
+    pub success: CacheLinePadded<AtomicU64>,
+    pub failure: CacheLinePadded<AtomicU64>,
+    pub active: CacheLinePadded<AtomicU64>,
     pub disconnects: AtomicU64,
     pub reconnects: AtomicU64,
     pub bytes_sent: AtomicU64,
     pub bytes_received: AtomicU64,
+    /// 失败分类计数
+    pub failures: FailureBreakdown,
+    /// 因连续连接失败超过上限而退出的 worker 数
+    pub workers_gave_up: AtomicU64,
+    /// 最近一次连接错误信息(限频写入,读取用于失败日志)
+    last_connect_error: RwLock<String>,
 }
 
 impl WorkerStats {
     pub fn new() -> Self {
         Self {
-            sent: AtomicU64::new(0),
-            success: AtomicU64::new(0),
-            failure: AtomicU64::new(0),
-            active: AtomicU64::new(0),
+            sent: CacheLinePadded(AtomicU64::new(0)),
+            success: CacheLinePadded(AtomicU64::new(0)),
+            failure: CacheLinePadded(AtomicU64::new(0)),
+            active: CacheLinePadded(AtomicU64::new(0)),
             disconnects: AtomicU64::new(0),
             reconnects: AtomicU64::new(0),
             bytes_sent: AtomicU64::new(0),
             bytes_received: AtomicU64::new(0),
+            failures: FailureBreakdown::new(),
+            workers_gave_up: AtomicU64::new(0),
+            last_connect_error: RwLock::new(String::new()),
         }
+    }
+
+    /// 记录最近一次连接错误(限频调用,如每 100 次记一条)
+    pub fn set_last_connect_error(&self, err: &str) {
+        if let Ok(mut w) = self.last_connect_error.write() {
+            *w = err.to_string();
+        }
+    }
+
+    /// 读取最近一次连接错误
+    pub fn last_connect_error(&self) -> String {
+        self.last_connect_error
+            .read()
+            .map(|r| r.clone())
+            .unwrap_or_default()
     }
 
     /// 生成当前快照(原子读)
     pub fn snapshot(&self) -> (u64, u64, u64, u64, u64, u64, u64, u64) {
         (
-            self.sent.load(Ordering::Relaxed),
-            self.success.load(Ordering::Relaxed),
-            self.failure.load(Ordering::Relaxed),
-            self.active.load(Ordering::Relaxed),
+            self.sent.0.load(Ordering::Relaxed),
+            self.success.0.load(Ordering::Relaxed),
+            self.failure.0.load(Ordering::Relaxed),
+            self.active.0.load(Ordering::Relaxed),
             self.disconnects.load(Ordering::Relaxed),
             self.reconnects.load(Ordering::Relaxed),
             self.bytes_sent.load(Ordering::Relaxed),
@@ -230,7 +415,18 @@ mod tests {
         ws.bytes_sent.fetch_add(1024, Ordering::Relaxed);
         ws.bytes_received.fetch_add(512, Ordering::Relaxed);
         let (sent, success, failure, active, disconnects, reconnects, bs, br) = ws.snapshot();
-        assert_eq!((sent, success, failure, active, disconnects, reconnects, bs, br),
-                   (10, 8, 2, 5, 1, 1, 1024, 512));
+        assert_eq!(
+            (
+                sent,
+                success,
+                failure,
+                active,
+                disconnects,
+                reconnects,
+                bs,
+                br
+            ),
+            (10, 8, 2, 5, 1, 1, 1024, 512)
+        );
     }
 }

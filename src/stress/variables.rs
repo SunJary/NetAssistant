@@ -23,6 +23,7 @@ use uuid::Uuid;
 /// - `worker_id`: 当前 worker 编号
 /// - `worker_counter`: 当前 worker 本地计数(每包自增)
 /// - `hex_mode`: hex 模式下数值变量格式化为十六进制(偶数长度)
+#[allow(dead_code)]
 pub fn render_payload(
     template: &str,
     global_seq: &AtomicU64,
@@ -76,7 +77,183 @@ pub fn render_payload(
     output
 }
 
+/// 预编译的报文模板段
+#[derive(Debug, Clone)]
+enum TemplateSegment {
+    /// 字面量文本
+    Literal(String),
+    /// ${seq}
+    Seq,
+    /// ${worker_id}
+    WorkerId,
+    /// ${counter}
+    Counter,
+    /// ${timestamp}
+    Timestamp,
+    /// ${uuid}
+    Uuid,
+    /// ${random:min:max} (预解析的 min/max)
+    Random(i64, i64),
+    /// 未知变量,原样保留
+    Unknown(String),
+}
+
+/// 预编译的报文模板
+///
+/// 在 worker 启动时解析一次模板,拆分为段(Literal / 变量),
+/// 避免每包重复执行 `char_indices().collect()` 和字符串搜索。
+pub struct CompiledTemplate {
+    segments: Vec<TemplateSegment>,
+    /// 原始模板长度(用于预分配输出缓冲)
+    template_len: usize,
+}
+
+impl CompiledTemplate {
+    /// 从模板字符串构造预编译模板
+    pub fn new(template: &str) -> Self {
+        let template_len = template.len();
+        // 快速路径: 无变量
+        if !template.contains("${") {
+            return Self {
+                segments: vec![TemplateSegment::Literal(template.to_string())],
+                template_len,
+            };
+        }
+
+        let chars: Vec<(usize, char)> = template.char_indices().collect();
+        let mut segments = Vec::new();
+        let mut ci = 0;
+        let mut literal_start = 0;
+
+        while ci < chars.len() {
+            let (_, ch) = chars[ci];
+            if ch == '$' && ci + 1 < chars.len() && chars[ci + 1].1 == '{' {
+                let after_brace_byte = chars[ci + 1].0 + chars[ci + 1].1.len_utf8();
+                if let Some(close_rel) = template[after_brace_byte..].find('}') {
+                    // 先冲刷已积累的字面量
+                    if literal_start < chars[ci].0 {
+                        segments.push(TemplateSegment::Literal(
+                            template[literal_start..chars[ci].0].to_string(),
+                        ));
+                    }
+                    let var_name = &template[after_brace_byte..after_brace_byte + close_rel];
+                    segments.push(parse_segment(var_name));
+                    let close_byte = after_brace_byte + close_rel + 1;
+                    literal_start = close_byte;
+                    ci = chars.partition_point(|(p, _)| *p < close_byte);
+                    continue;
+                }
+            }
+            ci += 1;
+        }
+        // 冲刷尾部字面量
+        if literal_start < template.len() {
+            segments.push(TemplateSegment::Literal(
+                template[literal_start..].to_string(),
+            ));
+        }
+
+        Self {
+            segments,
+            template_len,
+        }
+    }
+
+    /// 原始模板长度(用于调用方预分配缓冲)
+    pub fn template_len(&self) -> usize {
+        self.template_len
+    }
+
+    /// 渲染到给定的 String 缓冲(调用方负责 clear + 预分配)
+    pub fn render(
+        &self,
+        global_seq: &AtomicU64,
+        worker_id: usize,
+        worker_counter: &mut u64,
+        hex_mode: bool,
+        out: &mut String,
+    ) {
+        let seq = global_seq.fetch_add(1, Ordering::Relaxed);
+        *worker_counter += 1;
+        let local_counter = *worker_counter;
+        let timestamp = Local::now().timestamp_millis();
+        let uuid = Uuid::new_v4();
+
+        for seg in &self.segments {
+            match seg {
+                TemplateSegment::Literal(s) => out.push_str(s),
+                TemplateSegment::Seq => {
+                    if hex_mode {
+                        out.push_str(&format_hex_u64(seq))
+                    } else {
+                        out.push_str(&seq.to_string())
+                    }
+                }
+                TemplateSegment::WorkerId => {
+                    if hex_mode {
+                        out.push_str(&format_hex_u64(worker_id as u64))
+                    } else {
+                        out.push_str(&worker_id.to_string())
+                    }
+                }
+                TemplateSegment::Counter => {
+                    if hex_mode {
+                        out.push_str(&format_hex_u64(local_counter))
+                    } else {
+                        out.push_str(&local_counter.to_string())
+                    }
+                }
+                TemplateSegment::Timestamp => {
+                    if hex_mode {
+                        out.push_str(&format_hex_i64(timestamp))
+                    } else {
+                        out.push_str(&timestamp.to_string())
+                    }
+                }
+                TemplateSegment::Uuid => out.push_str(&uuid.to_string()),
+                TemplateSegment::Random(min, max) => {
+                    let span = (*max - *min) as u64 + 1;
+                    let val = *min + (random_u64() % span) as i64;
+                    if hex_mode {
+                        out.push_str(&format_hex_i64(val))
+                    } else {
+                        out.push_str(&val.to_string())
+                    }
+                }
+                TemplateSegment::Unknown(s) => out.push_str(s),
+            }
+        }
+    }
+}
+
+/// 将变量名解析为预编译段
+fn parse_segment(var_name: &str) -> TemplateSegment {
+    match var_name {
+        "seq" => TemplateSegment::Seq,
+        "worker_id" => TemplateSegment::WorkerId,
+        "counter" => TemplateSegment::Counter,
+        "timestamp" => TemplateSegment::Timestamp,
+        "uuid" => TemplateSegment::Uuid,
+        _ if var_name.starts_with("random:") => {
+            let params = &var_name["random:".len()..];
+            let parts: Vec<&str> = params.split(':').collect();
+            if parts.len() != 2 {
+                return TemplateSegment::Unknown(format!("${{{}}}", var_name));
+            }
+            match (
+                parts[0].trim().parse::<i64>(),
+                parts[1].trim().parse::<i64>(),
+            ) {
+                (Ok(min), Ok(max)) if min <= max => TemplateSegment::Random(min, max),
+                _ => TemplateSegment::Unknown(format!("${{{}}}", var_name)),
+            }
+        }
+        _ => TemplateSegment::Unknown(format!("${{{}}}", var_name)),
+    }
+}
+
 /// 解析单个变量名，返回替换文本。未知变量原样返回 `${name}`。
+#[allow(dead_code)]
 fn resolve_variable(
     var_name: &str,
     seq: u64,
@@ -87,10 +264,34 @@ fn resolve_variable(
     hex_mode: bool,
 ) -> String {
     match var_name {
-        "seq" => if hex_mode { format_hex_u64(seq) } else { seq.to_string() },
-        "worker_id" => if hex_mode { format_hex_u64(worker_id as u64) } else { worker_id.to_string() },
-        "counter" => if hex_mode { format_hex_u64(counter) } else { counter.to_string() },
-        "timestamp" => if hex_mode { format_hex_i64(timestamp) } else { timestamp.to_string() },
+        "seq" => {
+            if hex_mode {
+                format_hex_u64(seq)
+            } else {
+                seq.to_string()
+            }
+        }
+        "worker_id" => {
+            if hex_mode {
+                format_hex_u64(worker_id as u64)
+            } else {
+                worker_id.to_string()
+            }
+        }
+        "counter" => {
+            if hex_mode {
+                format_hex_u64(counter)
+            } else {
+                counter.to_string()
+            }
+        }
+        "timestamp" => {
+            if hex_mode {
+                format_hex_i64(timestamp)
+            } else {
+                timestamp.to_string()
+            }
+        }
         "uuid" => uuid.to_string(),
         _ if var_name.starts_with("random:") => resolve_random(var_name, hex_mode),
         _ => format!("${{{}}}", var_name), // 未知变量原样保留
@@ -116,6 +317,7 @@ fn format_hex_i64(v: i64) -> String {
 ///
 /// 使用 std 的 RandomState 哈希作为熵源(非加密用途，仅为压测报文变化)，
 /// 避免引入 rand 依赖。
+#[allow(dead_code)]
 fn resolve_random(var_name: &str, hex_mode: bool) -> String {
     let params = &var_name["random:".len()..];
     let parts: Vec<&str> = params.split(':').collect();
@@ -189,8 +391,27 @@ mod tests {
     fn test_multiple_vars_in_one_template() {
         let s = seq();
         let mut c = 5u64;
-        let out = render_payload("${seq}|${worker_id}|${counter}|${timestamp}", &s, 3, &mut c, false);
-        assert_eq!(out, format!("0|3|6|{}", Local::now().timestamp_millis()));
+        let ts_before = Local::now().timestamp_millis();
+        let out = render_payload(
+            "${seq}|${worker_id}|${counter}|${timestamp}",
+            &s,
+            3,
+            &mut c,
+            false,
+        );
+        let ts_after = Local::now().timestamp_millis();
+        // timestamp 在 render_payload 内部取,允许 ±几毫秒误差
+        let expected_prefix = "0|3|6|";
+        assert!(out.starts_with(expected_prefix), "got: {}", out);
+        let ts_str = &out[expected_prefix.len()..];
+        let ts: i64 = ts_str.parse().expect("timestamp 应为数字");
+        assert!(
+            ts >= ts_before && ts <= ts_after + 1,
+            "timestamp {} 不在 [{}, {}] 范围",
+            ts,
+            ts_before,
+            ts_after
+        );
     }
 
     #[test]
@@ -233,9 +454,18 @@ mod tests {
     fn test_malformed_random_preserved() {
         let s = seq();
         let mut c = 0u64;
-        assert_eq!(render_payload("${random:abc:5}", &s, 0, &mut c, false), "${random:abc:5}");
-        assert_eq!(render_payload("${random:1}", &s, 0, &mut c, false), "${random:1}");
-        assert_eq!(render_payload("${random:5:1}", &s, 0, &mut c, false), "${random:5:1}");
+        assert_eq!(
+            render_payload("${random:abc:5}", &s, 0, &mut c, false),
+            "${random:abc:5}"
+        );
+        assert_eq!(
+            render_payload("${random:1}", &s, 0, &mut c, false),
+            "${random:1}"
+        );
+        assert_eq!(
+            render_payload("${random:5:1}", &s, 0, &mut c, false),
+            "${random:5:1}"
+        );
     }
 
     #[test]

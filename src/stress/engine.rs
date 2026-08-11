@@ -24,7 +24,7 @@ use crate::stress::client_worker::run_worker;
 use crate::stress::config::{StopCondition, StressTestConfig};
 use crate::stress::events::{StressEvent, StressReport};
 use crate::stress::rate_limiter::TokenBucket;
-use crate::stress::stats::{LatencyHistogram, StressStats, WorkerStats};
+use crate::stress::stats::{ShardedHistogram, StressStats, WorkerStats};
 
 /// 统计快照上报间隔
 const SNAPSHOT_INTERVAL: Duration = Duration::from_millis(250);
@@ -38,7 +38,11 @@ pub struct StressTestEngine {
 impl StressTestEngine {
     /// 启动压测。event_sender 由 App 层提供(smol channel)。
     /// `tab_id` 用于事件路由(App 层按 tab_id 投递, 不依赖 active_tab)。
-    pub fn start(config: StressTestConfig, tab_id: String, event_sender: Sender<StressEvent>) -> Self {
+    pub fn start(
+        config: StressTestConfig,
+        tab_id: String,
+        event_sender: Sender<StressEvent>,
+    ) -> Self {
         let cancel = CancellationToken::new();
         let cancel_clone = cancel.clone();
         let orchestrator = tokio::spawn(async move {
@@ -67,7 +71,12 @@ impl StressTestEngine {
         }
     }
 
-    async fn run(config: StressTestConfig, tab_id: String, event_sender: Sender<StressEvent>, cancel: CancellationToken) {
+    async fn run(
+        config: StressTestConfig,
+        tab_id: String,
+        event_sender: Sender<StressEvent>,
+        cancel: CancellationToken,
+    ) {
         let start_time_str = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let start_instant = Instant::now();
 
@@ -78,17 +87,17 @@ impl StressTestEngine {
             None => Arc::new(TokenBucket::unbounded()),
         };
         let stats = Arc::new(WorkerStats::new());
-        let histogram = Arc::new(Mutex::new(LatencyHistogram::with_default_cap()));
-        let per_second_samples: Arc<Mutex<Vec<StressStats>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        let concurrency = config.concurrency.max(1);
+        let histogram = Arc::new(ShardedHistogram::new(concurrency));
+        let per_second_samples: Arc<Mutex<Vec<StressStats>>> = Arc::new(Mutex::new(Vec::new()));
 
         // ---- 启动 worker (按 ramp-up 间隔) ----
-        let concurrency = config.concurrency.max(1);
-        let ramp_interval = if config.ramp_up.enabled && config.ramp_up.ramp_up_secs > 0 && concurrency > 1 {
-            Duration::from_secs_f64(config.ramp_up.ramp_up_secs as f64 / concurrency as f64)
-        } else {
-            Duration::ZERO
-        };
+        let ramp_interval =
+            if config.ramp_up.enabled && config.ramp_up.ramp_up_secs > 0 && concurrency > 1 {
+                Duration::from_secs_f64(config.ramp_up.ramp_up_secs as f64 / concurrency as f64)
+            } else {
+                Duration::ZERO
+            };
 
         let mut worker_handles: Vec<JoinHandle<()>> = Vec::with_capacity(concurrency);
         for i in 0..concurrency {
@@ -162,35 +171,34 @@ impl StressTestEngine {
                         }
                     }
                 }
-                StopCondition::Count(target) => {
-                    loop {
-                        if sup_cancel.is_cancelled() {
-                            break;
-                        }
-                        if sup_stats.sent.load(Ordering::Relaxed) >= target {
-                            sup_cancel.cancel();
-                            break;
-                        }
-                        sleep(Duration::from_millis(50)).await;
+                StopCondition::Count(target) => loop {
+                    if sup_cancel.is_cancelled() {
+                        break;
                     }
-                }
-                StopCondition::Either { duration_secs, count } => {
-                    loop {
-                        tokio::select! {
-                            _ = sup_cancel.cancelled() => break,
-                            _ = sleep(Duration::from_millis(50)) => {
-                                if sup_stats.sent.load(Ordering::Relaxed) >= count {
-                                    sup_cancel.cancel();
-                                    break;
-                                }
+                    if sup_stats.sent.load(Ordering::Relaxed) >= target {
+                        sup_cancel.cancel();
+                        break;
+                    }
+                    sleep(Duration::from_millis(50)).await;
+                },
+                StopCondition::Either {
+                    duration_secs,
+                    count,
+                } => loop {
+                    tokio::select! {
+                        _ = sup_cancel.cancelled() => break,
+                        _ = sleep(Duration::from_millis(50)) => {
+                            if sup_stats.sent.load(Ordering::Relaxed) >= count {
+                                sup_cancel.cancel();
+                                break;
                             }
                         }
-                        if start_instant.elapsed() >= Duration::from_secs(duration_secs) {
-                            sup_cancel.cancel();
-                            break;
-                        }
                     }
-                }
+                    if start_instant.elapsed() >= Duration::from_secs(duration_secs) {
+                        sup_cancel.cancel();
+                        break;
+                    }
+                },
             }
         });
 
@@ -222,10 +230,29 @@ impl StressTestEngine {
         // 汇总最终报告
         let (sent, success, failure, _active, disconnects, reconnects, bytes_sent, bytes_received) =
             stats.snapshot();
-        let (p50, p95, p99, avg, max) = histogram.lock().unwrap().percentiles();
+        let (p50, p95, p99, avg, max) = histogram.percentiles();
+        let failure_breakdown =
+            crate::stress::stats::FailureBreakdownSnapshot::from(&stats.failures);
 
         let samples = per_second_samples.lock().unwrap().clone();
         let (avg_qps, peak_qps) = compute_qps_stats(&samples, duration_ms);
+
+        // 将失败分类写入单独日志文件(不污染主日志)
+        let workers_gave_up = stats
+            .workers_gave_up
+            .load(std::sync::atomic::Ordering::Relaxed);
+        write_failure_log(
+            &start_time_str,
+            &end_time_str,
+            duration_ms,
+            sent,
+            success,
+            failure,
+            &failure_breakdown,
+            stats.last_connect_error(),
+            workers_gave_up,
+            &config,
+        );
 
         let report = StressReport {
             config,
@@ -246,6 +273,7 @@ impl StressTestEngine {
             latency_max_us: max,
             bytes_sent,
             bytes_received,
+            failures: failure_breakdown,
             per_second_samples: samples,
         };
 
@@ -253,10 +281,250 @@ impl StressTestEngine {
             "[压测] 结束: 发送={}, 成功={}, 失败={}, 平均QPS={:.1}",
             report.total_sent, report.total_success, report.total_failure, report.avg_qps
         );
-        let _ = event_sender.send(StressEvent::Finished {
-            tab_id,
-            report,
-        }).await;
+        let _ = event_sender
+            .send(StressEvent::Finished { tab_id, report })
+            .await;
+    }
+}
+
+/// 将失败分类汇总写入单独日志文件
+///
+/// 路径: {documents}/NetAssistant/logs/stress_failure_{timestamp}.log
+/// 内容: 失败分类统计 + 配置摘要,便于定位高失败率根因。
+/// 一次性写入,不影响压测性能。
+fn write_failure_log(
+    start_time: &str,
+    end_time: &str,
+    duration_ms: u64,
+    sent: u64,
+    success: u64,
+    failure: u64,
+    fb: &crate::stress::stats::FailureBreakdownSnapshot,
+    last_connect_error: String,
+    workers_gave_up: u64,
+    config: &StressTestConfig,
+) {
+    use std::io::Write;
+
+    let mut dir = match dirs::document_dir() {
+        Some(d) => d,
+        None => return,
+    };
+    dir.push("NetAssistant");
+    dir.push("logs");
+    let _ = std::fs::create_dir_all(&dir);
+
+    let ts = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let filename = format!("stress_failure_{}.log", ts);
+    dir.push(filename);
+
+    // 失败率: 以 (sent + connect_failed) 为分母,因为连接失败不计入 sent
+    // 避免出现 >100% 的误导性失败率
+    let total_attempts = sent + fb.connect_failed;
+    let failure_rate = if total_attempts > 0 {
+        failure as f64 / total_attempts as f64 * 100.0
+    } else {
+        0.0
+    };
+    let is_long_conn = config.is_long_connection();
+
+    let content = format!(
+        "===== 压测失败分析报告 =====\n\
+         开始时间: {start_time}\n\
+         结束时间: {end_time}\n\
+         持续时长: {duration_ms} ms ({:.1}s)\n\
+         \n\
+         ===== 总览 =====\n\
+         总发送(发包): {sent}\n\
+         成功:   {success}\n\
+         失败:   {failure}\n\
+         失败率: {failure_rate:.1}%  (分母 = 发包{sent} + 连接尝试{cf})\n\
+         因重试上限退出: {gave_up} / {concurrency}  (连续连接失败 > 30 次后 worker 放弃)\n\
+         \n\
+         ===== 失败分类 =====\n\
+         连接失败(connect_failed): {cf}\n\
+         发送失败(send_failed):    {sf}\n\
+         接收超时(recv_timeout):   {rt}\n\
+         对端关闭(peer_closed):    {pc}\n\
+         校验失败(validate_failed): {vf}\n\
+         \n\
+         ===== 最近连接错误(采样) =====\n\
+         {last_err}\n\
+         \n\
+         ===== 压测配置 =====\n\
+         目标: {addr}:{port} ({proto:?})\n\
+         模式: {mode} / {conn_mode}\n\
+         并发: {concurrency}\n\
+         发包间隔: {interval} ms\n\
+         全局QPS限制: {qps_limit}\n\
+         超时: {timeout_ms} ms\n\
+         自动重连: {auto_reconnect}\n\
+         \n\
+         ===== 诊断建议 =====\n\
+         {advice}\n",
+        duration_ms as f64 / 1000.0,
+        cf = fb.connect_failed,
+        sf = fb.send_failed,
+        rt = fb.recv_timeout,
+        pc = fb.peer_closed,
+        vf = fb.validate_failed,
+        gave_up = workers_gave_up,
+        last_err = if last_connect_error.is_empty() {
+            "(无)"
+        } else {
+            &last_connect_error
+        },
+        addr = config.target_address,
+        port = config.target_port,
+        proto = config.protocol,
+        mode = config.mode,
+        conn_mode = config.connection_mode,
+        concurrency = config.concurrency,
+        interval = config.send_interval_ms,
+        qps_limit = config
+            .global_qps_limit
+            .map(|q| q.to_string())
+            .unwrap_or_else(|| "无限制".to_string()),
+        timeout_ms = config.timeout_ms,
+        auto_reconnect = config.auto_reconnect,
+        advice = diagnose_failures(fb, config, &last_connect_error, is_long_conn),
+    );
+
+    match std::fs::File::create(&dir) {
+        Ok(mut f) => {
+            if let Err(e) = f.write_all(content.as_bytes()) {
+                log::warn!("[压测] 失败日志写入失败: {}", e);
+            }
+            log::info!("[压测] 失败分析已写入: {}", dir.display());
+        }
+        Err(e) => log::warn!("[压测] 失败日志创建失败: {}", e),
+    }
+}
+
+/// 根据失败分类 + 连接错误 + 连接模式给出诊断建议
+fn diagnose_failures(
+    fb: &crate::stress::stats::FailureBreakdownSnapshot,
+    config: &StressTestConfig,
+    last_err: &str,
+    is_long_conn: bool,
+) -> String {
+    let total_fail =
+        fb.connect_failed + fb.send_failed + fb.recv_timeout + fb.peer_closed + fb.validate_failed;
+    if total_fail == 0 {
+        return "无失败".to_string();
+    }
+
+    // 找出占比最高的失败类型
+    let max = [
+        fb.connect_failed,
+        fb.send_failed,
+        fb.recv_timeout,
+        fb.peer_closed,
+        fb.validate_failed,
+    ]
+    .iter()
+    .copied()
+    .max()
+    .unwrap_or(0);
+
+    let mut tips = Vec::new();
+
+    if fb.connect_failed == max && fb.connect_failed > 0 {
+        // 根据连接模式 + 错误类型给出不同建议
+        let mode_advice = if last_err.contains("ConnectionRefused") {
+            // ConnectionRefused: 服务端 accept 队列满或未监听,不是客户端端口问题
+            format!(
+                "• 连接失败占主导({}次),错误为 ConnectionRefused(os error 10061)。\n  \
+                 这是服务端主动拒绝连接,不是客户端端口耗尽。原因:\n  \
+                 - 服务端 accept 队列(backlog)已满,无法处理更多新连接。\n  \
+                 - 服务端处理能力达上限,来不及 accept 新连接。\n  \
+                 - 并发 {} 超过了服务端可承载的连接数。\n  \
+                 \n  \
+                 解决方案(按优先级):\n  \
+                 1) 降低并发数,匹配服务端承载能力(如降到 5000 试试)\n  \
+                 2) 开启 ramp-up(渐进式启动),避免瞬时连接洪峰\n  \
+                 3) 调大服务端的 listen backlog(somaxconn)\n  \
+                 4) 提升服务端处理能力(多线程 accept / 连接池)",
+                fb.connect_failed, config.concurrency
+            )
+        } else if last_err.contains("AddrNotAvailable") || last_err.contains("端口耗尽") {
+            // AddrNotAvailable: 客户端临时端口耗尽
+            if is_long_conn {
+                format!(
+                    "• 连接失败占主导({}次),错误为 AddrNotAvailable(临时端口耗尽)。\n  \
+                     当前为长连接模式,并发 {} 超过 Windows 默认临时端口范围(49152-65535,约 1.6万)。\n  \
+                     调大端口范围(管理员 CMD):\n  \
+                     netsh int ipv4 set dynamicport tcp start=10000 num=55535\n  \
+                     netsh int ipv6 set dynamicport tcp start=10000 num=55535\n  \
+                     或降低并发数到 15000 以下。",
+                    fb.connect_failed, config.concurrency
+                )
+            } else {
+                format!(
+                    "• 连接失败占主导({}次),错误为 AddrNotAvailable(临时端口耗尽)。\n  \
+                     当前为短连接模式,每包新建连接极易耗尽端口。\n  \
+                     1) 改用长连接模式  2) 降低并发  3) 调大端口范围:\n  \
+                     netsh int ipv4 set dynamicport tcp start=10000 num=55535",
+                    fb.connect_failed
+                )
+            }
+        } else {
+            // 通用连接失败建议
+            if is_long_conn {
+                format!(
+                    "• 连接失败占主导({}次),当前为长连接模式。可能原因:\n  \
+                     - 临时端口耗尽(Windows 默认约 1.6万),并发 {} 可能超过此范围。\n  \
+                       netsh int ipv4 set dynamicport tcp start=10000 num=55535\n  \
+                     - socket 句柄上限。\n  \
+                     - 目标服务端 accept 队列满,需调大 backlog。",
+                    fb.connect_failed, config.concurrency
+                )
+            } else {
+                format!(
+                    "• 连接失败占主导({}次),当前为短连接模式。建议:\n  \
+                     - 改用长连接模式  - 降低并发  - 调大临时端口范围",
+                    fb.connect_failed
+                )
+            }
+        };
+        tips.push(mode_advice);
+    }
+    if fb.recv_timeout == max && fb.recv_timeout > 0 {
+        tips.push(format!(
+            "• 接收超时占主导({}次)。当前 timeout_ms={}。\n  \
+             - 服务端处理不过来,响应慢。可适当调大 timeout_ms。\n  \
+             - 并发过高导致服务端排队,降低并发试试。\n  \
+             - PingPong 模式下 20000 worker 串行等待响应,QPS 天然受限。",
+            fb.recv_timeout, config.timeout_ms
+        ));
+    }
+    if fb.peer_closed == max && fb.peer_closed > 0 {
+        tips.push(format!(
+            "• 对端关闭占主导({}次)。服务端主动断开连接:\n  \
+             - 服务端有连接数上限/超时清理机制。\n  \
+             - 服务端进程崩溃或重启。\n  \
+             - 开启 auto_reconnect 可自动重连。",
+            fb.peer_closed
+        ));
+    }
+    if fb.send_failed == max && fb.send_failed > 0 {
+        tips.push(format!(
+            "• 发送失败占主导({}次)。socket 写入报错:\n  \
+             - 连接已被对端 RST。\n  \
+             - 发送缓冲区满。",
+            fb.send_failed
+        ));
+    }
+    if fb.validate_failed == max && fb.validate_failed > 0 {
+        tips.push(format!(
+            "• 校验失败占主导({}次)。响应不匹配校验规则,检查响应校验配置。",
+            fb.validate_failed
+        ));
+    }
+    if tips.is_empty() {
+        "无明显主导失败类型".to_string()
+    } else {
+        tips.join("\n")
     }
 }
 
@@ -273,15 +541,12 @@ impl Drop for StressTestEngine {
 /// 从共享统计构建快照
 fn build_snapshot(
     stats: &WorkerStats,
-    histogram: &Mutex<LatencyHistogram>,
+    histogram: &ShardedHistogram,
     start: Instant,
 ) -> StressStats {
     let (sent, success, failure, active, disconnects, reconnects, bytes_sent, bytes_received) =
         stats.snapshot();
-    let (p50, p95, p99, avg, max) = histogram
-        .lock()
-        .map(|mut h| h.percentiles())
-        .unwrap_or((None, None, None, None, None));
+    let (p50, p95, p99, avg, max) = histogram.percentiles();
     let elapsed_ms = start.elapsed().as_millis() as u64;
     // current_qps = 最近一秒的发送速率(近似: sent / elapsed_s)
     let current_qps = if elapsed_ms > 0 {
@@ -305,6 +570,7 @@ fn build_snapshot(
         latency_max_us: max,
         bytes_sent,
         bytes_received,
+        failures: crate::stress::stats::FailureBreakdownSnapshot::from(&stats.failures),
     }
 }
 
@@ -363,9 +629,18 @@ mod tests {
 
     #[test]
     fn test_compute_qps_basic() {
-        let s1 = StressStats { total_sent: 100, ..Default::default() };
-        let s2 = StressStats { total_sent: 250, ..Default::default() };
-        let s3 = StressStats { total_sent: 400, ..Default::default() };
+        let s1 = StressStats {
+            total_sent: 100,
+            ..Default::default()
+        };
+        let s2 = StressStats {
+            total_sent: 250,
+            ..Default::default()
+        };
+        let s3 = StressStats {
+            total_sent: 400,
+            ..Default::default()
+        };
         let samples = vec![s1, s2, s3];
         // 增量: 100, 150, 150 → peak=150
         // avg = 400 / 3s = 133.33
@@ -379,18 +654,60 @@ mod tests {
         let samples: Arc<Mutex<Vec<StressStats>>> = Arc::new(Mutex::new(Vec::new()));
         let mut mark = 0u64;
         // 第 0 秒内多次快照: 不记录(尚未跨入新秒)
-        push_per_second(&samples, &mut mark, &StressStats { elapsed_ms: 100, ..Default::default() });
-        push_per_second(&samples, &mut mark, &StressStats { elapsed_ms: 500, ..Default::default() });
-        push_per_second(&samples, &mut mark, &StressStats { elapsed_ms: 900, ..Default::default() });
+        push_per_second(
+            &samples,
+            &mut mark,
+            &StressStats {
+                elapsed_ms: 100,
+                ..Default::default()
+            },
+        );
+        push_per_second(
+            &samples,
+            &mut mark,
+            &StressStats {
+                elapsed_ms: 500,
+                ..Default::default()
+            },
+        );
+        push_per_second(
+            &samples,
+            &mut mark,
+            &StressStats {
+                elapsed_ms: 900,
+                ..Default::default()
+            },
+        );
         assert_eq!(samples.lock().unwrap().len(), 0);
         // 跨入第 1 秒: 记录一次
-        push_per_second(&samples, &mut mark, &StressStats { elapsed_ms: 1100, ..Default::default() });
+        push_per_second(
+            &samples,
+            &mut mark,
+            &StressStats {
+                elapsed_ms: 1100,
+                ..Default::default()
+            },
+        );
         assert_eq!(samples.lock().unwrap().len(), 1);
         // 第 1 秒内再次快照: 不重复记录
-        push_per_second(&samples, &mut mark, &StressStats { elapsed_ms: 1500, ..Default::default() });
+        push_per_second(
+            &samples,
+            &mut mark,
+            &StressStats {
+                elapsed_ms: 1500,
+                ..Default::default()
+            },
+        );
         assert_eq!(samples.lock().unwrap().len(), 1);
         // 跨入第 2 秒
-        push_per_second(&samples, &mut mark, &StressStats { elapsed_ms: 2100, ..Default::default() });
+        push_per_second(
+            &samples,
+            &mut mark,
+            &StressStats {
+                elapsed_ms: 2100,
+                ..Default::default()
+            },
+        );
         assert_eq!(samples.lock().unwrap().len(), 2);
     }
 
@@ -401,8 +718,8 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpListener;
 
-        use crate::stress::config::{ConnectionMode, StressMode};
         use crate::config::connection::ConnectionType;
+        use crate::stress::config::{ConnectionMode, StressMode};
 
         // 启动本地 echo server
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -455,14 +772,15 @@ mod tests {
         // 收集事件直到 Finished
         let mut got_finished = false;
         let mut snapshot_count = 0u32;
-        while let Ok(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            receiver.recv(),
-        ).await {
+        while let Ok(event) = tokio::time::timeout(Duration::from_secs(10), receiver.recv()).await {
             match event {
                 Ok(StressEvent::StatsSnapshot { .. }) => snapshot_count += 1,
                 Ok(StressEvent::Finished { report, .. }) => {
-                    assert!(report.total_sent >= 50, "应至少发送 50, 实际 {}", report.total_sent);
+                    assert!(
+                        report.total_sent >= 50,
+                        "应至少发送 50, 实际 {}",
+                        report.total_sent
+                    );
                     assert!(report.total_success > 0, "应有成功包");
                     assert!(report.latency_p50_us.is_some(), "应有延迟统计");
                     got_finished = true;
@@ -485,8 +803,8 @@ mod tests {
         use smol::channel::unbounded;
         use tokio::net::UdpSocket;
 
-        use crate::stress::config::{ConnectionMode, StressMode};
         use crate::config::connection::ConnectionType;
+        use crate::stress::config::{ConnectionMode, StressMode};
 
         let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let port = server.local_addr().unwrap().port();
@@ -525,13 +843,14 @@ mod tests {
         let mut engine = StressTestEngine::start(config, "test".to_string(), sender);
 
         let mut got_finished = false;
-        while let Ok(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            receiver.recv(),
-        ).await {
+        while let Ok(event) = tokio::time::timeout(Duration::from_secs(10), receiver.recv()).await {
             match event {
                 Ok(StressEvent::Finished { report, .. }) => {
-                    assert!(report.total_sent >= 30, "UDP 应至少发送 30, 实际 {}", report.total_sent);
+                    assert!(
+                        report.total_sent >= 30,
+                        "UDP 应至少发送 30, 实际 {}",
+                        report.total_sent
+                    );
                     assert!(report.total_success >= 30, "吞吐模式成功数应等于发送数");
                     got_finished = true;
                     break;

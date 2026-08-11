@@ -1,7 +1,7 @@
-use tokio_util::codec::{BytesCodec, LengthDelimitedCodec, Decoder, Encoder};
-use bytes::{BytesMut};
-use crate::config::connection::{DecoderConfig};
-use log::{debug};
+use crate::config::connection::DecoderConfig;
+use bytes::BytesMut;
+use log::debug;
+use tokio_util::codec::{BytesCodec, Decoder, Encoder, LengthDelimitedCodec};
 
 /// 扩展的解码器trait，支持强制刷新缓冲区
 pub trait ExtendedDecoder: Decoder<Item = BytesMut, Error = std::io::Error> + Send + Sync {
@@ -29,7 +29,7 @@ impl CodecFactory {
     /// 根据配置创建相应的decoder，返回Box<dyn ExtendedDecoder>
     pub fn create_decoder(config: &DecoderConfig) -> Box<dyn ExtendedDecoder> {
         debug!("CodecFactory: 创建解码器，配置: {:?}", config);
-        
+
         match config {
             DecoderConfig::Bytes => {
                 debug!("CodecFactory: 使用Bytes解码器");
@@ -40,7 +40,10 @@ impl CodecFactory {
                 Box::new(LineToBytesMutDecoder::new())
             }
             DecoderConfig::LengthDelimited(config) => {
-                debug!("CodecFactory: 使用LengthDelimited解码器，配置: {:?}", config);
+                debug!(
+                    "CodecFactory: 使用LengthDelimited解码器，配置: {:?}",
+                    config
+                );
                 // tokio-util 0.7 的 Builder 没有 length_field_includes_self 方法,
                 // 通过调整 length_adjustment 来补偿: 长度字段包含自身时, 需减去长度字段本身的字节数
                 let effective_adjustment = if config.length_field_is_including_length_field {
@@ -79,7 +82,10 @@ impl CodecFactory {
                 Box::new(LengthDelimitedToBytesMutDecoder::new(length_delimited))
             }
             DecoderConfig::FixedLength(frame_length) => {
-                debug!("CodecFactory: 使用FixedLength解码器，帧长度: {}", frame_length);
+                debug!(
+                    "CodecFactory: 使用FixedLength解码器，帧长度: {}",
+                    frame_length
+                );
                 Box::new(FixedLengthDecoder::new(*frame_length))
             }
             DecoderConfig::Json => {
@@ -89,13 +95,13 @@ impl CodecFactory {
             }
         }
     }
-    
+
     /// 根据配置创建相应的encoder，返回Box<dyn Encoder<BytesMut, Error = std::io::Error>>
-    pub fn create_encoder(config: &DecoderConfig) -> Box<dyn Encoder<BytesMut, Error = std::io::Error> + Send + Sync> {
+    pub fn create_encoder(
+        config: &DecoderConfig,
+    ) -> Box<dyn Encoder<BytesMut, Error = std::io::Error> + Send + Sync> {
         match config {
-            DecoderConfig::Bytes => {
-                Box::new(BytesDecoder::new())
-            }
+            DecoderConfig::Bytes => Box::new(BytesDecoder::new()),
             DecoderConfig::LineBased => {
                 // 将LinesCodec包装成输入BytesMut的Encoder
                 Box::new(LineToBytesMutEncoder::new())
@@ -133,7 +139,11 @@ impl LineToBytesMutDecoder {
 impl ExtendedDecoder for LineToBytesMutDecoder {
     fn force_flush(&mut self) -> Option<BytesMut> {
         if !self.pending_data.is_empty() {
-            debug!("LineToBytesMutDecoder: 强制刷新缓冲区: {:?}, 长度: {}", String::from_utf8_lossy(&self.pending_data), self.pending_data.len());
+            debug!(
+                "LineToBytesMutDecoder: 强制刷新缓冲区: {:?}, 长度: {}",
+                String::from_utf8_lossy(&self.pending_data),
+                self.pending_data.len()
+            );
             Some(self.pending_data.split_to(self.pending_data.len()))
         } else {
             None
@@ -151,19 +161,23 @@ impl Decoder for LineToBytesMutDecoder {
         while let Some(newline_pos) = src[search_start..].iter().position(|&b| b == b'\n') {
             // 计算换行符在整个src中的位置
             let absolute_pos = search_start + newline_pos;
-            
+
             // 提取完整的行（包括换行符）
             let mut line = src.split_to(absolute_pos + 1);
-            
+
             // 移除行尾的\r（如果有）
             let line = if line.len() > 1 && line[line.len() - 2] == b'\r' {
                 line.split_to(line.len() - 2) // 移除\r\n
             } else {
                 line.split_to(line.len() - 1) // 移除\n
             };
-            
-            debug!("LineToBytesMutDecoder: 解码出完整行: {:?}, 长度: {}", String::from_utf8_lossy(&line), line.len());
-            
+
+            debug!(
+                "LineToBytesMutDecoder: 解码出完整行: {:?}, 长度: {}",
+                String::from_utf8_lossy(&line),
+                line.len()
+            );
+
             // 返回完整行
             return Ok(Some(line));
         }
@@ -173,7 +187,7 @@ impl Decoder for LineToBytesMutDecoder {
             // 将新数据添加到待处理数据中
             self.pending_data.extend_from_slice(src);
             src.clear();
-            
+
             // 暂时不返回，等待可能的后续数据
             return Ok(None);
         }
@@ -181,16 +195,24 @@ impl Decoder for LineToBytesMutDecoder {
         // 没有数据可返回
         Ok(None)
     }
-    
+
     fn decode_eof(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         // 处理剩余数据
         if !src.is_empty() {
             let remaining = src.split_to(src.len());
-            debug!("LineToBytesMutDecoder: decode_eof 返回剩余数据: {:?}, 长度: {}", String::from_utf8_lossy(&remaining), remaining.len());
+            debug!(
+                "LineToBytesMutDecoder: decode_eof 返回剩余数据: {:?}, 长度: {}",
+                String::from_utf8_lossy(&remaining),
+                remaining.len()
+            );
             Ok(Some(remaining))
         } else if !self.pending_data.is_empty() {
             // 返回待处理数据
-            debug!("LineToBytesMutDecoder: decode_eof 返回待处理数据: {:?}, 长度: {}", String::from_utf8_lossy(&self.pending_data), self.pending_data.len());
+            debug!(
+                "LineToBytesMutDecoder: decode_eof 返回待处理数据: {:?}, 长度: {}",
+                String::from_utf8_lossy(&self.pending_data),
+                self.pending_data.len()
+            );
             Ok(Some(self.pending_data.split_to(self.pending_data.len())))
         } else {
             Ok(None)
@@ -246,7 +268,7 @@ impl Decoder for LengthDelimitedToBytesMutDecoder {
             self.pending_data.extend_from_slice(src);
             src.clear();
         }
-        
+
         // 尝试解码
         match self.inner.decode(&mut self.pending_data) {
             Ok(Some(bytes)) => Ok(Some(BytesMut::from(bytes))),
@@ -259,7 +281,11 @@ impl Decoder for LengthDelimitedToBytesMutDecoder {
 impl ExtendedDecoder for LengthDelimitedToBytesMutDecoder {
     fn force_flush(&mut self) -> Option<BytesMut> {
         if !self.pending_data.is_empty() {
-            debug!("LengthDelimitedToBytesMutDecoder: 强制刷新缓冲区: {:?}, 长度: {}", String::from_utf8_lossy(&self.pending_data), self.pending_data.len());
+            debug!(
+                "LengthDelimitedToBytesMutDecoder: 强制刷新缓冲区: {:?}, 长度: {}",
+                String::from_utf8_lossy(&self.pending_data),
+                self.pending_data.len()
+            );
             Some(self.pending_data.split_to(self.pending_data.len()))
         } else {
             None
@@ -308,12 +334,13 @@ impl Decoder for FixedLengthDecoder {
 impl ExtendedDecoder for FixedLengthDecoder {
     fn force_flush(&mut self) -> Option<BytesMut> {
         if !self.pending_data.is_empty() {
-            debug!("FixedLengthDecoder: 强制刷新缓冲区, 长度: {}", self.pending_data.len());
+            debug!(
+                "FixedLengthDecoder: 强制刷新缓冲区, 长度: {}",
+                self.pending_data.len()
+            );
             Some(self.pending_data.split_to(self.pending_data.len()))
         } else {
             None
         }
     }
 }
-
-

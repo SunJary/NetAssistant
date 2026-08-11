@@ -1,7 +1,7 @@
-use std::net::SocketAddr;
-use smol::channel::Sender;
-use crate::message::Message;
 use crate::config::connection::DecoderConfig;
+use crate::message::Message;
+use smol::channel::Sender;
+use std::net::SocketAddr;
 
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
 #[derive(Debug)]

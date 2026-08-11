@@ -94,7 +94,9 @@ impl Message {
         let cached_content = Self::compute_content(&raw_data, message_type);
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S.%3f").to_string(),
+            timestamp: chrono::Local::now()
+                .format("%Y-%m-%d %H:%M:%S.%3f")
+                .to_string(),
             direction,
             message_type,
             raw_data,
@@ -168,18 +170,14 @@ impl Message {
 pub fn format_json_text(text: &str, mode: MessageDisplayMode) -> String {
     match mode {
         MessageDisplayMode::Normal => text.to_string(),
-        MessageDisplayMode::JsonPretty => {
-            match serde_json::from_str::<serde_json::Value>(text) {
-                Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| text.to_string()),
-                Err(_) => text.to_string(),
-            }
-        }
-        MessageDisplayMode::JsonMinified => {
-            match serde_json::from_str::<serde_json::Value>(text) {
-                Ok(value) => serde_json::to_string(&value).unwrap_or_else(|_| text.to_string()),
-                Err(_) => text.to_string(),
-            }
-        }
+        MessageDisplayMode::JsonPretty => match serde_json::from_str::<serde_json::Value>(text) {
+            Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| text.to_string()),
+            Err(_) => text.to_string(),
+        },
+        MessageDisplayMode::JsonMinified => match serde_json::from_str::<serde_json::Value>(text) {
+            Ok(value) => serde_json::to_string(&value).unwrap_or_else(|_| text.to_string()),
+            Err(_) => text.to_string(),
+        },
     }
 }
 

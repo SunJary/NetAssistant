@@ -1,36 +1,39 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-use std::str::FromStr;
-use log::{debug, error, info};
-use std::pin::Pin;
-use std::net::SocketAddr;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
-use smol::channel::{Sender, unbounded as smol_unbounded};
-use tokio::task::JoinHandle;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use bytes::{BytesMut};
-use tokio_util::sync::CancellationToken;
-use crate::config::connection::{ClientConfig, ServerConfig, DecoderConfig};
+use crate::config::connection::{ClientConfig, DecoderConfig, ServerConfig};
+use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
-use crate::core::message_processor::{MessageProcessor, DefaultMessageProcessor};
 use crate::network::protocol::decoder::CodecFactory;
+use bytes::BytesMut;
+use log::{debug, error, info};
+use smol::channel::{Sender, unbounded as smol_unbounded};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 /// 处理解码后的数据，转换为消息并发送事件（客户端用）
 fn process_decoded_data(
     data: BytesMut,
     processor: &Arc<dyn MessageProcessor>,
     event_sender: &Option<Sender<ConnectionEvent>>,
-    connection_id: &str
+    connection_id: &str,
 ) {
     let raw_data: Vec<u8> = data.to_vec();
     let message = processor.process_received_message(raw_data, MessageType::Text);
-    
+
     if let Some(sender) = event_sender {
-        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(connection_id.to_string(), message)) {
+        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(
+            connection_id.to_string(),
+            message,
+        )) {
             error!("[TCP] 发送 MessageReceived 事件失败: {:?}", e);
         }
     }
@@ -42,10 +45,10 @@ fn process_decoded_data_with_addr(
     processor: &Arc<dyn MessageProcessor>,
     event_sender: &Option<Sender<ConnectionEvent>>,
     connection_id: &str,
-    addr: &str
+    addr: &str,
 ) {
     let raw_data: Vec<u8> = data.to_vec();
-    
+
     // 尝试将数据转换为文本，如果失败则显示十六进制
     let message_str = match String::from_utf8(raw_data.clone()) {
         Ok(s) => s,
@@ -56,13 +59,18 @@ fn process_decoded_data_with_addr(
         }
     };
     debug!("TCP服务器从 {} 收到消息: {}", addr, message_str);
-    
+
     // 创建消息对象
-    let message = processor.process_received_message(raw_data, MessageType::Text).with_source(addr.to_string());
-    
+    let message = processor
+        .process_received_message(raw_data, MessageType::Text)
+        .with_source(addr.to_string());
+
     // 发送消息事件到UI线程
     if let Some(sender) = event_sender {
-        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(connection_id.to_string(), message)) {
+        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(
+            connection_id.to_string(),
+            message,
+        )) {
             error!("[TCP服务器] 发送 MessageReceived 事件失败: {:?}", e);
         }
     }
@@ -78,10 +86,7 @@ pub struct TcpClient {
 }
 
 impl TcpClient {
-    pub fn new(
-        config: ClientConfig,
-        event_sender: Option<Sender<ConnectionEvent>>
-    ) -> Self {
+    pub fn new(config: ClientConfig, event_sender: Option<Sender<ConnectionEvent>>) -> Self {
         TcpClient {
             config,
             event_sender,
@@ -93,29 +98,33 @@ impl TcpClient {
 }
 
 impl NetworkConnection for TcpClient {
-    fn connect(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
+    fn connect(
+        &mut self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>
+    {
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
         let cancel_token = self.cancel_token.clone();
-        
+
         Pin::from(Box::new(async move {
             // 解析地址，支持IPv4和IPv6
-            let address = if config.server_address.contains(':') && !config.server_address.contains('[') {
-                // IPv6地址需要方括号
-                format!("[{}]:{}", config.server_address, config.server_port)
-            } else {
-                format!("{}:{}", config.server_address, config.server_port)
-            };
-            
+            let address =
+                if config.server_address.contains(':') && !config.server_address.contains('[') {
+                    // IPv6地址需要方括号
+                    format!("[{}]:{}", config.server_address, config.server_port)
+                } else {
+                    format!("{}:{}", config.server_address, config.server_port)
+                };
+
             let socket_addr = SocketAddr::from_str(&address)
                 .map_err(|e| format!("无效的地址格式 '{}': {}", address, e))?;
-            
+
             info!("TCP客户端连接到地址: {}", socket_addr);
-            
+
             let socket = TcpStream::connect(socket_addr).await?;
             info!("TCP客户端连接成功: {}", socket_addr);
-            
+
             // 创建发送器和接收器
             let (tx, rx) = smol_unbounded::<Vec<u8>>();
             // 创建解码器控制通道(用于运行时下发解码器配置, 无需重连)
@@ -124,24 +133,42 @@ impl NetworkConnection for TcpClient {
             // 发送连接成功事件到UI线程
             if let Some(sender) = &event_sender {
                 debug!("[TCP客户端] 发送 Connected 事件");
-                if let Err(e) = sender.send(ConnectionEvent::Connected(config.id.clone())).await {
+                if let Err(e) = sender
+                    .send(ConnectionEvent::Connected(config.id.clone()))
+                    .await
+                {
                     error!("[TCP客户端] 发送 Connected 事件失败: {:?}", e);
                 }
                 debug!("[TCP客户端] 发送 ClientWriteSenderReady 事件");
-                if let Err(e) = sender.send(ConnectionEvent::ClientWriteSenderReady(config.id.clone(), tx)).await {
+                if let Err(e) = sender
+                    .send(ConnectionEvent::ClientWriteSenderReady(
+                        config.id.clone(),
+                        tx,
+                    ))
+                    .await
+                {
                     error!("[TCP客户端] 发送 ClientWriteSenderReady 事件失败: {:?}", e);
                 }
                 debug!("[TCP客户端] 发送 DecoderControlSenderReady 事件");
-                if let Err(e) = sender.send(ConnectionEvent::DecoderControlSenderReady(config.id.clone(), decoder_control_tx)).await {
-                    error!("[TCP客户端] 发送 DecoderControlSenderReady 事件失败: {:?}", e);
+                if let Err(e) = sender
+                    .send(ConnectionEvent::DecoderControlSenderReady(
+                        config.id.clone(),
+                        decoder_control_tx,
+                    ))
+                    .await
+                {
+                    error!(
+                        "[TCP客户端] 发送 DecoderControlSenderReady 事件失败: {:?}",
+                        e
+                    );
                 }
             } else {
                 error!("[TCP客户端] event_sender 为空，无法发送事件");
             }
-            
+
             // 创建decoder和encoder
             let (mut socket_read, mut socket_write) = tokio::io::split(socket);
-            
+
             // 启动接收消息任务
             let event_sender_clone = event_sender.clone();
             let config_clone = config.clone();
@@ -152,7 +179,9 @@ impl NetworkConnection for TcpClient {
             tokio::spawn(async move {
                 let mut buffer = BytesMut::with_capacity(16384);
 
-                let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&decoder_config);
+                let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(
+                    &decoder_config,
+                );
 
                 loop {
                     tokio::select! {
@@ -231,12 +260,15 @@ impl NetworkConnection for TcpClient {
                 }
 
                 if let Some(sender) = &event_sender_clone {
-                    if let Err(e) = sender.send(ConnectionEvent::Disconnected(config_clone.id.clone())).await {
+                    if let Err(e) = sender
+                        .send(ConnectionEvent::Disconnected(config_clone.id.clone()))
+                        .await
+                    {
                         error!("[TCP客户端] 发送 Disconnected 事件失败: {:?}", e);
                     }
                 }
             });
-            
+
             // 启动发送消息任务
             let encoder_for_write = CodecFactory::create_encoder(&config.decoder_config);
             let write_cancel_token = cancel_token.clone();
@@ -249,12 +281,12 @@ impl NetworkConnection for TcpClient {
                                 Ok(data) => {
                                     let mut buffer = BytesMut::with_capacity(data.len());
                                     let data_bytes = BytesMut::from(data.as_slice());
-                                    
+
                                     if let Err(e) = encoder.encode(data_bytes, &mut buffer) {
                                         error!("TCP编码错误: {:?}", e);
                                         break;
                                     }
-                                    
+
                                     if let Err(e) = socket_write.write_all(&buffer).await {
                                         error!("TCP写入错误: {:?}", e);
                                         break;
@@ -266,7 +298,7 @@ impl NetworkConnection for TcpClient {
                                 }
                             }
                         }
-                        
+
                         _ = write_cancel_token.cancelled() => {
                             info!("TCP客户端写任务收到取消信号，执行优雅关闭");
                             let _ = socket_write.shutdown().await;
@@ -275,21 +307,20 @@ impl NetworkConnection for TcpClient {
                     }
                 }
             });
-            
+
             Ok(())
         }))
     }
-    
-    fn disconnect(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
+
+    fn disconnect(
+        &mut self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>
+    {
         self.is_connected = false;
         self.cancel_token.cancel();
-        
-        Pin::from(Box::new(async move {
-            Ok(())
-        }))
-    }
-    
 
+        Pin::from(Box::new(async move { Ok(()) }))
+    }
 }
 
 /// TCP服务器实现
@@ -316,10 +347,7 @@ impl Drop for TcpServer {
 }
 
 impl TcpServer {
-    pub fn new(
-        config: ServerConfig,
-        event_sender: Option<Sender<ConnectionEvent>>
-    ) -> Self {
+    pub fn new(config: ServerConfig, event_sender: Option<Sender<ConnectionEvent>>) -> Self {
         TcpServer {
             config,
             event_sender,
@@ -334,21 +362,30 @@ impl TcpServer {
 }
 
 impl NetworkServer for TcpServer {
-    fn start(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send + '_>> {
+    fn start(
+        &mut self,
+    ) -> Pin<
+        Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send + '_>,
+    > {
         // 如果服务器已经在运行，直接返回
         if self.is_running {
             debug!("TCP服务器已经在运行中");
             return Pin::from(Box::new(async move { Ok(()) }));
         }
-        
+
         // 绑定地址，支持IPv4和IPv6
-        let address = if self.config.listen_address.contains(':') && !self.config.listen_address.contains('[') {
+        let address = if self.config.listen_address.contains(':')
+            && !self.config.listen_address.contains('[')
+        {
             // IPv6地址需要方括号
-            format!("[{}]:{}", self.config.listen_address, self.config.listen_port)
+            format!(
+                "[{}]:{}",
+                self.config.listen_address, self.config.listen_port
+            )
         } else {
             format!("{}:{}", self.config.listen_address, self.config.listen_port)
         };
-        
+
         let socket_addr = match SocketAddr::from_str(&address) {
             Ok(addr) => addr,
             Err(e) => {
@@ -357,73 +394,88 @@ impl NetworkServer for TcpServer {
                 return Pin::from(Box::new(async move { Err(error_msg.into()) }));
             }
         };
-        
+
         info!("TCP服务器启动在地址: {}", socket_addr);
-        
+
         // 更新状态为运行中
         self.is_running = true;
-        
+
         // 创建oneshot通道，用于在异步任务中传递listener和task handle
         let (tx, rx) = tokio::sync::oneshot::channel::<(Arc<TcpListener>, JoinHandle<()>)>();
-        
+
         // 保存需要在异步块中使用的字段的克隆
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
         let clients = self.clients.clone();
         let client_handles = self.client_handles.clone();
-        
+
         // 启动一个任务来创建listener并启动监听
         tokio::spawn(async move {
             // 绑定地址
             match TcpListener::bind(socket_addr).await {
                 Ok(listener) => {
                     info!("TCP服务器开始监听: {}", address);
-                    
+
                     // 发送监听事件到UI线程
                     if let Some(sender) = &event_sender {
-                        if let Err(e) = sender.send(ConnectionEvent::Listening(config.id.clone())).await {
+                        if let Err(e) = sender
+                            .send(ConnectionEvent::Listening(config.id.clone()))
+                            .await
+                        {
                             error!("[TCP服务器] 发送 Listening 事件失败: {:?}", e);
                         }
                     }
-                    
+
                     // 将listener包装在Arc中
                     let listener_arc = Arc::new(listener);
-                    
+
                     // 启动独立的监听任务
-                    let listener_task = tokio::spawn({ 
+                    let listener_task = tokio::spawn({
                         let listener_clone = listener_arc.clone();
                         let config = config.clone();
                         let event_sender = event_sender.clone();
                         let message_processor = message_processor.clone();
                         let clients = clients.clone();
                         let client_handles = client_handles.clone();
-                        async move { 
+                        async move {
                             loop {
                                 match listener_clone.accept().await {
                                     Ok((socket, addr)) => {
                                         debug!("TCP服务器接收到来自 {} 的连接", addr);
-                                        
+
                                         // 创建客户端连接的发送器和接收器
                                         let (tx, rx) = smol_unbounded::<Vec<u8>>();
                                         // 创建解码器控制通道(用于运行时下发解码器配置, 无需重连)
-                                        let (decoder_control_tx, decoder_control_rx) = smol_unbounded::<DecoderConfig>();
+                                        let (decoder_control_tx, decoder_control_rx) =
+                                            smol_unbounded::<DecoderConfig>();
 
                                         // 保存客户端连接到共享的clients哈希表
-                                        let mut clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, Sender<Vec<u8>>>> = clients.lock().await;
+                                        let mut clients_guard: tokio::sync::MutexGuard<
+                                            '_,
+                                            HashMap<SocketAddr, Sender<Vec<u8>>>,
+                                        > = clients.lock().await;
                                         clients_guard.insert(addr, tx.clone());
                                         drop(clients_guard);
 
                                         // 发送客户端连接事件到UI线程
                                         if let Some(sender) = &event_sender {
-                                            if let Err(e) = sender.send(ConnectionEvent::ServerClientConnected(
-                                                config.id.clone(),
-                                                addr,
-                                                tx,
-                                            )).await {
-                                                error!("[TCP服务器] 发送 ServerClientConnected 事件失败: {:?}", e);
+                                            if let Err(e) = sender
+                                                .send(ConnectionEvent::ServerClientConnected(
+                                                    config.id.clone(),
+                                                    addr,
+                                                    tx,
+                                                ))
+                                                .await
+                                            {
+                                                error!(
+                                                    "[TCP服务器] 发送 ServerClientConnected 事件失败: {:?}",
+                                                    e
+                                                );
                                             }
-                                            debug!("[TCP服务器] 发送 ServerDecoderControlSenderReady 事件");
+                                            debug!(
+                                                "[TCP服务器] 发送 ServerDecoderControlSenderReady 事件"
+                                            );
                                             if let Err(e) = sender.send(ConnectionEvent::ServerDecoderControlSenderReady(
                                                 config.id.clone(),
                                                 addr,
@@ -439,16 +491,21 @@ impl NetworkServer for TcpServer {
                                         let client_message_processor = message_processor.clone();
                                         let clients_clone_for_disconnect = clients.clone();
                                         let config_clone_for_client = config.clone();
-                                        let client_handles_clone_for_client = client_handles.clone();
-                                        
+                                        let client_handles_clone_for_client =
+                                            client_handles.clone();
+
                                         // 创建客户端连接的任务句柄
                                         let client_task = tokio::spawn(async move {
                                             // 创建decoder和encoder
-                                            let (mut socket_read, mut socket_write) = tokio::io::split(socket);
+                                            let (mut socket_read, mut socket_write) =
+                                                tokio::io::split(socket);
 
                                             // 根据配置创建具体的解码器
-                                            let decoder_config = config_clone_for_client.decoder_config.clone();
-                                            let encoder = CodecFactory::create_encoder(&config_clone_for_client.decoder_config);
+                                            let decoder_config =
+                                                config_clone_for_client.decoder_config.clone();
+                                            let encoder = CodecFactory::create_encoder(
+                                                &config_clone_for_client.decoder_config,
+                                            );
                                             let decoder_control_rx = decoder_control_rx;
 
                                             // 启动接收消息循环
@@ -540,39 +597,69 @@ impl NetworkServer for TcpServer {
                                                     }
                                                 }
                                             };
-                                            
+
                                             // 启动发送消息循环
-                                            let send_fut = async { 
+                                            let send_fut = async {
                                                 let mut encoder = encoder;
                                                 loop {
                                                     match rx.recv().await {
                                                         Ok(message) => {
-                                                            let mut buffer = BytesMut::with_capacity(message.len());
-                                                            let data_bytes = BytesMut::from(message.as_slice());
-                                                            
+                                                            let mut buffer =
+                                                                BytesMut::with_capacity(
+                                                                    message.len(),
+                                                                );
+                                                            let data_bytes =
+                                                                BytesMut::from(message.as_slice());
+
                                                             // 使用encoder编码数据
-                                                            if let Err(e) = encoder.encode(data_bytes, &mut buffer) {
-                                                                error!("TCP服务器编码消息时发生错误: {:?}", e);
+                                                            if let Err(e) = encoder
+                                                                .encode(data_bytes, &mut buffer)
+                                                            {
+                                                                error!(
+                                                                    "TCP服务器编码消息时发生错误: {:?}",
+                                                                    e
+                                                                );
                                                                 break;
                                                             }
-                                                            
+
                                                             // 写入数据
-                                                            if let Err(e) = socket_write.write_all(&buffer).await {
-                                                                error!("TCP服务器向 {} 发送消息时发生错误: {:?}", addr, e);
+                                                            if let Err(e) = socket_write
+                                                                .write_all(&buffer)
+                                                                .await
+                                                            {
+                                                                error!(
+                                                                    "TCP服务器向 {} 发送消息时发生错误: {:?}",
+                                                                    addr, e
+                                                                );
                                                                 break;
                                                             }
-                                                            
+
                                                             // 尝试将消息转换为文本，如果失败则显示十六进制
-                                                            let send_message_str = match String::from_utf8(message.clone()) {
-                                                                Ok(s) => s,
-                                                                Err(_) => {
-                                                                    // 转换为十六进制
-                                                                    let hex: Vec<String> = message.iter().map(|b| format!("{:02x}", b)).collect();
-                                                                    hex.join(" ")
-                                                                }
-                                                            };
-                                                            debug!("TCP服务器向 {} 发送消息: {}", addr, send_message_str);
-                                                        },
+                                                            let send_message_str =
+                                                                match String::from_utf8(
+                                                                    message.clone(),
+                                                                ) {
+                                                                    Ok(s) => s,
+                                                                    Err(_) => {
+                                                                        // 转换为十六进制
+                                                                        let hex: Vec<String> =
+                                                                            message
+                                                                                .iter()
+                                                                                .map(|b| {
+                                                                                    format!(
+                                                                                        "{:02x}",
+                                                                                        b
+                                                                                    )
+                                                                                })
+                                                                                .collect();
+                                                                        hex.join(" ")
+                                                                    }
+                                                                };
+                                                            debug!(
+                                                                "TCP服务器向 {} 发送消息: {}",
+                                                                addr, send_message_str
+                                                            );
+                                                        }
                                                         Err(_) => {
                                                             debug!("TCP服务器发送消息通道已关闭");
                                                             break;
@@ -580,7 +667,7 @@ impl NetworkServer for TcpServer {
                                                     }
                                                 }
                                             };
-                                            
+
                                             // 同时运行接收和发送循环，任何一个结束都终止另一个
                                             tokio::select! {
                                                 _ = recv_fut => {
@@ -590,34 +677,51 @@ impl NetworkServer for TcpServer {
                                                     debug!("TCP服务器发送循环结束");
                                                 },
                                             }
-                                            
+
                                             // 从共享的clients哈希表中移除断开连接的客户端
-                                            let mut clients_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, Sender<Vec<u8>>>> = clients_clone_for_disconnect.lock().await;
+                                            let mut clients_guard: tokio::sync::MutexGuard<
+                                                '_,
+                                                HashMap<SocketAddr, Sender<Vec<u8>>>,
+                                            > = clients_clone_for_disconnect.lock().await;
                                             clients_guard.remove(&addr);
                                             drop(clients_guard);
-                                            
+
                                             // 从客户端任务句柄表中移除
-                                            let mut handles_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, JoinHandle<()>>> = client_handles_clone_for_client.lock().await;
+                                            let mut handles_guard: tokio::sync::MutexGuard<
+                                                '_,
+                                                HashMap<SocketAddr, JoinHandle<()>>,
+                                            > = client_handles_clone_for_client.lock().await;
                                             handles_guard.remove(&addr);
                                             drop(handles_guard);
-                                            
+
                                             // 发送客户端断开连接事件到UI线程
                                             if let Some(sender) = &client_event_sender {
-                                                if let Err(e) = sender.send(ConnectionEvent::ServerClientDisconnected(
-                                                    client_id_clone.clone(),
-                                                    addr,
-                                                )).await {
-                                                    error!("[TCP服务器] 发送 ServerClientDisconnected 事件失败: {:?}", e);
+                                                if let Err(e) = sender
+                                                    .send(
+                                                        ConnectionEvent::ServerClientDisconnected(
+                                                            client_id_clone.clone(),
+                                                            addr,
+                                                        ),
+                                                    )
+                                                    .await
+                                                {
+                                                    error!(
+                                                        "[TCP服务器] 发送 ServerClientDisconnected 事件失败: {:?}",
+                                                        e
+                                                    );
                                                 }
                                             }
                                         });
-                                        
+
                                         // 保存客户端任务句柄到client_handles
                                         let client_handles_clone = client_handles.clone();
-                                        let mut handles_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, JoinHandle<()>>> = client_handles_clone.lock().await;
+                                        let mut handles_guard: tokio::sync::MutexGuard<
+                                            '_,
+                                            HashMap<SocketAddr, JoinHandle<()>>,
+                                        > = client_handles_clone.lock().await;
                                         handles_guard.insert(addr, client_task);
                                         drop(handles_guard);
-                                    },
+                                    }
                                     Err(e) => {
                                         // 监听失败，可能是因为listener被关闭
                                         debug!("TCP服务器监听失败: {:?}", e);
@@ -627,12 +731,12 @@ impl NetworkServer for TcpServer {
                             }
                         }
                     });
-                    
+
                     // 发送listener和task handle到通道
                     if let Err(e) = tx.send((listener_arc, listener_task)) {
                         error!("TCP服务器无法发送listener和task handle到通道: {:?}", e);
                     }
-                },
+                }
                 Err(e) => {
                     error!("TCP服务器绑定地址失败: {:?}", e);
                     // 尝试绑定回退地址，如果失败则发送错误
@@ -643,13 +747,20 @@ impl NetworkServer for TcpServer {
                         Err(fallback_error) => {
                             error!("TCP服务器回退地址绑定也失败: {:?}", fallback_error);
                             // 发送空结果表示完全失败
-                            let _ = tx.send((Arc::new(TcpListener::bind("127.0.0.1:0").await.unwrap_or_else(|_| panic!("无法绑定任何TCP地址"))), tokio::spawn(async {})));
+                            let _ = tx.send((
+                                Arc::new(
+                                    TcpListener::bind("127.0.0.1:0")
+                                        .await
+                                        .unwrap_or_else(|_| panic!("无法绑定任何TCP地址")),
+                                ),
+                                tokio::spawn(async {}),
+                            ));
                         }
                     }
                 }
             }
         });
-        
+
         // 返回一个future，该future会等待通道中的listener和task handle，并将它们保存到self中
         Pin::from(Box::new(async move {
             // 等待通道中的listener和task handle
@@ -659,7 +770,7 @@ impl NetworkServer for TcpServer {
                     self.listener = Some(listener_arc);
                     self.listener_handle = Some(listener_task);
                     Ok(())
-                },
+                }
                 Err(e) => {
                     error!("TCP服务器无法从通道接收listener和task handle: {:?}", e);
                     // 更新状态为停止
@@ -669,74 +780,77 @@ impl NetworkServer for TcpServer {
             }
         }))
     }
-    
-    fn stop(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
+
+    fn stop(
+        &mut self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>
+    {
         let event_sender = self.event_sender.clone();
         let server_id = self.config.id.clone();
         let clients = self.clients.clone();
         let client_handles = self.client_handles.clone();
-        
+
         // 如果服务器已经停止，直接返回
         if !self.is_running {
             debug!("TCP服务器已经停止");
-            return Pin::from(Box::new(async move {
-                Ok(())
-            }));
+            return Pin::from(Box::new(async move { Ok(()) }));
         }
-        
+
         // 取消监听任务
         if let Some(handle) = self.listener_handle.take() {
             handle.abort();
             debug!("TCP服务器监听任务已取消");
         }
-        
+
         // 关闭监听套接字
         if let Some(_listener) = self.listener.take() {
             // 当我们从self.listener中取出listener并drop它时，会自动关闭监听套接字
             // 这将导致所有正在进行的accept()调用返回错误，从而停止接收新连接
             debug!("TCP服务器监听套接字已关闭");
         }
-        
+
         // 更新状态为停止
         self.is_running = false;
-        
+
         Pin::from(Box::new(async move {
             // 发送消息通知所有客户端连接关闭
             let mut clients_guard = clients.lock().await;
             let clients = std::mem::take(&mut *clients_guard);
             drop(clients_guard);
-            
+
             // 关闭所有客户端连接的发送通道
             for (addr, sender) in clients {
                 drop(sender); // 关闭发送通道，这会导致客户端的发送任务退出
                 debug!("TCP服务器已关闭客户端 {} 的发送通道", addr);
             }
-            
+
             // 取消所有客户端连接任务
-            let mut handles_guard: tokio::sync::MutexGuard<'_, HashMap<SocketAddr, JoinHandle<()>>> = client_handles.lock().await;
+            let mut handles_guard: tokio::sync::MutexGuard<
+                '_,
+                HashMap<SocketAddr, JoinHandle<()>>,
+            > = client_handles.lock().await;
             let handles = std::mem::take(&mut *handles_guard);
             drop(handles_guard);
-            
+
             for (addr, handle) in handles {
                 handle.abort();
                 debug!("TCP服务器已取消客户端 {} 的连接任务", addr);
             }
-            
+
             // 发送断开连接事件到UI线程
             if let Some(sender) = &event_sender {
                 if let Err(e) = sender.send(ConnectionEvent::Disconnected(server_id)).await {
                     error!("[TCP服务器] 发送 Disconnected 事件失败: {:?}", e);
                 }
             }
-            
+
             debug!("TCP服务器已停止");
             debug!("TCP服务器已停止监听端口");
             Ok(())
         }))
     }
-    
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-
 }

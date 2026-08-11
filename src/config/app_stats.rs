@@ -219,6 +219,9 @@ mod tests {
         };
         stats.dismiss_star_prompt("2026-08-08");
         assert_eq!(stats.star_prompt_dismissal_count, 1);
-        assert_eq!(stats.star_prompt_last_dismissed, Some("2026-08-08".to_string()));
+        assert_eq!(
+            stats.star_prompt_last_dismissed,
+            Some("2026-08-08".to_string())
+        );
     }
 }

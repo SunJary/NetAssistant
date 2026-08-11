@@ -4,7 +4,9 @@ use log::{debug, error, info, warn};
 
 use crate::config;
 use crate::config::app_stats::AppStats;
-use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig};
+use crate::config::connection::{
+    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig,
+};
 use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
@@ -14,14 +16,14 @@ use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 
 use crate::ui::connection_tab::ConnectionTabState;
-use crate::ui::dialog::{StressConfigDialogState, DecoderSelectionDialogState};
+use crate::ui::dialog::{DecoderSelectionDialogState, StressConfigDialogState};
 use crate::ui::main_window::MainWindow;
 
+use smol::channel::{Receiver, Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use smol::channel::{Sender, Receiver, unbounded as smol_unbounded};
 
 pub struct NetAssistantApp {
     // 配置存储
@@ -68,8 +70,9 @@ pub struct NetAssistantApp {
     pub stress_config_dialog: Option<StressConfigDialogState>,
 
     // 网络连接管理器
-    pub network_manager: std::sync::Arc<tokio::sync::Mutex<crate::network::connection::manager::NetworkConnectionManager>>,
-    
+    pub network_manager: std::sync::Arc<
+        tokio::sync::Mutex<crate::network::connection::manager::NetworkConnectionManager>,
+    >,
 
     // 写入发送器映射（无锁设计，每个标签页独立管理）- 使用smol channel
     pub client_write_senders: HashMap<String, Sender<Vec<u8>>>,
@@ -84,21 +87,21 @@ pub struct NetAssistantApp {
     pub context_menu_is_client: bool,
     pub context_menu_position: Option<Pixels>,
     pub context_menu_position_y: Option<Pixels>,
-    
+
     // 添加客户端对话框状态（UDP服务端专用）
     pub show_add_client_dialog: bool,
     pub add_client_dialog_tab_id: String,
     pub add_client_dialog_input: Option<Entity<InputState>>,
     pub add_client_dialog_error: Option<String>,
-    
+
     // 侧边栏布局状态
     pub sidebar_width: Option<Pixels>,
     pub sidebar_resizing: bool,
     pub sidebar_collapsed: bool,
-    
+
     // 性能优化：限制UI更新频率
     pub last_update_time: Instant,
-    
+
     // 消息容器尺寸信息（用于计算消息气泡宽度）
     pub message_container_width: Option<Pixels>,
 
@@ -143,14 +146,15 @@ impl NetAssistantApp {
         let active_tab = String::new();
 
         // 创建连接事件通道 - 使用smol channel与GPUI兼容
-        let (connection_event_sender, connection_event_receiver) = smol_unbounded::<ConnectionEvent>();
+        let (connection_event_sender, connection_event_receiver) =
+            smol_unbounded::<ConnectionEvent>();
 
         // 创建压测事件通道（引擎→UI，同 smol channel 模式）
         let (stress_event_sender, stress_event_receiver) = smol_unbounded::<StressEvent>();
 
         // 初始化网络连接管理器
         let network_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
-            crate::network::connection::manager::NetworkConnectionManager::new()
+            crate::network::connection::manager::NetworkConnectionManager::new(),
         ));
 
         // 初始化写入发送器映射
@@ -266,7 +270,8 @@ impl NetAssistantApp {
                     return;
                 }
             }
-        }).detach();
+        })
+        .detach();
 
         // 创建压测事件泵任务（引擎→UI，同 smol channel 模式）
         let weak_app_stress = cx.entity().clone().downgrade();
@@ -284,7 +289,8 @@ impl NetAssistantApp {
                     });
                 }
             }
-        }).detach();
+        })
+        .detach();
 
         // 主题事件处理已由GPUI窗口的observe_window_appearance处理，不再需要定期检查
 
@@ -302,12 +308,10 @@ impl NetAssistantApp {
 
         cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
             // 在 tokio 运行时上并行发起两个 HTTP 请求
-            let version_handle = tokio_handle.spawn(async move {
-                crate::update_checker::check_latest_version().await
-            });
-            let star_handle = tokio_handle.spawn(async {
-                crate::update_checker::fetch_star_count().await
-            });
+            let version_handle = tokio_handle
+                .spawn(async move { crate::update_checker::check_latest_version().await });
+            let star_handle =
+                tokio_handle.spawn(async { crate::update_checker::fetch_star_count().await });
 
             // 等待结果（两个请求并行执行）
             let latest_version = version_handle.await.ok().flatten();
@@ -364,13 +368,13 @@ impl NetAssistantApp {
                     self.disconnect_server(tab_id, cx);
                 }
             } else {
-                    // 建立连接
-                    if tab_state.connection_config.is_client() {
-                        self.connect_to_server(tab_id);
-                    } else {
-                        self.start_server(tab_id, cx);
-                    }
+                // 建立连接
+                if tab_state.connection_config.is_client() {
+                    self.connect_to_server(tab_id);
+                } else {
+                    self.start_server(tab_id, cx);
                 }
+            }
         }
         cx.notify();
     }
@@ -440,7 +444,6 @@ impl NetAssistantApp {
         }
     }
 
-
     pub fn sanitize_hex_input(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
         // 这里可以实现十六进制输入的清理逻辑
         // 由于我们现在使用的是每个标签页独立的输入框，
@@ -487,7 +490,12 @@ impl NetAssistantApp {
     }
 
     /// 打开「新建连接」对话框（重置为新建模式）
-    pub fn open_new_connection(&mut self, is_client: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_new_connection(
+        &mut self,
+        is_client: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.editing_connection_id = None;
         self.new_connection_is_client = is_client;
         self.new_connection_protocol = String::from("TCP");
@@ -496,15 +504,23 @@ impl NetAssistantApp {
         self.edit_decoder_config = DecoderConfig::default();
 
         let default_host = if is_client { "127.0.0.1" } else { "0.0.0.0" };
-        self.host_input.update(cx, |i, cx| i.set_value(default_host.to_string(), window, cx));
-        self.port_input.update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.host_input.update(cx, |i, cx| {
+            i.set_value(default_host.to_string(), window, cx)
+        });
+        self.port_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
 
         self.show_new_connection = true;
         cx.notify();
     }
 
     /// 打开「编辑连接」对话框（从现有配置回填）
-    pub fn open_edit_connection(&mut self, connection_id: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_edit_connection(
+        &mut self,
+        connection_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let config = self
             .storage
             .client_connections()
@@ -537,8 +553,10 @@ impl NetAssistantApp {
             ),
         };
 
-        self.host_input.update(cx, |i, cx| i.set_value(address, window, cx));
-        self.port_input.update(cx, |i, cx| i.set_value(port.to_string(), window, cx));
+        self.host_input
+            .update(cx, |i, cx| i.set_value(address, window, cx));
+        self.port_input
+            .update(cx, |i, cx| i.set_value(port.to_string(), window, cx));
         self.edit_message_input_mode = message_input_mode;
         self.edit_decoder_config = decoder;
         self.show_connection_advanced = true;
@@ -548,17 +566,15 @@ impl NetAssistantApp {
     }
 
     /// 确认连接表单（新建或编辑）
-    pub fn confirm_connection_form(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn confirm_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let host = self.host_input.read(cx).value().to_string();
         let port_str = self.port_input.read(cx).value().to_string();
         if host.is_empty() || port_str.is_empty() {
             return;
         }
-        let Ok(port) = port_str.parse::<u16>() else { return };
+        let Ok(port) = port_str.parse::<u16>() else {
+            return;
+        };
 
         let message_input_mode = self.edit_message_input_mode.clone();
         let decoder_config = self.edit_decoder_config.clone();
@@ -661,7 +677,6 @@ impl NetAssistantApp {
         debug!("[关闭标签页] 标签页 {} 已关闭", tab_id);
     }
 
-
     // ============== 压测相关方法 ==============
 
     /// 处理压测事件(由压测事件泵调用)
@@ -719,7 +734,12 @@ impl NetAssistantApp {
     }
 
     /// 打开压测配置弹窗(回填目标 + 已保存配置)
-    pub fn open_stress_config(&mut self, tab_id: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_stress_config(
+        &mut self,
+        tab_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let config = match self.build_stress_config_for_tab(&tab_id) {
             Some(c) => c,
             None => {
@@ -732,7 +752,12 @@ impl NetAssistantApp {
     }
 
     /// 启动压测
-    pub fn start_stress(&mut self, tab_id: String, config: StressTestConfig, cx: &mut Context<Self>) {
+    pub fn start_stress(
+        &mut self,
+        tab_id: String,
+        config: StressTestConfig,
+        cx: &mut Context<Self>,
+    ) {
         let sender = match &self.stress_event_sender {
             Some(s) => s.clone(),
             None => {
@@ -748,7 +773,8 @@ impl NetAssistantApp {
             .map(|t| t.connection_config.id().to_string())
             .unwrap_or_default();
         if !connection_id.is_empty() {
-            self.storage.save_stress_profile(&connection_id, config.clone());
+            self.storage
+                .save_stress_profile(&connection_id, config.clone());
         }
 
         if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
@@ -798,7 +824,8 @@ impl NetAssistantApp {
                     break;
                 }
             }
-        }).detach();
+        })
+        .detach();
 
         cx.notify();
     }
@@ -861,7 +888,12 @@ impl NetAssistantApp {
     }
 
     /// 切换 Tab 视图模式(调试/压测)
-    pub fn switch_tab_view_mode(&mut self, tab_id: String, view_mode: TabViewMode, cx: &mut Context<Self>) {
+    pub fn switch_tab_view_mode(
+        &mut self,
+        tab_id: String,
+        view_mode: TabViewMode,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
             tab.view_mode = view_mode;
             cx.notify();
@@ -879,12 +911,12 @@ impl NetAssistantApp {
 
         cx.notify();
         tokio::spawn(async move {
-                            // 断开网络连接
-                            let mut network_manager = network_manager_arc.lock().await;
-                            if let Err(e) = network_manager.disconnect_client(&tab_id_clone).await {
+            // 断开网络连接
+            let mut network_manager = network_manager_arc.lock().await;
+            if let Err(e) = network_manager.disconnect_client(&tab_id_clone).await {
                 error!("断开客户端连接失败: {:?}", e);
             }
-            
+
             // 发送断开连接事件
             if let Some(sender) = sender {
                 let _ = sender.try_send(ConnectionEvent::Disconnected(tab_id_clone));
@@ -901,7 +933,7 @@ impl NetAssistantApp {
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
             tab_state.disconnect();
         }
-        
+
         self.server_clients.remove(&tab_id);
 
         cx.notify();
@@ -910,7 +942,7 @@ impl NetAssistantApp {
             if let Err(e) = network_manager.stop_server(&tab_id_clone).await {
                 error!("停止服务器失败: {:?}", e);
             }
-            
+
             if let Some(sender) = sender {
                 let _ = sender.try_send(ConnectionEvent::Disconnected(tab_id_clone));
             }
@@ -920,19 +952,24 @@ impl NetAssistantApp {
     /// 客户端连接到服务端
     pub fn connect_to_server(&mut self, tab_id: String) {
         if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
-            let client_config = if let ConnectionConfig::Client(client_config) = tab_state.connection_config.clone() {
+            let client_config = if let ConnectionConfig::Client(client_config) =
+                tab_state.connection_config.clone()
+            {
                 client_config
             } else {
                 return;
             };
-            
+
             let network_manager_arc = self.network_manager.clone();
             let client_config_clone = client_config.clone();
             let connection_event_sender_clone = self.connection_event_sender.clone();
-            
+
             tokio::spawn(async move {
                 let mut network_manager = network_manager_arc.lock().await;
-                if let Err(e) = network_manager.create_and_connect_client(&client_config_clone, connection_event_sender_clone).await {
+                if let Err(e) = network_manager
+                    .create_and_connect_client(&client_config_clone, connection_event_sender_clone)
+                    .await
+                {
                     error!("客户端连接失败: {:?}", e);
                 }
             });
@@ -945,15 +982,21 @@ impl NetAssistantApp {
             // 立即更新UI状态为正在启动
             tab_state.is_connected = true;
             tab_state.connection_status = ConnectionStatus::Connecting;
-            
+
             if let ConnectionConfig::Server(server_config) = &tab_state.connection_config {
                 let network_manager_arc = self.network_manager.clone();
                 let server_config_clone = server_config.clone();
                 let connection_event_sender_clone = self.connection_event_sender.clone();
-                
+
                 tokio::spawn(async move {
                     let mut network_manager = network_manager_arc.lock().await;
-                    if let Err(e) = network_manager.create_and_start_server(&server_config_clone, connection_event_sender_clone).await {
+                    if let Err(e) = network_manager
+                        .create_and_start_server(
+                            &server_config_clone,
+                            connection_event_sender_clone,
+                        )
+                        .await
+                    {
                         error!("服务端启动失败: {:?}", e);
                     }
                 });
@@ -969,37 +1012,39 @@ impl NetAssistantApp {
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
         let content_clone = content.clone();
-        
+
         // 保存message_type用于后续事件发送
-        let tab_info = self.connection_tabs.get(&tab_id)
-            .map(|tab_state| {
-                let message_type = if tab_state.message_input_mode == "text" {
-                    MessageType::Text
-                } else {
-                    MessageType::Hex
-                };
-                let is_client = tab_state.connection_config.is_client();
-                let selected_client = tab_state.selected_client;
-                (message_type, is_client, selected_client)
-            });
-        
+        let tab_info = self.connection_tabs.get(&tab_id).map(|tab_state| {
+            let message_type = if tab_state.message_input_mode == "text" {
+                MessageType::Text
+            } else {
+                MessageType::Hex
+            };
+            let is_client = tab_state.connection_config.is_client();
+            let selected_client = tab_state.selected_client;
+            (message_type, is_client, selected_client)
+        });
+
         if tab_info.is_none() {
             error!("[send_message] 未找到标签页: {}", tab_id);
             return;
         }
-        
+
         let (message_type, is_client, selected_client) = tab_info.unwrap();
-        
+
         // 在闭包外部获取必要的信息
-        let is_connected_result = self.connection_tabs.get(&tab_id).map(|tab| tab.is_connected);
-        
+        let is_connected_result = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|tab| tab.is_connected);
+
         if is_connected_result.is_none() {
             error!("[send_message] 未找到标签页: {}", tab_id);
             return;
         }
-        
+
         let is_connected = is_connected_result.unwrap();
-        
+
         if !is_connected {
             if let Some(sender) = sender {
                 let _ = sender.try_send(ConnectionEvent::Error(
@@ -1009,14 +1054,14 @@ impl NetAssistantApp {
             }
             return;
         }
-        
+
         // 直接使用client_write_senders和server_clients来发送消息
         let bytes = content_clone.into_bytes();
-        
+
         if is_client {
             // 客户端模式：发送给服务器
             debug!("[send_message] 客户端模式，发送给服务器");
-            
+
             if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
                 if write_sender.try_send(bytes.clone()).is_err() {
                     error!("[send_message] 无法发送消息到服务器");
@@ -1030,7 +1075,8 @@ impl NetAssistantApp {
                     debug!("[send_message] 发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender
+                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
@@ -1055,13 +1101,20 @@ impl NetAssistantApp {
                         if write_sender.try_send(bytes.clone()).is_err() {
                             // 单个客户端发送失败不应影响整个服务端，仅记录日志
                             // TCP/UDP 层会通过 ServerClientDisconnected 事件清理该客户端
-                            warn!("[send_message] 发送给客户端 {} 失败（客户端可能已断开）", target_addr);
+                            warn!(
+                                "[send_message] 发送给客户端 {} 失败（客户端可能已断开）",
+                                target_addr
+                            );
                         } else {
                             debug!("[send_message] 定向发送成功");
                             if let Some(sender) = sender {
-                                let message = Message::new(MessageDirection::Sent, bytes, message_type)
-                                    .with_source(target_addr.to_string());
-                                let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                                let message =
+                                    Message::new(MessageDirection::Sent, bytes, message_type)
+                                        .with_source(target_addr.to_string());
+                                let _ = sender.try_send(ConnectionEvent::MessageReceived(
+                                    tab_id_clone,
+                                    message,
+                                ));
                             }
                         }
                     } else {
@@ -1069,9 +1122,12 @@ impl NetAssistantApp {
                     }
                 } else {
                     // 广播给所有客户端（并行发送）
-                    debug!("[send_message] 服务端模式，广播给所有客户端，共 {} 个", clients.len());
+                    debug!(
+                        "[send_message] 服务端模式，广播给所有客户端，共 {} 个",
+                        clients.len()
+                    );
                     let bytes_arc = std::sync::Arc::new(bytes.clone());
-                    
+
                     for (addr, write_sender) in clients.iter() {
                         let sender_clone = write_sender.clone();
                         let bytes_clone = bytes_arc.clone();
@@ -1082,11 +1138,12 @@ impl NetAssistantApp {
                             }
                         });
                     }
-                    
+
                     debug!("[send_message] 广播发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender
+                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
@@ -1102,37 +1159,39 @@ impl NetAssistantApp {
         );
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
-        
+
         // 保存message_type和selected_client用于后续事件发送
-        let tab_info = self.connection_tabs.get(&tab_id)
-            .map(|tab_state| {
-                let message_type = if tab_state.message_input_mode == "text" {
-                    MessageType::Text
-                } else {
-                    MessageType::Hex
-                };
-                let is_client = tab_state.connection_config.is_client();
-                let selected_client = tab_state.selected_client;
-                (message_type, is_client, selected_client)
-            });
-        
+        let tab_info = self.connection_tabs.get(&tab_id).map(|tab_state| {
+            let message_type = if tab_state.message_input_mode == "text" {
+                MessageType::Text
+            } else {
+                MessageType::Hex
+            };
+            let is_client = tab_state.connection_config.is_client();
+            let selected_client = tab_state.selected_client;
+            (message_type, is_client, selected_client)
+        });
+
         if tab_info.is_none() {
             error!("[send_message_bytes] 未找到标签页: {}", tab_id);
             return;
         }
-        
+
         let (message_type, is_client, selected_client) = tab_info.unwrap();
-        
+
         // 在闭包外部获取必要的信息
-        let is_connected_result = self.connection_tabs.get(&tab_id).map(|tab| tab.is_connected);
-        
+        let is_connected_result = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|tab| tab.is_connected);
+
         if is_connected_result.is_none() {
             error!("[send_message_bytes] 未找到标签页: {}", tab_id);
             return;
         }
-        
+
         let is_connected = is_connected_result.unwrap();
-        
+
         if !is_connected {
             if let Some(sender) = sender {
                 let _ = sender.try_send(ConnectionEvent::Error(
@@ -1142,12 +1201,12 @@ impl NetAssistantApp {
             }
             return;
         }
-        
+
         // 直接使用client_write_senders和server_clients来发送消息
         if is_client {
             // 客户端模式：发送给服务器
             debug!("[send_message_bytes] 客户端模式，发送给服务器");
-            
+
             if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
                 if write_sender.try_send(bytes.clone()).is_err() {
                     error!("[send_message_bytes] 无法发送消息到服务器");
@@ -1161,7 +1220,8 @@ impl NetAssistantApp {
                     debug!("[send_message_bytes] 发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender
+                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
@@ -1180,17 +1240,27 @@ impl NetAssistantApp {
                     warn!("[send_message_bytes] 没有可用的客户端连接");
                 } else if let Some(target_addr) = selected_client {
                     // 定向发送给选中的客户端
-                    debug!("[send_message_bytes] 服务端模式，定向发送给: {}", target_addr);
+                    debug!(
+                        "[send_message_bytes] 服务端模式，定向发送给: {}",
+                        target_addr
+                    );
                     if let Some(write_sender) = clients.get(&target_addr) {
                         if write_sender.try_send(bytes.clone()).is_err() {
                             // 单个客户端发送失败不应影响整个服务端，仅记录日志
-                            warn!("[send_message_bytes] 发送给客户端 {} 失败（客户端可能已断开）", target_addr);
+                            warn!(
+                                "[send_message_bytes] 发送给客户端 {} 失败（客户端可能已断开）",
+                                target_addr
+                            );
                         } else {
                             debug!("[send_message_bytes] 定向发送成功");
                             if let Some(sender) = sender {
-                                let message = Message::new(MessageDirection::Sent, bytes, message_type)
-                                    .with_source(target_addr.to_string());
-                                let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                                let message =
+                                    Message::new(MessageDirection::Sent, bytes, message_type)
+                                        .with_source(target_addr.to_string());
+                                let _ = sender.try_send(ConnectionEvent::MessageReceived(
+                                    tab_id_clone,
+                                    message,
+                                ));
                             }
                         }
                     } else {
@@ -1198,9 +1268,12 @@ impl NetAssistantApp {
                     }
                 } else {
                     // 广播给所有客户端（并行发送）
-                    debug!("[send_message_bytes] 服务端模式，广播给所有客户端，共 {} 个", clients.len());
+                    debug!(
+                        "[send_message_bytes] 服务端模式，广播给所有客户端，共 {} 个",
+                        clients.len()
+                    );
                     let bytes_arc = std::sync::Arc::new(bytes.clone());
-                    
+
                     for (addr, write_sender) in clients.iter() {
                         let sender_clone = write_sender.clone();
                         let bytes_clone = bytes_arc.clone();
@@ -1211,11 +1284,12 @@ impl NetAssistantApp {
                             }
                         });
                     }
-                    
+
                     debug!("[send_message_bytes] 广播发送成功");
                     if let Some(sender) = sender {
                         let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender.try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
+                        let _ = sender
+                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
                     }
                 }
             } else {
@@ -1238,22 +1312,22 @@ impl NetAssistantApp {
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
         let content_clone = content.clone();
-        
+
         // 获取标签页信息
         let tab_state_result = self.connection_tabs.get(&tab_id);
-        
+
         if tab_state_result.is_none() {
             error!("[send_message_to_client] 未找到标签页: {}", tab_id);
             return;
         }
-        
+
         let tab_state = tab_state_result.unwrap();
         let message_type = if tab_state.message_input_mode == "text" {
             MessageType::Text
         } else {
             MessageType::Hex
         };
-        
+
         // 检查连接状态
         if !tab_state.is_connected && !tab_state.connection_config.is_server() {
             error!("[send_message_to_client] 连接未建立");
@@ -1265,7 +1339,7 @@ impl NetAssistantApp {
             }
             return;
         }
-        
+
         // 客户端模式：直接发送给服务器
         if tab_state.connection_config.is_client() {
             debug!("[send_message_to_client] 客户端模式，直接发送给服务器");
@@ -1279,10 +1353,10 @@ impl NetAssistantApp {
             }
             return;
         }
-        
+
         // 服务器模式：发送给指定客户端
         debug!("[send_message_to_client] 服务端模式");
-        
+
         if let Some(source_str) = source {
             // 解析客户端地址
             match source_str.parse::<std::net::SocketAddr>() {
@@ -1295,22 +1369,22 @@ impl NetAssistantApp {
                         // 文本模式：直接转换为字节
                         content_clone.into_bytes()
                     };
-                    
+
                     // 直接使用server_clients发送消息给指定客户端
                     if let Some(clients) = self.server_clients.get(&tab_id) {
                         if let Some(write_sender) = clients.get(&addr) {
                             if write_sender.try_send(bytes.clone()).is_err() {
                                 // 单个客户端发送失败不应影响整个服务端，仅记录日志
-                                warn!("[send_message_to_client] 发送给客户端 {} 失败（客户端可能已断开）", addr);
+                                warn!(
+                                    "[send_message_to_client] 发送给客户端 {} 失败（客户端可能已断开）",
+                                    addr
+                                );
                             } else {
                                 debug!("[send_message_to_client] 发送成功");
                                 if let Some(sender) = sender {
-                                    let message = Message::new(
-                                        MessageDirection::Sent,
-                                        bytes,
-                                        message_type,
-                                    )
-                                    .with_source(source_str);
+                                    let message =
+                                        Message::new(MessageDirection::Sent, bytes, message_type)
+                                            .with_source(source_str);
                                     let _ = sender.try_send(ConnectionEvent::MessageReceived(
                                         tab_id_clone,
                                         message,
@@ -1323,10 +1397,10 @@ impl NetAssistantApp {
                     } else {
                         warn!("[send_message_to_client] 服务器客户端映射不可用");
                     }
-                },
+                }
                 Err(_) => {
                     error!("[send_message_to_client] 无效的客户端地址: {}", source_str);
-                },
+                }
             }
         } else {
             warn!("[send_message_to_client] 没有指定客户端，无法发送自动回复");
@@ -1334,7 +1408,12 @@ impl NetAssistantApp {
     }
 
     /// 向UDP服务端手动添加客户端地址
-    pub fn add_client_to_server(&mut self, tab_id: String, addr_str: String, cx: &mut Context<Self>) {
+    pub fn add_client_to_server(
+        &mut self,
+        tab_id: String,
+        addr_str: String,
+        cx: &mut Context<Self>,
+    ) {
         let addr: std::net::SocketAddr = match addr_str.parse() {
             Ok(a) => a,
             Err(_) => {
@@ -1373,7 +1452,6 @@ impl NetAssistantApp {
         cx.notify();
     }
 
-
     /// 导出指定标签页的通信记录
     pub fn export_messages(&mut self, tab_id: String, _cx: &mut Context<Self>) {
         // 获取消息列表的克隆，避免长期借用
@@ -1391,7 +1469,9 @@ impl NetAssistantApp {
         }
 
         // 获取连接地址标识用于默认文件名（如 TCP_127.0.0.1_8080）
-        let address_label = self.connection_tabs.get(&tab_id)
+        let address_label = self
+            .connection_tabs
+            .get(&tab_id)
             .map(|t| t.connection_config.address_label())
             .unwrap_or_else(|| "export".to_string());
 
@@ -1412,20 +1492,17 @@ impl NetAssistantApp {
                 let path = file_path.path();
 
                 // 根据扩展名确定格式，默认为 txt
-                let format = ExportFormat::from_extension(path)
-                    .unwrap_or(ExportFormat::Txt);
+                let format = ExportFormat::from_extension(path).unwrap_or(ExportFormat::Txt);
 
                 match export::format_messages(&messages, format) {
-                    Ok(content) => {
-                        match std::fs::write(path, content) {
-                            Ok(_) => {
-                                debug!("[导出] 消息记录已导出到: {:?}", path);
-                            }
-                            Err(e) => {
-                                error!("[导出] 写入文件失败: {:?}", e);
-                            }
+                    Ok(content) => match std::fs::write(path, content) {
+                        Ok(_) => {
+                            debug!("[导出] 消息记录已导出到: {:?}", path);
                         }
-                    }
+                        Err(e) => {
+                            error!("[导出] 写入文件失败: {:?}", e);
+                        }
+                    },
                     Err(e) => {
                         error!("[导出] 格式化消息失败: {}", e);
                     }
@@ -1465,9 +1542,13 @@ impl NetAssistantApp {
                 debug!("[日志记录] 已关闭: {}", tab_id);
             } else {
                 // 开启日志记录：优先使用自定义路径
-                let log_path = tab_state.custom_log_path.as_ref()
+                let log_path = tab_state
+                    .custom_log_path
+                    .as_ref()
                     .map(|p| std::path::PathBuf::from(p))
-                    .unwrap_or_else(|| LogWriter::default_log_path(&tab_state.connection_config.address_label()));
+                    .unwrap_or_else(|| {
+                        LogWriter::default_log_path(&tab_state.connection_config.address_label())
+                    });
 
                 // 确保日志目录存在（同步创建，很快）
                 if let Some(parent) = log_path.parent() {
@@ -1479,12 +1560,14 @@ impl NetAssistantApp {
 
                 // 使用 cx.spawn 异步打开文件并更新状态
                 let tab_id_clone = tab_id.clone();
-                cx.spawn(async move |this, cx| {
-                    match LogWriter::open(log_path_for_writer).await {
+                cx.spawn(
+                    async move |this, cx| match LogWriter::open(log_path_for_writer).await {
                         Ok(log_writer) => {
-                            let writer_arc = std::sync::Arc::new(tokio::sync::Mutex::new(log_writer));
+                            let writer_arc =
+                                std::sync::Arc::new(tokio::sync::Mutex::new(log_writer));
                             let _ = this.update(cx, |app, cx| {
-                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone) {
+                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_clone)
+                                {
                                     tab_state.log_writer = Some(writer_arc);
                                     tab_state.log_enabled = true;
                                     cx.notify();
@@ -1495,8 +1578,9 @@ impl NetAssistantApp {
                         Err(e) => {
                             error!("[日志记录] 打开日志文件失败: {:?}", e);
                         }
-                    }
-                }).detach();
+                    },
+                )
+                .detach();
 
                 // 先设置路径显示（文件在后台异步打开）
                 tab_state.log_file_path = Some(log_path_display);
@@ -1519,21 +1603,15 @@ impl NetAssistantApp {
 
                 #[cfg(target_os = "windows")]
                 {
-                    let _ = std::process::Command::new("explorer")
-                        .arg(dir)
-                        .spawn();
+                    let _ = std::process::Command::new("explorer").arg(dir).spawn();
                 }
                 #[cfg(target_os = "macos")]
                 {
-                    let _ = std::process::Command::new("open")
-                        .arg(dir)
-                        .spawn();
+                    let _ = std::process::Command::new("open").arg(dir).spawn();
                 }
                 #[cfg(target_os = "linux")]
                 {
-                    let _ = std::process::Command::new("xdg-open")
-                        .arg(dir)
-                        .spawn();
+                    let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
                 }
             }
         }
@@ -1542,7 +1620,9 @@ impl NetAssistantApp {
     /// 修改日志保存路径
     pub fn change_log_path(&mut self, tab_id: String, cx: &mut Context<Self>) {
         // 先关闭当前日志
-        let was_enabled = self.connection_tabs.get(&tab_id)
+        let was_enabled = self
+            .connection_tabs
+            .get(&tab_id)
             .map(|t| t.log_enabled)
             .unwrap_or(false);
 
@@ -1550,7 +1630,9 @@ impl NetAssistantApp {
             self.toggle_log(tab_id.clone(), cx);
         }
 
-        let address_label = self.connection_tabs.get(&tab_id)
+        let address_label = self
+            .connection_tabs
+            .get(&tab_id)
             .map(|t| t.connection_config.address_label())
             .unwrap_or_else(|| "log".to_string());
 
@@ -1576,7 +1658,8 @@ impl NetAssistantApp {
                     }
                 });
             }
-        }).detach();
+        })
+        .detach();
     }
 
     // 侧边栏调整大小相关方法
@@ -1592,7 +1675,7 @@ impl NetAssistantApp {
         }
         cx.notify();
     }
-    
+
     pub fn resize_sidebar(&mut self, new_width: Pixels, cx: &mut Context<Self>) {
         // 只有在调整大小状态下才允许改变宽度
         if self.sidebar_resizing {
@@ -1601,12 +1684,12 @@ impl NetAssistantApp {
             if now.duration_since(self.last_update_time) < Duration::from_millis(16) {
                 return; // 跳过此次更新
             }
-            
+
             // 设置侧边栏宽度的最小和最大值限制
             let min_width = px(150.0);
             let max_width = px(300.0);
             let collapse_threshold = px(150.0);
-            
+
             // 如果新宽度小于折叠阈值，自动折叠侧边栏
             if new_width < collapse_threshold {
                 self.sidebar_collapsed = true;
@@ -1616,13 +1699,13 @@ impl NetAssistantApp {
                 self.sidebar_width = Some(clamped_width);
                 self.sidebar_collapsed = false;
             }
-            
+
             // 更新最后更新时间
             self.last_update_time = now;
             cx.notify();
         }
     }
-    
+
     pub fn end_sidebar_resize(&mut self, cx: &mut Context<Self>) {
         self.sidebar_resizing = false;
         // 保存当前侧边栏宽度和折叠状态到配置
@@ -1633,7 +1716,7 @@ impl NetAssistantApp {
         self.storage.save_sidebar_collapsed(self.sidebar_collapsed);
         cx.notify();
     }
-    
+
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         self.sidebar_collapsed = !self.sidebar_collapsed;
         // 保存折叠状态到配置
@@ -1660,7 +1743,11 @@ impl NetAssistantApp {
 
     /// 批量处理连接事件: 聚合同 tab 的 MessageReceived 一次添加,其他事件走单条处理。
     /// 整批仅触发一次 cx.notify(),大幅降低高并发消息洪泛下的 UI 开销。
-    pub fn handle_connection_events_batch(&mut self, events: Vec<ConnectionEvent>, cx: &mut Context<Self>) {
+    pub fn handle_connection_events_batch(
+        &mut self,
+        events: Vec<ConnectionEvent>,
+        cx: &mut Context<Self>,
+    ) {
         let mut need_notify = false;
         // 聚合同 tab 的消息,延迟批量添加
         let mut message_batch: Vec<Message> = Vec::new();
@@ -1761,7 +1848,12 @@ impl NetAssistantApp {
         if let Some(auto_reply_input) = self.auto_reply_inputs.get(tab_id) {
             let auto_reply_content = auto_reply_input.read(cx).text().to_string();
             if !auto_reply_content.trim().is_empty() {
-                self.send_message_to_client(tab_id.to_string(), auto_reply_content, Some(source), cx);
+                self.send_message_to_client(
+                    tab_id.to_string(),
+                    auto_reply_content,
+                    Some(source),
+                    cx,
+                );
             }
         }
     }
@@ -1771,9 +1863,15 @@ impl NetAssistantApp {
     pub fn apply_decoder_config_to_connection(&mut self, tab_id: &str, config: &DecoderConfig) {
         // 客户端: 下发给单条读任务
         if let Some(sender) = self.decoder_control_senders.get(tab_id) {
-            debug!("[apply_decoder_config] 下发解码器配置到客户端 {}: {:?}", tab_id, config);
+            debug!(
+                "[apply_decoder_config] 下发解码器配置到客户端 {}: {:?}",
+                tab_id, config
+            );
             if let Err(e) = sender.try_send(config.clone()) {
-                error!("[apply_decoder_config] 下发解码器配置失败(客户端 {}): {:?}", tab_id, e);
+                error!(
+                    "[apply_decoder_config] 下发解码器配置失败(客户端 {}): {:?}",
+                    tab_id, e
+                );
             }
         }
         // 服务端: 下发给该 tab 下所有已连接客户端的读任务
@@ -1781,11 +1879,19 @@ impl NetAssistantApp {
             for sender in map.values() {
                 let _ = sender.try_send(config.clone());
             }
-            debug!("[apply_decoder_config] 下发解码器配置到服务端 {} 的 {} 个客户端", tab_id, map.len());
+            debug!(
+                "[apply_decoder_config] 下发解码器配置到服务端 {} 的 {} 个客户端",
+                tab_id,
+                map.len()
+            );
         }
     }
 
-    pub fn handle_single_connection_event(&mut self, event: ConnectionEvent, cx: &mut Context<Self>) {
+    pub fn handle_single_connection_event(
+        &mut self,
+        event: ConnectionEvent,
+        cx: &mut Context<Self>,
+    ) {
         match event {
             ConnectionEvent::Connected(tab_id) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -1847,7 +1953,8 @@ impl NetAssistantApp {
                     tab_id, addr
                 );
                 if !self.server_decoder_controls.contains_key(&tab_id) {
-                    self.server_decoder_controls.insert(tab_id.clone(), HashMap::new());
+                    self.server_decoder_controls
+                        .insert(tab_id.clone(), HashMap::new());
                 }
                 if let Some(map) = self.server_decoder_controls.get_mut(&tab_id) {
                     map.insert(addr, control_sender);
@@ -1887,8 +1994,7 @@ impl NetAssistantApp {
                 }
                 // 更新 ConnectionTabState 中的客户端连接列表
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                    if let Some(idx) =
-                        tab_state.client_connections.iter().position(|&c| c == addr)
+                    if let Some(idx) = tab_state.client_connections.iter().position(|&c| c == addr)
                     {
                         tab_state.client_connections.remove(idx);
                         tab_state.client_list_state.splice(idx..idx + 1, 0);
@@ -1919,11 +2025,15 @@ impl NetAssistantApp {
                     if tab_state.auto_reply_enabled
                         && message_for_auto_reply.direction == MessageDirection::Received
                     {
-                        if let Some(auto_reply_input) = self.auto_reply_inputs.get(&tab_id)
-                        {
+                        if let Some(auto_reply_input) = self.auto_reply_inputs.get(&tab_id) {
                             let auto_reply_content = auto_reply_input.read(cx).text().to_string();
                             if !auto_reply_content.trim().is_empty() {
-                                self.send_message_to_client(tab_id, auto_reply_content, message_for_auto_reply.source.clone(), cx);
+                                self.send_message_to_client(
+                                    tab_id,
+                                    auto_reply_content,
+                                    message_for_auto_reply.source.clone(),
+                                    cx,
+                                );
                             }
                         }
                     }
@@ -1939,7 +2049,6 @@ impl NetAssistantApp {
             }
         }
     }
-
 }
 
 impl Drop for NetAssistantApp {
@@ -1953,20 +2062,20 @@ impl Drop for NetAssistantApp {
             if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                 tab_state.disconnect();
             }
-            
+
             if self.connection_tabs.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
             }
-            
+
             if self.auto_reply_inputs.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
             }
-            
+
             // 清理客户端连接发送器
             if self.client_write_senders.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除客户端连接发送器: {}", tab_id);
             }
-            
+
             // 清理服务端客户端连接
             if self.server_clients.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);

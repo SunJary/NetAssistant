@@ -1,6 +1,6 @@
 use gpui::AssetSource;
 use gpui_component_assets::Assets as DefaultAssets;
-use rust_embed::{RustEmbed};
+use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
 // 自定义图标资源
@@ -50,7 +50,7 @@ impl AssetSource for CustomAssets {
             .filter(|p: &Cow<'static, str>| p.starts_with(path))
             .map(|p| gpui::SharedString::from(p.clone()))
             .collect::<Vec<_>>();
-        
+
         default_list.extend(custom_list);
         Ok(default_list)
     }

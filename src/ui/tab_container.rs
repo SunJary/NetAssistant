@@ -1,8 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::StyledExt;
-use gpui_component::IconName;
 use gpui_component::ActiveTheme as _;
+use gpui_component::IconName;
+use gpui_component::StyledExt;
 
 use crate::app::NetAssistantApp;
 use crate::ui::connection_tab::ConnectionTab;
@@ -73,7 +73,7 @@ impl<'a> TabContainer<'a> {
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
         let is_tab_multiline = self.app.tab_multiline;
-        
+
         let header_div = div()
             .flex()
             .gap_1()
@@ -179,36 +179,37 @@ impl<'a> TabContainer<'a> {
         }
 
         // 构建完整的头部，添加固定在右侧的展开/折叠按钮
-        header_div
-            .child(tabs_container)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .flex_shrink_0() // 只防止被压缩，不设置固定宽度
-                    .h_8() // 设置固定高度
-                    .px_2()
-                    .py_1()
-                    .cursor_pointer()
-                    .bg(theme.secondary)
-                    .border_1()
-                    .border_color(theme.border)
-                    .hover(|style| style.bg(theme.border))
-                    .on_mouse_down(MouseButton::Left, {
-                        cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+        header_div.child(tabs_container).child(
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .flex_shrink_0() // 只防止被压缩，不设置固定宽度
+                .h_8() // 设置固定高度
+                .px_2()
+                .py_1()
+                .cursor_pointer()
+                .bg(theme.secondary)
+                .border_1()
+                .border_color(theme.border)
+                .hover(|style| style.bg(theme.border))
+                .on_mouse_down(MouseButton::Left, {
+                    cx.listener(
+                        move |app: &mut NetAssistantApp,
+                              _event: &MouseDownEvent,
+                              _window: &mut Window,
+                              cx: &mut Context<NetAssistantApp>| {
                             app.tab_multiline = !app.tab_multiline;
                             cx.notify();
-                        })
-                    })
-                    .child(
-                        if is_tab_multiline {
-                            IconName::ChevronUp
-                        } else {
-                            IconName::ChevronDown
                         },
-                    ),
-            )
+                    )
+                })
+                .child(if is_tab_multiline {
+                    IconName::ChevronUp
+                } else {
+                    IconName::ChevronDown
+                }),
+        )
     }
 
     /// 渲染标签页内容区域

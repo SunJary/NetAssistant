@@ -1,10 +1,8 @@
 fn main() {
     let version = std::env::var("BUILD_VERSION")
         .ok()
-        .unwrap_or_else(|| {
-            chrono::Utc::now().format("%Y%m%d").to_string()
-        });
-    
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y%m%d").to_string());
+
     println!("cargo:rustc-env=APP_VERSION={}", version);
 
     #[cfg(target_os = "windows")]

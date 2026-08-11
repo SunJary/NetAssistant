@@ -3,7 +3,7 @@
 // 引擎→App 通信: 引擎通过 smol channel 发送 StressEvent，App 事件泵消费。
 
 use crate::stress::config::StressTestConfig;
-use crate::stress::stats::StressStats;
+use crate::stress::stats::{FailureBreakdownSnapshot, StressStats};
 
 /// 引擎→App 事件
 ///
@@ -14,7 +14,10 @@ pub enum StressEvent {
     /// 周期统计快照(250ms)
     StatsSnapshot { tab_id: String, stats: StressStats },
     /// 压测结束(含最终报告)
-    Finished { tab_id: String, report: StressReport },
+    Finished {
+        tab_id: String,
+        report: StressReport,
+    },
     /// 致命错误(引擎无法继续)
     #[allow(dead_code)]
     Error { tab_id: String, msg: String },
@@ -41,6 +44,8 @@ pub struct StressReport {
     pub latency_max_us: Option<u64>,
     pub bytes_sent: u64,
     pub bytes_received: u64,
+    /// 失败分类(连接/发送/超时/对端关闭/校验)
+    pub failures: FailureBreakdownSnapshot,
     /// 每秒采样序列(CSV 时序数据)
     pub per_second_samples: Vec<StressStats>,
 }

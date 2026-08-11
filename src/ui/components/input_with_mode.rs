@@ -1,24 +1,21 @@
+use crate::app::NetAssistantApp;
+use crate::custom_icons::CustomIconName;
+use crate::message::{MessageDisplayMode, format_json_text};
+use crate::utils::hex::validate_hex_input;
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::{
+    Icon, StyledExt, Theme,
     input::{Input, InputState},
-    Icon,
-    Theme,
-    StyledExt,
     tooltip::Tooltip,
 };
-use crate::utils::hex::validate_hex_input;
-use crate::app::NetAssistantApp;
-use crate::custom_icons::CustomIconName;
-use crate::message::{format_json_text, MessageDisplayMode};
 
 /// 通用输入框组件（支持文本/十六进制模式）
 pub struct InputWithMode;
 
 impl InputWithMode {
     /// 渲染通用输入框
-    pub fn render
-    (
+    pub fn render(
         input_state: &Entity<InputState>,
         mode: &str,
         theme: &Theme,
@@ -33,11 +30,7 @@ impl InputWithMode {
             true
         };
 
-        let mut container = div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .w_full();
+        let mut container = div().flex().flex_col().gap_1().w_full();
 
         // 构建输入框容器（relative 用于悬浮按钮定位）
         let mut input_container = div()
@@ -61,7 +54,7 @@ impl InputWithMode {
                     .font_family("JetBrains Mono")
                     .bg(theme.background)
                     .rounded_md()
-                    .border_0()
+                    .border_0(),
             );
 
         // 仅文本模式下显示 JSON 格式化悬浮按钮
@@ -135,7 +128,7 @@ impl InputWithMode {
                     .text_xs()
                     .font_medium()
                     .text_color(theme.danger)
-                    .child("十六进制输入格式错误，包含非法字符或长度为奇数")
+                    .child("十六进制输入格式错误，包含非法字符或长度为奇数"),
             );
         }
 
