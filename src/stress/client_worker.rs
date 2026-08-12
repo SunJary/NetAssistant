@@ -424,7 +424,11 @@ async fn run_tcp_short(
         // 短连接: 每包新建连接
         let connect_result = select_connect(&cancel, target_addr, timeout_dur).await;
         let mut socket = match connect_result {
-            ConnectOutcome::Connected(s) => s,
+            ConnectOutcome::Connected(s) => {
+                // 修复: 短连接也维护 active 计数, 连接存活期间 +1
+                stats.active.fetch_add(1, Ordering::Relaxed);
+                s
+            }
             ConnectOutcome::Cancelled => break,
             ConnectOutcome::Failed(err) => {
                 stats.failure.fetch_add(1, Ordering::Relaxed);
@@ -457,6 +461,8 @@ async fn run_tcp_short(
 
         // 短连接: 显式关闭(触发 TIME_WAIT)
         let _ = socket.shutdown().await;
+        // 递减 active (连接已关闭)
+        stats.active.fetch_sub(1, Ordering::Relaxed);
 
         if !select_sleep(&cancel, send_interval).await {
             break;
@@ -489,7 +495,14 @@ async fn run_udp(
     let socket = match UdpSocket::bind(bind_addr).await {
         Ok(s) => s,
         Err(e) => {
+            // bind 失败常见于端口耗尽 (AddrNotAvailable/WSAEADDRINUSE), 计入 connect_failed
+            // 让压测结束日志的 diagnose_failures 能给出"调大端口范围"建议
             warn!("[worker{}] UDP bind 失败: {}", worker_id, e);
+            stats.failure.fetch_add(1, Ordering::Relaxed);
+            stats.failures.connect_failed.fetch_add(1, Ordering::Relaxed);
+            if stats.failures.connect_failed.load(Ordering::Relaxed) % 100 == 1 {
+                stats.set_last_connect_error(&e.to_string());
+            }
             return;
         }
     };

@@ -1088,6 +1088,15 @@ impl<'a> ConnectionTab<'a> {
                                     .text_color(theme.foreground)
                                     .child("客户端连接"),
                             )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(format!(
+                                        "({})",
+                                        self.tab_state.client_connections.len()
+                                    )),
+                            )
                             // 添加客户端按钮（仅UDP服务端显示）
                             .when(is_udp_server && is_connected, |this| {
                                 let tab_id_for_add = tab_id.clone();

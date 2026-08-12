@@ -3,6 +3,7 @@ mod decoder_selection;
 mod favorite_list;
 mod favorite_remark;
 mod new_connection;
+mod port_limit_help;
 mod stress_config;
 
 pub use add_client::AddClientDialog;

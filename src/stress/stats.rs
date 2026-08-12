@@ -35,6 +35,8 @@ pub struct StressStats {
     pub total_success: u64,
     pub total_failure: u64,
     pub active_connections: usize,
+    /// 本次压测出现过的最大活跃连接数(停止后保持, 反映实际达成度)
+    pub peak_active_connections: usize,
     pub disconnects: u64,
     pub reconnects: u64,
     pub latency_p50_us: Option<u64>,
@@ -281,6 +283,9 @@ pub struct WorkerStats {
     pub failures: FailureBreakdown,
     /// 因连续连接失败超过上限而退出的 worker 数
     pub workers_gave_up: AtomicU64,
+    /// 本次压测出现过的最大活跃连接数
+    /// 由 build_snapshot 每 250ms 用 fetch_max 更新, 低频写入无需 padding
+    pub peak_active: AtomicU64,
     /// 最近一次连接错误信息(限频写入,读取用于失败日志)
     last_connect_error: RwLock<String>,
 }
@@ -298,6 +303,7 @@ impl WorkerStats {
             bytes_received: AtomicU64::new(0),
             failures: FailureBreakdown::new(),
             workers_gave_up: AtomicU64::new(0),
+            peak_active: AtomicU64::new(0),
             last_connect_error: RwLock::new(String::new()),
         }
     }

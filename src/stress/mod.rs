@@ -11,6 +11,7 @@ pub mod client_worker;
 pub mod config;
 pub mod engine;
 pub mod events;
+pub mod port_range;
 pub mod rate_limiter;
 pub mod report;
 pub mod stats;

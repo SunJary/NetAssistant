@@ -13,6 +13,7 @@ use crate::log_writer::LogWriter;
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::ConnectionEvent;
 use crate::stress::engine::StressTestEngine;
+use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 
 use crate::ui::connection_tab::ConnectionTabState;
@@ -68,6 +69,16 @@ pub struct NetAssistantApp {
 
     // 压测配置弹窗状态(打开时创建, 关闭时置 None)
     pub stress_config_dialog: Option<StressConfigDialogState>,
+
+    // 本机临时端口范围检测结果 (懒检测 + 手动重新检测, 全局共享)
+    // None + !detecting: 尚未检测 或 检测失败 (UI 应提示用户手动获取而非回退默认值)
+    // Some: 已检测的真实系统配置
+    pub detected_port_range: Option<EphemeralPortRange>,
+    // 是否已尝试检测端口范围 (true=已尝试, 无论成功失败; 防止 render 时疯狂 spawn netsh)
+    pub port_range_detected: bool,
+    // 是否正在检测中 (trigger_port_range_detect 置 true, 异步完成置 false)
+    // 用于区分 "检测中" (detected=true && range=None && detecting=true) 与 "检测失败" (detecting=false)
+    pub port_range_detecting: bool,
 
     // 网络连接管理器
     pub network_manager: std::sync::Arc<
@@ -193,6 +204,9 @@ impl NetAssistantApp {
             stress_event_sender: Some(stress_event_sender),
             stress_event_receiver: Some(stress_event_receiver),
             stress_config_dialog: None,
+            detected_port_range: None,
+            port_range_detected: false,
+            port_range_detecting: false,
             network_manager,
             client_write_senders,
             server_clients,
@@ -273,7 +287,13 @@ impl NetAssistantApp {
         })
         .detach();
 
-        // 创建压测事件泵任务（引擎→UI，同 smol channel 模式）
+        // 创建压测事件泵任务（引擎→UI）
+        // 引擎的 aggregator 跑在 tokio runtime，通过 smol channel 发送快照；
+        // 但跨 runtime 时 smol channel 的 waker 不可靠 —— recv().await 注册的
+        // waker 可能不被 tokio 线程的 send 唤醒，导致快照积压在 channel 里、
+        // UI 长时间显示 0（即使 worker 已在发包）。
+        // 因此不依赖 channel waker，改用定时器主动轮询 + try_recv 排空：
+        // 每 100ms 醒来批量取走所有积压事件，一次 app.update 处理。
         let weak_app_stress = cx.entity().clone().downgrade();
         let stress_receiver = app.stress_event_receiver.take();
         cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
@@ -282,11 +302,26 @@ impl NetAssistantApp {
             } else {
                 return;
             };
-            while let Ok(event) = receiver.recv().await {
+            loop {
+                smol::Timer::after(Duration::from_millis(100)).await;
+                let mut batch: Vec<StressEvent> = Vec::with_capacity(8);
+                while let Ok(event) = receiver.try_recv() {
+                    batch.push(event);
+                    if batch.len() >= 64 {
+                        break;
+                    }
+                }
+                if batch.is_empty() {
+                    continue;
+                }
                 if let Some(app) = weak_app_stress.upgrade() {
                     let _ = app.update(async_app, |app, cx| {
-                        app.handle_stress_event(event, cx);
+                        for event in batch {
+                            app.handle_stress_event(event, cx);
+                        }
                     });
+                } else {
+                    return;
                 }
             }
         })
@@ -733,6 +768,31 @@ impl NetAssistantApp {
         Some(config)
     }
 
+    /// 触发本机临时端口范围检测 (异步, 不阻塞 UI)
+    ///
+    /// 无条件 spawn 后台检测任务, 适合以下场景:
+    /// - 用户点击"重新检测"按钮时 (端口说明弹窗 / 压测配置弹窗警告行内联按钮)
+    ///
+    /// render 时的按需检测 (ensure_port_range_detected) 用 port_range_detected 守卫防 storm,
+    /// 不会走到这里; 这里是主动触发, 绕过守卫。
+    pub fn trigger_port_range_detect(&mut self, cx: &mut Context<Self>) {
+        // 立即置 true, 防止 ensure_port_range_detected 在 detect 完成前重复 spawn
+        self.port_range_detected = true;
+        self.port_range_detecting = true;
+        let weak_app = cx.entity().downgrade();
+        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+            let detected = smol::unblock(|| EphemeralPortRange::detect()).await;
+            if let Some(app) = weak_app.upgrade() {
+                let _ = app.update(async_app, |app: &mut NetAssistantApp, cx| {
+                    app.detected_port_range = detected;
+                    app.port_range_detecting = false;
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
     /// 打开压测配置弹窗(回填目标 + 已保存配置)
     pub fn open_stress_config(
         &mut self,
@@ -748,6 +808,9 @@ impl NetAssistantApp {
             }
         };
         self.stress_config_dialog = Some(StressConfigDialogState::new(tab_id, config, window, cx));
+        // 端口范围检测改为懒触发: 仅当用户填的并发数超过系统默认端口数时,
+        // 由 render_port_warning -> ensure_port_range_detected 兜底检测。
+        // 用户也可在端口说明弹窗点"重新检测"手动触发。
         cx.notify();
     }
 

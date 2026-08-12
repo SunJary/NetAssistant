@@ -278,8 +278,8 @@ impl<'a> StressPanel<'a> {
             ))
             .child(self.render_stat_cell(
                 theme,
-                "活跃连接",
-                &stats.active_connections.to_string(),
+                "活跃(当前/峰值)",
+                &format!("{} / {}", stats.active_connections, stats.peak_active_connections),
                 theme.foreground,
             ))
     }

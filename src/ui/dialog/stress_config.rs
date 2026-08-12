@@ -17,7 +17,9 @@ use crate::config::connection::ConnectionType;
 use crate::stress::config::{
     ConnectionMode, RampUpConfig, StopCondition, StressMode, StressTestConfig,
 };
+use crate::stress::port_range::{EphemeralPortRange, STATIC_THRESHOLD};
 use crate::ui::components::input_with_mode::InputWithMode;
+use crate::ui::dialog::port_limit_help::render_port_limit_help_dialog;
 
 /// 文本模式默认报文
 const DEFAULT_TEXT_PAYLOAD: &str = "PING ${seq}";
@@ -57,6 +59,8 @@ pub struct StressConfigDialogState {
     pub auto_reconnect: bool,
     pub ramp_up_enabled: bool,
     pub show_advanced: bool,
+    /// 是否显示端口说明子弹窗
+    pub show_port_help: bool,
 }
 
 impl StressConfigDialogState {
@@ -124,6 +128,7 @@ impl StressConfigDialogState {
             auto_reconnect: config.auto_reconnect,
             ramp_up_enabled: config.ramp_up.enabled,
             show_advanced: false,
+            show_port_help: false,
         }
     }
 
@@ -182,6 +187,11 @@ impl StressConfigDialog {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
+
+        // 按需检测: 第一层静态阈值判断 + 第二层运行时检测
+        // 仅当 concurrency 超过静态阈值且尚未检测过时, 同步触发 detect()
+        Self::ensure_port_range_detected(app, cx);
+
         let state = match &app.stress_config_dialog {
             Some(s) => s,
             None => return div().into_any_element(),
@@ -221,54 +231,22 @@ impl StressConfigDialog {
                             .text_color(theme.foreground)
                             .child("压测配置"),
                     )
-                    // Layer 3b: 滚动内容区 (单层结构, 仿 favorite_list L132-137)
-                    // flex_1 在弹窗 flex_col 中分配剩余高度, overflow_y_scrollbar 内部自动包装
+                    // Layer 3b: 滚动内容区 (两层结构, 避免 flex 高度分配冲突)
+                    // 外层 flex_1() + overflow_hidden() 分配剩余高度
+                    // 内层 size_full() + overflow_y_scrollbar() 负责滚动
                     .child(
                         div()
                             .flex_1()
-                            .overflow_y_scrollbar()
-                            .px_6()
-                            .pb_4()
-                            // 目标(只读回填) - 第一个, 不加间距
+                            .overflow_hidden()
                             .child(
                                 div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_1()
+                                    .size_full()
+                                    .overflow_y_scrollbar()
+                                    .px_6()
+                                    .pb_4()
+                                    // 目标(只读回填) - 第一个, 不加间距
                                     .child(
                                         div()
-                                            .text_sm()
-                                            .font_semibold()
-                                            .text_color(theme.foreground)
-                                            .child("目标"),
-                                    )
-                                    .child(
-                                        div().text_sm().text_color(theme.muted_foreground).child(
-                                            format!(
-                                                "{}:{} ({})",
-                                                state.target_address,
-                                                state.target_port,
-                                                match state.protocol {
-                                                    ConnectionType::Tcp => "TCP",
-                                                    ConnectionType::Udp => "UDP",
-                                                }
-                                            ),
-                                        ),
-                                    ),
-                            )
-                            // 压测模式
-                            .child(Self::render_mode_selector(state, &theme, cx).mt_4())
-                            // 连接模式
-                            .child(Self::render_connection_mode_selector(state, &theme, cx).mt_4())
-                            // 并发数 + 发包间隔
-                            .child(
-                                div()
-                                    .flex()
-                                    .gap_4()
-                                    .mt_4()
-                                    .child(
-                                        div()
-                                            .flex_1()
                                             .flex()
                                             .flex_col()
                                             .gap_1()
@@ -277,63 +255,103 @@ impl StressConfigDialog {
                                                     .text_sm()
                                                     .font_semibold()
                                                     .text_color(theme.foreground)
-                                                    .child("并发客户端数"),
+                                                    .child("目标"),
                                             )
                                             .child(
-                                                Input::new(&state.concurrency_input)
-                                                    .cleanable(true),
+                                                div().text_sm().text_color(theme.muted_foreground).child(
+                                                    format!(
+                                                        "{}:{} ({})",
+                                                        state.target_address,
+                                                        state.target_port,
+                                                        match state.protocol {
+                                                            ConnectionType::Tcp => "TCP",
+                                                            ConnectionType::Udp => "UDP",
+                                                        }
+                                                    ),
+                                                ),
                                             ),
                                     )
+                                    // 压测模式
+                                    .child(Self::render_mode_selector(state, &theme, cx).mt_4())
+                                    // 连接模式
+                                    .child(Self::render_connection_mode_selector(state, &theme, cx).mt_4())
+                                    // 并发数 + 发包间隔
                                     .child(
                                         div()
-                                            .flex_1()
+                                            .flex()
+                                            .gap_4()
+                                            .mt_4()
+                                            .child(
+                                                div()
+                                                    .flex_1()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap_1()
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_semibold()
+                                                            .text_color(theme.foreground)
+                                                            .child("并发客户端数"),
+                                                    )
+                                                    .child(
+                                                        Input::new(&state.concurrency_input)
+                                                            .cleanable(true),
+                                                    ),
+                                            )
+                                            .child(
+                                                div()
+                                                    .flex_1()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap_1()
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_semibold()
+                                                            .text_color(theme.foreground)
+                                                            .child("发包间隔(ms, 0=不限速)"),
+                                                    )
+                                                    .child(
+                                                        Input::new(&state.send_interval_input)
+                                                            .cleanable(true),
+                                                    ),
+                                            ),
+                                    )
+                                    // 端口上限警告行 (按需渲染)
+                                    .child(Self::render_port_warning(app, state, &theme, cx))
+                                    // 报文输入(复用 InputWithMode)
+                                    .child(
+                                        div()
                                             .flex()
                                             .flex_col()
                                             .gap_1()
+                                            .mt_4()
                                             .child(
                                                 div()
-                                                    .text_sm()
-                                                    .font_semibold()
-                                                    .text_color(theme.foreground)
-                                                    .child("发包间隔(ms, 0=不限速)"),
+                                                    .flex()
+                                                    .justify_between()
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_semibold()
+                                                            .text_color(theme.foreground)
+                                                            .child("报文内容"),
+                                                    )
+                                                    .child(Self::render_payload_mode_chip(
+                                                        state, &theme, cx,
+                                                    )),
                                             )
-                                            .child(
-                                                Input::new(&state.send_interval_input)
-                                                    .cleanable(true),
-                                            ),
-                                    ),
-                            )
-                            // 报文输入(复用 InputWithMode)
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_1()
-                                    .mt_4()
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .justify_between()
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .font_semibold()
-                                                    .text_color(theme.foreground)
-                                                    .child("报文内容"),
-                                            )
-                                            .child(Self::render_payload_mode_chip(
-                                                state, &theme, cx,
+                                            .child(InputWithMode::render(
+                                                &state.payload_input,
+                                                &state.message_input_mode,
+                                                &theme,
+                                                cx,
                                             )),
                                     )
-                                    .child(InputWithMode::render(
-                                        &state.payload_input,
-                                        &state.message_input_mode,
-                                        &theme,
-                                        cx,
-                                    )),
-                            )
-                            // 更多设置折叠区
-                            .child(Self::render_advanced(state, &theme, cx)),
+                                    // 更多设置折叠区
+                                    .child(Self::render_advanced(state, &theme, cx)),
+                            ),
                     )
                     // Layer 3c: 底部按钮区 (固定, 不参与滚动)
                     .child(
@@ -346,7 +364,195 @@ impl StressConfigDialog {
                             .child(Self::render_actions(state, &theme, window, cx)),
                     ),
             )
+            // 端口说明子弹窗叠加 (show_port_help=true 时覆盖在压测配置弹窗之上)
+            .when(state.show_port_help, |this| {
+                this.child(render_port_limit_help_dialog(app, state, &theme, window, cx))
+            })
             .into_any_element()
+    }
+
+    /// render 时的兜底检测 (防 storm)
+    ///
+    /// 端口范围由 trigger_port_range_detect 主动触发 (启动时 + 打开弹窗时 + 手动按钮)。
+    /// 这里只在"从未检测过" (port_range_detected=false) 且并发超过静态阈值时兜底 spawn 一次,
+    /// 防止用户在启动瞬间打开弹窗、且 trigger 尚未完成时拿到空值。
+    /// port_range_detected=true 后此函数直接返回, 避免 render 每帧疯狂 spawn netsh。
+    fn ensure_port_range_detected(app: &NetAssistantApp, cx: &mut Context<NetAssistantApp>) {
+        // 已尝试检测 (无论成功失败) → 不重复, 防 render storm
+        if app.port_range_detected {
+            return;
+        }
+
+        let Some(state) = app.stress_config_dialog.as_ref() else {
+            return;
+        };
+        let concurrency: usize = state
+            .concurrency_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
+
+        // 未超过静态阈值: warning 不会显示, 无需触发检测
+        if (concurrency as u32) <= STATIC_THRESHOLD {
+            return;
+        }
+
+        // 超过静态阈值且尚未检测: 兜底 spawn (trigger_port_range_detect 会置 detected=true)
+        let weak_app = cx.entity().downgrade();
+        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+            let detected = smol::unblock(|| EphemeralPortRange::detect()).await;
+            if let Some(app) = weak_app.upgrade() {
+                let _ = app.update(async_app, |app: &mut NetAssistantApp, cx| {
+                    app.detected_port_range = detected;
+                    app.port_range_detected = true;
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// 渲染端口上限警告行 (条件渲染)
+    ///
+    /// 仅当并发超过系统默认端口数 (STATIC_THRESHOLD) 时介入:
+    ///   1. 懒触发检测未完成: 暂不显示, 等异步完成 (避免红框闪烁)
+    ///   2. 手动"重新检测"进行中: 显示"正在读取…"
+    ///   3. 检测失败: 显示"未能读取…", 附「重新检测」+「端口说明」, 不展示编造的默认值
+    ///   4. 检测成功且并发 > 建议上限: 显示真实端口数与建议上限
+    fn render_port_warning(
+        app: &NetAssistantApp,
+        state: &StressConfigDialogState,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let concurrency: usize = state
+            .concurrency_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
+        let interval: u64 = state
+            .send_interval_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u64>()
+            .unwrap_or(0);
+
+        // 并发未超过系统默认端口数: 端口上限不是瓶颈, 不显示
+        if (concurrency as u32) <= STATIC_THRESHOLD {
+            return div();
+        }
+
+        // 手动"重新检测"进行中: 给予反馈 (懒触发的 in-flight 不显示, 避免红框闪烁)
+        if app.port_range_detected && app.port_range_detecting {
+            return Self::render_warning_box(
+                theme,
+                "ⓘ 正在读取系统临时端口配置…",
+                false,
+                cx,
+            );
+        }
+        // 懒触发尚未完成 (detected=false): 暂不显示
+        if !app.port_range_detected {
+            return div();
+        }
+
+        // 检测已完成 (detected && !detecting)
+        let port_range = match &app.detected_port_range {
+            // 检测失败: 不展示编造的默认值, 引导用户手动获取
+            None => {
+                return Self::render_warning_box(
+                    theme,
+                    "⚠ 未能读取系统临时端口配置，建议点击「重新检测」或查看「端口说明」手动获取",
+                    true,
+                    cx,
+                );
+            }
+            Some(r) => r,
+        };
+
+        // 检测成功: 仅当并发超过建议上限时警告
+        let suggested_max =
+            port_range.suggested_max_concurrency(state.connection_mode, interval, state.protocol);
+        if concurrency <= suggested_max {
+            return div();
+        }
+
+        let warning_text = format!(
+            "⚠ 检测到临时端口 {} 个 ({}-{}), 并发超过 {} 可能连接失败",
+            port_range.count, port_range.start, port_range.end(), suggested_max,
+        );
+        Self::render_warning_box(theme, &warning_text, false, cx)
+    }
+
+    /// 警告行容器: 文本 + 右下角操作链接 (始终含「端口说明」, 可选「重新检测」)
+    fn render_warning_box(
+        theme: &Theme,
+        text: &str,
+        retry: bool,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let mut actions = div()
+            .flex()
+            .justify_end()
+            .gap_3()
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.primary)
+                    .cursor_pointer()
+                    .hover(|d| d.underline())
+                    .child("端口说明")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
+                            if let Some(s) = &mut app.stress_config_dialog {
+                                s.show_port_help = true;
+                            }
+                            cx.notify();
+                        }),
+                    ),
+            );
+        if retry {
+            actions = actions.child(
+                div()
+                    .text_xs()
+                    .text_color(theme.primary)
+                    .cursor_pointer()
+                    .hover(|d| d.underline())
+                    .child("重新检测")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
+                            app.trigger_port_range_detect(cx);
+                        }),
+                    ),
+            );
+        }
+        div()
+            .mt_2()
+            .p_2()
+            .rounded_md()
+            // 背景用 danger 半透明, 边框用 danger 实色 (主题感知, 亮/暗主题都可见)
+            .bg(theme.danger.opacity(0.12))
+            .border_1()
+            .border_color(theme.danger)
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .text_xs()
+                    .whitespace_normal()
+                    // 文字用主题前景色 (亮色=黑, 暗色=白), 保证在淡红背景上有足够对比度
+                    .text_color(theme.foreground)
+                    .child(text.to_string()),
+            )
+            .child(actions)
     }
 
     /// 渲染压测模式选择(吞吐/往返)

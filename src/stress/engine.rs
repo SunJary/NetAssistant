@@ -91,36 +91,13 @@ impl StressTestEngine {
         let histogram = Arc::new(ShardedHistogram::new(concurrency));
         let per_second_samples: Arc<Mutex<Vec<StressStats>>> = Arc::new(Mutex::new(Vec::new()));
 
-        // ---- 启动 worker (按 ramp-up 间隔) ----
-        let ramp_interval =
-            if config.ramp_up.enabled && config.ramp_up.ramp_up_secs > 0 && concurrency > 1 {
-                Duration::from_secs_f64(config.ramp_up.ramp_up_secs as f64 / concurrency as f64)
-            } else {
-                Duration::ZERO
-            };
-
-        let mut worker_handles: Vec<JoinHandle<()>> = Vec::with_capacity(concurrency);
-        for i in 0..concurrency {
-            // ramp-up 间隔(可被取消)
-            if i > 0 && ramp_interval > Duration::ZERO {
-                tokio::select! {
-                    _ = cancel.cancelled() => break,
-                    _ = sleep(ramp_interval) => {}
-                }
-            }
-            let cfg = config.clone();
-            let seq = global_seq.clone();
-            let lim = limiter.clone();
-            let st = stats.clone();
-            let hg = histogram.clone();
-            let c = cancel.clone();
-            let es = event_sender.clone();
-            worker_handles.push(tokio::spawn(async move {
-                run_worker(i, cfg, seq, lim, st, hg, c, es).await;
-            }));
-        }
+        // 注: 端口范围检测与警告在压测配置弹窗 (stress_config.rs render_port_warning) 完成,
+        // 引擎不再用信号量限流 —— 超出系统临时端口范围的连接会由 OS 直接报错
+        // (AddrNotAvailable / WSAEADDRINUSE), 计入 connect_failed, 由 diagnose_failures 给出建议。
 
         // ---- 聚合 task (250ms 快照) ----
+        // 注意: 必须在 worker spawn 循环之前启动, 否则 ramp-up 期间 UI 收不到任何快照,
+        // 用户会看到"前 N 秒完全无反应"。
         let agg_cancel = cancel.clone();
         let agg_stats = stats.clone();
         let agg_hist = histogram.clone();
@@ -154,6 +131,8 @@ impl StressTestEngine {
         });
 
         // ---- 监督 task (停止条件) ----
+        // 注意: 必须在 worker spawn 循环之前启动, 这样 Duration 计时从 t=0 起算,
+        // 包含 ramp-up 时间, 总墙钟时长 = duration (而非 ramp_up + duration)。
         let sup_cancel = cancel.clone();
         let sup_stats = stats.clone();
         let stop_condition = config.stop_condition.clone();
@@ -201,6 +180,35 @@ impl StressTestEngine {
                 },
             }
         });
+
+        // ---- 启动 worker (按 ramp-up 间隔) ----
+        let ramp_interval =
+            if config.ramp_up.enabled && config.ramp_up.ramp_up_secs > 0 && concurrency > 1 {
+                Duration::from_secs_f64(config.ramp_up.ramp_up_secs as f64 / concurrency as f64)
+            } else {
+                Duration::ZERO
+            };
+
+        let mut worker_handles: Vec<JoinHandle<()>> = Vec::with_capacity(concurrency);
+        for i in 0..concurrency {
+            // ramp-up 间隔(可被取消)
+            if i > 0 && ramp_interval > Duration::ZERO {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = sleep(ramp_interval) => {}
+                }
+            }
+            let cfg = config.clone();
+            let seq = global_seq.clone();
+            let lim = limiter.clone();
+            let st = stats.clone();
+            let hg = histogram.clone();
+            let c = cancel.clone();
+            let es = event_sender.clone();
+            worker_handles.push(tokio::spawn(async move {
+                run_worker(i, cfg, seq, lim, st, hg, c, es).await;
+            }));
+        }
 
         // ---- watchdog: 所有 worker 退出后触发 cancel ----
         // 场景: 连接断开且 auto_reconnect=false 时，worker 会自行退出。
@@ -546,6 +554,11 @@ fn build_snapshot(
 ) -> StressStats {
     let (sent, success, failure, active, disconnects, reconnects, bytes_sent, bytes_received) =
         stats.snapshot();
+    // 更新峰值活跃连接数: fetch_max 返回旧值, 取 max(旧峰值, 当前active) 即新峰值
+    let peak_active = stats
+        .peak_active
+        .fetch_max(active, Ordering::Relaxed)
+        .max(active);
     let (p50, p95, p99, avg, max) = histogram.percentiles();
     let elapsed_ms = start.elapsed().as_millis() as u64;
     // current_qps = 最近一秒的发送速率(近似: sent / elapsed_s)
@@ -561,6 +574,7 @@ fn build_snapshot(
         total_success: success,
         total_failure: failure,
         active_connections: active as usize,
+        peak_active_connections: peak_active as usize,
         disconnects,
         reconnects,
         latency_p50_us: p50,
