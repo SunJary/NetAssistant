@@ -106,26 +106,35 @@ impl StressTestEngine {
         let agg_tab_id = tab_id.clone();
         let aggregator = tokio::spawn(async move {
             let mut last_second_mark = 0u64;
+            let mut last_total_sent: u64 = 0;
+            let mut last_snapshot_at = start_instant;
             loop {
-                tokio::select! {
-                    _ = agg_cancel.cancelled() => {
-                        // 最终快照
-                        let snapshot = build_snapshot(&agg_stats, &agg_hist, start_instant);
-                        push_per_second(&agg_samples, &mut last_second_mark, &snapshot);
-                        let _ = agg_sender.send(StressEvent::StatsSnapshot {
-                            tab_id: agg_tab_id.clone(),
-                            stats: snapshot,
-                        }).await;
-                        break;
-                    }
-                    _ = sleep(SNAPSHOT_INTERVAL) => {
-                        let snapshot = build_snapshot(&agg_stats, &agg_hist, start_instant);
-                        push_per_second(&agg_samples, &mut last_second_mark, &snapshot);
-                        let _ = agg_sender.send(StressEvent::StatsSnapshot {
-                            tab_id: agg_tab_id.clone(),
-                            stats: snapshot.clone(),
-                        }).await;
-                    }
+                let is_final = tokio::select! {
+                    _ = agg_cancel.cancelled() => true,
+                    _ = sleep(SNAPSHOT_INTERVAL) => false,
+                };
+                let snapshot = build_snapshot(&agg_stats, &agg_hist, start_instant);
+                push_per_second(&agg_samples, &mut last_second_mark, &snapshot);
+                // 更新峰值 QPS: 基于相邻快照的 delta_sent / dt(瞬时发送速率)
+                let now = Instant::now();
+                let dt = now.duration_since(last_snapshot_at).as_secs_f64();
+                if dt > 0.0 {
+                    let delta = snapshot.total_sent.saturating_sub(last_total_sent);
+                    let inst_qps = delta as f64 / dt;
+                    agg_stats
+                        .peak_qps_milli
+                        .fetch_max((inst_qps * 1000.0) as u64, Ordering::Relaxed);
+                }
+                last_total_sent = snapshot.total_sent;
+                last_snapshot_at = now;
+                let _ = agg_sender
+                    .send(StressEvent::StatsSnapshot {
+                        tab_id: agg_tab_id.clone(),
+                        stats: snapshot,
+                    })
+                    .await;
+                if is_final {
+                    break;
                 }
             }
         });
@@ -181,23 +190,25 @@ impl StressTestEngine {
             }
         });
 
-        // ---- 启动 worker (按 ramp-up 间隔) ----
-        let ramp_interval =
-            if config.ramp_up.enabled && config.ramp_up.ramp_up_secs > 0 && concurrency > 1 {
-                Duration::from_secs_f64(config.ramp_up.ramp_up_secs as f64 / concurrency as f64)
-            } else {
-                Duration::ZERO
-            };
+        // ---- 启动 worker (瞬间全 spawn, ramp-up 由连接速率令牌桶控制) ----
+        // ramp-up 不再用逐 worker sleep 间隔(高并发下 ramp_up_secs/concurrency 低于
+        // 定时器精度且只控 spawn 时机)。改为在 worker 首次 connect() 前获取令牌,
+        // 令牌按 concurrency/ramp_up_secs 速率补充, 线性控制 active 增长曲线。
+        let connect_limiter = if config.ramp_up.enabled && config.ramp_up.ramp_up_secs > 0 {
+            // 建连速率 = 并发数 / ramp_up_secs (conn/s)
+            let conn_rate = concurrency as f64 / config.ramp_up.ramp_up_secs as f64;
+            // 初始放行一批令牌避免冷启动: 首批 worker 立即建连, 后续按速率补充
+            let initial_batch = (concurrency as f64 / 10.0).max(1.0);
+            Arc::new(TokenBucket::with_initial_tokens(
+                conn_rate as u32,
+                initial_batch,
+            ))
+        } else {
+            Arc::new(TokenBucket::unbounded())
+        };
 
         let mut worker_handles: Vec<JoinHandle<()>> = Vec::with_capacity(concurrency);
         for i in 0..concurrency {
-            // ramp-up 间隔(可被取消)
-            if i > 0 && ramp_interval > Duration::ZERO {
-                tokio::select! {
-                    _ = cancel.cancelled() => break,
-                    _ = sleep(ramp_interval) => {}
-                }
-            }
             let cfg = config.clone();
             let seq = global_seq.clone();
             let lim = limiter.clone();
@@ -205,8 +216,9 @@ impl StressTestEngine {
             let hg = histogram.clone();
             let c = cancel.clone();
             let es = event_sender.clone();
+            let cl = connect_limiter.clone();
             worker_handles.push(tokio::spawn(async move {
-                run_worker(i, cfg, seq, lim, st, hg, c, es).await;
+                run_worker(i, cfg, seq, lim, st, hg, c, es, cl).await;
             }));
         }
 
@@ -567,9 +579,11 @@ fn build_snapshot(
     } else {
         0.0
     };
+    let peak_qps = stats.peak_qps_milli.load(Ordering::Relaxed) as f64 / 1000.0;
     StressStats {
         elapsed_ms,
         current_qps,
+        peak_qps,
         total_sent: sent,
         total_success: success,
         total_failure: failure,
@@ -875,6 +889,110 @@ mod tests {
             }
         }
         assert!(got_finished, "应收到 Finished 事件");
+
+        engine.stop();
+        echo_handle.abort();
+    }
+
+    /// 验证 ramp-up: 连接速率令牌桶应让 active 线性增长而非瞬间打满。
+    ///
+    /// 50 并发 + 3s ramp-up → 初始放行 5 个, 之后约 16.7 conn/s。
+    /// 本地 echo server 上无 ramp-up 时 50 连接会在 <100ms 内全部建立,
+    /// 因此 1s 时刻 active < 50 即证明 ramp-up 在生效。
+    #[tokio::test]
+    async fn test_engine_ramp_up_linear_growth() {
+        use smol::channel::unbounded;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        use crate::config::connection::ConnectionType;
+        use crate::stress::config::{ConnectionMode, RampUpConfig, StressMode};
+
+        // 启动本地 echo server
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let echo_handle = tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((mut socket, _)) => {
+                        tokio::spawn(async move {
+                            let mut buf = [0u8; 8192];
+                            loop {
+                                match socket.read(&mut buf).await {
+                                    Ok(0) | Err(_) => break,
+                                    Ok(n) => {
+                                        if socket.write_all(&buf[..n]).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let (sender, receiver) = unbounded::<StressEvent>();
+
+        let config = StressTestConfig {
+            target_address: "127.0.0.1".to_string(),
+            target_port: port,
+            protocol: ConnectionType::Tcp,
+            mode: StressMode::Throughput,
+            connection_mode: ConnectionMode::Long,
+            concurrency: 50,
+            message_input_mode: "text".to_string(),
+            payload_template: "PING ${seq}".to_string(),
+            send_interval_ms: 100,
+            global_qps_limit: None,
+            stop_condition: StopCondition::Duration(5),
+            ramp_up: RampUpConfig {
+                enabled: true,
+                ramp_up_secs: 3,
+            },
+            auto_reconnect: false,
+            response_validation: None,
+            timeout_ms: 2000,
+        };
+
+        let mut engine = StressTestEngine::start(config, "test".to_string(), sender);
+
+        // 收集快照, 找到首个 elapsed_ms >= 1000 的快照
+        let mut snapshot_at_1s: Option<StressStats> = None;
+        let mut got_finished = false;
+        while let Ok(event) = tokio::time::timeout(Duration::from_secs(10), receiver.recv()).await {
+            match event {
+                Ok(StressEvent::StatsSnapshot { stats, .. }) => {
+                    if snapshot_at_1s.is_none() && stats.elapsed_ms >= 1000 {
+                        snapshot_at_1s = Some(stats);
+                    }
+                }
+                Ok(StressEvent::Finished { .. }) => {
+                    got_finished = true;
+                    break;
+                }
+                Ok(StressEvent::Error { msg, .. }) => panic!("引擎错误: {}", msg),
+                Err(_) => break,
+            }
+        }
+        assert!(got_finished, "应收到 Finished 事件");
+
+        let snap = snapshot_at_1s.expect("应收到至少一个 elapsed_ms>=1000 的快照");
+        // ramp-up 生效: 1s 时刻 active 应明显小于满并发 50
+        // (无 ramp-up 时本地 echo 会在 <100ms 全连上, active 会立刻 = 50)
+        assert!(
+            snap.active_connections < 50,
+            "ramp-up 应在 1s 时刻阻止全部连接建立, 实际 active={}",
+            snap.active_connections
+        );
+        // 但应有部分连接已建立(初始批量 + 速率补充)
+        assert!(
+            snap.active_connections > 0,
+            "1s 时刻应已有连接建立, 实际 active={}",
+            snap.active_connections
+        );
 
         engine.stop();
         echo_handle.abort();

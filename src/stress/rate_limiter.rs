@@ -40,11 +40,20 @@ impl TokenBucket {
 
     /// 构造限速令牌桶: qps = 每秒允许的请求数，容量 = qps(允许 1 秒突发)
     pub fn new(qps: u32) -> Self {
+        Self::with_initial_tokens(qps, qps as f64)
+    }
+
+    /// 指定初始令牌数的限速令牌桶。
+    ///
+    /// 用于 ramp-up 冷启动: 初始放行一批令牌让首批 worker 立即建连,
+    /// 后续按 refill_rate 线性补充,从而在 ramp_up_secs 内达到满并发。
+    /// 容量仍 = qps(限制最大突发为 1 秒量),避免冷启动后短时间内超速。
+    pub fn with_initial_tokens(qps: u32, initial_tokens: f64) -> Self {
         let rate = qps as f64;
         Self {
             unbounded: AtomicBool::new(false),
             inner: Mutex::new(Inner {
-                tokens: rate,
+                tokens: initial_tokens,
                 capacity: rate,
                 refill_rate: rate,
                 last_refill: Instant::now(),
@@ -182,5 +191,34 @@ mod tests {
         h2.await.unwrap();
         // 突发 40 个用完即结束，不应超 1 秒
         assert!(start.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_with_initial_tokens_sets_initial_amount() {
+        // qps=100, 初始令牌=10: 初始应只有 10 个可用, 容量仍为 100
+        let bucket = TokenBucket::with_initial_tokens(100, 10.0);
+        let available = bucket.available_tokens();
+        assert!(
+            (available - 10.0).abs() < 1.0,
+            "初始令牌应约为 10, 实际 {}",
+            available
+        );
+    }
+
+    #[tokio::test]
+    async fn test_with_initial_tokens_only_initial_burst_is_free() {
+        // qps=10, 初始令牌=5: 前 5 个立即可取, 第 6 个需等待约 100ms
+        let bucket = Arc::new(TokenBucket::with_initial_tokens(10, 5.0));
+        for _ in 0..5 {
+            bucket.acquire().await;
+        }
+        let start = Instant::now();
+        bucket.acquire().await; // 第 6 个, 需等待约 1/10s = 100ms
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed >= Duration::from_millis(80),
+            "超出初始令牌后应等待约 100ms, 实际 {:?}",
+            elapsed
+        );
     }
 }

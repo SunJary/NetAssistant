@@ -31,6 +31,8 @@ impl FailureBreakdownSnapshot {
 pub struct StressStats {
     pub elapsed_ms: u64,
     pub current_qps: f64,
+    /// 本次压测出现过的最大瞬时 QPS(基于相邻快照 delta_sent/dt)
+    pub peak_qps: f64,
     pub total_sent: u64,
     pub total_success: u64,
     pub total_failure: u64,
@@ -286,6 +288,9 @@ pub struct WorkerStats {
     /// 本次压测出现过的最大活跃连接数
     /// 由 build_snapshot 每 250ms 用 fetch_max 更新, 低频写入无需 padding
     pub peak_active: AtomicU64,
+    /// 本次压测出现过的最大瞬时 QPS(毫 qps = qps * 1000, 整数 fetch_max)
+    /// 由 aggregator 每 250ms 用相邻快照的 delta_sent/dt 计算并 fetch_max
+    pub peak_qps_milli: AtomicU64,
     /// 最近一次连接错误信息(限频写入,读取用于失败日志)
     last_connect_error: RwLock<String>,
 }
@@ -304,6 +309,7 @@ impl WorkerStats {
             failures: FailureBreakdown::new(),
             workers_gave_up: AtomicU64::new(0),
             peak_active: AtomicU64::new(0),
+            peak_qps_milli: AtomicU64::new(0),
             last_connect_error: RwLock::new(String::new()),
         }
     }

@@ -78,11 +78,12 @@ impl Validator {
 /// - `worker_id`: worker 编号(用于变量替换与日志)
 /// - `config`: 压测配置
 /// - `global_seq`: 全局序号(所有 worker 共享)
-/// - `limiter`: 全局 QPS 令牌桶
+/// - `limiter`: 全局 QPS 令牌桶(控制发包速率)
 /// - `stats`: 共享原子计数器
 /// - `histogram`: 共享延迟直方图(ping-pong 模式写入)
 /// - `cancel`: 协作取消令牌
 /// - `_error_sender`: 致命错误上报通道(目前仅日志，预留)
+/// - `connect_limiter`: 首次建连速率令牌桶(ramp-up; unbounded 时零开销)
 pub async fn run_worker(
     worker_id: usize,
     config: StressTestConfig,
@@ -92,6 +93,7 @@ pub async fn run_worker(
     histogram: Arc<ShardedHistogram>,
     cancel: CancellationToken,
     _error_sender: Sender<StressEvent>,
+    connect_limiter: Arc<TokenBucket>,
 ) {
     let validator = Validator::build(&config.response_validation);
     let target_addr = match config.parse_target_addr() {
@@ -129,6 +131,7 @@ pub async fn run_worker(
                     timeout_dur,
                     send_interval,
                     &compiled,
+                    &connect_limiter,
                 )
                 .await;
             } else {
@@ -146,6 +149,7 @@ pub async fn run_worker(
                     timeout_dur,
                     send_interval,
                     &compiled,
+                    &connect_limiter,
                 )
                 .await;
             }
@@ -165,6 +169,7 @@ pub async fn run_worker(
                 timeout_dur,
                 send_interval,
                 &compiled,
+                &connect_limiter,
             )
             .await;
         }
@@ -280,6 +285,7 @@ async fn run_tcp_long(
     timeout_dur: Duration,
     send_interval: Duration,
     compiled: &CompiledTemplate,
+    connect_limiter: &Arc<TokenBucket>,
 ) {
     let mut socket: Option<TcpStream> = None;
     let hex_mode = config.message_input_mode == "hex";
@@ -287,6 +293,8 @@ async fn run_tcp_long(
     let mut consecutive_connect_failures: u32 = 0;
     // 是否持有活跃连接(用于准确维护 active 计数)
     let mut is_active = false;
+    // 首次建连受 ramp-up 令牌桶限速; 重连不限速(ramp-up 只控初始加压曲线)
+    let mut first_connect = true;
 
     loop {
         // 取消检查
@@ -296,6 +304,13 @@ async fn run_tcp_long(
 
         // 建立连接(首次或重连)
         if socket.is_none() {
+            // 首次建连前获取 ramp-up 令牌(控制 active 线性增长)
+            if first_connect {
+                if !select_acquire(&cancel, connect_limiter).await {
+                    break;
+                }
+                first_connect = false;
+            }
             // 连接断开后递减 active(反映真实活跃连接数,而非配置的并发数)
             if is_active {
                 stats.active.fetch_sub(1, Ordering::Relaxed);
@@ -409,16 +424,27 @@ async fn run_tcp_short(
     timeout_dur: Duration,
     send_interval: Duration,
     compiled: &CompiledTemplate,
+    connect_limiter: &Arc<TokenBucket>,
 ) {
     let hex_mode = config.message_input_mode == "hex";
+    // 首次建连受 ramp-up 限速; 后续每包建连不受限(由 global QPS 令牌桶控制)
+    let mut first_connect = true;
     loop {
         if cancel.is_cancelled() {
             break;
         }
 
-        // 速率控制
+        // 速率控制(QPS)
         if !select_acquire(&cancel, limiter).await {
             break;
+        }
+
+        // 首次建连前获取 ramp-up 令牌
+        if first_connect {
+            if !select_acquire(&cancel, connect_limiter).await {
+                break;
+            }
+            first_connect = false;
         }
 
         // 短连接: 每包新建连接
@@ -486,12 +512,17 @@ async fn run_udp(
     timeout_dur: Duration,
     send_interval: Duration,
     compiled: &CompiledTemplate,
+    connect_limiter: &Arc<TokenBucket>,
 ) {
     let bind_addr = if target_addr.is_ipv6() {
         "[::]:0"
     } else {
         "0.0.0.0:0"
     };
+    // 首次建连(bind)前获取 ramp-up 令牌(UDP 只建连一次,无需 first_connect 标志)
+    if !select_acquire(&cancel, connect_limiter).await {
+        return;
+    }
     let socket = match UdpSocket::bind(bind_addr).await {
         Ok(s) => s,
         Err(e) => {

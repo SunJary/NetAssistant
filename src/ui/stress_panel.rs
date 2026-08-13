@@ -229,7 +229,7 @@ impl<'a> StressPanel<'a> {
             )
     }
 
-    /// QPS 大字卡片
+    /// QPS 大字卡片(当前 + 峰值)
     fn render_qps_card(&self, theme: &Theme, stats: &crate::stress::StressStats) -> Div {
         div()
             .p_4()
@@ -250,6 +250,12 @@ impl<'a> StressPanel<'a> {
                     .font_bold()
                     .text_color(theme.primary)
                     .child(format!("{:.0}", stats.current_qps)),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(format!("峰值 {:.0}", stats.peak_qps)),
             )
     }
 
