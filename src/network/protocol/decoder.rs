@@ -89,9 +89,8 @@ impl CodecFactory {
                 Box::new(FixedLengthDecoder::new(*frame_length))
             }
             DecoderConfig::Json => {
-                debug!("CodecFactory: 使用JSON解码器（基于BytesCodec）");
-                // 对于JSON，我们直接使用BytesCodec
-                Box::new(BytesDecoder::new())
+                debug!("CodecFactory: 使用JSON解码器（基于serde_json StreamDeserializer）");
+                Box::new(JsonDecoder::new())
             }
         }
     }
@@ -337,6 +336,101 @@ impl ExtendedDecoder for FixedLengthDecoder {
             debug!(
                 "FixedLengthDecoder: 强制刷新缓冲区, 长度: {}",
                 self.pending_data.len()
+            );
+            Some(self.pending_data.split_to(self.pending_data.len()))
+        } else {
+            None
+        }
+    }
+}
+
+/// JSON 流式解码器
+/// 基于 serde_json::StreamDeserializer, 支持无分隔符拼接的 JSON 流(如 {"1":"1"}{"1":"1"}),
+/// 每解析出一个完整 JSON 值即切出一帧(保留该值的原始字节, 供上层展示)。
+/// 数据不完整时等待更多数据; 连接断开/超时由 force_flush 兜底返回残留字节。
+struct JsonDecoder {
+    pending_data: BytesMut,
+}
+
+impl JsonDecoder {
+    fn new() -> Self {
+        Self {
+            pending_data: BytesMut::new(),
+        }
+    }
+}
+
+impl Decoder for JsonDecoder {
+    type Item = BytesMut;
+    type Error = std::io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        // 累积新数据到 pending_data
+        if !src.is_empty() {
+            self.pending_data.extend_from_slice(src);
+            src.clear();
+        }
+
+        if self.pending_data.is_empty() {
+            return Ok(None);
+        }
+
+        // 在内部作用域完成解析, 借用结束后再修改 pending_data
+        // 解析目标为 serde_json::Value, 仅用于确定 JSON 值边界, 不关心具体内容
+        let parse_result: Result<Option<usize>, std::io::Error> = {
+            let mut stream = serde_json::Deserializer::from_slice(&self.pending_data)
+                .into_iter::<serde_json::Value>();
+            match stream.next() {
+                Some(Ok(_)) => Ok(Some(stream.byte_offset())),
+                // 数据不完整(如半个 JSON 值), 等待后续数据
+                Some(Err(e)) if e.is_eof() => Ok(None),
+                // 真正的语法错误
+                Some(Err(e)) => Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                )),
+                None => Ok(None),
+            }
+        };
+
+        match parse_result {
+            Ok(Some(offset)) => {
+                let frame = self.pending_data.split_to(offset);
+                debug!(
+                    "JsonDecoder: 解码出一帧, 长度: {}, 内容: {:?}",
+                    frame.len(),
+                    String::from_utf8_lossy(&frame)
+                );
+                Ok(Some(frame))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn decode_eof(&mut self, _src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        // 流结束时返回残留数据(可能是不完整的 JSON)
+        if !self.pending_data.is_empty() {
+            let remaining = self.pending_data.split_to(self.pending_data.len());
+            debug!(
+                "JsonDecoder: decode_eof 返回残留数据, 长度: {}, 内容: {:?}",
+                remaining.len(),
+                String::from_utf8_lossy(&remaining)
+            );
+            Ok(Some(remaining))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl ExtendedDecoder for JsonDecoder {
+    fn force_flush(&mut self) -> Option<BytesMut> {
+        if !self.pending_data.is_empty() {
+            debug!(
+                "JsonDecoder: 强制刷新缓冲区, 长度: {}, 内容: {:?}",
+                self.pending_data.len(),
+                String::from_utf8_lossy(&self.pending_data)
             );
             Some(self.pending_data.split_to(self.pending_data.len()))
         } else {
