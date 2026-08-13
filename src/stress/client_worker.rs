@@ -212,9 +212,13 @@ async fn send_and_maybe_recv_tcp(
     histogram: &ShardedHistogram,
     worker_id: usize,
     timeout_dur: Duration,
+    cancel: &CancellationToken,
 ) -> bool {
-    // 发送
-    let send_result = timeout(timeout_dur, socket.write_all(payload)).await;
+    // 发送(响应 cancel,避免关闭标签页后 worker 卡在 write 上等待超时)
+    let send_result = tokio::select! {
+        _ = cancel.cancelled() => return false,
+        r = timeout(timeout_dur, socket.write_all(payload)) => r,
+    };
     match send_result {
         Ok(Ok(())) => {
             stats
@@ -236,7 +240,10 @@ async fn send_and_maybe_recv_tcp(
     // ping-pong: 接收响应并计时(栈缓冲,避免每包 8KB 堆分配)
     let start = Instant::now();
     let mut buf = [0u8; 8192];
-    let recv_result = timeout(timeout_dur, socket.read(&mut buf)).await;
+    let recv_result = tokio::select! {
+        _ = cancel.cancelled() => return false,
+        r = timeout(timeout_dur, socket.read(&mut buf)) => r,
+    };
     let elapsed_us = start.elapsed().as_micros() as u64;
 
     match recv_result {
@@ -377,8 +384,14 @@ async fn run_tcp_long(
             histogram,
             worker_id,
             timeout_dur,
+            &cancel,
         )
         .await;
+
+        // cancel 触发时立即退出,不计入 disconnect/reconnect 统计
+        if cancel.is_cancelled() {
+            break;
+        }
 
         if !ok {
             // 连接异常，关闭并准备重连
@@ -482,8 +495,14 @@ async fn run_tcp_short(
             histogram,
             worker_id,
             timeout_dur,
+            &cancel,
         )
         .await;
+
+        // cancel 触发时立即退出,不再执行 shutdown/sleep
+        if cancel.is_cancelled() {
+            break;
+        }
 
         // 短连接: 显式关闭(触发 TIME_WAIT)
         let _ = socket.shutdown().await;
@@ -553,8 +572,11 @@ async fn run_udp(
         let payload = build_payload(compiled, global_seq, worker_id, worker_counter, hex_mode);
         stats.sent.fetch_add(1, Ordering::Relaxed);
 
-        // 发送
-        let send_result = timeout(timeout_dur, socket.send(&payload)).await;
+        // 发送(响应 cancel)
+        let send_result = tokio::select! {
+            _ = cancel.cancelled() => break,
+            r = timeout(timeout_dur, socket.send(&payload)) => r,
+        };
         match send_result {
             Ok(Ok(n)) => {
                 stats.bytes_sent.fetch_add(n as u64, Ordering::Relaxed);
@@ -575,7 +597,10 @@ async fn run_udp(
             // ping-pong: 接收(栈缓冲,避免每包堆分配)
             let start = Instant::now();
             let mut buf = [0u8; 8192];
-            let recv_result = timeout(timeout_dur, socket.recv(&mut buf)).await;
+            let recv_result = tokio::select! {
+                _ = cancel.cancelled() => break,
+                r = timeout(timeout_dur, socket.recv(&mut buf)) => r,
+            };
             let elapsed_us = start.elapsed().as_micros() as u64;
             match recv_result {
                 Ok(Ok(n)) if n > 0 => {
