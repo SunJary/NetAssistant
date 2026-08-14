@@ -122,13 +122,15 @@ jobs:
           DEPLOY_GTK_VERSION: '3'
           OUTPUT: netassistant-linux-x86_64.AppImage
         run: |
-          # Assemble AppDir
+          # Assemble AppDir with standard AppImage layout
           mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           cp target/x86_64-unknown-linux-gnu/release/netassistant AppDir/usr/bin/
-          cp assets/icon/icon_256x256.png AppDir/netassistant.png
+          cp assets/icon/icon_256x256.png AppDir/usr/share/icons/hicolor/256x256/apps/netassistant.png
 
           # Generate .desktop file from Cargo.toml [package.metadata.appimage]
-          python3 << 'EOF' > AppDir/netassistant.desktop
+          python3 << 'EOF' > AppDir/usr/share/applications/netassistant.desktop
           import json, subprocess
           metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1']))
           pkg = metadata['packages'][0]
@@ -151,7 +153,12 @@ jobs:
 
           # Put plugin in PATH so linuxdeploy can find it
           export PATH="$PWD:$PATH"
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin gtk --output appimage
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --desktop-file AppDir/usr/share/applications/netassistant.desktop \
+            --executable AppDir/usr/bin/netassistant \
+            --plugin gtk \
+            --output appimage
 
       - name: Upload AppImage artifact
         if: matrix.os == 'ubuntu-22.04'
