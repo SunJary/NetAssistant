@@ -72,8 +72,11 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 ### UDP Manual Add Client
 ![UDP Manual Add Client Screenshot](assets/screenshots/screenshot_udp_add_client.png)
 
-### Stress Testing (Dark Mode)
-![Stress Testing Screenshot](assets/screenshots/screenshot_udp_stress_dark.png)
+### Stress Testing Configuration (Dark Mode)
+![Stress Testing Configuration Screenshot](assets/screenshots/screenshot_udp_stress_dark.png)
+
+### Stress Testing Result
+![Stress Testing Result Screenshot](assets/screenshots/screenshot_stress.png)
 
 ### UDP Client Dark Mode
 ![UDP Client Dark Mode Screenshot](assets/screenshots/screenshot_udp_client_dark.png)

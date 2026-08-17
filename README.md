@@ -72,8 +72,11 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 ### UDP 手动添加客户端
 ![UDP 手动添加客户端截图](assets/screenshots/screenshot_udp_add_client.png)
 
-### 压力测试（暗黑模式）
-![压力测试截图](assets/screenshots/screenshot_udp_stress_dark.png)
+### 配置压力测试（暗黑模式）
+![配置压力测试截图](assets/screenshots/screenshot_udp_stress_dark.png)
+
+### 压力测试结果
+![压力测试结果截图](assets/screenshots/screenshot_stress.png)
 
 ### UDP 客户端暗黑模式
 ![UDP 客户端暗黑模式截图](assets/screenshots/screenshot_udp_client_dark.png)
