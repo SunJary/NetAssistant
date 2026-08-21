@@ -23,19 +23,22 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Multi-protocol support**: Complete TCP/UDP client and server modes
 - **IPv4/IPv6 dual stack**: Supports both IPv4 and IPv6 protocols, adapting to various network environments
 - **Multiple TCP decoders**: Supports raw data, line-based decoding, length-prefixed decoding, and JSON decoding to meet different protocol format requirements, effectively solving TCP sticky packet issues
-- **JSON beautify**: One-click formatting of JSON messages, displaying structured data with clear hierarchy for easy reading and analysis
+- **JSON formatting**: Send box provides "Beautify"/"Minify" buttons in text mode to format outgoing content; receiver top toolbar toggles global display format (Raw/Beautify/Minify), supports pretty indentation and compact display; non-JSON content is returned as-is
 - **Chat-style message logging**: Intuitive display of message interactions, facilitating debugging and analysis
 - **Configuration persistence**: Automatically saves connection configurations for direct use next time
+- **Connection editing**: Saved connection configurations can be directly edited and modified without deleting and recreating
 
 ### Message Management Features
 - **Copy message**: Quickly copy a single message to the clipboard, supporting both text and hexadecimal formats
 - **Favorite message**: Add important messages to the favorites, support adding remarks to favorite items, and provide keyword search
-- **Export message records**: Export complete message records to TXT / JSON / CSV files for archiving, sharing, and secondary analysis
+- **Real-time log recording**: After manual enabling, all sent/received messages are asynchronously written to log file in real-time (flushed per message), supports custom save path, auto-flush and close on disconnection; log filename is clickable to open directory
+- **On-demand manual export**: Don't need continuous logging? You can export current message records anytime as TXT/JSON/CSV files for archiving, sharing, and secondary analysis
+- **UDP broadcast reply smart display**: Optimized for IoT/embedded device discovery scenarios. When sending commands to broadcast addresses, all device replies are received; replies from unexpected addresses are highlighted in red, ensuring no important responses are lost
 
 ### Automated Testing Features
 - **Auto-reply functionality**: Supports test auto-replies, simulating server or client responses
 - **Periodic send functionality**: Supports timed periodic message sending for stress testing or long-term stability testing
-- **Stress testing**: Built-in TCP/UDP high-concurrency stress testing engine, real-time display of QPS, latency percentiles (p50/p95/p99), success / failure / disconnection statistics, supports variable templates (sequence, worker ID, counter, timestamp, random number) and CSV report export
+- **Stress testing**: Built-in TCP/UDP high-concurrency stress testing engine, real-time display of QPS (current/peak), total sent/success/failure, active connections (current/peak), disconnects/reconnects, bytes sent/received statistics; p50/p95/p99/avg/max latency percentiles **only shown in Ping-Pong (round-trip) mode** (this mode waits for response to measure RTT latency); supports failure breakdown (connect failed/send failed/recv timeout/peer closed/validate failed) to help quickly identify bottlenecks, supports variable templates (`${seq}` global sequence, `${worker_id}` thread ID, `${counter}` local counter, `${timestamp}` timestamp, `${uuid}` random UUID, `${random:min:max}` random integer), auto-save configs for reuse, and CSV report export
 
 ### Modern Interface
 - **Dark mode support**: Automatically adapts to system themes, providing a comfortable night-time experience
@@ -175,26 +178,44 @@ Run the corresponding executable file according to the installation method for d
 7. **Message Management**
    - **Copy message**: Click the copy button on a message item to copy its content to the clipboard
    - **Favorite message**: Click the favorite button on a message item to add it to favorites; you can add remarks to favorite items in the popup and quickly locate them via keyword search
-   - **JSON beautify**: When the message content is valid JSON, click the beautify button to format and display it
+   - **JSON formatting**:
+     - Sender: In text input mode, "Beautify" and "Minify" buttons are available next to the input box to format outgoing JSON content
+     - Receiver: Top toolbar has "Format: Raw/Beautify/Minify" button to switch display format for all messages; non-JSON content is displayed as-is
    - **Export message records**: Click the export button in the connection tab, select TXT / JSON / CSV format and save to a local file
+   - **Real-time log recording**: Click the "Log" toggle to manually enable/disable recording; when enabled, all messages are asynchronously written to log file in real-time (flushed per message); default save path is `Documents/NetAssistant/logs/`, click the pencil button next to it to customize save path; log filename is clickable to open the directory; logs are automatically flushed and closed on disconnection
 
-8. **UDP Manual Add Client**
+8. **Edit Connection Configuration**
+   - For saved connection configurations, right-click the connection and select Edit, or click the edit button
+   - Protocol type, address, port and other configurations can be modified without deleting and recreating
+
+9. **UDP Manual Add Client**
    - In UDP server mode, click the `[+Add Client]` button
    - Enter the target client's IP and port
    - After adding, you can actively send messages to that address
 
-9. **Stress Testing**
-   - Open the stress test configuration popup via right-click connection or toolbar entry
-   - Fill in target address, port, concurrent client count, send rate, message content, and variable templates
-   - After clicking start, view QPS, p50/p95/p99 latency, success / failure / disconnection statistics in real time on the stress test panel
-   - After the test, you can export a CSV report; click the stop button to terminate the test at any time
+10. **UDP Device Discovery Scenario (IoT/Embedded Debugging)**
+    - When discovering IoT/embedded devices on the LAN, send discovery commands to a broadcast address (e.g., `192.168.1.255`)
+    - All device replies are displayed normally (not filtered by source address)
+    - Replies from unexpected addresses have their source addresses **highlighted in light red**, with a tooltip showing "Reply from unexpected address" on hover, helping you identify which devices responded
+    - This ensures no important device responses are lost while clearly distinguishing broadcast replies from normal replies to the target address
 
-10. **Manage Connections**
+11. **Stress Testing**
+    - Switch to the stress test page via the "Stress" entry on the connection tab
+    - Fill in target address, port, concurrent client count, send rate, message content, and variable templates (supports `${seq}`, `${worker_id}`, `${counter}`, `${timestamp}`, `${uuid}`, `${random:min:max}`)
+    - Stress modes:
+      - **Ping-Pong (Round-trip) mode**: Waits for response after sending, measures RTT latency (p50/p95/p99/avg/max), suitable for API performance testing
+      - **Throughput mode**: Sends without waiting for response, no latency measurement, suitable for maximum throughput testing
+    - Connection modes: Short connection (new connection per request), Long connection
+    - After clicking start, view QPS (current/peak), total sent/success/failure, active connections (current/peak), disconnects/reconnects, bytes sent/received in real time on the stress test panel; failure breakdown (connect failed/send failed/recv timeout/peer closed/validate failed) is automatically shown when there are failures
+    - Stress test configurations are automatically saved and restored next time you open
+    - After the test, you can export a CSV report; click the stop button to terminate the test at any time
+
+12. **Manage Connections**
     - Use tabs to switch between different connections
     - Click the `×` on the tab to close the connection
-    - Right-click on the connection to delete saved configuration
+    - Right-click on the connection to delete or edit saved configuration
 
-11. **Client Message Viewing**
+13. **Client Message Viewing**
     - In server mode, the left panel displays the list of connected clients
     - Click a single client address to select it, and the right message list will only show messages from that client
     - Click the selected client again to deselect and restore all messages
@@ -272,21 +293,23 @@ Run the corresponding executable file according to the installation method for d
 
 ## 📊 Performance Metrics
 
+During development, we used the built-in stress testing feature to perform high-concurrency testing on NetAssistant itself, which helped discover and optimize multiple performance bottlenecks (batch message updates, batch log writing, etc.), ensuring smooth performance even under high load:
+
 - **Startup time**: < 100ms
   - Quick startup, no waiting
   - Instant response to user operations
 
 - **Message throughput**
-  - High-concurrency message processing
+  - High-concurrency message processing with batch update optimization to reduce CPU usage
   - Low-latency message transmission
 
 - **Memory usage**: < 20MB
   - Lightweight resource usage
-  - Efficient memory management
+  - Optimized message storage for stable memory under high load
 
 - **UI response**: 60fps rendering
   - Smooth user experience
-  - Lag-free interactions
+  - Lag-free interactions even with high message volumes
 
 ## 🏗️ Project Structure
 
@@ -324,6 +347,7 @@ netassistant/
 │   │   ├── engine.rs          # Stress engine: schedule workers, aggregate statistics
 │   │   ├── client_worker.rs   # Client worker: long/short connection send logic
 │   │   ├── config.rs          # Stress test configuration
+│   │   ├── port_range.rs      # Port range parsing
 │   │   ├── rate_limiter.rs    # Token bucket rate limiter
 │   │   ├── stats.rs           # Real-time statistics (QPS/latency percentiles)
 │   │   ├── report.rs          # CSV report generation
@@ -338,11 +362,12 @@ netassistant/
 │   │   ├── components/        # Common UI components
 │   │   │   └── input_with_mode.rs # Input box with mode switching (text/hex)
 │   │   └── dialog/            # Dialogs
-│   │       ├── new_connection.rs   # New connection dialog
+│   │       ├── new_connection.rs   # New/Edit connection dialog
 │   │       ├── add_client.rs       # UDP manual add client dialog
 │   │       ├── decoder_selection.rs# Decoder selection dialog
 │   │       ├── favorite_list.rs    # Favorite list dialog
 │   │       ├── favorite_remark.rs  # Favorite remark dialog
+│   │       ├── port_limit_help.rs  # Port limit help dialog
 │   │       └── stress_config.rs    # Stress test configuration dialog
 │   └── utils/                 # Utility functions: common tools and helper functions
 │       ├── hex.rs             # Hexadecimal data processing
@@ -370,7 +395,41 @@ netassistant/
 - [ ] Support SSE debugging
 - [ ] Support more data format encoding and decoding
 - [ ] Support WebSocket protocol
-- [ ] Stress test scenario template saving and reuse
+
+## ❓ FAQ
+
+**Q: Which operating systems are supported?**  
+A: Windows 10/11, Linux (requires GTK3), and macOS 10.15+.
+
+**Q: How many connections can be managed simultaneously?**  
+A: There's no theoretical limit, depends on system resources. Managing 10-20 connections simultaneously works perfectly in practice.
+
+**Q: Why are some message addresses red in UDP mode?**  
+A: Red addresses indicate the message came from an "unexpected address" — this is a feature designed specifically for **IoT/embedded device discovery scenarios**. When you send discovery commands to a broadcast address (e.g., `192.168.1.255`), multiple devices on the LAN will reply from their own different IPs. These replies are displayed normally, but the source addresses are highlighted in red, ensuring no device responses are lost while helping you distinguish broadcast replies from normal replies.
+
+**Q: Which protocols does stress testing support?**  
+A: TCP and UDP protocols, with configurable concurrency, send rate, variable templates, etc.
+
+**Q: Can stress test reports be exported?**  
+A: Yes, detailed CSV statistics reports can be exported after testing completes.
+
+**Q: How can I actively send messages to clients as a UDP server?**  
+A: Since UDP is connectionless, click the "+Add Client" button in UDP server mode, enter the target IP:port, and you can actively send messages to that address.
+
+**Q: What formats does message export support?**  
+A: TXT (for reading), JSON (structured), CSV (for spreadsheet analysis).
+
+**Q: How do I enable logging? Where are logs saved? Can I change the path?**  
+A: Click the "Log" toggle in the connection tab to manually enable/disable logging. Default save path is `Documents/NetAssistant/logs/`. Click the pencil edit button next to it to customize the save path; the log filename is clickable to open the directory directly. Logs are automatically flushed and closed when disconnecting.
+
+**Q: What TCP decoders are supported?**  
+A: Raw data, line-based decoding, length-prefixed decoding, and JSON decoding, effectively solving TCP sticky packet issues.
+
+**Q: Is dark mode supported?**  
+A: Yes, NetAssistant automatically follows system theme to switch between light and dark modes.
+
+**Q: Can saved connection configurations be modified?**  
+A: Yes, right-click the connection and select Edit, or click the edit button to modify address, port and other configurations without deleting and recreating.
 
 ## 📦 Compile from Source Code (Optional)
 
