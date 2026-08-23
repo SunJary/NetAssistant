@@ -5,6 +5,7 @@ mod favorite_remark;
 mod new_connection;
 mod port_limit_help;
 mod stress_config;
+mod variable_picker;
 
 pub use add_client::AddClientDialog;
 pub use decoder_selection::{DecoderSelectionDialog, DecoderSelectionDialogState};

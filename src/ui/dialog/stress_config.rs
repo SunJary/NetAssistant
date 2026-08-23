@@ -9,6 +9,7 @@ use gpui::*;
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::ActiveTheme as _;
+use gpui_component::ElementExt as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
 
@@ -20,6 +21,7 @@ use crate::stress::config::{
 use crate::stress::port_range::{EphemeralPortRange, STATIC_THRESHOLD};
 use crate::ui::components::input_with_mode::InputWithMode;
 use crate::ui::dialog::port_limit_help::render_port_limit_help_dialog;
+use crate::ui::dialog::variable_picker::render_variable_picker;
 
 /// 文本模式默认报文
 const DEFAULT_TEXT_PAYLOAD: &str = "PING ${seq}";
@@ -61,6 +63,10 @@ pub struct StressConfigDialogState {
     pub show_advanced: bool,
     /// 是否显示端口说明子弹窗
     pub show_port_help: bool,
+    /// 是否显示「插入变量」浮层
+    pub show_variable_picker: bool,
+    /// 「插入变量」按钮在窗口坐标系中的 bounds (由 on_prepaint 更新, 用于浮层定位)
+    pub var_button_bounds: Bounds<Pixels>,
 }
 
 impl StressConfigDialogState {
@@ -129,6 +135,8 @@ impl StressConfigDialogState {
             ramp_up_enabled: config.ramp_up.enabled,
             show_advanced: false,
             show_port_help: false,
+            show_variable_picker: false,
+            var_button_bounds: Bounds::default(),
         }
     }
 
@@ -323,20 +331,32 @@ impl StressConfigDialog {
                                     // 报文输入(复用 InputWithMode)
                                     .child(
                                         div()
+                                            .relative()
                                             .flex()
                                             .flex_col()
                                             .gap_1()
                                             .mt_4()
+                                            // 标题行: 标题 + 「插入变量」按钮 | 文本/Hex 切换芯片
                                             .child(
                                                 div()
                                                     .flex()
                                                     .justify_between()
+                                                    .items_center()
                                                     .child(
                                                         div()
-                                                            .text_sm()
-                                                            .font_semibold()
-                                                            .text_color(theme.foreground)
-                                                            .child("报文内容"),
+                                                            .flex()
+                                                            .items_center()
+                                                            .gap_2()
+                                                            .child(
+                                                                div()
+                                                                    .text_sm()
+                                                                    .font_semibold()
+                                                                    .text_color(theme.foreground)
+                                                                    .child("报文内容"),
+                                                            )
+                                                            .child(Self::render_insert_var_button(
+                                                                state, &theme, cx,
+                                                            )),
                                                     )
                                                     .child(Self::render_payload_mode_chip(
                                                         state, &theme, cx,
@@ -367,6 +387,12 @@ impl StressConfigDialog {
             // 端口说明子弹窗叠加 (show_port_help=true 时覆盖在压测配置弹窗之上)
             .when(state.show_port_help, |this| {
                 this.child(render_port_limit_help_dialog(app, state, &theme, window, cx))
+            })
+            // 「插入变量」浮层: deferred 在独立合成层渲染, 不会被滚动区内容覆盖
+            .when(state.show_variable_picker, |this| {
+                this.child(render_variable_picker(
+                    state.var_button_bounds, &theme, window, cx,
+                ))
             })
             .into_any_element()
     }
@@ -512,6 +538,7 @@ impl StressConfigDialog {
                         cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
                             if let Some(s) = &mut app.stress_config_dialog {
                                 s.show_port_help = true;
+                                s.show_variable_picker = false;
                             }
                             cx.notify();
                         }),
@@ -631,6 +658,61 @@ impl StressConfigDialog {
             )
     }
 
+    /// 渲染「插入变量」按钮 (切换显隐浮层, on_prepaint 追踪位置供浮层定位)
+    fn render_insert_var_button(
+        state: &StressConfigDialogState,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
+        // 记录按钮在窗口坐标系的 bounds, 供 deferred+anchored 浮层定位
+        let app_entity = cx.entity();
+        let prepaint_handler: Box<dyn Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static> =
+            Box::new(move |bounds, _, cx| {
+                app_entity.update(cx, |app, _| {
+                    if let Some(s) = &mut app.stress_config_dialog {
+                        s.var_button_bounds = bounds;
+                    }
+                });
+            });
+
+        // 激活态(浮层展开)或悬停/按下时均用实底主色+白字, 保证文字与背景高对比
+        let filled = state.show_variable_picker;
+        div()
+            .id("insert-var-button")
+            .flex()
+            .items_center()
+            .gap_0p5()
+            .px_1p5()
+            .py_0p5()
+            .rounded_md()
+            .text_xs()
+            .font_medium()
+            .cursor_pointer()
+            .when(filled, |this| {
+                this.text_color(gpui::white()).bg(theme.primary)
+            })
+            .when(!filled, |this| {
+                this.text_color(theme.primary).bg(theme.primary.opacity(0.06))
+            })
+            .hover(|this| {
+                this.text_color(gpui::white()).bg(theme.primary)
+            })
+            .active(|this| {
+                this.text_color(gpui::white()).bg(theme.primary)
+            })
+            .child("插入变量")
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
+                    if let Some(s) = &mut app.stress_config_dialog {
+                        s.show_variable_picker = !s.show_variable_picker;
+                    }
+                    cx.notify();
+                }),
+            )
+            .on_prepaint(prepaint_handler)
+    }
+
     /// 渲染报文模式芯片(文本/十六进制)
     fn render_payload_mode_chip(
         state: &StressConfigDialogState,
@@ -671,6 +753,7 @@ impl StressConfigDialog {
                                     });
                                 }
                                 s.message_input_mode = "text".to_string();
+                                s.show_variable_picker = false;
                             }
                             cx.notify();
                         }),
@@ -704,6 +787,7 @@ impl StressConfigDialog {
                                     });
                                 }
                                 s.message_input_mode = "hex".to_string();
+                                s.show_variable_picker = false;
                             }
                             cx.notify();
                         }),

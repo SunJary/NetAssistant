@@ -210,7 +210,14 @@ impl CompiledTemplate {
                         out.push_str(&timestamp.to_string())
                     }
                 }
-                TemplateSegment::Uuid => out.push_str(&uuid.to_string()),
+                // hex 模式下输出纯 32 字符十六进制(去掉连字符), 否则连字符不是合法 hex 字符
+                TemplateSegment::Uuid => {
+                    if hex_mode {
+                        out.push_str(&uuid.simple().to_string().to_uppercase())
+                    } else {
+                        out.push_str(&uuid.to_string())
+                    }
+                }
                 TemplateSegment::Random(min, max) => {
                     let span = (*max - *min) as u64 + 1;
                     let val = *min + (random_u64() % span) as i64;
@@ -292,7 +299,13 @@ fn resolve_variable(
                 timestamp.to_string()
             }
         }
-        "uuid" => uuid.to_string(),
+        "uuid" => {
+            if hex_mode {
+                uuid.simple().to_string().to_uppercase()
+            } else {
+                uuid.to_string()
+            }
+        }
         _ if var_name.starts_with("random:") => resolve_random(var_name, hex_mode),
         _ => format!("${{{}}}", var_name), // 未知变量原样保留
     }
@@ -421,6 +434,33 @@ mod tests {
         let out = render_payload("id=${uuid}", &s, 0, &mut c, false);
         let uuid_part = &out[3..];
         assert!(Uuid::parse_str(uuid_part).is_ok(), "应生成合法 UUID");
+    }
+
+    #[test]
+    fn test_uuid_hex_no_hyphens() {
+        // hex 模式下 uuid 输出为纯 32 字符十六进制(无连字符), 且可被 hex_to_bytes 解析为 16 字节
+        let s = seq();
+        let mut c = 0u64;
+        let out = render_payload("0000${uuid}", &s, 0, &mut c, true);
+        let uuid_hex = &out[4..];
+        assert_eq!(uuid_hex.len(), 32, "uuid hex 应为 32 字符: {}", uuid_hex);
+        assert!(
+            uuid_hex.chars().all(|ch| ch.is_ascii_hexdigit()),
+            "uuid hex 应全为十六进制字符: {}",
+            uuid_hex
+        );
+        assert!(!uuid_hex.contains('-'), "uuid hex 不应包含连字符");
+        let bytes = crate::utils::hex::hex_to_bytes(&out);
+        assert_eq!(bytes.len(), 18, "前缀 2 字节 + uuid 16 字节");
+    }
+
+    #[test]
+    fn test_uuid_text_keeps_hyphens() {
+        // 文本模式下 uuid 输出保持标准带连字符格式(向后兼容)
+        let s = seq();
+        let mut c = 0u64;
+        let out = render_payload("${uuid}", &s, 0, &mut c, false);
+        assert!(out.contains('-'), "文本模式 uuid 应保留连字符: {}", out);
     }
 
     #[test]
