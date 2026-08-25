@@ -1,4 +1,4 @@
-use crate::config::connection::{ClientConfig, ServerConfig};
+use crate::config::connection::{AutoReplyConfig, ClientConfig, ServerConfig};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
@@ -222,6 +222,8 @@ pub struct UdpServer {
     write_handle: Option<JoinHandle<()>>,
     /// 主发送通道，用于手动添加客户端时接入发送链路
     main_send_tx: Arc<Mutex<Option<Sender<(SocketAddr, Vec<u8>)>>>>,
+    /// 自动回复共享状态(UI 下发 → 网络层每个数据报读取)
+    auto_reply_state: Arc<AutoReplyConfig>,
 }
 
 impl UdpServer {
@@ -235,6 +237,7 @@ impl UdpServer {
             read_handle: None,
             write_handle: None,
             main_send_tx: Arc::new(Mutex::new(None)),
+            auto_reply_state: Arc::new(AutoReplyConfig::new()),
         }
     }
 
@@ -305,6 +308,7 @@ impl NetworkServer for UdpServer {
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
+        let auto_reply_state = self.auto_reply_state.clone();
 
         // 使用现有的clients字段
         let clients = self.clients.clone();
@@ -347,6 +351,19 @@ impl NetworkServer for UdpServer {
                 {
                     error!("[UDP服务器] 发送 Listening 事件失败: {:?}", e);
                 }
+                // 自动回复共享状态就绪(UI 下发启用开关与回复内容)
+                if let Err(e) = sender
+                    .send(ConnectionEvent::ServerAutoReplyStateReady(
+                        config.id.clone(),
+                        auto_reply_state.clone(),
+                    ))
+                    .await
+                {
+                    error!(
+                        "[UDP服务器] 发送 ServerAutoReplyStateReady 事件失败: {:?}",
+                        e
+                    );
+                }
             }
 
             // 创建发送器和接收器
@@ -365,6 +382,9 @@ impl NetworkServer for UdpServer {
             let id_clone = config.id.clone();
             let message_processor_clone = message_processor.clone();
             let socket_recv = socket_arc.clone();
+            let auto_reply_state_clone = auto_reply_state.clone();
+            // 供网络层自动回复投递回复数据报(addr, content)
+            let main_tx_for_auto_reply = tx.clone();
 
             tokio::spawn(async move {
                 let mut buffer = [0; 1024];
@@ -434,6 +454,29 @@ impl NetworkServer for UdpServer {
                                     .await
                                 {
                                     error!("[UDP服务器] 发送 MessageReceived 事件失败: {:?}", e);
+                                }
+                            }
+
+                            // 网络层自动回复: 每个数据报触发一次回复
+                            // 回复内容为用户配置的原始字节, 原样经主发送通道发回源地址, 不额外修改
+                            if auto_reply_state_clone.is_enabled() {
+                                let content = auto_reply_state_clone.content();
+                                if !content.is_empty() {
+                                    if main_tx_for_auto_reply
+                                        .send((addr, content.clone()))
+                                        .await
+                                        .is_ok()
+                                    {
+                                        if let Some(sender) = &event_sender_clone {
+                                            let _ = sender.try_send(
+                                                ConnectionEvent::auto_reply_sent(
+                                                    &id_clone,
+                                                    content,
+                                                    &addr.to_string(),
+                                                ),
+                                            );
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -59,11 +59,12 @@ fn main() {
     // 并用 std::process::exit(0) 兜底终止 GPUI dispatcher 等非 tokio 线程
     //
     // 线程数配置: 默认 tokio 多线程 runtime = CPU 核心数(8-16),
-    // 对高并发压测(≥10000 worker)不足。这里取 min(CPU, 32),
+    // 对高并发压测(≥10000 worker)不足。这里取 min(CPU-2, 32),
     // 让 20000 tokio task 有更多线程承载,降低调度抖动。
+    // 保留 2 核给 GPUI UI 线程与渲染,避免压测满载时主线程被饿死(切 tab 卡顿)。
     // max_blocking_threads 提高到 2048,容纳大量并发连接建立(阻塞操作)。
     let worker_threads = std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(|n| n.get().saturating_sub(2).max(1))
         .unwrap_or(8)
         .min(32);
     let runtime = tokio::runtime::Builder::new_multi_thread()

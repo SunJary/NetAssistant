@@ -1,4 +1,4 @@
-use crate::config::connection::{ClientConfig, DecoderConfig, ServerConfig};
+use crate::config::connection::{AutoReplyConfig, ClientConfig, DecoderConfig, ServerConfig};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::MessageType;
 use crate::network::events::ConnectionEvent;
@@ -73,6 +73,39 @@ fn process_decoded_data_with_addr(
         )) {
             error!("[TCP服务器] 发送 MessageReceived 事件失败: {:?}", e);
         }
+    }
+}
+
+/// 网络层自动回复: 每条解码出的完整消息触发一次回复。
+///
+/// 回复内容为用户配置的原始字节(`AutoReplyConfig::content`), 通过该连接的发送通道
+/// 投递后由用户配置的 encoder 编码发送——不额外修改内容、不擅自添加换行符。
+/// 仅在启用且内容非空时发送; 未启用走 `is_enabled()` 无锁快速路径, 零开销。
+fn try_auto_reply(
+    auto_reply_state: &Arc<AutoReplyConfig>,
+    client_tx: &Sender<Vec<u8>>,
+    event_sender: &Option<Sender<ConnectionEvent>>,
+    connection_id: &str,
+    source: &SocketAddr,
+) {
+    if !auto_reply_state.is_enabled() {
+        return;
+    }
+    let content = auto_reply_state.content();
+    if content.is_empty() {
+        return;
+    }
+    // 投递到该连接的发送通道, 由 send_fut 经 encoder 编码后写出
+    if client_tx.try_send(content.clone()).is_err() {
+        return;
+    }
+    // 在 UI 消息列表中展示回复(Sent 方向)
+    if let Some(sender) = event_sender {
+        let _ = sender.try_send(ConnectionEvent::auto_reply_sent(
+            connection_id,
+            content,
+            &source.to_string(),
+        ));
     }
 }
 
@@ -333,6 +366,8 @@ pub struct TcpServer {
     listener_handle: Option<JoinHandle<()>>,
     client_handles: Arc<Mutex<HashMap<SocketAddr, JoinHandle<()>>>>,
     listener: Option<Arc<TcpListener>>,
+    /// 自动回复共享状态(UI 下发 → 网络层每条消息读取)
+    auto_reply_state: Arc<AutoReplyConfig>,
 }
 
 /// 实现Drop trait，确保资源被正确释放
@@ -357,6 +392,7 @@ impl TcpServer {
             listener_handle: None,
             client_handles: Arc::new(Mutex::new(HashMap::new())),
             listener: None,
+            auto_reply_state: Arc::new(AutoReplyConfig::new()),
         }
     }
 }
@@ -409,6 +445,7 @@ impl NetworkServer for TcpServer {
         let message_processor = self.message_processor.clone();
         let clients = self.clients.clone();
         let client_handles = self.client_handles.clone();
+        let auto_reply_state = self.auto_reply_state.clone();
 
         // 启动一个任务来创建listener并启动监听
         tokio::spawn(async move {
@@ -425,6 +462,19 @@ impl NetworkServer for TcpServer {
                         {
                             error!("[TCP服务器] 发送 Listening 事件失败: {:?}", e);
                         }
+                        // 自动回复共享状态就绪(UI 下发启用开关与回复内容)
+                        if let Err(e) = sender
+                            .send(ConnectionEvent::ServerAutoReplyStateReady(
+                                config.id.clone(),
+                                auto_reply_state.clone(),
+                            ))
+                            .await
+                        {
+                            error!(
+                                "[TCP服务器] 发送 ServerAutoReplyStateReady 事件失败: {:?}",
+                                e
+                            );
+                        }
                     }
 
                     // 将listener包装在Arc中
@@ -438,6 +488,7 @@ impl NetworkServer for TcpServer {
                         let message_processor = message_processor.clone();
                         let clients = clients.clone();
                         let client_handles = client_handles.clone();
+                        let auto_reply_state = auto_reply_state.clone();
                         async move {
                             loop {
                                 match listener_clone.accept().await {
@@ -446,6 +497,8 @@ impl NetworkServer for TcpServer {
 
                                         // 创建客户端连接的发送器和接收器
                                         let (tx, rx) = smol_unbounded::<Vec<u8>>();
+                                        // 供网络层自动回复投递回复字节(经该连接 encoder 编码)
+                                        let client_tx_auto_reply = tx.clone();
                                         // 创建解码器控制通道(用于运行时下发解码器配置, 无需重连)
                                         let (decoder_control_tx, decoder_control_rx) =
                                             smol_unbounded::<DecoderConfig>();
@@ -493,6 +546,8 @@ impl NetworkServer for TcpServer {
                                         let config_clone_for_client = config.clone();
                                         let client_handles_clone_for_client =
                                             client_handles.clone();
+                                        let auto_reply_state_for_client =
+                                            auto_reply_state.clone();
 
                                         // 创建客户端连接的任务句柄
                                         let client_task = tokio::spawn(async move {
@@ -507,6 +562,8 @@ impl NetworkServer for TcpServer {
                                                 &config_clone_for_client.decoder_config,
                                             );
                                             let decoder_control_rx = decoder_control_rx;
+                                            let auto_reply_state = auto_reply_state_for_client;
+                                            let client_tx_auto_reply = client_tx_auto_reply;
 
                                             // 启动接收消息循环
                                             let recv_fut = async {
@@ -541,6 +598,14 @@ impl NetworkServer for TcpServer {
                                                                                     &client_id_clone,
                                                                                     &addr.to_string()
                                                                                 );
+                                                                                // 网络层自动回复(每条解码出的完整消息触发一次)
+                                                                                try_auto_reply(
+                                                                                    &auto_reply_state,
+                                                                                    &client_tx_auto_reply,
+                                                                                    &client_event_sender,
+                                                                                    &client_id_clone,
+                                                                                    &addr,
+                                                                                );
                                                                             },
                                                                             Ok(None) => {
                                                                                 // 解码器需要更多数据，退出循环
@@ -573,6 +638,13 @@ impl NetworkServer for TcpServer {
                                                                     &client_id_clone,
                                                                     &addr.to_string()
                                                                 );
+                                                                try_auto_reply(
+                                                                    &auto_reply_state,
+                                                                    &client_tx_auto_reply,
+                                                                    &client_event_sender,
+                                                                    &client_id_clone,
+                                                                    &addr,
+                                                                );
                                                             }
                                                         }
 
@@ -588,6 +660,13 @@ impl NetworkServer for TcpServer {
                                                                         &client_event_sender,
                                                                         &client_id_clone,
                                                                         &addr.to_string()
+                                                                    );
+                                                                    try_auto_reply(
+                                                                        &auto_reply_state,
+                                                                        &client_tx_auto_reply,
+                                                                        &client_event_sender,
+                                                                        &client_id_clone,
+                                                                        &addr,
                                                                     );
                                                                 }
                                                                 decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);

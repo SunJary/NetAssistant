@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex as StdMutex;
 
 /// 连接类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -250,6 +252,49 @@ impl ConnectionConfig {
             decoder_config: DecoderConfig::default(),
             message_input_mode: default_message_input_mode(),
         })
+    }
+}
+
+/// 自动回复配置（运行时共享状态，UI 下发 → 网络层读取）
+///
+/// - `content` 为已按 `message_input_mode` 转换好的原始字节：
+///   文本模式 = UTF-8 字节；十六进制模式 = 解析后的字节。
+/// - 网络层回复时只投递这些字节，经用户配置的 encoder 编码后发送，
+///   不额外修改内容、不擅自添加换行符。
+#[derive(Debug)]
+pub struct AutoReplyConfig {
+    enabled: AtomicBool,
+    content: StdMutex<Vec<u8>>,
+}
+
+impl Default for AutoReplyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: AtomicBool::new(false),
+            content: StdMutex::new(Vec::new()),
+        }
+    }
+}
+
+impl AutoReplyConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 是否启用自动回复（无锁快速路径，未启用时网络层零开销）
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed)
+    }
+
+    /// 读取当前回复内容（克隆原始字节）
+    pub fn content(&self) -> Vec<u8> {
+        self.content.lock().unwrap().clone()
+    }
+
+    /// UI 下发更新（启用开关 + 回复内容原始字节）
+    pub fn set(&self, enabled: bool, content: Vec<u8>) {
+        self.enabled.store(enabled, Ordering::Relaxed);
+        *self.content.lock().unwrap() = content;
     }
 }
 

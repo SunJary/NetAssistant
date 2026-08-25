@@ -102,9 +102,11 @@ impl ConnectionTabState {
             selected_client: None,
 
             // GPUI List 状态
-            message_list_state: ListState::new(0, ListAlignment::Top, px(100.)).measure_all(),
-            // 客户端列表：与消息列表一致使用 measure_all，预测量所有项高度
-            client_list_state: ListState::new(0, ListAlignment::Top, px(32.)).measure_all(),
+            // 说明: 不使用 measure_all()。该模式会在首次挂载或宽度变化时渲染并测量
+            // 全部条目, 压测场景下消息列表满 1 万条时会导致切 tab 卡顿数秒。
+            // 使用默认虚拟化按需测量, 仅渲染可见项。
+            message_list_state: ListState::new(0, ListAlignment::Top, px(100.)),
+            client_list_state: ListState::new(0, ListAlignment::Top, px(32.)),
 
             // 消息显示模式默认为原始
             message_display_mode: MessageDisplayMode::Normal,
@@ -913,6 +915,8 @@ impl<'a> ConnectionTab<'a> {
                                                     if let Some(cfg) = updated {
                                                         app.storage.update_connection(cfg);
                                                     }
+                                                    // 输入模式影响自动回复内容解析, 同步到网络层
+                                                    app.sync_auto_reply_to_network(&tab_id_text, cx);
                                                     cx.notify();
                                                 }
                                             })),
@@ -954,6 +958,8 @@ impl<'a> ConnectionTab<'a> {
                                                         app.storage.update_connection(cfg);
                                                     }
                                                     app.sanitize_hex_input(window, cx);
+                                                    // 输入模式影响自动回复内容解析, 同步到网络层
+                                                    app.sync_auto_reply_to_network(&tab_id_hex, cx);
                                                     cx.notify();
                                                 }
                                             })),
@@ -1037,8 +1043,10 @@ impl<'a> ConnectionTab<'a> {
                                     if tab_state.auto_reply_enabled {
                                         app.ensure_auto_reply_input_exists(tab_id_for_toggle.clone(), window, cx);
                                     }
-                                    cx.notify();
                                 }
+                                // 开关变化实时同步到网络层(网络层每条消息读取)
+                                app.sync_auto_reply_to_network(&tab_id_for_toggle, cx);
+                                cx.notify();
                             })),
                     )
                     .child(

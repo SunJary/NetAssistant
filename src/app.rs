@@ -1,11 +1,11 @@
 use gpui::*;
-use gpui_component::input::InputState;
+use gpui_component::input::{InputEvent, InputState};
 use log::{debug, error, info, warn};
 
 use crate::config;
 use crate::config::app_stats::AppStats;
 use crate::config::connection::{
-    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig,
+    AutoReplyConfig, ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig,
 };
 use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
@@ -58,6 +58,8 @@ pub struct NetAssistantApp {
 
     // 自动回复输入框状态（每个标签页一个）
     pub auto_reply_inputs: HashMap<String, Entity<InputState>>,
+    // 自动回复输入框变更订阅(保持订阅存活; 内容变化时同步到网络层)
+    pub auto_reply_input_subscriptions: HashMap<String, Subscription>,
 
     // 连接事件通道（用于通知UI更新）- 使用smol channel与GPUI兼容
     pub connection_event_sender: Option<Sender<ConnectionEvent>>,
@@ -91,6 +93,8 @@ pub struct NetAssistantApp {
     // 解码器控制发送器映射（用于运行时下发解码器配置，无需重连）
     pub decoder_control_senders: HashMap<String, Sender<DecoderConfig>>,
     pub server_decoder_controls: HashMap<String, HashMap<SocketAddr, Sender<DecoderConfig>>>,
+    // 服务端自动回复共享状态(UI 下发启用开关与回复内容 → 网络层每条消息读取)
+    pub server_auto_reply_states: HashMap<String, Arc<AutoReplyConfig>>,
 
     // 右键菜单状态
     pub show_context_menu: bool,
@@ -199,6 +203,7 @@ impl NetAssistantApp {
             connection_tabs,
             tab_multiline: false,
             auto_reply_inputs: HashMap::new(),
+            auto_reply_input_subscriptions: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
             stress_event_sender: Some(stress_event_sender),
@@ -212,6 +217,7 @@ impl NetAssistantApp {
             server_clients,
             decoder_control_senders,
             server_decoder_controls,
+            server_auto_reply_states: HashMap::new(),
             show_context_menu: false,
             context_menu_connection: None,
             context_menu_is_client: false,
@@ -226,7 +232,7 @@ impl NetAssistantApp {
             sidebar_width,
             sidebar_resizing: false,
             sidebar_collapsed,
-            // 初始化最后更新时间
+            // 最后更新时间
             last_update_time: Instant::now(),
             // 初始化消息容器宽度
             message_container_width: None,
@@ -254,30 +260,38 @@ impl NetAssistantApp {
         };
 
         // 创建专门的异步任务来处理连接事件
+        // 驱动源: GPUI BackgroundExecutor::timer (Windows ThreadPoolTimer)
+        //   - 不依赖 smol::Timer 的全局 reactor (项目未启 smol runtime, 不可靠)
+        //   - 不依赖 smol channel recv().await 的 waker (跨 tokio/GPUI runtime 时 wake 路径丢失)
+        // timer 到期 → 唤醒 cx.spawn future 的 waker → dispatch_on_main_thread + PostMessageW
+        //   → GetMessageW 唤醒主循环 → poll future → try_recv 排空 → app.update 批量处理。
+        // 50ms 节拍 (10Hz): 消息显示延迟上限 50ms, 可接受; try_recv 排空为微秒级, 无 CPU 压力。
         let weak_app = cx.entity().clone().downgrade();
         let event_receiver = app.connection_event_receiver.take();
 
         cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
-            let receiver = if let Some(receiver) = event_receiver {
-                receiver
-            } else {
-                return;
+            let receiver = match event_receiver {
+                Some(receiver) => receiver,
+                None => return,
             };
-
-            // 批量处理连接事件: 先 recv().await 等待首条事件唤醒,
-            // 再用 try_recv 排空已积压的事件, 一次性传入 app.update 批量处理。
-            // 单批上限 500 条, 防止主线程长占用。
-            while let Ok(first_event) = receiver.recv().await {
+            let bg_executor_conn = async_app.background_executor().clone();
+            loop {
+                bg_executor_conn.timer(Duration::from_millis(50)).await;
+                let mut batch: Vec<ConnectionEvent> = Vec::with_capacity(64);
+                while let Ok(event) = receiver.try_recv() {
+                    batch.push(event);
+                    if batch.len() >= 500 {
+                        break;
+                    }
+                }
+                if batch.is_empty() {
+                    if weak_app.upgrade().is_none() {
+                        return;
+                    }
+                    continue;
+                }
                 if let Some(app) = weak_app.upgrade() {
                     let _ = app.update(async_app, |app, cx| {
-                        let mut batch = Vec::with_capacity(64);
-                        batch.push(first_event);
-                        while let Ok(event) = receiver.try_recv() {
-                            batch.push(event);
-                            if batch.len() >= 500 {
-                                break;
-                            }
-                        }
                         app.handle_connection_events_batch(batch, cx);
                     });
                 } else {
@@ -288,22 +302,19 @@ impl NetAssistantApp {
         .detach();
 
         // 创建压测事件泵任务（引擎→UI）
-        // 引擎的 aggregator 跑在 tokio runtime，通过 smol channel 发送快照；
-        // 但跨 runtime 时 smol channel 的 waker 不可靠 —— recv().await 注册的
-        // waker 可能不被 tokio 线程的 send 唤醒，导致快照积压在 channel 里、
-        // UI 长时间显示 0（即使 worker 已在发包）。
-        // 因此不依赖 channel waker，改用定时器主动轮询 + try_recv 排空：
-        // 每 100ms 醒来批量取走所有积压事件，一次 app.update 处理。
+        // 驱动源: GPUI BackgroundExecutor::timer, 走 Windows ThreadPoolTimer, 可靠。
+        // 250ms 节拍对齐 aggregator 的 SNAPSHOT_INTERVAL, 每快照刷一次 (4Hz)。
+        // 关键: timer 不依赖 vsync/窗口可见, 最小化/遮挡时仍能唤醒主循环 poll future。
         let weak_app_stress = cx.entity().clone().downgrade();
         let stress_receiver = app.stress_event_receiver.take();
         cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
-            let receiver = if let Some(receiver) = stress_receiver {
-                receiver
-            } else {
-                return;
+            let receiver = match stress_receiver {
+                Some(receiver) => receiver,
+                None => return,
             };
+            let bg_executor_stress = async_app.background_executor().clone();
             loop {
-                smol::Timer::after(Duration::from_millis(100)).await;
+                bg_executor_stress.timer(Duration::from_millis(250)).await;
                 let mut batch: Vec<StressEvent> = Vec::with_capacity(8);
                 while let Ok(event) = receiver.try_recv() {
                     batch.push(event);
@@ -312,6 +323,9 @@ impl NetAssistantApp {
                     }
                 }
                 if batch.is_empty() {
+                    if weak_app_stress.upgrade().is_none() {
+                        return;
+                    }
                     continue;
                 }
                 if let Some(app) = weak_app_stress.upgrade() {
@@ -520,7 +534,18 @@ impl NetAssistantApp {
             auto_reply_input.update(cx, |input, cx| {
                 input.set_value("ok".to_string(), window, cx);
             });
-            self.auto_reply_inputs.insert(tab_id, auto_reply_input);
+            // 订阅输入内容变化: 实时将用户配置的回复内容同步到网络层(严格按用户输入, 不改内容)
+            let tab_id_for_sub = tab_id.clone();
+            let subscription = cx.subscribe(&auto_reply_input, {
+                move |app, _input, event, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        app.sync_auto_reply_to_network(&tab_id_for_sub, cx);
+                    }
+                }
+            });
+            self.auto_reply_inputs.insert(tab_id.clone(), auto_reply_input);
+            self.auto_reply_input_subscriptions
+                .insert(tab_id, subscription);
         }
     }
 
@@ -698,6 +723,12 @@ impl NetAssistantApp {
         if self.auto_reply_inputs.remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
         }
+        if self.auto_reply_input_subscriptions.remove(&tab_id).is_some() {
+            debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
+        }
+        if self.server_auto_reply_states.remove(&tab_id).is_some() {
+            debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
+        }
 
         // 清理客户端连接发送器
         if self.client_write_senders.remove(&tab_id).is_some() {
@@ -861,34 +892,6 @@ impl NetAssistantApp {
             tab.stress_engine = Some(Arc::new(Mutex::new(Some(engine))));
             info!("[压测] 引擎已启动 (tab={})", tab_id);
         }
-
-        // 渲染节拍: smol::Timer 定期唤醒 GPUI 事件循环
-        // 引擎的 tokio 任务通过 smol channel 发送事件，但跨 runtime 时 GPUI 事件循环可能不被唤醒。
-        // 此定时器运行在 GPUI runtime 上，每 250ms 触发 cx.notify() 确保 UI 刷新。
-        let weak_app_render = cx.entity().downgrade();
-        let render_tab_id = tab_id.clone();
-        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
-            loop {
-                smol::Timer::after(Duration::from_millis(250)).await;
-                let keep_going = if let Some(app) = weak_app_render.upgrade() {
-                    app.update(async_app, |app, cx| {
-                        if let Some(tab) = app.connection_tabs.get(&render_tab_id) {
-                            if tab.stress_engine.is_some() && tab.stress_report.is_none() {
-                                cx.notify();
-                                return true;
-                            }
-                        }
-                        false
-                    })
-                } else {
-                    false
-                };
-                if !keep_going {
-                    break;
-                }
-            }
-        })
-        .detach();
 
         cx.notify();
     }
@@ -1361,115 +1364,6 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn send_message_to_client(
-        &mut self,
-        tab_id: String,
-        content: String,
-        source: Option<String>,
-        _cx: &mut Context<Self>,
-    ) {
-        debug!(
-            "[send_message_to_client] 开始，tab_id: {}, content: '{}', source: {:?}",
-            tab_id, content, source
-        );
-        let sender = self.connection_event_sender.clone();
-        let tab_id_clone = tab_id.clone();
-        let content_clone = content.clone();
-
-        // 获取标签页信息
-        let tab_state_result = self.connection_tabs.get(&tab_id);
-
-        if tab_state_result.is_none() {
-            error!("[send_message_to_client] 未找到标签页: {}", tab_id);
-            return;
-        }
-
-        let tab_state = tab_state_result.unwrap();
-        let message_type = if tab_state.message_input_mode == "text" {
-            MessageType::Text
-        } else {
-            MessageType::Hex
-        };
-
-        // 检查连接状态
-        if !tab_state.is_connected && !tab_state.connection_config.is_server() {
-            error!("[send_message_to_client] 连接未建立");
-            if let Some(sender) = sender {
-                let _ = sender.try_send(ConnectionEvent::Error(
-                    tab_id_clone,
-                    "连接未建立".to_string(),
-                ));
-            }
-            return;
-        }
-
-        // 客户端模式：直接发送给服务器
-        if tab_state.connection_config.is_client() {
-            debug!("[send_message_to_client] 客户端模式，直接发送给服务器");
-            if tab_state.message_input_mode == "hex" {
-                // 十六进制模式：解析十六进制内容并发送字节数组
-                let bytes = crate::utils::hex::hex_to_bytes(&content_clone);
-                self.send_message_bytes(tab_id, bytes, content_clone);
-            } else {
-                // 文本模式：直接发送文本内容
-                self.send_message(tab_id, content);
-            }
-            return;
-        }
-
-        // 服务器模式：发送给指定客户端
-        debug!("[send_message_to_client] 服务端模式");
-
-        if let Some(source_str) = source {
-            // 解析客户端地址
-            match source_str.parse::<std::net::SocketAddr>() {
-                Ok(addr) => {
-                    debug!("[send_message_to_client] 发送给指定客户端: {}", addr);
-                    let bytes = if tab_state.message_input_mode == "hex" {
-                        // 十六进制模式：解析十六进制内容
-                        crate::utils::hex::hex_to_bytes(&content_clone)
-                    } else {
-                        // 文本模式：直接转换为字节
-                        content_clone.into_bytes()
-                    };
-
-                    // 直接使用server_clients发送消息给指定客户端
-                    if let Some(clients) = self.server_clients.get(&tab_id) {
-                        if let Some(write_sender) = clients.get(&addr) {
-                            if write_sender.try_send(bytes.clone()).is_err() {
-                                // 单个客户端发送失败不应影响整个服务端，仅记录日志
-                                warn!(
-                                    "[send_message_to_client] 发送给客户端 {} 失败（客户端可能已断开）",
-                                    addr
-                                );
-                            } else {
-                                debug!("[send_message_to_client] 发送成功");
-                                if let Some(sender) = sender {
-                                    let message =
-                                        Message::new(MessageDirection::Sent, bytes, message_type)
-                                            .with_source(source_str);
-                                    let _ = sender.try_send(ConnectionEvent::MessageReceived(
-                                        tab_id_clone,
-                                        message,
-                                    ));
-                                }
-                            }
-                        } else {
-                            warn!("[send_message_to_client] 客户端 {} 不存在", addr);
-                        }
-                    } else {
-                        warn!("[send_message_to_client] 服务器客户端映射不可用");
-                    }
-                }
-                Err(_) => {
-                    error!("[send_message_to_client] 无效的客户端地址: {}", source_str);
-                }
-            }
-        } else {
-            warn!("[send_message_to_client] 没有指定客户端，无法发送自动回复");
-        }
-    }
-
     /// 向UDP服务端手动添加客户端地址
     pub fn add_client_to_server(
         &mut self,
@@ -1815,8 +1709,6 @@ impl NetAssistantApp {
         // 聚合同 tab 的消息,延迟批量添加
         let mut message_batch: Vec<Message> = Vec::new();
         let mut batch_tab_id: Option<String> = None;
-        // 记录最后一条 Received 消息的 source,用于批末触发一次自动回复
-        let mut last_received_source: Option<String> = None;
 
         for event in events {
             match event {
@@ -1828,7 +1720,6 @@ impl NetAssistantApp {
                             std::mem::take(&mut message_batch),
                             &mut need_notify,
                         );
-                        last_received_source = None;
                     }
                     batch_tab_id = Some(tab_id.clone());
 
@@ -1839,10 +1730,6 @@ impl NetAssistantApp {
                         } else {
                             MessageType::Hex
                         });
-                        // 记录最后一条 Received 消息的 source 用于自动回复
-                        if message.direction == MessageDirection::Received {
-                            last_received_source = message.source.clone();
-                        }
                         message_batch.push(message);
                     }
                 }
@@ -1853,7 +1740,6 @@ impl NetAssistantApp {
                         std::mem::take(&mut message_batch),
                         &mut need_notify,
                     );
-                    last_received_source = None;
                     self.handle_single_connection_event(other, cx);
                     need_notify = true;
                 }
@@ -1861,19 +1747,11 @@ impl NetAssistantApp {
         }
 
         // flush 末尾消息批
-        let flush_tab_id = batch_tab_id.take();
         self.flush_message_batch(
-            flush_tab_id.clone(),
+            batch_tab_id.take(),
             std::mem::take(&mut message_batch),
             &mut need_notify,
         );
-
-        // 批末统一触发一次自动回复(仅最后一条 Received 消息,避免压测场景下自动回复洪泛)
-        if let Some(tab_id) = flush_tab_id {
-            if let Some(source) = last_received_source {
-                self.try_trigger_auto_reply(&tab_id, source, cx);
-            }
-        }
 
         if need_notify {
             cx.notify();
@@ -1893,32 +1771,41 @@ impl NetAssistantApp {
         if let Some(tab_id) = tab_id {
             if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                 tab_state.add_messages_batch(messages);
-                *need_notify = true;
+                // 仅活动 tab 触发重绘：非活动 tab 的消息列表未挂载，notify 无意义；
+                // 列表状态已通过 splice 同步，切回时自然渲染最新数据。
+                // 压测场景下被压测 tab 常处于后台，此举可显著减少无效重绘。
+                if tab_id == self.active_tab {
+                    *need_notify = true;
+                }
             }
         }
     }
 
-    /// 尝试触发自动回复(仅当启用且内容非空时)
-    fn try_trigger_auto_reply(&mut self, tab_id: &str, source: String, cx: &mut Context<Self>) {
-        let should_reply = self
-            .connection_tabs
-            .get(tab_id)
-            .map(|t| t.auto_reply_enabled)
-            .unwrap_or(false);
-        if !should_reply {
+    /// 将 UI 层自动回复配置(开关 + 内容)同步到网络层共享状态。
+    ///
+    /// 内容严格按用户输入转换: 文本模式 = UTF-8 字节; 十六进制模式 = 解析后的字节。
+    /// 不额外修改内容、不添加换行符; 编码由用户配置的 encoder 负责。
+    /// 服务端未就绪(未启动)时无目标, 待 ServerAutoReplyStateReady 到达后再同步。
+    pub fn sync_auto_reply_to_network(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        let Some(auto_reply_state) = self.server_auto_reply_states.get(tab_id).cloned() else {
             return;
-        }
-        if let Some(auto_reply_input) = self.auto_reply_inputs.get(tab_id) {
-            let auto_reply_content = auto_reply_input.read(cx).text().to_string();
-            if !auto_reply_content.trim().is_empty() {
-                self.send_message_to_client(
-                    tab_id.to_string(),
-                    auto_reply_content,
-                    Some(source),
-                    cx,
-                );
+        };
+        let Some(tab_state) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        let enabled = tab_state.auto_reply_enabled;
+        let bytes = match self.auto_reply_inputs.get(tab_id) {
+            Some(input) => {
+                let text = input.read(cx).text().to_string();
+                if tab_state.message_input_mode == "hex" {
+                    crate::utils::hex::hex_to_bytes(&text)
+                } else {
+                    text.into_bytes()
+                }
             }
-        }
+            None => Vec::new(),
+        };
+        auto_reply_state.set(enabled, bytes);
     }
 
     /// 运行时下发解码器配置到在线连接(客户端或服务端所有已连接客户端)，无需重连。
@@ -2068,10 +1955,16 @@ impl NetAssistantApp {
                     cx.notify();
                 }
             }
+            ConnectionEvent::ServerAutoReplyStateReady(tab_id, auto_reply_state) => {
+                // 服务端共享状态就绪: 保存句柄, 并将 UI 当前配置推送到网络层
+                self.server_auto_reply_states
+                    .insert(tab_id.clone(), auto_reply_state);
+                self.sync_auto_reply_to_network(&tab_id, cx);
+                cx.notify();
+            }
             ConnectionEvent::MessageReceived(tab_id, message) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     let mut message = message.clone();
-                    let message_for_auto_reply = message.clone();
                     // 设置消息类型（对接收和发送的消息都设置）
                     message.set_message_type(if tab_state.message_input_mode == "text" {
                         MessageType::Text
@@ -2082,24 +1975,6 @@ impl NetAssistantApp {
                     tab_state.add_message(message);
                     // 消息接收是关键事件，立即触发UI更新
                     cx.notify();
-
-                    // 只有当消息方向是 Received 且是真正从网络接收到的消息时才触发自动回复
-                    // 避免自动回复生成的消息又被当作新消息处理
-                    if tab_state.auto_reply_enabled
-                        && message_for_auto_reply.direction == MessageDirection::Received
-                    {
-                        if let Some(auto_reply_input) = self.auto_reply_inputs.get(&tab_id) {
-                            let auto_reply_content = auto_reply_input.read(cx).text().to_string();
-                            if !auto_reply_content.trim().is_empty() {
-                                self.send_message_to_client(
-                                    tab_id,
-                                    auto_reply_content,
-                                    message_for_auto_reply.source.clone(),
-                                    cx,
-                                );
-                            }
-                        }
-                    }
                 }
             }
             ConnectionEvent::PeriodicSend(tab_id, content) => {
@@ -2132,6 +2007,14 @@ impl Drop for NetAssistantApp {
 
             if self.auto_reply_inputs.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
+            }
+
+            if self.auto_reply_input_subscriptions.remove(&tab_id).is_some() {
+                debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
+            }
+
+            if self.server_auto_reply_states.remove(&tab_id).is_some() {
+                debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
             }
 
             // 清理客户端连接发送器

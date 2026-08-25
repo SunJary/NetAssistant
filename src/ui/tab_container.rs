@@ -3,7 +3,6 @@ use gpui::*;
 use gpui_component::ActiveTheme as _;
 use gpui_component::IconName;
 use gpui_component::StyledExt;
-
 use crate::app::NetAssistantApp;
 use crate::ui::connection_tab::ConnectionTab;
 

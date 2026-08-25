@@ -141,6 +141,12 @@ impl Message {
     }
 
     pub fn set_message_type(&mut self, message_type: MessageType) {
+        // 幂等优化: 类型未变时跳过重算。
+        // 事件泵批处理对每条消息调用此方法，而 Message::new 已算过一次内容；
+        // 压测洪泛场景下避免主线程重复做 O(payload) 的内容计算。
+        if self.message_type == message_type {
+            return;
+        }
         self.message_type = message_type;
         self.cached_content = Self::compute_content(&self.raw_data, message_type);
     }
@@ -330,6 +336,26 @@ mod tests {
             .with_source("127.0.0.1:1234".to_string());
 
         assert_eq!(message.source, Some("127.0.0.1:1234".to_string()));
+    }
+
+    #[test]
+    fn test_set_message_type_idempotent() {
+        // 同类型重复设置: 幂等跳过重算，内容保持不变
+        let mut message = Message::new(
+            MessageDirection::Sent,
+            b"Hello".to_vec(),
+            MessageType::Text,
+        );
+        message.set_message_type(MessageType::Text);
+        assert_eq!(message.get_content_by_type(), "Hello");
+
+        // 切换类型: 仍正常重算
+        message.set_message_type(MessageType::Hex);
+        assert_eq!(message.get_content_by_type(), "48 65 6C 6C 6F");
+
+        // 切回原类型: 重算回文本内容
+        message.set_message_type(MessageType::Text);
+        assert_eq!(message.get_content_by_type(), "Hello");
     }
 
     #[test]

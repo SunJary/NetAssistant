@@ -1,7 +1,8 @@
-use crate::config::connection::DecoderConfig;
-use crate::message::Message;
+use crate::config::connection::{AutoReplyConfig, DecoderConfig};
+use crate::message::{Message, MessageDirection, MessageType};
 use smol::channel::Sender;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
 #[derive(Debug)]
@@ -30,4 +31,17 @@ pub enum ConnectionEvent {
     DecoderControlSenderReady(String, Sender<DecoderConfig>),
     /// 服务端某客户端的解码器控制发送器就绪
     ServerDecoderControlSenderReady(String, SocketAddr, Sender<DecoderConfig>),
+    /// 服务端自动回复共享状态就绪(UI 运行时下发启用开关与回复内容)
+    ServerAutoReplyStateReady(String, Arc<AutoReplyConfig>),
+}
+
+impl ConnectionEvent {
+    /// 构造自动回复的 Sent 消息事件(用于 UI 展示; 消息类型由 UI 侧按 tab 的输入模式校正)
+    pub fn auto_reply_sent(connection_id: &str, content: Vec<u8>, source: &str) -> Self {
+        ConnectionEvent::MessageReceived(
+            connection_id.to_string(),
+            Message::new(MessageDirection::Sent, content, MessageType::Text)
+                .with_source(source.to_string()),
+        )
+    }
 }

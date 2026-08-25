@@ -98,46 +98,52 @@ impl StressTestEngine {
         // ---- 聚合 task (250ms 快照) ----
         // 注意: 必须在 worker spawn 循环之前启动, 否则 ramp-up 期间 UI 收不到任何快照,
         // 用户会看到"前 N 秒完全无反应"。
+        //
+        // 关键: aggregator 用 std::thread 而非 tokio::spawn。
+        // 原因: tokio 多线程 runtime 平等调度所有 task, 高并发(5000+ worker)时
+        // aggregator task 被饿死, sleep(250ms) 实际触发周期变成 3.75s/快照(慢 15 倍),
+        // 面板每 15s 才跳一小批。改用独立 OS 线程 + std::thread::sleep, 不受 tokio 调度影响。
+        // 对照业界做法: wrk/k6/vegeta 的统计线程都独立于 worker 线程。
+        // 统计算法(build_snapshot/push_per_second/peak_qps)不变, 只改 task 运行方式。
         let agg_cancel = cancel.clone();
         let agg_stats = stats.clone();
         let agg_hist = histogram.clone();
         let agg_samples = per_second_samples.clone();
         let agg_sender = event_sender.clone();
         let agg_tab_id = tab_id.clone();
-        let aggregator = tokio::spawn(async move {
-            let mut last_second_mark = 0u64;
-            let mut last_total_sent: u64 = 0;
-            let mut last_snapshot_at = start_instant;
-            loop {
-                let is_final = tokio::select! {
-                    _ = agg_cancel.cancelled() => true,
-                    _ = sleep(SNAPSHOT_INTERVAL) => false,
-                };
-                let snapshot = build_snapshot(&agg_stats, &agg_hist, start_instant);
-                push_per_second(&agg_samples, &mut last_second_mark, &snapshot);
-                // 更新峰值 QPS: 基于相邻快照的 delta_sent / dt(瞬时发送速率)
-                let now = Instant::now();
-                let dt = now.duration_since(last_snapshot_at).as_secs_f64();
-                if dt > 0.0 {
-                    let delta = snapshot.total_sent.saturating_sub(last_total_sent);
-                    let inst_qps = delta as f64 / dt;
-                    agg_stats
-                        .peak_qps_milli
-                        .fetch_max((inst_qps * 1000.0) as u64, Ordering::Relaxed);
-                }
-                last_total_sent = snapshot.total_sent;
-                last_snapshot_at = now;
-                let _ = agg_sender
-                    .send(StressEvent::StatsSnapshot {
+        let aggregator = std::thread::Builder::new()
+            .name("stress-aggregator".into())
+            .spawn(move || {
+                let mut last_second_mark = 0u64;
+                let mut last_total_sent: u64 = 0;
+                let mut last_snapshot_at = start_instant;
+                loop {
+                    std::thread::sleep(SNAPSHOT_INTERVAL);
+                    let is_final = agg_cancel.is_cancelled();
+                    let snapshot = build_snapshot(&agg_stats, &agg_hist, start_instant);
+                    push_per_second(&agg_samples, &mut last_second_mark, &snapshot);
+                    // 更新峰值 QPS: 基于相邻快照的 delta_sent / dt(瞬时发送速率)
+                    let now = Instant::now();
+                    let dt = now.duration_since(last_snapshot_at).as_secs_f64();
+                    if dt > 0.0 {
+                        let delta = snapshot.total_sent.saturating_sub(last_total_sent);
+                        let inst_qps = delta as f64 / dt;
+                        agg_stats
+                            .peak_qps_milli
+                            .fetch_max((inst_qps * 1000.0) as u64, Ordering::Relaxed);
+                    }
+                    last_total_sent = snapshot.total_sent;
+                    last_snapshot_at = now;
+                    let _ = agg_sender.try_send(StressEvent::StatsSnapshot {
                         tab_id: agg_tab_id.clone(),
                         stats: snapshot,
-                    })
-                    .await;
-                if is_final {
-                    break;
+                    });
+                    if is_final {
+                        break;
+                    }
                 }
-            }
-        });
+            })
+            .expect("创建 stress-aggregator 线程失败");
 
         // ---- 监督 task (停止条件) ----
         // 注意: 必须在 worker spawn 循环之前启动, 这样 Duration 计时从 t=0 起算,
@@ -241,8 +247,8 @@ impl StressTestEngine {
 
         // 等待 watchdog 完成(所有 worker 已退出)
         let _ = watchdog.await;
-        // 等待聚合 task 完成最终快照
-        let _ = aggregator.await;
+        // 等待聚合线程完成最终快照 (std::thread::JoinHandle, 最多等一个 250ms sleep 周期)
+        let _ = aggregator.join();
 
         let end_time_str = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let duration_ms = start_instant.elapsed().as_millis() as u64;
