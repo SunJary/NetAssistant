@@ -2,7 +2,7 @@ use crate::app::NetAssistantApp;
 use crate::custom_icons::CustomIconName;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::{FavoriteListPanel, StressConfigDialog};
+use crate::ui::dialog::FavoriteListPanel;
 use crate::ui::tab_container::TabContainer;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -256,9 +256,6 @@ impl<'a> MainWindow<'a> {
             )
             .when(self.app.show_favorite_list, |this_div| {
                 this_div.child(FavoriteListPanel::new(self.app, self.app.favorite_list_search_input.clone()).render(window, cx))
-            })
-            .when(self.app.stress_config_dialog.is_some(), |this_div| {
-                this_div.child(StressConfigDialog::render(self.app, window, cx))
             })
             .when(self.app.show_star_prompt, |this_div| {
                 this_div.child(

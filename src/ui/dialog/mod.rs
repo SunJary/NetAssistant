@@ -12,7 +12,8 @@ pub use decoder_selection::{open_decoder_selection_dialog, DecoderSelectionDialo
 pub use favorite_list::FavoriteListPanel;
 pub use favorite_remark::open_favorite_remark_dialog;
 pub use new_connection::open_new_connection_dialog;
-pub use stress_config::{StressConfigDialog, StressConfigDialogState};
+pub use port_limit_help::open_port_limit_help_dialog;
+pub use stress_config::{open_stress_config_dialog, StressConfigDialogState};
 
 use gpui::{px, Pixels, Window};
 

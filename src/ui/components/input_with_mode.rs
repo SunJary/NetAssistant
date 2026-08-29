@@ -1,8 +1,6 @@
-use crate::app::NetAssistantApp;
 use crate::custom_icons::CustomIconName;
 use crate::message::{MessageDisplayMode, format_json_text};
 use crate::utils::hex::validate_hex_input;
-use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
 use gpui_component::{
@@ -20,7 +18,7 @@ impl InputWithMode {
         input_state: &Entity<InputState>,
         mode: &str,
         theme: &Theme,
-        cx: &mut Context<NetAssistantApp>,
+        cx: &App,
     ) -> impl IntoElement {
         // 检查输入是否有效
         let is_valid = if mode == "hex" {
@@ -84,13 +82,13 @@ impl InputWithMode {
                             })
                             .on_mouse_down(
                                 MouseButton::Left,
-                                cx.listener(move |_app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
                                     let content = pretty_entity.read(cx).value().to_string();
                                     let formatted = format_json_text(&content, MessageDisplayMode::JsonPretty);
                                     pretty_entity.update(cx, |input, cx| {
                                         input.set_value(formatted, window, cx);
                                     });
-                                })
+                                }
                             )
                     )
                     // 压缩按钮
@@ -108,13 +106,13 @@ impl InputWithMode {
                             })
                             .on_mouse_down(
                                 MouseButton::Left,
-                                cx.listener(move |_app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
                                     let content = minify_entity.read(cx).value().to_string();
                                     let formatted = format_json_text(&content, MessageDisplayMode::JsonMinified);
                                     minify_entity.update(cx, |input, cx| {
                                         input.set_value(formatted, window, cx);
                                     });
-                                })
+                                }
                             )
                     )
             );

@@ -1,140 +1,80 @@
-// 端口上限说明弹窗
+// 端口上限说明对话框
 //
-// 在压测配置弹窗中点击 "端口说明" 按钮时叠加显示。
+// 基于 gpui_component::Dialog 实现: 在压测配置对话框之上通过第二个 window.open_dialog
+// 叠开(Root 管理层叠, 蒙层/焦点/ESC 由组件管理), 关闭后压测配置保持不变。
 // 内容按运行时平台 cfg!(target_os) 条件编译, 只展示当前平台相关信息。
 // 调优命令行末附 Clipboard 复制按钮, 方便用户直接复制执行。
-// 布局复用 stress_config.rs 的两层滚动结构:
-//   外层 flex_1() + overflow_hidden(), 内层 size_full() + overflow_y_scrollbar()
+// 滚动结构为「外层 max_h 钳制可视区 + 内层 overflow_y_scrollbar」(见 dialog_content_max_height)。
 
 use std::borrow::Cow;
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::clipboard::Clipboard;
+use gpui_component::dialog::DialogFooter;
 use gpui_component::scroll::ScrollableElement;
+use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
+use gpui_component::WindowExt as _;
 
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
-use crate::ui::dialog::stress_config::StressConfigDialogState;
 
-/// 渲染端口说明弹窗 (全屏蒙层, 覆盖在压测配置弹窗之上)
-pub fn render_port_limit_help_dialog(
-    app: &NetAssistantApp,
-    _state: &StressConfigDialogState,
-    theme: &Theme,
-    window: &mut Window,
-    cx: &mut Context<NetAssistantApp>,
-) -> impl IntoElement {
-    let win_h = (window.bounds().size.height / px(1.0)) as f32;
-    let dialog_height = (win_h * 0.8_f32).max(500.0);
+use super::{dialog_content_max_height, dialog_height};
 
-    div()
-        .absolute()
-        .inset_0()
-        .flex()
-        .items_center()
-        .justify_center()
-        .bg(gpui::rgba(0x80000000))
-        .p_4()
-        // 拦截蒙层背景的鼠标按下事件, 防止穿透到下层压测配置弹窗的按钮
-        // (点击背景空白不关闭, 避免误操作; 只用关闭按钮关闭)
-        .on_mouse_down(MouseButton::Left, |_, _, cx| {
-            cx.stop_propagation();
-        })
-        .child(
-            div()
-                .w(px(560.0))
-                .h(px(dialog_height))
-                .overflow_hidden()
-                .flex()
-                .flex_col()
-                .bg(theme.muted)
-                .rounded_lg()
-                .shadow_2xl()
-                // 标题区
-                .child(
-                    div()
-                        .px_6()
-                        .pt_6()
-                        .pb_4()
-                        .flex()
-                        .justify_between()
-                        .items_center()
-                        .child(
+/// 打开端口说明对话框(命令式, 叠在压测配置对话框之上)
+pub fn open_port_limit_help_dialog(app: WeakEntity<NetAssistantApp>, window: &mut Window, cx: &mut App) {
+    window.open_dialog(cx, move |dialog, window, _cx| {
+        dialog
+            .title(t!("port_limit_help.title").to_string())
+            .w(px(560.0))
+            .max_h(dialog_height(window))
+            // 帮助对话框: ESC / 蒙层 / 关闭按钮均可关闭, 无需额外清理
+            .keyboard(true)
+            .on_ok(|_, _, _| true)
+            .footer(
+                DialogFooter::new().child(
+                    Button::new("port-help-close")
+                        .primary()
+                        .label(t!("port_limit_help.close").to_string())
+                        .on_click(|_, window, cx| {
+                            window.close_dialog(cx);
+                        }),
+                ),
+            )
+            .content({
+                let app = app.clone();
+                move |content, window, cx| {
+                    let Some(entity) = app.upgrade() else {
+                        return content;
+                    };
+                    let theme = cx.theme().clone();
+                    content.child(
+                        div().max_h(dialog_content_max_height(window)).child(
                             div()
-                                .text_lg()
-                                .font_semibold()
-                                .text_color(theme.foreground)
-                                .child(t!("port_limit_help.title").to_string()),
-                        ),
-                )
-                // 滚动内容区 (两层结构, 避免 flex 高度分配冲突)
-                .child(
-                    div()
-                        .flex_1()
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .size_full()
                                 .overflow_y_scrollbar()
                                 .px_6()
                                 .pb_4()
-                                .child(render_help_content(app, theme, cx)),
+                                .child(render_help_content(&entity, &theme, cx)),
                         ),
-                )
-                // 底部关闭按钮
-                .child(
-                    div()
-                        .px_6()
-                        .pb_6()
-                        .pt_2()
-                        .border_t_1()
-                        .border_color(theme.border)
-                        .child(
-                            div()
-                                .w_full()
-                                .p_2()
-                                .bg(theme.primary)
-                                .rounded_md()
-                                .cursor_pointer()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(theme.primary_foreground)
-                                        .text_center()
-                                        .child(t!("port_limit_help.close").to_string()),
-                                )
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
-                                        // 阻止事件继续传播, 防止穿透到下层压测配置弹窗的按钮
-                                        cx.stop_propagation();
-                                        if let Some(s) = &mut app.stress_config_dialog {
-                                            s.show_port_help = false;
-                                        }
-                                        cx.notify();
-                                    }),
-                                ),
-                        ),
-                ),
-        )
+                    )
+                }
+            })
+    });
 }
 
 /// 渲染说明内容 (按平台条件编译)
-fn render_help_content(
-    app: &NetAssistantApp,
-    theme: &Theme,
-    cx: &mut Context<NetAssistantApp>,
-) -> Div {
+fn render_help_content(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
+    let app_state = app.read(cx);
     // 端口范围描述: 检测成功显示真实值; 检测中显示"读取中…"; 未检测/失败显示"获取失败"
     // 不再回退 fallback_default 编造数字, 失败时引导用户用下方命令或重新检测
-    let range_desc = if app.port_range_detecting {
+    let range_desc = if app_state.port_range_detecting {
         t!("port_limit_help.reading_port_config").to_string()
     } else {
-        match &app.detected_port_range {
+        match &app_state.detected_port_range {
             Some(r) => t!(
                 "port_limit_help.port_range_summary",
                 start = r.start,
@@ -174,14 +114,14 @@ fn render_help_content(
                         .cursor_pointer()
                         .hover(|d| d.underline())
                         .child(t!("port_limit_help.re_detect").to_string())
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
-                                // 阻止事件继续传播, 防止穿透到下层压测配置弹窗的按钮
-                                cx.stop_propagation();
-                                app.trigger_port_range_detect(cx);
-                            }),
-                        ),
+                        .on_mouse_down(MouseButton::Left, {
+                            let entity = app.clone();
+                            move |_, _, cx| {
+                                entity.update(cx, |app, cx| {
+                                    app.trigger_port_range_detect(cx);
+                                });
+                            }
+                        }),
                 ),
         )
         // ===== 平台相关: 查看命令 =====

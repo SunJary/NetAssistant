@@ -66,20 +66,24 @@ fn variables() -> Vec<VariableDef> {
 /// `button_bounds` 为「插入变量」按钮在窗口坐标系中的 bounds (由 on_prepaint 提供),
 /// 面板锚定在按钮右下角, 向下展开; 若越界则由 anchored 自动吸附窗口边缘。
 pub fn render_variable_picker(
+    app: &Entity<NetAssistantApp>,
     button_bounds: Bounds<Pixels>,
     theme: &Theme,
-    _window: &mut Window,
-    cx: &mut Context<NetAssistantApp>,
+    _cx: &App,
 ) -> impl IntoElement {
     // 点击面板外任意区域关闭浮层
+    let dismiss_entity = app.clone();
     let dismiss_handler: Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static> =
-        Box::new(cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
-            if let Some(s) = &mut app.stress_config_dialog {
-                s.show_variable_picker = false;
-            }
-            cx.notify();
-        }));
+        Box::new(move |_, _, cx| {
+            dismiss_entity.update(cx, |app, cx| {
+                if let Some(s) = &mut app.stress_config_dialog {
+                    s.show_variable_picker = false;
+                }
+                cx.notify();
+            });
+        });
 
+    let entity = app.clone();
     let popup = anchored()
         .anchor(Anchor::TopRight)
         .position(button_bounds.bottom_right())
@@ -121,7 +125,7 @@ pub fn render_variable_picker(
                                 .size_full()
                                 .overflow_y_scrollbar()
                                 .children(variables().iter().map(|var_def| {
-                                    render_variable_row(var_def, theme, cx)
+                                    render_variable_row(&entity, var_def, theme)
                                 })),
                         ),
                 )
@@ -144,11 +148,12 @@ pub fn render_variable_picker(
 
 /// 渲染单行变量(变量名 + 说明), 点击插入到光标处并关闭浮层
 fn render_variable_row(
+    app: &Entity<NetAssistantApp>,
     var_def: &VariableDef,
     theme: &Theme,
-    cx: &mut Context<NetAssistantApp>,
 ) -> Div {
     let insert_text = var_def.insert_text;
+    let entity = app.clone();
     div()
         .flex()
         .flex_col()
@@ -173,15 +178,17 @@ fn render_variable_row(
         )
         .on_mouse_down(
             MouseButton::Left,
-            cx.listener(move |app: &mut NetAssistantApp, _, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                if let Some(s) = &mut app.stress_config_dialog {
-                    // 在输入框当前光标处插入变量
-                    s.payload_input.update(cx, |input, cx| {
-                        input.insert(insert_text.to_string(), window, cx);
-                    });
-                    s.show_variable_picker = false;
-                }
-                cx.notify();
-            }),
+            move |_event, window: &mut Window, cx: &mut App| {
+                entity.update(cx, |app, cx| {
+                    if let Some(s) = &mut app.stress_config_dialog {
+                        // 在输入框当前光标处插入变量
+                        s.payload_input.update(cx, |input, cx| {
+                            input.insert(insert_text.to_string(), window, cx);
+                        });
+                        s.show_variable_picker = false;
+                    }
+                    cx.notify();
+                });
+            },
         )
 }

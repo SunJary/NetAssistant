@@ -56,8 +56,6 @@ pub fn open_new_connection_dialog(
             .title(title)
             .w(px(384.0))
             .max_h(dialog_height(window))
-            // 表单类: 点击蒙层不关闭, 防止误触丢数据(与迁移前行为一致)
-            .overlay_closable(false)
             // ESC 取消 / Enter 确认: Input 对 Enter 的处理是 propagate,
             // 输入框内按键会继续传播到 Dialog 动作, 经 tests/dialog_layout.rs 验证无误触
             .keyboard(true)

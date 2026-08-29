@@ -20,6 +20,7 @@ use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 use crate::ui::connection_tab::ConnectionTabState;
 use crate::ui::dialog::{
     DecoderSelectionDialogState, StressConfigDialogState, open_new_connection_dialog,
+    open_stress_config_dialog,
 };
 use crate::ui::main_window::MainWindow;
 
@@ -839,7 +840,8 @@ impl NetAssistantApp {
         // 端口范围检测改为懒触发: 仅当用户填的并发数超过系统默认端口数时,
         // 由 render_port_warning -> ensure_port_range_detected 兜底检测。
         // 用户也可在端口说明弹窗点"重新检测"手动触发。
-        cx.notify();
+        // 命令式打开对话框(由 Root 管理层叠)
+        open_stress_config_dialog(cx.entity().downgrade(), window, cx);
     }
 
     /// 启动压测

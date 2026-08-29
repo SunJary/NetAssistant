@@ -34,8 +34,6 @@ pub fn open_add_client_dialog(
             .title(t!("add_client.title").to_string())
             .w(px(320.0))
             .max_h(dialog_height(window))
-            // 表单类: 点击蒙层不关闭, 防止误触丢数据(与迁移前行为一致)
-            .overlay_closable(false)
             // 单输入框表单: 保留 Enter 确认 / ESC 取消(与迁移前行为一致)
             .keyboard(true)
             .on_ok({
