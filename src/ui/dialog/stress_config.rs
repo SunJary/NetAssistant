@@ -13,6 +13,8 @@ use gpui_component::ElementExt as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
 
+use rust_i18n::t;
+
 use crate::app::NetAssistantApp;
 use crate::config::connection::ConnectionType;
 use crate::stress::config::{
@@ -117,7 +119,7 @@ impl StressConfigDialogState {
                         .line_number(false)
                         .folding(false)
                         .multi_line(true)
-                        .placeholder("输入报文内容, 支持 ${seq} ${timestamp} 等变量...")
+                        .placeholder(t!("stress_config.payload_placeholder").to_string())
                 });
                 input.update(cx, |input, cx| {
                     input.set_value(config.payload_template.clone(), window, cx);
@@ -237,7 +239,7 @@ impl StressConfigDialog {
                             .text_lg()
                             .font_semibold()
                             .text_color(theme.foreground)
-                            .child("压测配置"),
+                            .child(t!("stress_config.title").to_string()),
                     )
                     // Layer 3b: 滚动内容区 (两层结构, 避免 flex 高度分配冲突)
                     // 外层 flex_1() + overflow_hidden() 分配剩余高度
@@ -263,7 +265,7 @@ impl StressConfigDialog {
                                                     .text_sm()
                                                     .font_semibold()
                                                     .text_color(theme.foreground)
-                                                    .child("目标"),
+                                                    .child(t!("stress_config.target_label").to_string()),
                                             )
                                             .child(
                                                 div().text_sm().text_color(theme.muted_foreground).child(
@@ -292,6 +294,7 @@ impl StressConfigDialog {
                                             .child(
                                                 div()
                                                     .flex_1()
+                                                    .min_w_0()
                                                     .flex()
                                                     .flex_col()
                                                     .gap_1()
@@ -300,7 +303,7 @@ impl StressConfigDialog {
                                                             .text_sm()
                                                             .font_semibold()
                                                             .text_color(theme.foreground)
-                                                            .child("并发客户端数"),
+                                                            .child(t!("stress_config.concurrency_label").to_string()),
                                                     )
                                                     .child(
                                                         Input::new(&state.concurrency_input)
@@ -310,6 +313,7 @@ impl StressConfigDialog {
                                             .child(
                                                 div()
                                                     .flex_1()
+                                                    .min_w_0()
                                                     .flex()
                                                     .flex_col()
                                                     .gap_1()
@@ -318,7 +322,7 @@ impl StressConfigDialog {
                                                             .text_sm()
                                                             .font_semibold()
                                                             .text_color(theme.foreground)
-                                                            .child("发包间隔(ms, 0=不限速)"),
+                                                            .child(t!("stress_config.send_interval_label").to_string()),
                                                     )
                                                     .child(
                                                         Input::new(&state.send_interval_input)
@@ -352,7 +356,7 @@ impl StressConfigDialog {
                                                                     .text_sm()
                                                                     .font_semibold()
                                                                     .text_color(theme.foreground)
-                                                                    .child("报文内容"),
+                                                                    .child(t!("stress_config.payload_content_label").to_string()),
                                                             )
                                                             .child(Self::render_insert_var_button(
                                                                 state, &theme, cx,
@@ -477,7 +481,7 @@ impl StressConfigDialog {
         if app.port_range_detected && app.port_range_detecting {
             return Self::render_warning_box(
                 theme,
-                "ⓘ 正在读取系统临时端口配置…",
+                &t!("stress_config.reading_port_config"),
                 false,
                 cx,
             );
@@ -493,7 +497,7 @@ impl StressConfigDialog {
             None => {
                 return Self::render_warning_box(
                     theme,
-                    "⚠ 未能读取系统临时端口配置，建议点击「重新检测」或查看「端口说明」手动获取",
+                    &t!("stress_config.port_config_unreadable"),
                     true,
                     cx,
                 );
@@ -508,10 +512,14 @@ impl StressConfigDialog {
             return div();
         }
 
-        let warning_text = format!(
-            "⚠ 检测到临时端口 {} 个 ({}-{}), 并发超过 {} 可能连接失败",
-            port_range.count, port_range.start, port_range.end(), suggested_max,
-        );
+        let warning_text = t!(
+            "stress_config.port_warning_detected",
+            count = port_range.count,
+            start = port_range.start,
+            end = port_range.end(),
+            max = suggested_max,
+        )
+        .to_string();
         Self::render_warning_box(theme, &warning_text, false, cx)
     }
 
@@ -532,7 +540,7 @@ impl StressConfigDialog {
                     .text_color(theme.primary)
                     .cursor_pointer()
                     .hover(|d| d.underline())
-                    .child("端口说明")
+                    .child(t!("stress_config.port_help_link").to_string())
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
@@ -551,7 +559,7 @@ impl StressConfigDialog {
                     .text_color(theme.primary)
                     .cursor_pointer()
                     .hover(|d| d.underline())
-                    .child("重新检测")
+                    .child(t!("stress_config.re_detect_link").to_string())
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
@@ -597,7 +605,7 @@ impl StressConfigDialog {
                     .text_sm()
                     .font_semibold()
                     .text_color(theme.foreground)
-                    .child("压测模式"),
+                    .child(t!("stress_config.stress_mode_label").to_string()),
             )
             .child(
                 div()
@@ -606,14 +614,14 @@ impl StressConfigDialog {
                     .child(render_stress_mode_chip(
                         state,
                         StressMode::Throughput,
-                        "吞吐(只发不等)",
+                        &t!("stress_config.mode_throughput"),
                         theme,
                         cx,
                     ))
                     .child(render_stress_mode_chip(
                         state,
                         StressMode::PingPong,
-                        "往返(测RTT)",
+                        &t!("stress_config.mode_pingpong"),
                         theme,
                         cx,
                     )),
@@ -635,7 +643,7 @@ impl StressConfigDialog {
                     .text_sm()
                     .font_semibold()
                     .text_color(theme.foreground)
-                    .child("连接模式"),
+                    .child(t!("stress_config.connection_mode_label").to_string()),
             )
             .child(
                 div()
@@ -644,14 +652,14 @@ impl StressConfigDialog {
                     .child(render_conn_mode_chip(
                         state,
                         ConnectionMode::Long,
-                        "长连接",
+                        &t!("stress_config.mode_long_connection"),
                         theme,
                         cx,
                     ))
                     .child(render_conn_mode_chip(
                         state,
                         ConnectionMode::Short,
-                        "短连接",
+                        &t!("stress_config.mode_short_connection"),
                         theme,
                         cx,
                     )),
@@ -700,7 +708,7 @@ impl StressConfigDialog {
             .active(|this| {
                 this.text_color(gpui::white()).bg(theme.primary)
             })
-            .child("插入变量")
+            .child(t!("stress_config.insert_variable").to_string())
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
@@ -736,7 +744,7 @@ impl StressConfigDialog {
                     .when(!is_text, |d| {
                         d.bg(theme.border).text_color(theme.foreground)
                     })
-                    .child("文本")
+                    .child(t!("stress_config.mode_text").to_string())
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |app: &mut NetAssistantApp, _, window, cx| {
@@ -813,9 +821,9 @@ impl StressConfigDialog {
                     .text_color(theme.foreground)
                     .cursor_pointer()
                     .child(if state.show_advanced {
-                        "▼ 更多设置"
+                        t!("stress_config.more_settings_collapse").to_string()
                     } else {
-                        "▶ 更多设置"
+                        t!("stress_config.more_settings_expand").to_string()
                     })
                     .on_mouse_down(
                         MouseButton::Left,
@@ -842,6 +850,7 @@ impl StressConfigDialog {
                                 .child(
                                     div()
                                         .flex_1()
+                                        .min_w_0()
                                         .flex()
                                         .flex_col()
                                         .gap_1()
@@ -850,13 +859,14 @@ impl StressConfigDialog {
                                                 .text_sm()
                                                 .font_semibold()
                                                 .text_color(theme.foreground)
-                                                .child("全局QPS限制(留空=不限)"),
+                                                .child(t!("stress_config.qps_limit_label").to_string()),
                                         )
                                         .child(Input::new(&state.qps_limit_input).cleanable(true)),
                                 )
                                 .child(
                                     div()
                                         .flex_1()
+                                        .min_w_0()
                                         .flex()
                                         .flex_col()
                                         .gap_1()
@@ -865,7 +875,7 @@ impl StressConfigDialog {
                                                 .text_sm()
                                                 .font_semibold()
                                                 .text_color(theme.foreground)
-                                                .child("超时(ms)"),
+                                                .child(t!("stress_config.timeout_label").to_string()),
                                         )
                                         .child(Input::new(&state.timeout_input).cleanable(true)),
                                 ),
@@ -881,7 +891,7 @@ impl StressConfigDialog {
                                         .text_sm()
                                         .font_semibold()
                                         .text_color(theme.foreground)
-                                        .child("停止条件"),
+                                        .child(t!("stress_config.stop_condition_label").to_string()),
                                 )
                                 .child(
                                     div()
@@ -890,28 +900,28 @@ impl StressConfigDialog {
                                         .child(render_stop_chip(
                                             state,
                                             StopConditionType::Duration,
-                                            "限时",
+                                            &t!("stress_config.stop_duration"),
                                             theme,
                                             cx,
                                         ))
                                         .child(render_stop_chip(
                                             state,
                                             StopConditionType::Count,
-                                            "定量",
+                                            &t!("stress_config.stop_count"),
                                             theme,
                                             cx,
                                         ))
                                         .child(render_stop_chip(
                                             state,
                                             StopConditionType::Either,
-                                            "先到先停",
+                                            &t!("stress_config.stop_either"),
                                             theme,
                                             cx,
                                         ))
                                         .child(render_stop_chip(
                                             state,
                                             StopConditionType::Manual,
-                                            "手动",
+                                            &t!("stress_config.stop_manual"),
                                             theme,
                                             cx,
                                         )),
@@ -931,7 +941,7 @@ impl StressConfigDialog {
                                                     div()
                                                         .text_xs()
                                                         .text_color(theme.muted_foreground)
-                                                        .child("限时(秒)"),
+                                                        .child(t!("stress_config.stop_duration_secs").to_string()),
                                                 )
                                                 .child(
                                                     Input::new(&state.duration_input)
@@ -955,7 +965,7 @@ impl StressConfigDialog {
                                                     div()
                                                         .text_xs()
                                                         .text_color(theme.muted_foreground)
-                                                        .child("定量(总发包数)"),
+                                                        .child(t!("stress_config.stop_count_total").to_string()),
                                                 )
                                                 .child(
                                                     Input::new(&state.count_input).cleanable(true),
@@ -981,7 +991,7 @@ impl StressConfigDialog {
                                             div()
                                                 .text_sm()
                                                 .text_color(theme.foreground)
-                                                .child("阶梯 ramp-up"),
+                                                .child(t!("stress_config.ramp_up_label").to_string()),
                                         )
                                         .on_mouse_down(
                                             MouseButton::Left,
@@ -1003,7 +1013,7 @@ impl StressConfigDialog {
                                                 div()
                                                     .text_xs()
                                                     .text_color(theme.muted_foreground)
-                                                    .child("爬升时长(秒)"),
+                                                    .child(t!("stress_config.ramp_up_duration").to_string()),
                                             )
                                             .child(
                                                 Input::new(&state.ramp_up_secs_input)
@@ -1024,7 +1034,7 @@ impl StressConfigDialog {
                                     div()
                                         .text_sm()
                                         .text_color(theme.foreground)
-                                        .child("断线自动重连"),
+                                        .child(t!("stress_config.auto_reconnect_label").to_string()),
                                 )
                                 .on_mouse_down(
                                     MouseButton::Left,
@@ -1064,7 +1074,7 @@ impl StressConfigDialog {
                             .text_sm()
                             .text_color(theme.foreground)
                             .text_center()
-                            .child("取消"),
+                            .child(t!("stress_config.cancel").to_string()),
                     )
                     .on_mouse_down(
                         MouseButton::Left,
@@ -1087,7 +1097,7 @@ impl StressConfigDialog {
                             .text_sm()
                             .text_color(theme.primary_foreground)
                             .text_center()
-                            .child("开始压测"),
+                            .child(t!("stress_config.start_stress").to_string()),
                     )
                     .on_mouse_down(
                         MouseButton::Left,

@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,12 +36,12 @@ pub enum ConnectionStatus {
 impl fmt::Display for ConnectionStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConnectionStatus::NotConnected => write!(f, "未连接"),
-            ConnectionStatus::Disconnected => write!(f, "已断开"),
-            ConnectionStatus::Connecting => write!(f, "连接中"),
-            ConnectionStatus::Connected => write!(f, "已连接"),
-            ConnectionStatus::Listening => write!(f, "监听中"),
-            ConnectionStatus::Error => write!(f, "错误"),
+            ConnectionStatus::NotConnected => write!(f, "{}", t!("connection_status.not_connected")),
+            ConnectionStatus::Disconnected => write!(f, "{}", t!("connection_status.disconnected")),
+            ConnectionStatus::Connecting => write!(f, "{}", t!("connection_status.connecting")),
+            ConnectionStatus::Connected => write!(f, "{}", t!("connection_status.connected")),
+            ConnectionStatus::Listening => write!(f, "{}", t!("connection_status.listening")),
+            ConnectionStatus::Error => write!(f, "{}", t!("connection_status.error")),
         }
     }
 }
@@ -97,10 +98,10 @@ impl Default for DecoderConfig {
 impl fmt::Display for DecoderConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DecoderConfig::Bytes => write!(f, "原始数据"),
-            DecoderConfig::LineBased => write!(f, "换行符"),
-            DecoderConfig::LengthDelimited(_) => write!(f, "长度前缀"),
-            DecoderConfig::FixedLength(_) => write!(f, "固定长度"),
+            DecoderConfig::Bytes => write!(f, "{}", t!("decoder_config.bytes")),
+            DecoderConfig::LineBased => write!(f, "{}", t!("decoder_config.line_based")),
+            DecoderConfig::LengthDelimited(_) => write!(f, "{}", t!("decoder_config.length_delimited")),
+            DecoderConfig::FixedLength(_) => write!(f, "{}", t!("decoder_config.fixed_length")),
             DecoderConfig::Json => write!(f, "JSON"),
         }
     }

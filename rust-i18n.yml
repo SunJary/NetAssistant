@@ -1,0 +1,3 @@
+# rust-i18n 配置
+# fallback: 翻译缺失某 locale 时的回退语言（中文为现有主语言）
+fallback: "zh-CN"

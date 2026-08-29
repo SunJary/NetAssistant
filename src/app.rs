@@ -1,6 +1,7 @@
 use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
 use log::{debug, error, info, warn};
+use rust_i18n::t;
 
 use crate::config;
 use crate::config::app_stats::AppStats;
@@ -102,6 +103,9 @@ pub struct NetAssistantApp {
     pub context_menu_is_client: bool,
     pub context_menu_position: Option<Pixels>,
     pub context_menu_position_y: Option<Pixels>,
+
+    // 语言切换下拉菜单状态
+    pub show_language_menu: bool,
 
     // 添加客户端对话框状态（UDP服务端专用）
     pub show_add_client_dialog: bool,
@@ -223,6 +227,8 @@ impl NetAssistantApp {
             context_menu_is_client: false,
             context_menu_position: None,
             context_menu_position_y: None,
+            // 语言切换下拉菜单
+            show_language_menu: false,
             // 添加客户端对话框状态（UDP服务端专用）
             show_add_client_dialog: false,
             add_client_dialog_tab_id: String::new(),
@@ -529,7 +535,7 @@ impl NetAssistantApp {
                     .folding(false)
                     // .rows(5)
                     .multi_line(true)
-                    .placeholder("输入自动回复内容...")
+                    .placeholder(t!("app_ui.auto_reply_placeholder").to_string())
             });
             auto_reply_input.update(cx, |input, cx| {
                 input.set_value("ok".to_string(), window, cx);
@@ -938,7 +944,7 @@ impl NetAssistantApp {
         tokio::spawn(async move {
             let file_path = rfd::AsyncFileDialog::new()
                 .set_file_name(&default_filename)
-                .add_filter("CSV 文件", &["csv"])
+                .add_filter(t!("app_ui.filter_csv").to_string(), &["csv"])
                 .save_file()
                 .await;
 
@@ -1115,7 +1121,7 @@ impl NetAssistantApp {
             if let Some(sender) = sender {
                 let _ = sender.try_send(ConnectionEvent::Error(
                     tab_id_clone,
-                    "连接未建立".to_string(),
+                    t!("app_ui.send_not_connected").to_string(),
                 ));
             }
             return;
@@ -1134,7 +1140,7 @@ impl NetAssistantApp {
                     if let Some(sender) = sender {
                         let _ = sender.try_send(ConnectionEvent::Error(
                             tab_id_clone,
-                            "发送消息失败".to_string(),
+                            t!("app_ui.send_failed").to_string(),
                         ));
                     }
                 } else {
@@ -1150,7 +1156,7 @@ impl NetAssistantApp {
                 if let Some(sender) = sender {
                     let _ = sender.try_send(ConnectionEvent::Error(
                         tab_id_clone,
-                        "客户端写入发送器不可用".to_string(),
+                        t!("app_ui.send_client_write_unavailable").to_string(),
                     ));
                 }
             }
@@ -1262,7 +1268,7 @@ impl NetAssistantApp {
             if let Some(sender) = sender {
                 let _ = sender.try_send(ConnectionEvent::Error(
                     tab_id_clone,
-                    "连接未建立".to_string(),
+                    t!("app_ui.send_not_connected").to_string(),
                 ));
             }
             return;
@@ -1279,7 +1285,7 @@ impl NetAssistantApp {
                     if let Some(sender) = sender {
                         let _ = sender.try_send(ConnectionEvent::Error(
                             tab_id_clone,
-                            "发送消息失败".to_string(),
+                            t!("app_ui.send_failed").to_string(),
                         ));
                     }
                 } else {
@@ -1295,7 +1301,7 @@ impl NetAssistantApp {
                 if let Some(sender) = sender {
                     let _ = sender.try_send(ConnectionEvent::Error(
                         tab_id_clone,
-                        "客户端写入发送器不可用".to_string(),
+                        t!("app_ui.send_client_write_unavailable").to_string(),
                     ));
                 }
             }
@@ -1378,7 +1384,7 @@ impl NetAssistantApp {
                 if let Some(sender) = &self.connection_event_sender {
                     let _ = sender.try_send(ConnectionEvent::Error(
                         tab_id,
-                        format!("无效的地址格式: {}", addr_str),
+                        t!("app_ui.invalid_address_format", addr = addr_str).to_string(),
                     ));
                 }
                 return;
@@ -1399,7 +1405,7 @@ impl NetAssistantApp {
                     if let Some(sender) = &event_sender {
                         let _ = sender.try_send(ConnectionEvent::Error(
                             tab_id,
-                            format!("添加客户端失败: {}", e),
+                            t!("app_ui.add_client_failed", error = e).to_string(),
                         ));
                     }
                 }
@@ -1439,9 +1445,9 @@ impl NetAssistantApp {
         tokio::spawn(async move {
             let file_path = rfd::AsyncFileDialog::new()
                 .set_file_name(&default_filename)
-                .add_filter("纯文本文件", &["txt"])
-                .add_filter("JSON 文件", &["json"])
-                .add_filter("CSV 文件", &["csv"])
+                .add_filter(t!("app_ui.filter_text").to_string(), &["txt"])
+                .add_filter(t!("app_ui.filter_json").to_string(), &["json"])
+                .add_filter(t!("app_ui.filter_csv").to_string(), &["csv"])
                 .save_file()
                 .await;
 
@@ -1600,8 +1606,8 @@ impl NetAssistantApp {
         cx.spawn(async move |this, cx| {
             let file_path = rfd::AsyncFileDialog::new()
                 .set_file_name(&default_filename)
-                .add_filter("日志文件", &["log"])
-                .add_filter("所有文件", &["*"])
+                .add_filter(t!("app_ui.filter_log").to_string(), &["log"])
+                .add_filter(t!("app_ui.filter_all").to_string(), &["*"])
                 .save_file()
                 .await;
 
@@ -1695,6 +1701,17 @@ impl NetAssistantApp {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         self.stats.dismiss_star_prompt(&today);
         self.show_star_prompt = false;
+        cx.notify();
+    }
+
+    /// 切换界面语言：设置运行时 locale、同步组件库内置文案，并持久化到配置
+    /// 切换后 cx.notify() 触发整棵视图树重渲染，t! 宏取词即生效
+    pub fn set_language(&mut self, language: &str, cx: &mut Context<Self>) {
+        rust_i18n::set_locale(language);
+        gpui_component::set_locale(language);
+        self.storage.save_language(language);
+        self.show_language_menu = false;
+        info!("界面语言已切换为: {}", language);
         cx.notify();
     }
 

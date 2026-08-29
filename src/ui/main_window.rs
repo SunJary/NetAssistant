@@ -1,4 +1,5 @@
 use crate::app::NetAssistantApp;
+use crate::custom_icons::CustomIconName;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
 use crate::ui::dialog::{
@@ -9,11 +10,13 @@ use crate::ui::tab_container::TabContainer;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::ActiveTheme;
+use gpui_component::Icon;
 use gpui_component::IconName;
 use gpui_component::StyledExt;
 use gpui_component::TitleBar;
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::tooltip::Tooltip;
+use rust_i18n::t;
 
 pub struct MainWindow<'a> {
     app: &'a NetAssistantApp,
@@ -117,14 +120,18 @@ impl<'a> MainWindow<'a> {
                                     .tooltip(move |window, cx| {
                                         // tooltip 始终展示星数 + 引导，有更新时附加版本提示
                                         let star_text = match star_count {
-                                            Some(n) => format!("已有 {} 位用户 Star，觉得有用的话也来Star下吧", n),
-                                            None => "如果本项目对你有帮助，欢迎来 GitHub Star 一下".to_string(),
+                                            Some(n) => {
+                                                t!("title_bar.star_tooltip_count", count = n).to_string()
+                                            }
+                                            None => t!("title_bar.star_tooltip_hint").to_string(),
                                         };
                                         let text = if update_available {
                                             let update_msg = latest_version
                                                 .as_ref()
-                                                .map(|v| format!("发现新版本 {}，点击查看", v))
-                                                .unwrap_or_else(|| "发现新版本，点击查看".to_string());
+                                                .map(|v| t!("title_bar.update_found", version = v).to_string())
+                                                .unwrap_or_else(|| {
+                                                    t!("title_bar.update_found_generic").to_string()
+                                                });
                                             match star_count {
                                                 Some(_) => format!("{}\n{}", update_msg, star_text),
                                                 None => update_msg,
@@ -133,6 +140,34 @@ impl<'a> MainWindow<'a> {
                                             star_text
                                         };
                                         Tooltip::new(text).build(window, cx)
+                                    }),
+                            )
+                            // 语言切换按钮：点击展开 中文/English 下拉列表
+                            .child(
+                                div()
+                                    .w_8()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .rounded_md()
+                                    .when(self.app.show_language_menu, |this_div| {
+                                        this_div.bg(theme.border)
+                                    })
+                                    .hover(|style| style.bg(theme.border))
+                                    .child(Icon::new(CustomIconName::Languages))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|app, _event, _window, cx| {
+                                            app.show_language_menu = !app.show_language_menu;
+                                            cx.notify();
+                                        }),
+                                    )
+                                    .id("language-button")
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(t!("title_bar.language").to_string())
+                                            .build(window, cx)
                                     }),
                             )
                             .child(
@@ -266,13 +301,13 @@ impl<'a> MainWindow<'a> {
                                 .text_sm()
                                 .font_semibold()
                                 .text_color(theme.foreground)
-                                .child("喜欢 NetAssistant？"),
+                                .child(t!("star_prompt.title").to_string()),
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("给项目加个 Star 支持一下吧！"),
+                                .child(t!("star_prompt.body").to_string()),
                         )
                         .child(
                             div()
@@ -289,7 +324,7 @@ impl<'a> MainWindow<'a> {
                                         .bg(gpui::rgb(0x238636))
                                         .rounded_md()
                                         .cursor_pointer()
-                                        .child("⭐ 给个 Star")
+                                        .child(t!("star_prompt.action").to_string())
                                         .on_mouse_down(
                                             MouseButton::Left,
                                             cx.listener(|app, _event, _window, cx| {
@@ -309,7 +344,7 @@ impl<'a> MainWindow<'a> {
                                         .border_color(theme.border)
                                         .rounded_md()
                                         .cursor_pointer()
-                                        .child("近期不再提示")
+                                        .child(t!("star_prompt.dismiss").to_string())
                                         .on_mouse_down(
                                             MouseButton::Left,
                                             cx.listener(|app, _event, _window, cx| {
@@ -356,7 +391,7 @@ impl<'a> MainWindow<'a> {
                                         .hover(|style| {
                                             style.bg(theme.border)
                                         })
-                                        .child("编辑连接")
+                                        .child(t!("context_menu.edit").to_string())
                                         .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                             if let Some(connection_id) = app.context_menu_connection.clone() {
                                                 app.show_context_menu = false;
@@ -380,7 +415,7 @@ impl<'a> MainWindow<'a> {
                                         .hover(|style| {
                                             style.bg(theme.border)
                                         })
-                                        .child("删除连接")
+                                        .child(t!("context_menu.delete").to_string())
                                         .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                             if let Some(connection_name) = app.context_menu_connection.clone() {
                                                 let is_client = app.context_menu_is_client;
@@ -419,8 +454,8 @@ impl<'a> MainWindow<'a> {
                     .app
                     .latest_version
                     .as_ref()
-                    .map(|v| format!("发现新版本 {}，点击查看", v))
-                    .unwrap_or_else(|| "发现新版本，点击查看".to_string());
+                    .map(|v| t!("title_bar.update_found", version = v).to_string())
+                    .unwrap_or_else(|| t!("title_bar.update_found_generic").to_string());
                 this_div.child(
                     div()
                         .absolute()
@@ -438,5 +473,85 @@ impl<'a> MainWindow<'a> {
                         .child(version_text),
                 )
             })
+            // 语言切换下拉菜单（放在渲染链最后，确保浮在最上层）
+            .when(self.app.show_language_menu, |this_div| {
+                let current_locale = rust_i18n::locale();
+                this_div.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .occlude()
+                        // 点击菜单以外任意区域关闭
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|app, _event, _window, cx| {
+                                app.show_language_menu = false;
+                                cx.notify();
+                            }),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .top(px(44.0))
+                                .right(px(12.0))
+                                .w_40()
+                                .py_1()
+                                .bg(theme.background)
+                                .rounded_md()
+                                .shadow_lg()
+                                .border_1()
+                                .border_color(theme.border)
+                                .flex()
+                                .flex_col()
+                                // 菜单项显示语言原生名称，不随当前语言变化
+                                .child(language_menu_item("中文", "zh-CN", &current_locale, cx))
+                                .child(language_menu_item("English", "en", &current_locale, cx)),
+                        ),
+                )
+            })
     }
+}
+
+/// 构建语言下拉菜单项：选中项左侧显示对勾，点击切换语言并关闭菜单
+fn language_menu_item(
+    label: &'static str,
+    code: &'static str,
+    current_locale: &str,
+    cx: &mut Context<NetAssistantApp>,
+) -> Stateful<Div> {
+    let theme = cx.theme().clone();
+    let active = current_locale == code;
+    div()
+        .id(SharedString::from(format!("lang-item-{}", code)))
+        .w_full()
+        .px_3()
+        .py_2()
+        .flex()
+        .items_center()
+        .gap_1()
+        .text_sm()
+        .cursor_pointer()
+        .text_color(theme.foreground)
+        .hover(|style| style.bg(theme.border))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |app, _event, _window, cx| {
+                app.set_language(code, cx);
+            }),
+        )
+        .child(
+            // 固定宽度的对勾占位，保证未选中项文字与选中项对齐
+            div()
+                .w_4()
+                .flex()
+                .justify_center()
+                .when(active, |this_div| {
+                    this_div.child(
+                        Icon::new(IconName::Check)
+                            .size(px(14.0))
+                            .text_color(theme.primary),
+                    )
+                }),
+        )
+        .child(label)
 }

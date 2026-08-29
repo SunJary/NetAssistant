@@ -12,6 +12,7 @@ use gpui_component::{
 };
 
 use log::{debug, error, info, warn};
+use rust_i18n::t;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -118,7 +119,7 @@ impl ConnectionTabState {
                     .line_number(false)
                     .folding(false)
                     .multi_line(true)
-                    .placeholder("输入消息内容...")
+                    .placeholder(t!("connection_tab.message_input_placeholder"))
             })),
             message_input_mode,
             auto_clear_input: true,
@@ -471,7 +472,7 @@ impl<'a> ConnectionTab<'a> {
                             } else {
                                 theme.muted_foreground
                             })
-                            .child("调试"),
+                            .child(t!("connection_tab.tab_debug").to_string()),
                     )
                     .on_mouse_down(
                         MouseButton::Left,
@@ -499,7 +500,7 @@ impl<'a> ConnectionTab<'a> {
                             } else {
                                 theme.muted_foreground
                             })
-                            .child("压测"),
+                            .child(t!("connection_tab.tab_stress").to_string()),
                     )
                     .on_mouse_down(
                         MouseButton::Left,
@@ -577,9 +578,17 @@ impl<'a> ConnectionTab<'a> {
                                     .font_semibold()
                                     .text_color(if is_connected { theme.danger_foreground } else { theme.success_foreground })
                                     .child(if is_connected {
-                                        if is_client { "断开" } else { "停止" }
+                                        if is_client {
+                                            t!("connection_tab.disconnect").to_string()
+                                        } else {
+                                            t!("connection_tab.stop").to_string()
+                                        }
                                     } else {
-                                        if is_client { "连接" } else { "启动" }
+                                        if is_client {
+                                            t!("connection_tab.connect").to_string()
+                                        } else {
+                                            t!("connection_tab.start").to_string()
+                                        }
                                     }),
                             )
                             .on_mouse_down(MouseButton::Left, cx.listener({
@@ -603,7 +612,7 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 div()
                                     .text_xs()
-                                    .child("协议:"),
+                                    .child(t!("connection_tab.protocol_label").to_string()),
                             )
                             .child(
                                 div()
@@ -621,13 +630,18 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("地址:"),
+                                    .child(t!("connection_tab.address_label").to_string()),
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .font_medium()
                                     .text_color(theme.foreground)
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
                                     .child(self.tab_state.address()),
                             ),
                     )
@@ -640,12 +654,13 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("状态:"),
+                                    .child(t!("connection_tab.status_label").to_string()),
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .font_medium()
+                                    .min_w_0()
                                     .when(self.tab_state.is_connected, |div| {
                                         div.text_color(theme.success)
                                     })
@@ -666,13 +681,14 @@ impl<'a> ConnectionTab<'a> {
                                 .child(
                                     div()
                                         .text_xs()
-                                        .child("解码器:"),
+                                        .child(t!("connection_tab.decoder_label").to_string()),
                                 )
                                 .child(
                                     div()
                                         .text_xs()
                                         .font_medium()
                                         .text_color(theme.foreground)
+                                        .min_w_0()
                                         .child(self.tab_state.decoder()),
                                 )
                                 // 编辑解码器配置(运行中也可修改, 即时下发到在线连接)
@@ -685,7 +701,7 @@ impl<'a> ConnectionTab<'a> {
                                         .text_color(theme.primary_foreground)
                                         .rounded_md()
                                         .cursor_pointer()
-                                        .child(div().text_xs().font_medium().child("编辑"))
+                                        .child(div().text_xs().font_medium().child(t!("connection_tab.edit").to_string()))
                                         .on_mouse_down(MouseButton::Left, cx.listener({
                                             let tab_id_clone = tab_id.clone();
                                             move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
@@ -736,7 +752,7 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .text_xs() // 使用gpui支持的最小字体
                                     .text_color(theme.muted_foreground)
-                                    .child(format!("发送: {}", self.tab_state.message_list.total_sent)),
+                                    .child(t!("connection_tab.sent_stat", count = self.tab_state.message_list.total_sent).to_string()),
                             ),
                     )
                     .child(
@@ -755,7 +771,7 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .text_xs() // 使用gpui支持的最小字体
                                     .text_color(theme.muted_foreground)
-                                    .child(format!("接收: {}", self.tab_state.message_list.total_received)),
+                                    .child(t!("connection_tab.received_stat", count = self.tab_state.message_list.total_received).to_string()),
                             ),
                     )
                     .child(
@@ -774,7 +790,7 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child(format!("总计: {}", self.tab_state.message_list.total_messages())),
+                                    .child(t!("connection_tab.total_stat", count = self.tab_state.message_list.total_messages()).to_string()),
                             ),
                     )
                     // 日志记录开关
@@ -821,7 +837,7 @@ impl<'a> ConnectionTab<'a> {
                                         div()
                                             .text_xs()
                                             .text_color(theme.muted_foreground)
-                                            .child("日志记录"),
+                                            .child(t!("connection_tab.log_record").to_string()),
                                     )
                                     // 修改路径按钮
                                     .child(
@@ -878,7 +894,7 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("消息模式:"),
+                                    .child(t!("connection_tab.message_mode_label").to_string()),
                             )
                             .child(
                                 div()
@@ -900,7 +916,7 @@ impl<'a> ConnectionTab<'a> {
                                             })
                                             .rounded_md()
                                             .cursor_pointer()
-                                            .child(div().text_xs().font_medium().child("文本"))
+                                            .child(div().text_xs().font_medium().child(t!("connection_tab.mode_text").to_string()))
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_text = tab_id.clone();
                                                 move |app, _event, _window, cx| {
@@ -941,7 +957,7 @@ impl<'a> ConnectionTab<'a> {
                                                 div()
                                                     .text_xs()
                                                     .font_medium()
-                                                    .child("十六进制"),
+                                                    .child(t!("connection_tab.mode_hex").to_string()),
                                             )
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_hex = tab_id.clone();
@@ -1014,7 +1030,7 @@ impl<'a> ConnectionTab<'a> {
                             .text_xs()
                             .font_semibold()
                             .text_color(theme.foreground)
-                            .child("自动回复"),
+                            .child(t!("connection_tab.auto_reply").to_string()),
                     )
                     .child(
                         div()
@@ -1053,7 +1069,7 @@ impl<'a> ConnectionTab<'a> {
                         div()
                             .text_xs()
                             .text_color(theme.muted_foreground)
-                            .child("启用自动回复"),
+                            .child(t!("connection_tab.enable_auto_reply").to_string()),
                     ),
             )
             .when(auto_reply_enabled, |this| {
@@ -1068,7 +1084,7 @@ impl<'a> ConnectionTab<'a> {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("回复内容:"),
+                                    .child(t!("connection_tab.reply_content_label").to_string()),
                             )
                             .child(
                                 self.render_input_with_mode(input_state, &self.tab_state.message_input_mode, &theme, cx),
@@ -1094,7 +1110,7 @@ impl<'a> ConnectionTab<'a> {
                                     .text_xs()
                                     .font_semibold()
                                     .text_color(theme.foreground)
-                                    .child("客户端连接"),
+                                    .child(t!("connection_tab.client_connections").to_string()),
                             )
                             .child(
                                 div()
@@ -1115,7 +1131,7 @@ impl<'a> ConnectionTab<'a> {
                                         .cursor_pointer()
                                         .hover(|style| style.opacity(0.7))
                                         .tooltip(|window, cx| {
-                                            Tooltip::new("添加客户端").build(window, cx)
+                                            Tooltip::new(t!("connection_tab.add_client_tooltip").to_string()).build(window, cx)
                                         })
                                         .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                             let input = cx.new(|cx| {
@@ -1153,7 +1169,7 @@ impl<'a> ConnectionTab<'a> {
                                             div()
                                                 .text_xs()
                                                 .text_color(theme.muted_foreground)
-                                                .child("暂无客户端连接"),
+                                                .child(t!("connection_tab.no_client_connections").to_string()),
                                         )
                                         .into_any()
                                 } else {
@@ -1287,7 +1303,7 @@ impl<'a> ConnectionTab<'a> {
                             .text_sm()
                             .font_medium()
                             .text_color(theme.muted_foreground)
-                            .child("消息记录"),
+                            .child(t!("connection_tab.message_record").to_string()),
                     )
                     .child(
                         div()
@@ -1334,7 +1350,7 @@ impl<'a> ConnectionTab<'a> {
                                         div()
                                             .text_xs()
                                             .text_color(theme.muted_foreground)
-                                            .child("自动滚动"),
+                                            .child(t!("connection_tab.auto_scroll").to_string()),
                                     ),
                             )
                             // 消息显示模式切换按钮（原始/美化/压缩）
@@ -1355,9 +1371,9 @@ impl<'a> ConnectionTab<'a> {
                                         style.bg(theme.secondary_hover)
                                             .border_color(theme.secondary_hover)
                                     })
-                                    .child(format!("格式:{}", self.tab_state.message_display_mode.label()))
+                                    .child(t!("connection_tab.display_format", label = self.tab_state.message_display_mode.label()).to_string())
                                     .tooltip(|window, cx| {
-                                        Tooltip::new("切换消息显示格式（原始/美化/压缩）").build(window, cx)
+                                        Tooltip::new(t!("connection_tab.format_toggle_tooltip").to_string()).build(window, cx)
                                     })
                                     .on_mouse_down(
                                         MouseButton::Left,
@@ -1385,7 +1401,7 @@ impl<'a> ConnectionTab<'a> {
                                         style.bg(theme.secondary_hover)
                                             .border_color(theme.secondary_hover)
                                     })
-                                    .child("导出")
+                                    .child(t!("connection_tab.export").to_string())
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener({
@@ -1412,7 +1428,7 @@ impl<'a> ConnectionTab<'a> {
                                         style.bg(theme.secondary_hover)
                                             .border_color(theme.secondary_hover)
                                     })
-                                    .child("清空")
+                                    .child(t!("connection_tab.clear").to_string())
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener({
@@ -1434,7 +1450,7 @@ impl<'a> ConnectionTab<'a> {
                     div()
                         .text_sm()
                         .text_color(gpui::rgb(0x9ca3af))
-                        .child("暂无消息记录"),
+                        .child(t!("connection_tab.no_messages").to_string()),
                 )
                 .into_any()
             } else {
@@ -1495,9 +1511,9 @@ impl<'a> ConnectionTab<'a> {
                                                                     div.text_color(theme.green)
                                                                 })
                                                                 .child(if is_sent {
-                                                                    "发送"
+                                                                    t!("connection_tab.sent_label").to_string()
                                                                 } else {
-                                                                    "接收"
+                                                                    t!("connection_tab.received_label").to_string()
                                                                 }),
                                                         )
                                                         .child(
@@ -1523,7 +1539,7 @@ impl<'a> ConnectionTab<'a> {
 
                                                                     let source_div = if is_unexpected {
                                                                         source_div.tooltip(|window, cx| {
-                                                                            Tooltip::new("非预期地址的回复").build(window, cx)
+                                                                            Tooltip::new(t!("connection_tab.unexpected_reply_tooltip").to_string()).build(window, cx)
                                                                         })
                                                                     } else {
                                                                         source_div
@@ -1684,9 +1700,9 @@ impl<'a> ConnectionTab<'a> {
             .bg(theme.background)
             .when(!is_client, |el| {
                 let target_text = if let Some(addr) = selected_client {
-                    format!("发送给：{}", addr)
+                    t!("connection_tab.send_to", addr = addr).to_string()
                 } else {
-                    "发送给：全部客户端".to_string()
+                    t!("connection_tab.send_to_all").to_string()
                 };
                 el.child(
                     div()
@@ -1751,7 +1767,7 @@ impl<'a> ConnectionTab<'a> {
                                         .text_xs()
                                         .font_medium()
                                         .text_color(theme.secondary_foreground)
-                                        .child("清空"),
+                                        .child(t!("connection_tab.clear").to_string()),
                                 ),
                             )
                             .child(
@@ -1799,7 +1815,7 @@ impl<'a> ConnectionTab<'a> {
                                         div()
                                             .text_xs()
                                             .text_color(theme.muted_foreground)
-                                            .child("自动清空"),
+                                            .child(t!("connection_tab.auto_clear").to_string()),
                                     ),
                             )
                             .child(
@@ -1856,7 +1872,7 @@ impl<'a> ConnectionTab<'a> {
                                         div()
                                             .text_xs()
                                             .text_color(theme.muted_foreground)
-                                            .child("周期发送"),
+                                            .child(t!("connection_tab.periodic_send").to_string()),
                                     )
                                     // 只有在周期发送选中时才显示时间间隔输入框
                                     .when(self.tab_state.periodic_send_enabled, |builder| {
@@ -2043,9 +2059,9 @@ impl<'a> ConnectionTab<'a> {
                                                 warn!("[发送按钮] 发送失败: 连接未建立或无客户端连接");
                                                 if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_send) {
                                                     tab_state.error_message = Some(if connection_config.is_client() {
-                                                        "连接未建立".to_string()
+                                                        t!("app_ui.send_not_connected").to_string()
                                                     } else {
-                                                        "无客户端连接".to_string()
+                                                        t!("connection_tab.error_no_client_connections").to_string()
                                                     });
                                                 }
                                                 cx.notify();
@@ -2058,7 +2074,7 @@ impl<'a> ConnectionTab<'a> {
                                             .text_sm()
                                             .font_semibold()
                                             .text_color(theme.primary_foreground)
-                                            .child("发送"),
+                                            .child(t!("connection_tab.send").to_string()),
                                     ),
                             ),
                     ),

@@ -1,0 +1,290 @@
+# 弹窗文案 (stress_config.rs / decoder_selection.rs / port_limit_help.rs)
+_version: 2
+
+stress_config:
+  title:
+    zh-CN: 压测配置
+    en: Stress Test Configuration
+  target_label:
+    zh-CN: 目标
+    en: Target
+  payload_placeholder:
+    zh-CN: "输入报文内容, 支持 ${seq} ${timestamp} 等变量..."
+    en: "Enter payload content, supports variables like ${seq} and ${timestamp}..."
+  concurrency_label:
+    zh-CN: 并发客户端数
+    en: Concurrent Clients
+  send_interval_label:
+    zh-CN: "发包间隔(ms, 0=不限速)"
+    en: "Send Interval (ms, 0 = unlimited)"
+  payload_content_label:
+    zh-CN: 报文内容
+    en: Payload Content
+  reading_port_config:
+    zh-CN: "ⓘ 正在读取系统临时端口配置…"
+    en: "ⓘ Reading system ephemeral port configuration…"
+  port_config_unreadable:
+    zh-CN: "⚠ 未能读取系统临时端口配置，建议点击「重新检测」或查看「端口说明」手动获取"
+    en: "⚠ Failed to read the system ephemeral port configuration. Click 'Re-detect' or see 'Port Help' to get it manually"
+  port_warning_detected:
+    zh-CN: "⚠ 检测到临时端口 %{count} 个 (%{start}-%{end}), 并发超过 %{max} 可能连接失败"
+    en: "⚠ Detected %{count} ephemeral ports (%{start}-%{end}); concurrency above %{max} may cause connection failures"
+  port_help_link:
+    zh-CN: 端口说明
+    en: Port Help
+  re_detect_link:
+    zh-CN: 重新检测
+    en: Re-detect
+  stress_mode_label:
+    zh-CN: 压测模式
+    en: Stress Test Mode
+  mode_throughput:
+    zh-CN: "吞吐(只发不等)"
+    en: "Throughput (send only)"
+  mode_pingpong:
+    zh-CN: "往返(测RTT)"
+    en: "Ping-Pong (RTT)"
+  connection_mode_label:
+    zh-CN: 连接模式
+    en: Connection Mode
+  mode_long_connection:
+    zh-CN: 长连接
+    en: Long Connection
+  mode_short_connection:
+    zh-CN: 短连接
+    en: Short Connection
+  insert_variable:
+    zh-CN: 插入变量
+    en: Insert Variable
+  mode_text:
+    zh-CN: 文本
+    en: Text
+  more_settings_collapse:
+    zh-CN: "▼ 更多设置"
+    en: "▼ More Settings"
+  more_settings_expand:
+    zh-CN: "▶ 更多设置"
+    en: "▶ More Settings"
+  qps_limit_label:
+    zh-CN: "全局QPS限制(留空=不限)"
+    en: "Global QPS Limit (empty = unlimited)"
+  timeout_label:
+    zh-CN: "超时(ms)"
+    en: "Timeout (ms)"
+  stop_condition_label:
+    zh-CN: 停止条件
+    en: Stop Condition
+  stop_duration:
+    zh-CN: 限时
+    en: Duration
+  stop_count:
+    zh-CN: 定量
+    en: Count
+  stop_either:
+    zh-CN: 先到先停
+    en: Whichever First
+  stop_manual:
+    zh-CN: 手动
+    en: Manual
+  stop_duration_secs:
+    zh-CN: "限时(秒)"
+    en: "Duration (s)"
+  stop_count_total:
+    zh-CN: "定量(总发包数)"
+    en: "Count (total packets)"
+  ramp_up_label:
+    zh-CN: "阶梯 ramp-up"
+    en: "Staged ramp-up"
+  ramp_up_duration:
+    zh-CN: "爬升时长(秒)"
+    en: "Ramp-up Duration (s)"
+  auto_reconnect_label:
+    zh-CN: 断线自动重连
+    en: Auto Reconnect on Disconnect
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  start_stress:
+    zh-CN: 开始压测
+    en: Start Stress Test
+
+decoder_selection:
+  title:
+    zh-CN: 选择解码器
+    en: Select Decoder
+  decoder_type_label:
+    zh-CN: 解码器类型
+    en: Decoder Type
+  kind_bytes:
+    zh-CN: 原始数据
+    en: Raw Data
+  kind_line_based:
+    zh-CN: 换行符
+    en: Newline
+  kind_length_delimited:
+    zh-CN: 长度前缀
+    en: Length Prefix
+  kind_fixed_length:
+    zh-CN: 固定长度
+    en: Fixed Length
+  kind_json:
+    zh-CN: JSON
+    en: JSON
+  desc_bytes:
+    zh-CN: "不进行任何解码处理, 收到的数据原样输出"
+    en: "No decoding; received data is output as-is"
+  desc_line_based:
+    zh-CN: '按换行符(\n 或 \r\n)分割消息'
+    en: 'Split messages by newline (\n or \r\n)'
+  desc_length_delimited:
+    zh-CN: "报文头部含长度字段, 按其值读取对应字节作为一条消息"
+    en: "The packet header contains a length field; bytes read according to its value form one message"
+  desc_fixed_length:
+    zh-CN: "每 N 字节切分为一帧, 无长度字段"
+    en: "Splits a frame every N bytes; no length field"
+  desc_json:
+    zh-CN: "按 JSON 边界解析消息"
+    en: "Parses messages by JSON boundaries"
+  length_prefix_params:
+    zh-CN: 长度前缀参数
+    en: Length Prefix Parameters
+  frame_structure:
+    zh-CN: "帧结构: [跳过 offset 字节][长度字段 len 字节][载荷 (长度值+调整值) 字节]"
+    en: "Frame structure: [skip offset bytes][length field of len bytes][payload of (length value + adjustment) bytes]"
+  length_field_offset:
+    zh-CN: 长度字段偏移量
+    en: Length Field Offset
+  length_field_offset_hint:
+    zh-CN: "长度字段前跳过的字节数(如魔术位)"
+    en: "Bytes skipped before the length field (e.g. magic bytes)"
+  length_field_length:
+    zh-CN: 长度字段长度
+    en: Length Field Length
+  length_field_length_hint:
+    zh-CN: "长度字段占用字节数(1/2/4/8)"
+    en: "Bytes occupied by the length field (1/2/4/8)"
+  length_adjustment:
+    zh-CN: 长度调整值
+    en: Length Adjustment
+  length_adjustment_hint:
+    zh-CN: "长度值与实际载荷的差值, 可为负数"
+    en: "Difference between the length value and the actual payload; can be negative"
+  max_frame_length:
+    zh-CN: 最大帧长度
+    en: Max Frame Length
+  max_frame_length_hint:
+    zh-CN: "单帧最大字节数, 超出则丢弃"
+    en: "Maximum bytes per frame; excess data is discarded"
+  length_includes_self:
+    zh-CN: 长度值包含长度字段本身
+    en: Length Value Includes the Length Field Itself
+  length_includes_self_hint:
+    zh-CN: "勾选后长度值表示总帧长, 不勾选表示载荷长度"
+    en: "When checked, the length value is the total frame length; unchecked, it is the payload length"
+  byte_order:
+    zh-CN: 字节序
+    en: Byte Order
+  byte_order_big:
+    zh-CN: 大端序
+    en: Big Endian
+  byte_order_little:
+    zh-CN: 小端序
+    en: Little Endian
+  keep_full_frame:
+    zh-CN: 保留完整帧
+    en: Keep Full Frame
+  keep_full_frame_hint:
+    zh-CN: "勾选后输出包含偏移与长度字段的完整帧, 不勾选仅输出载荷"
+    en: "When checked, output includes the full frame with offset and length field; unchecked, only the payload"
+  fixed_length_params:
+    zh-CN: 固定长度参数
+    en: Fixed Length Parameters
+  frame_length:
+    zh-CN: "帧长度(字节)"
+    en: "Frame Length (bytes)"
+  fixed_length_hint:
+    zh-CN: "每凑够指定字节数切分出一帧, 不够则等待后续数据"
+    en: "A frame is split out once the specified number of bytes is accumulated; otherwise it waits for more data"
+  fixed_length_flush_hint:
+    zh-CN: "断开连接时, 缓冲区内不足一帧的剩余数据会被强制输出"
+    en: "On disconnect, leftover buffer data shorter than one frame is flushed as output"
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  confirm:
+    zh-CN: 确定
+    en: OK
+
+port_limit_help:
+  title:
+    zh-CN: 临时端口与压测并发上限说明
+    en: "Ephemeral Ports and Stress Test Concurrency Limits"
+  close:
+    zh-CN: 关闭
+    en: Close
+  reading_port_config:
+    zh-CN: "正在读取系统端口配置…"
+    en: "Reading system port configuration…"
+  port_range_summary:
+    zh-CN: "%{start}-%{end} (共约 %{count} 个端口)"
+    en: "%{start}-%{end} (about %{count} ports in total)"
+  detect_failed:
+    zh-CN: "获取失败, 请点击「重新检测」或使用下方命令手动查看"
+    en: "Detection failed. Click 'Re-detect' or use the command below to check manually"
+  section_current_range:
+    zh-CN: 当前临时端口范围
+    en: "Current Ephemeral Port Range"
+  re_detect:
+    zh-CN: 重新检测
+    en: Re-detect
+  section_time_wait:
+    zh-CN: "TCP 短连接与 TIME_WAIT"
+    en: "TCP Short Connections and TIME_WAIT"
+  time_wait_desc_1:
+    zh-CN: "TCP 连接由四元组 (源IP, 源端口, 目标IP, 目标端口) 唯一标识。压测同一目标时，源IP / 目标IP / 目标端口三者固定，只有源端口可变。短连接关闭后，该四元组进入 TIME_WAIT 状态 (60-120秒)，期间此端口不能被同一程序用于连接同一目标。"
+    en: "A TCP connection is uniquely identified by the 4-tuple (source IP, source port, target IP, target port). When stress testing the same target, the source IP, target IP, and target port are fixed, leaving only the source port variable. After a short connection closes, the 4-tuple enters the TIME_WAIT state (60-120 seconds), during which this port cannot be used by the same program to connect to the same target."
+  time_wait_desc_2:
+    zh-CN: "稳态下短连接占用的端口数 ≈ 并发数 × (TIME_WAIT时长 / 发包间隔)。发包间隔越短，端口消耗放大越严重，建议改用长连接模式或降低并发。"
+    en: "In steady state, ports used by short connections ≈ concurrency × (TIME_WAIT duration / send interval). The shorter the send interval, the more severe the port consumption amplification. Consider switching to long connection mode or lowering concurrency."
+  udp_desc:
+    zh-CN: "UDP 不走 TCP 连接，无 TIME_WAIT 问题，端口消耗仅与并发数相关。"
+    en: "UDP does not establish TCP connections and has no TIME_WAIT issue; port consumption depends only on concurrency."
+  section_over_limit:
+    zh-CN: 超过端口上限会怎样
+    en: "What Happens When the Port Limit Is Exceeded"
+  over_limit_desc:
+    zh-CN: "并发超过临时端口范围时，新建连接会报 AddrNotAvailable (Linux/macOS) 或 WSAEADDRINUSE (Windows) 错误，压测的连接失败率会骤升。NetAssistant 会在压测结束后的 stress_failure_*.log 中给出诊断建议。"
+    en: "When concurrency exceeds the ephemeral port range, new connections fail with AddrNotAvailable (Linux/macOS) or WSAEADDRINUSE (Windows), and the connection failure rate of the stress test spikes. NetAssistant provides diagnostic suggestions in stress_failure_*.log after the stress test ends."
+  note_permission:
+    zh-CN: "注: 应用自身的端口范围检测全程只需普通用户权限，不涉及提权。调优命令需用户自行以管理员身份执行。"
+    en: "Note: The app's own port range detection only requires normal user privileges throughout, with no elevation involved. Tuning commands must be executed by the user with administrator privileges."
+  section_view_range:
+    zh-CN: 查看当前端口范围
+    en: "View Current Port Range"
+  section_tune_range:
+    zh-CN: 调大端口范围
+    en: "Increase Port Range"
+  perm_normal_user_exec:
+    zh-CN: 普通用户可执行
+    en: "Executable by a normal user"
+  perm_normal_user_read:
+    zh-CN: 普通用户可读
+    en: "Readable by a normal user"
+  platform_not_supported:
+    zh-CN: 当前平台不支持自动检测
+    en: "Automatic detection is not supported on this platform"
+  tune_windows_tcp:
+    zh-CN: "需管理员 CMD; 将 TCP 临时端口扩展为 10000-65535"
+    en: "Requires admin CMD; extends TCP ephemeral ports to 10000-65535"
+  tune_windows_ipv6:
+    zh-CN: "需管理员 CMD; IPv6 也一并调大 (推荐)"
+    en: "Requires admin CMD; also extends IPv6 (recommended)"
+  tune_linux_sysctl:
+    zh-CN: "需 sudo; 将临时端口扩展为 10000-65535"
+    en: "Requires sudo; extends ephemeral ports to 10000-65535"
+  tune_linux_conf:
+    zh-CN: "需 sudo; 写入配置文件, 重启后生效"
+    en: "Requires sudo; writes to a config file, takes effect after reboot"
+  tune_macos:
+    zh-CN: "需 sudo; 将起始端口从 49152 降到 32768, 扩展约 16384 个端口"
+    en: "Requires sudo; lowers the start port from 49152 to 32768, adding about 16384 ports"

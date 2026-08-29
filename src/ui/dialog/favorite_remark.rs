@@ -3,6 +3,7 @@ use gpui_component::{
     ActiveTheme, StyledExt,
     input::{Input, InputState},
 };
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::message::FavoriteItem;
@@ -78,7 +79,7 @@ impl FavoriteRemarkDialog {
                             .font_semibold()
                             .mb_3()
                             .text_color(theme.foreground)
-                            .child("添加收藏备注"),
+                            .child(t!("favorite_remark.title").to_string()),
                     )
                     .child(div().mb_3().child(Input::new(&remark_input)))
                     .child(
@@ -95,7 +96,7 @@ impl FavoriteRemarkDialog {
                                     .text_sm()
                                     .text_color(theme.muted_foreground)
                                     .hover(|s| s.bg(theme.secondary))
-                                    .child("取消")
+                                    .child(t!("favorite_remark.cancel").to_string())
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|app, _event, _window, cx| {
@@ -114,7 +115,7 @@ impl FavoriteRemarkDialog {
                                     .bg(theme.primary)
                                     .text_color(theme.primary_foreground)
                                     .hover(|s| s.bg(theme.primary_hover))
-                                    .child("确定")
+                                    .child(t!("favorite_remark.confirm").to_string())
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(move |app, _event, _window, cx| {

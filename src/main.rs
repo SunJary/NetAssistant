@@ -30,6 +30,12 @@ use app::NetAssistantApp;
 use theme_event_handler::{ThemeEventHandler, apply_theme};
 use theme_manager::ThemeManager;
 
+// 初始化多语言：编译期加载 locales/ 目录下所有 YAML，缺失 key 时回退到中文
+rust_i18n::i18n!("locales", fallback = "zh-CN");
+
+/// 默认语言（未做过语言选择时使用中文，与历史版本行为一致）
+pub const DEFAULT_LOCALE: &str = "zh-CN";
+
 fn main() {
     // 初始化日志
     // - debug 构建: DEBUG 级别（cosmic_text 过滤到 Info 避免字体回退噪音）
@@ -121,6 +127,16 @@ fn run_app() {
         let mut theme_manager = ThemeManager::new();
         theme_manager.init(cx);
         info!("=== 主题管理器初始化完成 ===");
+
+        // 初始化语言：从配置读取上次选择，未设置过则使用默认中文
+        // 同时设置组件库内置文案（对话框按钮、日历等）的语言
+        let locale = ConfigStorage::new()
+            .ok()
+            .and_then(|storage| storage.load_language())
+            .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
+        rust_i18n::set_locale(&locale);
+        gpui_component::set_locale(&locale);
+        info!("=== 多语言初始化完成，当前语言: {} ===", locale);
 
         // 加载窗口配置
         let window_bounds = match ConfigStorage::new() {

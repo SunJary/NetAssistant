@@ -1,0 +1,37 @@
+# 主界面（app.rs）相关文案
+_version: 2
+
+app_ui:
+  auto_reply_placeholder:
+    zh-CN: 输入自动回复内容...
+    en: Enter auto-reply content...
+  send_not_connected:
+    zh-CN: 连接未建立
+    en: Connection not established
+  send_failed:
+    zh-CN: 发送消息失败
+    en: Failed to send message
+  send_client_write_unavailable:
+    zh-CN: 客户端写入发送器不可用
+    en: Client write sender unavailable
+  invalid_address_format:
+    zh-CN: "无效的地址格式: %{addr}"
+    en: "Invalid address format: %{addr}"
+  add_client_failed:
+    zh-CN: "添加客户端失败: %{error}"
+    en: "Failed to add client: %{error}"
+  filter_text:
+    zh-CN: 纯文本文件
+    en: Text Files
+  filter_json:
+    zh-CN: JSON 文件
+    en: JSON Files
+  filter_csv:
+    zh-CN: CSV 文件
+    en: CSV Files
+  filter_log:
+    zh-CN: 日志文件
+    en: Log Files
+  filter_all:
+    zh-CN: 所有文件
+    en: All Files

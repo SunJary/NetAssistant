@@ -3,6 +3,8 @@ use gpui::*;
 use gpui_component::ActiveTheme as _;
 use gpui_component::IconName;
 use gpui_component::StyledExt;
+use rust_i18n::t;
+
 use crate::app::NetAssistantApp;
 use crate::ui::connection_tab::ConnectionTab;
 
@@ -230,7 +232,7 @@ impl<'a> TabContainer<'a> {
                         .text_sm()
                         // TODO: 等待主题增加 disabled.foreground 键后迁移
                         .text_color(gpui::rgb(0x9ca3af))
-                        .child("请先创建连接"),
+                        .child(t!("tab_container.no_connection").to_string()),
                 ),
             )
         }

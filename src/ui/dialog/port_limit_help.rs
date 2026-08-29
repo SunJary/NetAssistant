@@ -6,12 +6,16 @@
 // 布局复用 stress_config.rs 的两层滚动结构:
 //   外层 flex_1() + overflow_hidden(), 内层 size_full() + overflow_y_scrollbar()
 
+use std::borrow::Cow;
+
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::clipboard::Clipboard;
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
+
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::ui::dialog::stress_config::StressConfigDialogState;
@@ -64,7 +68,7 @@ pub fn render_port_limit_help_dialog(
                                 .text_lg()
                                 .font_semibold()
                                 .text_color(theme.foreground)
-                                .child("临时端口与压测并发上限说明"),
+                                .child(t!("port_limit_help.title").to_string()),
                         ),
                 )
                 // 滚动内容区 (两层结构, 避免 flex 高度分配冲突)
@@ -101,7 +105,7 @@ pub fn render_port_limit_help_dialog(
                                         .text_sm()
                                         .text_color(theme.primary_foreground)
                                         .text_center()
-                                        .child("关闭"),
+                                        .child(t!("port_limit_help.close").to_string()),
                                 )
                                 .on_mouse_down(
                                     MouseButton::Left,
@@ -128,11 +132,17 @@ fn render_help_content(
     // 端口范围描述: 检测成功显示真实值; 检测中显示"读取中…"; 未检测/失败显示"获取失败"
     // 不再回退 fallback_default 编造数字, 失败时引导用户用下方命令或重新检测
     let range_desc = if app.port_range_detecting {
-        "正在读取系统端口配置…".to_string()
+        t!("port_limit_help.reading_port_config").to_string()
     } else {
         match &app.detected_port_range {
-            Some(r) => format!("{}-{} (共约 {} 个端口)", r.start, r.end(), r.count),
-            None => "获取失败, 请点击「重新检测」或使用下方命令手动查看".to_string(),
+            Some(r) => t!(
+                "port_limit_help.port_range_summary",
+                start = r.start,
+                end = r.end(),
+                count = r.count
+            )
+            .to_string(),
+            None => t!("port_limit_help.detect_failed").to_string(),
         }
     };
 
@@ -141,7 +151,7 @@ fn render_help_content(
         .flex_col()
         .gap_4()
         // ===== 通用: 当前端口范围 (检测结果或默认值) =====
-        .child(section_title("当前临时端口范围"))
+        .child(section_title(&t!("port_limit_help.section_current_range")))
         .child(
             div()
                 .flex()
@@ -150,6 +160,8 @@ fn render_help_content(
                 .gap_2()
                 .child(
                     div()
+                        .flex_1()
+                        .min_w_0()
                         .text_sm()
                         .text_color(theme.foreground)
                         .child(range_desc),
@@ -161,7 +173,7 @@ fn render_help_content(
                         .text_color(theme.primary)
                         .cursor_pointer()
                         .hover(|d| d.underline())
-                        .child("重新检测")
+                        .child(t!("port_limit_help.re_detect").to_string())
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
@@ -175,40 +187,40 @@ fn render_help_content(
         // ===== 平台相关: 查看命令 =====
         .child(render_platform_view_section(theme))
         // ===== 通用: TIME_WAIT 机制说明 =====
-        .child(section_title("TCP 短连接与 TIME_WAIT"))
+        .child(section_title(&t!("port_limit_help.section_time_wait")))
         .child(
             div()
                 .text_sm()
                 .text_color(theme.foreground)
-                .child("TCP 连接由四元组 (源IP, 源端口, 目标IP, 目标端口) 唯一标识。压测同一目标时，源IP / 目标IP / 目标端口三者固定，只有源端口可变。短连接关闭后，该四元组进入 TIME_WAIT 状态 (60-120秒)，期间此端口不能被同一程序用于连接同一目标。")
+                .child(t!("port_limit_help.time_wait_desc_1").to_string())
         )
         .child(
             div()
                 .text_sm()
                 .text_color(theme.foreground)
-                .child("稳态下短连接占用的端口数 ≈ 并发数 × (TIME_WAIT时长 / 发包间隔)。发包间隔越短，端口消耗放大越严重，建议改用长连接模式或降低并发。")
+                .child(t!("port_limit_help.time_wait_desc_2").to_string())
         )
         .child(
             div()
                 .text_sm()
                 .text_color(theme.foreground)
-                .child("UDP 不走 TCP 连接，无 TIME_WAIT 问题，端口消耗仅与并发数相关。")
+                .child(t!("port_limit_help.udp_desc").to_string())
         )
         // ===== 平台相关: 调优命令 =====
         .child(render_platform_tune_section(theme))
         // ===== 通用: 应用兜底机制 =====
-        .child(section_title("超过端口上限会怎样"))
+        .child(section_title(&t!("port_limit_help.section_over_limit")))
         .child(
             div()
                 .text_sm()
                 .text_color(theme.foreground)
-                .child("并发超过临时端口范围时，新建连接会报 AddrNotAvailable (Linux/macOS) 或 WSAEADDRINUSE (Windows) 错误，压测的连接失败率会骤升。NetAssistant 会在压测结束后的 stress_failure_*.log 中给出诊断建议。"),
+                .child(t!("port_limit_help.over_limit_desc").to_string()),
         )
         .child(
             div()
                 .text_sm()
                 .text_color(theme.muted_foreground)
-                .child("注: 应用自身的端口范围检测全程只需普通用户权限，不涉及提权。调优命令需用户自行以管理员身份执行。"),
+                .child(t!("port_limit_help.note_permission").to_string()),
         )
 }
 
@@ -220,8 +232,8 @@ fn render_platform_view_section(theme: &Theme) -> Div {
         .flex()
         .flex_col()
         .gap_2()
-        .child(section_title("查看当前端口范围"))
-        .child(render_command_line(cmd, note, theme, "view-port-range"))
+        .child(section_title(&t!("port_limit_help.section_view_range")))
+        .child(render_command_line(cmd, &note, theme, "view-port-range"))
 }
 
 /// 平台相关: 调优命令
@@ -229,7 +241,7 @@ fn render_platform_tune_section(theme: &Theme) -> Div {
     let cmds = platform_tune_commands();
 
     let mut container = div().flex().flex_col().gap_2();
-    container = container.child(section_title("调大端口范围"));
+    container = container.child(section_title(&t!("port_limit_help.section_tune_range")));
 
     for (i, (cmd, note)) in cmds.iter().enumerate() {
         container = container.child(render_command_line(
@@ -257,6 +269,7 @@ fn render_command_line(cmd: &str, note: &str, theme: &Theme, id: &str) -> Div {
                 .child(
                     div()
                         .flex_1()
+                        .min_w_0()
                         .px_3()
                         .py_2()
                         .bg(theme.border)
@@ -297,40 +310,49 @@ fn section_title(text: &str) -> Div {
 }
 
 /// 返回当前平台的查看命令 (命令, 权限/说明)
-fn platform_view_command() -> (&'static str, &'static str) {
+fn platform_view_command() -> (&'static str, Cow<'static, str>) {
     #[cfg(target_os = "windows")]
     {
-        ("netsh int ipv4 show dynamicport tcp", "普通用户可执行")
+        (
+            "netsh int ipv4 show dynamicport tcp",
+            t!("port_limit_help.perm_normal_user_exec"),
+        )
     }
     #[cfg(target_os = "linux")]
     {
-        ("cat /proc/sys/net/ipv4/ip_local_port_range", "普通用户可读")
+        (
+            "cat /proc/sys/net/ipv4/ip_local_port_range",
+            t!("port_limit_help.perm_normal_user_read"),
+        )
     }
     #[cfg(target_os = "macos")]
     {
         (
             "sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last",
-            "普通用户可执行",
+            t!("port_limit_help.perm_normal_user_exec"),
         )
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
-        ("", "当前平台不支持自动检测")
+        (
+            "",
+            t!("port_limit_help.platform_not_supported"),
+        )
     }
 }
 
 /// 返回当前平台的调优命令列表 [(命令, 权限/说明), ...]
-fn platform_tune_commands() -> Vec<(&'static str, &'static str)> {
+fn platform_tune_commands() -> Vec<(&'static str, Cow<'static, str>)> {
     #[cfg(target_os = "windows")]
     {
         vec![
             (
                 "netsh int ipv4 set dynamicport tcp start=10000 num=55535",
-                "需管理员 CMD; 将 TCP 临时端口扩展为 10000-65535",
+                t!("port_limit_help.tune_windows_tcp"),
             ),
             (
                 "netsh int ipv6 set dynamicport tcp start=10000 num=55535",
-                "需管理员 CMD; IPv6 也一并调大 (推荐)",
+                t!("port_limit_help.tune_windows_ipv6"),
             ),
         ]
     }
@@ -339,11 +361,11 @@ fn platform_tune_commands() -> Vec<(&'static str, &'static str)> {
         vec![
             (
                 "sudo sysctl -w net.ipv4.ip_local_port_range=\"10000 65535\"",
-                "需 sudo; 将临时端口扩展为 10000-65535",
+                t!("port_limit_help.tune_linux_sysctl"),
             ),
             (
                 "echo 'net.ipv4.ip_local_port_range = 10000 65535' | sudo tee -a /etc/sysctl.d/99-port-range.conf",
-                "需 sudo; 写入配置文件, 重启后生效",
+                t!("port_limit_help.tune_linux_conf"),
             ),
         ]
     }
@@ -352,7 +374,7 @@ fn platform_tune_commands() -> Vec<(&'static str, &'static str)> {
         // macOS 默认 49152-65535, 调优空间有限, 仅在必要时调整
         vec![(
             "sudo sysctl -w net.inet.ip.portrange.first=32768",
-            "需 sudo; 将起始端口从 49152 降到 32768, 扩展约 16384 个端口",
+            t!("port_limit_help.tune_macos"),
         )]
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]

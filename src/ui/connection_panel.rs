@@ -5,6 +5,8 @@ use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::{Icon, IconName};
 
+use rust_i18n::t;
+
 use crate::app::NetAssistantApp;
 use crate::config::connection::ConnectionConfig;
 
@@ -80,7 +82,7 @@ impl<'a> ConnectionPanel<'a> {
                     cx,
                     "client-connections",
                     "client-connections-content",
-                    "客户端连接",
+                    t!("connection_panel.client").to_string(),
                     self.app.client_expanded,
                     client_info,
                     "client-new-button",
@@ -94,7 +96,7 @@ impl<'a> ConnectionPanel<'a> {
                     cx,
                     "server-connections",
                     "server-connections-content",
-                    "服务端连接",
+                    t!("connection_panel.server").to_string(),
                     self.app.server_expanded,
                     server_info,
                     "server-new-button",
@@ -110,7 +112,7 @@ impl<'a> ConnectionPanel<'a> {
         cx: &mut Context<NetAssistantApp>,
         id: &'static str,
         content_id: &'static str,
-        title: &'static str,
+        title: String,
         is_expanded: bool,
         items: Vec<(String, String, u16, String)>,
         new_button_id: &'static str,

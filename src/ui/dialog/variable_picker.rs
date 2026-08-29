@@ -8,53 +8,58 @@
 // - anchored 依据按钮的窗口坐标定位, 并自动吸附窗口边缘防止越界
 // - on_mouse_down_out 在面板外点击时关闭
 
+use std::borrow::Cow;
+
 use gpui::*;
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::Theme;
 use gpui_component::StyledExt as _;
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 
 /// 变量定义: 名称、简短说明、点击后插入的文本
 struct VariableDef {
     name: &'static str,
-    description: &'static str,
+    description: Cow<'static, str>,
     insert_text: &'static str,
 }
 
 /// 支持的变量列表(顺序即展示顺序)
-const VARIABLES: &[VariableDef] = &[
-    VariableDef {
-        name: "${seq}",
-        description: "全局递增序号, 所有 worker 共享",
-        insert_text: "${seq}",
-    },
-    VariableDef {
-        name: "${worker_id}",
-        description: "当前工作线程编号",
-        insert_text: "${worker_id}",
-    },
-    VariableDef {
-        name: "${counter}",
-        description: "线程本地计数器, 每包 +1",
-        insert_text: "${counter}",
-    },
-    VariableDef {
-        name: "${timestamp}",
-        description: "当前毫秒时间戳",
-        insert_text: "${timestamp}",
-    },
-    VariableDef {
-        name: "${uuid}",
-        description: "随机 UUID v4",
-        insert_text: "${uuid}",
-    },
-    VariableDef {
-        name: "${random:min:max}",
-        description: "区间随机整数, 如 ${random:1:100}",
-        insert_text: "${random:1:100}",
-    },
-];
+fn variables() -> Vec<VariableDef> {
+    vec![
+        VariableDef {
+            name: "${seq}",
+            description: t!("variable_picker.desc_seq"),
+            insert_text: "${seq}",
+        },
+        VariableDef {
+            name: "${worker_id}",
+            description: t!("variable_picker.desc_worker_id"),
+            insert_text: "${worker_id}",
+        },
+        VariableDef {
+            name: "${counter}",
+            description: t!("variable_picker.desc_counter"),
+            insert_text: "${counter}",
+        },
+        VariableDef {
+            name: "${timestamp}",
+            description: t!("variable_picker.desc_timestamp"),
+            insert_text: "${timestamp}",
+        },
+        VariableDef {
+            name: "${uuid}",
+            description: t!("variable_picker.desc_uuid"),
+            insert_text: "${uuid}",
+        },
+        VariableDef {
+            name: "${random:min:max}",
+            description: t!("variable_picker.desc_random"),
+            insert_text: "${random:1:100}",
+        },
+    ]
+}
 
 /// 渲染「插入变量」浮层
 ///
@@ -104,7 +109,7 @@ pub fn render_variable_picker(
                         .text_xs()
                         .font_semibold()
                         .text_color(theme.foreground)
-                        .child("插入变量"),
+                        .child(t!("variable_picker.title").to_string()),
                 )
                 // 变量列表 (两层结构: 外层分配剩余高度, 内层滚动)
                 .child(
@@ -115,7 +120,7 @@ pub fn render_variable_picker(
                             div()
                                 .size_full()
                                 .overflow_y_scrollbar()
-                                .children(VARIABLES.iter().map(|var_def| {
+                                .children(variables().iter().map(|var_def| {
                                     render_variable_row(var_def, theme, cx)
                                 })),
                         ),
@@ -129,7 +134,7 @@ pub fn render_variable_picker(
                         .border_color(theme.border)
                         .text_xs()
                         .text_color(theme.muted_foreground)
-                        .child("提示: 点击输入框定位光标, 变量会插入到光标处; Hex 模式下数值变量自动转为十六进制"),
+                        .child(t!("variable_picker.hint").to_string()),
                 ),
         );
 

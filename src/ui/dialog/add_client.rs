@@ -1,9 +1,12 @@
+use std::borrow::Cow;
+
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
     ActiveTheme, StyledExt,
     input::{Input, InputState},
 };
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 
@@ -18,15 +21,15 @@ impl AddClientDialog {
     }
 
     /// 验证地址格式：必须是 IP:端口
-    fn validate_address(addr: &str) -> Result<(), &'static str> {
+    fn validate_address(addr: &str) -> Result<(), Cow<'static, str>> {
         if addr.trim().is_empty() {
-            return Err("地址不能为空");
+            return Err(t!("add_client.address_empty"));
         }
         if !addr.contains(':') {
-            return Err("格式错误，需要 IP:端口（如 192.168.1.100:8080）");
+            return Err(t!("add_client.invalid_format"));
         }
         if addr.parse::<std::net::SocketAddr>().is_err() {
-            return Err("无效的地址格式，需要 IP:端口（如 192.168.1.100:8080）");
+            return Err(t!("add_client.invalid_address_format"));
         }
         Ok(())
     }
@@ -87,14 +90,14 @@ impl AddClientDialog {
                             .font_semibold()
                             .mb_3()
                             .text_color(theme.foreground)
-                            .child("添加客户端"),
+                            .child(t!("add_client.title").to_string()),
                     )
                     .child(
                         div()
                             .text_xs()
                             .mb_2()
                             .text_color(theme.muted_foreground)
-                            .child("输入客户端地址，如 192.168.1.100:8080"),
+                            .child(t!("add_client.address_hint").to_string()),
                     )
                     .child(div().mb_3().child(Input::new(&input)))
                     // 验证错误提示
@@ -115,7 +118,7 @@ impl AddClientDialog {
                                     .text_sm()
                                     .text_color(theme.muted_foreground)
                                     .hover(|s| s.bg(theme.secondary))
-                                    .child("取消")
+                                    .child(t!("add_client.cancel").to_string())
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|app, _event, _window, cx| {
@@ -135,7 +138,7 @@ impl AddClientDialog {
                                     .bg(theme.primary)
                                     .text_color(theme.primary_foreground)
                                     .hover(|s| s.bg(theme.primary_hover))
-                                    .child("确定")
+                                    .child(t!("add_client.confirm").to_string())
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(move |app, _event, _window, cx| {

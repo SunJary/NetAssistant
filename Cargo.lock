@@ -3911,6 +3911,7 @@ dependencies = [
  "reqwest",
  "rfd",
  "rust-embed",
+ "rust-i18n",
  "serde",
  "serde_json",
  "simple_logger",

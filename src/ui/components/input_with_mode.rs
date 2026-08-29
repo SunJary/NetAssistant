@@ -4,6 +4,7 @@ use crate::message::{MessageDisplayMode, format_json_text};
 use crate::utils::hex::validate_hex_input;
 use gpui::prelude::*;
 use gpui::*;
+use rust_i18n::t;
 use gpui_component::{
     Icon, StyledExt, Theme,
     input::{Input, InputState},
@@ -79,7 +80,7 @@ impl InputWithMode {
                             .cursor_pointer()
                             .child(Icon::new(CustomIconName::Braces).size(px(14.0)))
                             .tooltip(|window, cx| {
-                                Tooltip::new("JSON 美化").build(window, cx)
+                                Tooltip::new(t!("input_mode.json_pretty").to_string()).build(window, cx)
                             })
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -103,7 +104,7 @@ impl InputWithMode {
                             .cursor_pointer()
                             .child(Icon::new(CustomIconName::Minimize2).size(px(14.0)))
                             .tooltip(|window, cx| {
-                                Tooltip::new("JSON 压缩").build(window, cx)
+                                Tooltip::new(t!("input_mode.json_minify").to_string()).build(window, cx)
                             })
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -128,7 +129,7 @@ impl InputWithMode {
                     .text_xs()
                     .font_medium()
                     .text_color(theme.danger)
-                    .child("十六进制输入格式错误，包含非法字符或长度为奇数"),
+                    .child(t!("input_mode.hex_invalid").to_string()),
             );
         }
 

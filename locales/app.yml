@@ -1,0 +1,89 @@
+# 标题栏（main_window.rs）相关文案
+_version: 2
+
+title_bar:
+  language:
+    zh-CN: 切换语言 / Switch Language
+    en: 切换语言 / Switch Language
+  star_tooltip_hint:
+    zh-CN: 如果本项目对你有帮助，欢迎来 GitHub Star 一下
+    en: If this project helps you, please give it a Star on GitHub
+  star_tooltip_count:
+    zh-CN: 已有 %{count} 位用户 Star，觉得有用的话也来 Star 下吧
+    en: "%{count} users have starred this project — join them!"
+  update_found:
+    zh-CN: 发现新版本 %{version}，点击查看
+    en: "New version %{version} available — click to view"
+  update_found_generic:
+    zh-CN: 发现新版本，点击查看
+    en: New version available — click to view
+
+star_prompt:
+  title:
+    zh-CN: 喜欢 NetAssistant？
+    en: Enjoying NetAssistant?
+  body:
+    zh-CN: 给项目加个 Star 支持一下吧！
+    en: Give the project a Star to support it!
+  action:
+    zh-CN: ⭐ 给个 Star
+    en: ⭐ Give a Star
+  dismiss:
+    zh-CN: 近期不再提示
+    en: Don't show again for now
+
+context_menu:
+  edit:
+    zh-CN: 编辑连接
+    en: Edit Connection
+  delete:
+    zh-CN: 删除连接
+    en: Delete Connection
+
+# 连接状态值（ConnectionStatus Display，标签页左侧信息区）
+connection_status:
+  not_connected:
+    zh-CN: 未连接
+    en: Not Connected
+  disconnected:
+    zh-CN: 已断开
+    en: Disconnected
+  connecting:
+    zh-CN: 连接中
+    en: Connecting
+  connected:
+    zh-CN: 已连接
+    en: Connected
+  listening:
+    zh-CN: 监听中
+    en: Listening
+  error:
+    zh-CN: 错误
+    en: Error
+
+# 解码器类型值（DecoderConfig Display，标签页左侧信息区）
+decoder_config:
+  bytes:
+    zh-CN: 原始数据
+    en: Raw Data
+  line_based:
+    zh-CN: 换行符
+    en: Newline
+  length_delimited:
+    zh-CN: 长度前缀
+    en: Length Prefix
+  fixed_length:
+    zh-CN: 固定长度
+    en: Fixed Length
+
+# 消息显示模式值（MessageDisplayMode::label，消息列表"格式"字段）
+display_mode:
+  normal:
+    zh-CN: 原始
+    en: Raw
+  json_pretty:
+    zh-CN: 美化
+    en: Pretty
+  json_minified:
+    zh-CN: 压缩
+    en: Minified

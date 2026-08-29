@@ -1,0 +1,206 @@
+# 弹窗与压测面板文案 (new_connection.rs / variable_picker.rs / add_client.rs / favorite_remark.rs / favorite_list.rs / stress_panel.rs)
+_version: 2
+
+new_connection:
+  edit_title:
+    zh-CN: 编辑连接
+    en: Edit Connection
+  new_title:
+    zh-CN: 新建连接
+    en: New Connection
+  host_label:
+    zh-CN: 主机地址
+    en: Host
+  host_hint:
+    zh-CN: "IPv4: 127.0.0.1(本地) | 0.0.0.0(全局) | IPv6: ::1(本地) | ::(全局)"
+    en: "IPv4: 127.0.0.1 (local) | 0.0.0.0 (all interfaces) | IPv6: ::1 (local) | :: (all interfaces)"
+  port_label:
+    zh-CN: 端口
+    en: Port
+  protocol_label:
+    zh-CN: 协议
+    en: Protocol
+  more_settings_collapse:
+    zh-CN: "▼ 更多设置"
+    en: "▼ More Settings"
+  more_settings_expand:
+    zh-CN: "▶ 更多设置"
+    en: "▶ More Settings"
+  message_mode_label:
+    zh-CN: 消息模式
+    en: Message Mode
+  mode_text:
+    zh-CN: 文本
+    en: Text
+  mode_hex:
+    zh-CN: 十六进制
+    en: Hexadecimal
+  decoder_label:
+    zh-CN: 解码器
+    en: Decoder
+  decoder_bytes:
+    zh-CN: 原始数据
+    en: Raw Data
+  decoder_line_based:
+    zh-CN: 换行符
+    en: Newline
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  save:
+    zh-CN: 保存
+    en: Save
+  confirm:
+    zh-CN: 确定
+    en: OK
+
+variable_picker:
+  title:
+    zh-CN: 插入变量
+    en: Insert Variable
+  desc_seq:
+    zh-CN: "全局递增序号, 所有 worker 共享"
+    en: "Global incrementing sequence number, shared by all workers"
+  desc_worker_id:
+    zh-CN: 当前工作线程编号
+    en: Current worker thread ID
+  desc_counter:
+    zh-CN: "线程本地计数器, 每包 +1"
+    en: "Thread-local counter, +1 per packet"
+  desc_timestamp:
+    zh-CN: 当前毫秒时间戳
+    en: Current timestamp in milliseconds
+  desc_uuid:
+    zh-CN: 随机 UUID v4
+    en: Random UUID v4
+  desc_random:
+    zh-CN: "区间随机整数, 如 ${random:1:100}"
+    en: "Random integer within a range, e.g. ${random:1:100}"
+  hint:
+    zh-CN: "提示: 点击输入框定位光标, 变量会插入到光标处; Hex 模式下数值变量自动转为十六进制"
+    en: "Tip: Click in the input to place the cursor; variables are inserted at the cursor. In Hex mode, numeric variables are automatically converted to hexadecimal"
+
+add_client:
+  title:
+    zh-CN: 添加客户端
+    en: Add Client
+  address_hint:
+    zh-CN: "输入客户端地址，如 192.168.1.100:8080"
+    en: "Enter the client address, e.g. 192.168.1.100:8080"
+  address_empty:
+    zh-CN: 地址不能为空
+    en: Address cannot be empty
+  invalid_format:
+    zh-CN: "格式错误，需要 IP:端口（如 192.168.1.100:8080）"
+    en: "Invalid format; expected IP:port (e.g. 192.168.1.100:8080)"
+  invalid_address_format:
+    zh-CN: "无效的地址格式，需要 IP:端口（如 192.168.1.100:8080）"
+    en: "Invalid address format; expected IP:port (e.g. 192.168.1.100:8080)"
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  confirm:
+    zh-CN: 确定
+    en: OK
+
+favorite_remark:
+  title:
+    zh-CN: 添加收藏备注
+    en: Add Favorite Remark
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  confirm:
+    zh-CN: 确定
+    en: OK
+
+favorite_list:
+  title:
+    zh-CN: 收藏列表
+    en: Favorites
+  close:
+    zh-CN: 关闭
+    en: Close
+  empty:
+    zh-CN: 暂无收藏
+    en: No favorites yet
+  not_found:
+    zh-CN: 未找到匹配的收藏
+    en: No matching favorites
+
+stress_panel:
+  title:
+    zh-CN: 压测监控
+    en: Stress Test Monitor
+  configure_and_start:
+    zh-CN: 配置并开始
+    en: Configure and Start
+  stop:
+    zh-CN: 停止
+    en: Stop
+  export_csv:
+    zh-CN: 导出CSV
+    en: Export CSV
+  status_running:
+    zh-CN: 运行中
+    en: Running
+  status_finished:
+    zh-CN: 已完成
+    en: Finished
+  status_not_started:
+    zh-CN: 未开始
+    en: Not Started
+  elapsed:
+    zh-CN: "耗时: %{elapsed}"
+    en: "Elapsed: %{elapsed}"
+  current_qps:
+    zh-CN: 当前 QPS
+    en: Current QPS
+  peak_qps:
+    zh-CN: "峰值 %{qps}"
+    en: "Peak %{qps}"
+  total_sent:
+    zh-CN: 总发送
+    en: Total Sent
+  success:
+    zh-CN: 成功
+    en: Success
+  failure:
+    zh-CN: 失败
+    en: Failed
+  active_connections:
+    zh-CN: "活跃(当前/峰值)"
+    en: "Active (current/peak)"
+  latency_title:
+    zh-CN: "延迟 (ms)"
+    en: "Latency (ms)"
+  disconnects:
+    zh-CN: 断连
+    en: Disconnects
+  reconnects:
+    zh-CN: 重连
+    en: Reconnects
+  bytes_sent:
+    zh-CN: 发送字节
+    en: Bytes Sent
+  bytes_received:
+    zh-CN: 接收字节
+    en: Bytes Received
+  failure_breakdown_title:
+    zh-CN: 失败原因分类
+    en: Failure Breakdown
+  connect_failed:
+    zh-CN: 连接失败
+    en: Connection Failed
+  send_failed:
+    zh-CN: 发送失败
+    en: Send Failed
+  recv_timeout:
+    zh-CN: 接收超时
+    en: Receive Timeout
+  peer_closed:
+    zh-CN: 对端关闭
+    en: Peer Closed
+  validate_failed:
+    zh-CN: 校验失败
+    en: Validation Failed

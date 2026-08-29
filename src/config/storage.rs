@@ -34,6 +34,9 @@ pub struct AppConfig {
     /// 压测配置(按 connection_id 索引)
     #[serde(default)]
     pub stress_profiles: HashMap<String, StressTestConfig>,
+    /// 界面语言（如 "zh-CN" / "en"），None 表示用户未选择过
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -50,6 +53,7 @@ impl Default for AppConfig {
             sidebar_collapsed: None,
             favorites: HashMap::new(),
             stress_profiles: HashMap::new(),
+            language: None,
         }
     }
 }
@@ -136,6 +140,19 @@ impl ConfigStorage {
     /// 加载侧边栏折叠状态
     pub fn load_sidebar_collapsed(&self) -> Option<bool> {
         self.config.sidebar_collapsed
+    }
+
+    /// 保存界面语言
+    pub fn save_language(&mut self, language: &str) {
+        self.config.language = Some(language.to_string());
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 加载界面语言
+    pub fn load_language(&self) -> Option<String> {
+        self.config.language.clone()
     }
 
     /// 获取配置目录路径

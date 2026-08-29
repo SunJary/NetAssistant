@@ -4,12 +4,16 @@
 // 顶部 chip 水平排列选择解码器类型, 选中"长度前缀"/"固定长度"时展开配置输入区,
 // 底部双按钮(取消/确定)。
 
+use std::borrow::Cow;
+
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
 use gpui_component::input::{Input, InputState};
+
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{DecoderConfig, LengthDelimitedConfig};
@@ -25,23 +29,23 @@ pub enum DecoderKind {
 }
 
 impl DecoderKind {
-    fn label(self) -> &'static str {
+    fn label(self) -> Cow<'static, str> {
         match self {
-            DecoderKind::Bytes => "原始数据",
-            DecoderKind::LineBased => "换行符",
-            DecoderKind::LengthDelimited => "长度前缀",
-            DecoderKind::FixedLength => "固定长度",
-            DecoderKind::Json => "JSON",
+            DecoderKind::Bytes => t!("decoder_selection.kind_bytes"),
+            DecoderKind::LineBased => t!("decoder_selection.kind_line_based"),
+            DecoderKind::LengthDelimited => t!("decoder_selection.kind_length_delimited"),
+            DecoderKind::FixedLength => t!("decoder_selection.kind_fixed_length"),
+            DecoderKind::Json => t!("decoder_selection.kind_json"),
         }
     }
 
-    fn desc(self) -> &'static str {
+    fn desc(self) -> Cow<'static, str> {
         match self {
-            DecoderKind::Bytes => "不进行任何解码处理, 收到的数据原样输出",
-            DecoderKind::LineBased => "按换行符(\\n 或 \\r\\n)分割消息",
-            DecoderKind::LengthDelimited => "报文头部含长度字段, 按其值读取对应字节作为一条消息",
-            DecoderKind::FixedLength => "每 N 字节切分为一帧, 无长度字段",
-            DecoderKind::Json => "按 JSON 边界解析消息",
+            DecoderKind::Bytes => t!("decoder_selection.desc_bytes"),
+            DecoderKind::LineBased => t!("decoder_selection.desc_line_based"),
+            DecoderKind::LengthDelimited => t!("decoder_selection.desc_length_delimited"),
+            DecoderKind::FixedLength => t!("decoder_selection.desc_fixed_length"),
+            DecoderKind::Json => t!("decoder_selection.desc_json"),
         }
     }
 }
@@ -166,7 +170,7 @@ impl DecoderSelectionDialog {
                             .font_semibold()
                             .mb_4()
                             .text_color(theme.foreground)
-                            .child("选择解码器"),
+                            .child(t!("decoder_selection.title").to_string()),
                     )
                     .child(
                         div()
@@ -184,7 +188,7 @@ impl DecoderSelectionDialog {
                                             .text_sm()
                                             .font_semibold()
                                             .text_color(theme.foreground)
-                                            .child("解码器类型"),
+                                            .child(t!("decoder_selection.decoder_type_label").to_string()),
                                     )
                                     .child(
                                         div()
@@ -227,7 +231,7 @@ impl DecoderSelectionDialog {
                                         div()
                                             .text_xs()
                                             .text_color(theme.muted_foreground)
-                                            .child(state.selected_kind.desc()),
+                                            .child(state.selected_kind.desc().to_string()),
                                     ),
                             )
                             // 长度前缀配置区(条件渲染)
@@ -302,12 +306,12 @@ impl DecoderSelectionDialog {
                     .text_sm()
                     .font_semibold()
                     .text_color(theme.foreground)
-                    .child("长度前缀参数"),
+                    .child(t!("decoder_selection.length_prefix_params").to_string()),
             )
             // 帧结构示意
             .child(
                 div().text_xs().text_color(theme.muted_foreground).child(
-                    "帧结构: [跳过 offset 字节][长度字段 len 字节][载荷 (长度值+调整值) 字节]",
+                    t!("decoder_selection.frame_structure").to_string(),
                 ),
             )
             // 第一行: 长度字段偏移量 + 长度字段长度
@@ -318,6 +322,7 @@ impl DecoderSelectionDialog {
                     .child(
                         div()
                             .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap_1()
@@ -325,19 +330,20 @@ impl DecoderSelectionDialog {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("长度字段偏移量"),
+                                    .child(t!("decoder_selection.length_field_offset").to_string()),
                             )
                             .child(Input::new(&state.length_field_offset_input).cleanable(true))
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("长度字段前跳过的字节数(如魔术位)"),
+                                    .child(t!("decoder_selection.length_field_offset_hint").to_string()),
                             ),
                     )
                     .child(
                         div()
                             .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap_1()
@@ -345,14 +351,14 @@ impl DecoderSelectionDialog {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("长度字段长度"),
+                                    .child(t!("decoder_selection.length_field_length").to_string()),
                             )
                             .child(Input::new(&state.length_field_length_input).cleanable(true))
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("长度字段占用字节数(1/2/4/8)"),
+                                    .child(t!("decoder_selection.length_field_length_hint").to_string()),
                             ),
                     ),
             )
@@ -364,6 +370,7 @@ impl DecoderSelectionDialog {
                     .child(
                         div()
                             .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap_1()
@@ -371,19 +378,20 @@ impl DecoderSelectionDialog {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("长度调整值"),
+                                    .child(t!("decoder_selection.length_adjustment").to_string()),
                             )
                             .child(Input::new(&state.length_adjustment_input).cleanable(true))
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("长度值与实际载荷的差值, 可为负数"),
+                                    .child(t!("decoder_selection.length_adjustment_hint").to_string()),
                             ),
                     )
                     .child(
                         div()
                             .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap_1()
@@ -391,14 +399,14 @@ impl DecoderSelectionDialog {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("最大帧长度"),
+                                    .child(t!("decoder_selection.max_frame_length").to_string()),
                             )
                             .child(Input::new(&state.max_frame_length_input).cleanable(true))
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("单帧最大字节数, 超出则丢弃"),
+                                    .child(t!("decoder_selection.max_frame_length_hint").to_string()),
                             ),
                     ),
             )
@@ -412,6 +420,8 @@ impl DecoderSelectionDialog {
                     .child(render_checkbox(state.length_includes_self, theme))
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap_0p5()
@@ -419,13 +429,13 @@ impl DecoderSelectionDialog {
                                 div()
                                     .text_sm()
                                     .text_color(theme.foreground)
-                                    .child("长度值包含长度字段本身"),
+                                    .child(t!("decoder_selection.length_includes_self").to_string()),
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child("勾选后长度值表示总帧长, 不勾选表示载荷长度"),
+                                    .child(t!("decoder_selection.length_includes_self_hint").to_string()),
                             ),
                     )
                     .on_mouse_down(
@@ -444,7 +454,7 @@ impl DecoderSelectionDialog {
                     .flex()
                     .gap_2()
                     .items_center()
-                    .child(div().text_sm().text_color(theme.foreground).child("字节序"))
+                    .child(div().text_sm().text_color(theme.foreground).child(t!("decoder_selection.byte_order").to_string()))
                     .child(
                         div()
                             .flex()
@@ -462,7 +472,7 @@ impl DecoderSelectionDialog {
                                     .when(state.length_little_endian, |d| {
                                         d.bg(theme.border).text_color(theme.foreground)
                                     })
-                                    .child(div().text_xs().font_medium().child("大端序"))
+                                    .child(div().text_xs().font_medium().child(t!("decoder_selection.byte_order_big").to_string()))
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
@@ -486,7 +496,7 @@ impl DecoderSelectionDialog {
                                     .when(!state.length_little_endian, |d| {
                                         d.bg(theme.border).text_color(theme.foreground)
                                     })
-                                    .child(div().text_xs().font_medium().child("小端序"))
+                                    .child(div().text_xs().font_medium().child(t!("decoder_selection.byte_order_little").to_string()))
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|app: &mut NetAssistantApp, _, _, cx| {
@@ -509,6 +519,8 @@ impl DecoderSelectionDialog {
                     .child(render_checkbox(state.length_keep_full_frame, theme))
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap_0p5()
@@ -516,11 +528,11 @@ impl DecoderSelectionDialog {
                                 div()
                                     .text_sm()
                                     .text_color(theme.foreground)
-                                    .child("保留完整帧"),
+                                    .child(t!("decoder_selection.keep_full_frame").to_string()),
                             )
                             .child(
                                 div().text_xs().text_color(theme.muted_foreground).child(
-                                    "勾选后输出包含偏移与长度字段的完整帧, 不勾选仅输出载荷",
+                                    t!("decoder_selection.keep_full_frame_hint").to_string(),
                                 ),
                             ),
                     )
@@ -552,7 +564,7 @@ impl DecoderSelectionDialog {
                     .text_sm()
                     .font_semibold()
                     .text_color(theme.foreground)
-                    .child("固定长度参数"),
+                    .child(t!("decoder_selection.fixed_length_params").to_string()),
             )
             .child(
                 div()
@@ -563,7 +575,7 @@ impl DecoderSelectionDialog {
                         div()
                             .text_xs()
                             .text_color(theme.muted_foreground)
-                            .child("帧长度(字节)"),
+                            .child(t!("decoder_selection.frame_length").to_string()),
                     )
                     .child(Input::new(&state.fixed_length_input).cleanable(true)),
             )
@@ -571,13 +583,13 @@ impl DecoderSelectionDialog {
                 div()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child("每凑够指定字节数切分出一帧, 不够则等待后续数据"),
+                    .child(t!("decoder_selection.fixed_length_hint").to_string()),
             )
             .child(
                 div()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child("断开连接时, 缓冲区内不足一帧的剩余数据会被强制输出"),
+                    .child(t!("decoder_selection.fixed_length_flush_hint").to_string()),
             )
     }
 
@@ -605,7 +617,7 @@ impl DecoderSelectionDialog {
                             .text_sm()
                             .text_color(theme.foreground)
                             .text_center()
-                            .child("取消"),
+                            .child(t!("decoder_selection.cancel").to_string()),
                     )
                     .on_mouse_down(
                         MouseButton::Left,
@@ -628,7 +640,7 @@ impl DecoderSelectionDialog {
                             .text_sm()
                             .text_color(theme.primary_foreground)
                             .text_center()
-                            .child("确定"),
+                            .child(t!("decoder_selection.confirm").to_string()),
                     )
                     .on_mouse_down(
                         MouseButton::Left,

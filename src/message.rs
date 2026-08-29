@@ -1,4 +1,6 @@
+use rust_i18n::t;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -51,11 +53,11 @@ impl MessageDisplayMode {
     }
 
     /// 显示标签
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> Cow<'static, str> {
         match self {
-            Self::Normal => "原始",
-            Self::JsonPretty => "美化",
-            Self::JsonMinified => "压缩",
+            Self::Normal => t!("display_mode.normal"),
+            Self::JsonPretty => t!("display_mode.json_pretty"),
+            Self::JsonMinified => t!("display_mode.json_minified"),
         }
     }
 }

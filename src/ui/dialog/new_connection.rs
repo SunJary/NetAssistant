@@ -3,6 +3,7 @@ use gpui::*;
 use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::input::Input;
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::DecoderConfig;
@@ -25,9 +26,9 @@ impl<'a> NewConnectionDialog<'a> {
         let is_edit = self.app.editing_connection_id.is_some();
         let is_client = self.app.new_connection_is_client;
         let title = if is_edit {
-            "编辑连接"
+            t!("new_connection.edit_title").to_string()
         } else {
-            "新建连接"
+            t!("new_connection.new_title").to_string()
         };
         let show_advanced = self.app.show_connection_advanced;
 
@@ -70,7 +71,7 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_sm()
                                             .font_semibold()
                                             .text_color(theme.foreground)
-                                            .child("主机地址"),
+                                            .child(t!("new_connection.host_label").to_string()),
                                     )
                                     .child(Input::new(&self.app.host_input).cleanable(true))
                                     .when(!is_client, |this| {
@@ -79,7 +80,7 @@ impl<'a> NewConnectionDialog<'a> {
                                                 .text_xs()
                                                 // TODO: 等待主题增加 disabled.foreground 键后迁移
                                                 .text_color(gpui::rgb(0x9ca3af))
-                                                .child("IPv4: 127.0.0.1(本地) | 0.0.0.0(全局) | IPv6: ::1(本地) | ::(全局)"),
+                                                .child(t!("new_connection.host_hint").to_string()),
                                         )
                                     }),
                             )
@@ -94,7 +95,7 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_sm()
                                             .font_semibold()
                                             .text_color(theme.foreground)
-                                            .child("端口"),
+                                            .child(t!("new_connection.port_label").to_string()),
                                     )
                                     .child(Input::new(&self.app.port_input).cleanable(true)),
                             )
@@ -109,7 +110,7 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_sm()
                                             .font_semibold()
                                             .text_color(theme.foreground)
-                                            .child("协议"),
+                                            .child(t!("new_connection.protocol_label").to_string()),
                                     )
                                     .child(
                                         div()
@@ -132,9 +133,9 @@ impl<'a> NewConnectionDialog<'a> {
                                             .text_color(theme.foreground)
                                             .cursor_pointer()
                                             .child(if show_advanced {
-                                                "▼ 更多设置"
+                                                t!("new_connection.more_settings_collapse").to_string()
                                             } else {
-                                                "▶ 更多设置"
+                                                t!("new_connection.more_settings_expand").to_string()
                                             })
                                             .on_mouse_down(
                                                 MouseButton::Left,
@@ -162,14 +163,14 @@ impl<'a> NewConnectionDialog<'a> {
                                                                 .text_sm()
                                                                 .font_semibold()
                                                                 .text_color(theme.foreground)
-                                                                .child("消息模式"),
+                                                                .child(t!("new_connection.message_mode_label").to_string()),
                                                         )
                                                         .child(
                                                             div()
                                                                 .flex()
                                                                 .gap_2()
-                                                                .child(self.render_mode_chip("text", "文本", cx))
-                                                                .child(self.render_mode_chip("hex", "十六进制", cx)),
+                                                                .child(self.render_mode_chip("text", &t!("new_connection.mode_text"), cx))
+                                                                .child(self.render_mode_chip("hex", &t!("new_connection.mode_hex"), cx)),
                                                         ),
                                                 )
                                                 // 解码器
@@ -183,14 +184,14 @@ impl<'a> NewConnectionDialog<'a> {
                                                                 .text_sm()
                                                                 .font_semibold()
                                                                 .text_color(theme.foreground)
-                                                                .child("解码器"),
+                                                                .child(t!("new_connection.decoder_label").to_string()),
                                                         )
                                                         .child(
                                                             div()
                                                                 .flex()
                                                                 .gap_2()
-                                                                .child(self.render_decoder_chip("原始数据", DecoderConfig::Bytes, cx))
-                                                                .child(self.render_decoder_chip("换行符", DecoderConfig::LineBased, cx))
+                                                                .child(self.render_decoder_chip(&t!("new_connection.decoder_bytes"), DecoderConfig::Bytes, cx))
+                                                                .child(self.render_decoder_chip(&t!("new_connection.decoder_line_based"), DecoderConfig::LineBased, cx))
                                                                 .child(self.render_decoder_chip("JSON", DecoderConfig::Json, cx)),
                                                         ),
                                                 ),
@@ -215,7 +216,7 @@ impl<'a> NewConnectionDialog<'a> {
                                         div()
                                             .text_sm()
                                             .text_color(theme.foreground)
-                                            .child("取消"),
+                                            .child(t!("new_connection.cancel").to_string()),
                                     )
                                     .on_mouse_down(
                                         MouseButton::Left,
@@ -237,7 +238,11 @@ impl<'a> NewConnectionDialog<'a> {
                                         div()
                                             .text_sm()
                                             .text_color(theme.primary_foreground)
-                                            .child(if is_edit { "保存" } else { "确定" }),
+                                            .child(if is_edit {
+                                                t!("new_connection.save").to_string()
+                                            } else {
+                                                t!("new_connection.confirm").to_string()
+                                            }),
                                     )
                                     .on_mouse_down(
                                         MouseButton::Left,

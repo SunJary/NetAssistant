@@ -5,6 +5,7 @@ use gpui_component::{
     input::{Input, InputState},
     scroll::ScrollableElement,
 };
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::message::FavoriteItem;
@@ -92,7 +93,7 @@ impl<'a> FavoriteListPanel<'a> {
                             .text_sm()
                             .font_semibold()
                             .text_color(theme.foreground)
-                            .child("收藏列表")
+                            .child(t!("favorite_list.title").to_string())
                     )
                     .child(
                         div()
@@ -103,7 +104,7 @@ impl<'a> FavoriteListPanel<'a> {
                             .text_xs()
                             .text_color(theme.muted_foreground)
                             .hover(|s| s.bg(theme.secondary))
-                            .child("关闭")
+                            .child(t!("favorite_list.close").to_string())
                             .on_mouse_down(MouseButton::Left, cx.listener(|app, _event, _window, cx| {
                                 app.show_favorite_list = false;
                                 cx.notify();
@@ -144,7 +145,11 @@ impl<'a> FavoriteListPanel<'a> {
                                 .justify_center()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child(if search_keyword.is_empty() { "暂无收藏" } else { "未找到匹配的收藏" })
+                                .child(if search_keyword.is_empty() {
+                                    t!("favorite_list.empty").to_string()
+                                } else {
+                                    t!("favorite_list.not_found").to_string()
+                                })
                         )
                     })
                     .children(favorites.into_iter().map(|item| {

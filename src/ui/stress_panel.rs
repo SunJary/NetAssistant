@@ -8,6 +8,7 @@ use gpui::*;
 use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
+use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::ui::connection_tab::ConnectionTabState;
@@ -98,7 +99,7 @@ impl<'a> StressPanel<'a> {
                     .text_sm()
                     .font_semibold()
                     .text_color(theme.foreground)
-                    .child("压测监控"),
+                    .child(t!("stress_panel.title").to_string()),
             )
             .child(
                 div()
@@ -120,7 +121,7 @@ impl<'a> StressPanel<'a> {
                                     div()
                                         .text_xs()
                                         .text_color(theme.primary_foreground)
-                                        .child("配置并开始"),
+                                        .child(t!("stress_panel.configure_and_start").to_string()),
                                 )
                                 .on_mouse_down(
                                     MouseButton::Left,
@@ -145,7 +146,7 @@ impl<'a> StressPanel<'a> {
                                     div()
                                         .text_xs()
                                         .text_color(theme.primary_foreground)
-                                        .child("停止"),
+                                        .child(t!("stress_panel.stop").to_string()),
                                 )
                                 .on_mouse_down(
                                     MouseButton::Left,
@@ -171,7 +172,7 @@ impl<'a> StressPanel<'a> {
                                     div()
                                         .text_xs()
                                         .text_color(theme.foreground)
-                                        .child("导出CSV"),
+                                        .child(t!("stress_panel.export_csv").to_string()),
                                 )
                                 .on_mouse_down(
                                     MouseButton::Left,
@@ -193,11 +194,20 @@ impl<'a> StressPanel<'a> {
         stats: &crate::stress::StressStats,
     ) -> Div {
         let (status_text, status_color) = if is_running {
-            ("运行中", theme.success)
+            (
+                t!("stress_panel.status_running").to_string(),
+                theme.success,
+            )
         } else if is_finished {
-            ("已完成", theme.primary)
+            (
+                t!("stress_panel.status_finished").to_string(),
+                theme.primary,
+            )
         } else {
-            ("未开始", theme.muted_foreground)
+            (
+                t!("stress_panel.status_not_started").to_string(),
+                theme.muted_foreground,
+            )
         };
         let elapsed = format_elapsed(stats.elapsed_ms);
 
@@ -225,7 +235,7 @@ impl<'a> StressPanel<'a> {
                 div()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(format!("耗时: {}", elapsed)),
+                    .child(t!("stress_panel.elapsed", elapsed = elapsed).to_string()),
             )
     }
 
@@ -242,7 +252,7 @@ impl<'a> StressPanel<'a> {
                 div()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child("当前 QPS"),
+                    .child(t!("stress_panel.current_qps").to_string()),
             )
             .child(
                 div()
@@ -255,7 +265,7 @@ impl<'a> StressPanel<'a> {
                 div()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(format!("峰值 {:.0}", stats.peak_qps)),
+                    .child(t!("stress_panel.peak_qps", qps = format!("{:.0}", stats.peak_qps)).to_string()),
             )
     }
 
@@ -266,25 +276,25 @@ impl<'a> StressPanel<'a> {
             .gap_3()
             .child(self.render_stat_cell(
                 theme,
-                "总发送",
+                &t!("stress_panel.total_sent"),
                 &stats.total_sent.to_string(),
                 theme.foreground,
             ))
             .child(self.render_stat_cell(
                 theme,
-                "成功",
+                &t!("stress_panel.success"),
                 &stats.total_success.to_string(),
                 theme.success,
             ))
             .child(self.render_stat_cell(
                 theme,
-                "失败",
+                &t!("stress_panel.failure"),
                 &stats.total_failure.to_string(),
                 theme.danger,
             ))
             .child(self.render_stat_cell(
                 theme,
-                "活跃(当前/峰值)",
+                &t!("stress_panel.active_connections"),
                 &format!("{} / {}", stats.active_connections, stats.peak_active_connections),
                 theme.foreground,
             ))
@@ -326,7 +336,7 @@ impl<'a> StressPanel<'a> {
                     .text_sm()
                     .font_semibold()
                     .text_color(theme.foreground)
-                    .child("延迟 (ms)"),
+                    .child(t!("stress_panel.latency_title").to_string()),
             )
             .child(
                 div()
@@ -375,25 +385,25 @@ impl<'a> StressPanel<'a> {
             .gap_3()
             .child(self.render_stat_cell(
                 theme,
-                "断连",
+                &t!("stress_panel.disconnects"),
                 &stats.disconnects.to_string(),
                 theme.danger,
             ))
             .child(self.render_stat_cell(
                 theme,
-                "重连",
+                &t!("stress_panel.reconnects"),
                 &stats.reconnects.to_string(),
                 theme.primary,
             ))
             .child(self.render_stat_cell(
                 theme,
-                "发送字节",
+                &t!("stress_panel.bytes_sent"),
                 &format_bytes(stats.bytes_sent),
                 theme.foreground,
             ))
             .child(self.render_stat_cell(
                 theme,
-                "接收字节",
+                &t!("stress_panel.bytes_received"),
                 &format_bytes(stats.bytes_received),
                 theme.foreground,
             ))
@@ -419,7 +429,7 @@ impl<'a> StressPanel<'a> {
                     div()
                         .text_xs()
                         .text_color(theme.muted_foreground)
-                        .child("失败原因分类"),
+                        .child(t!("stress_panel.failure_breakdown_title").to_string()),
                 )
                 .child(
                     div()
@@ -428,31 +438,31 @@ impl<'a> StressPanel<'a> {
                         .flex_wrap()
                         .child(self.render_stat_cell(
                             theme,
-                            "连接失败",
+                            &t!("stress_panel.connect_failed"),
                             &f.connect_failed.to_string(),
                             theme.danger,
                         ))
                         .child(self.render_stat_cell(
                             theme,
-                            "发送失败",
+                            &t!("stress_panel.send_failed"),
                             &f.send_failed.to_string(),
                             theme.danger,
                         ))
                         .child(self.render_stat_cell(
                             theme,
-                            "接收超时",
+                            &t!("stress_panel.recv_timeout"),
                             &f.recv_timeout.to_string(),
                             theme.danger,
                         ))
                         .child(self.render_stat_cell(
                             theme,
-                            "对端关闭",
+                            &t!("stress_panel.peer_closed"),
                             &f.peer_closed.to_string(),
                             theme.danger,
                         ))
                         .child(self.render_stat_cell(
                             theme,
-                            "校验失败",
+                            &t!("stress_panel.validate_failed"),
                             &f.validate_failed.to_string(),
                             theme.danger,
                         )),

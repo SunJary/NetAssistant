@@ -1,0 +1,151 @@
+# 面板/标签页/输入组件相关文案（connection_panel.rs / tab_container.rs / input_with_mode.rs / connection_tab.rs）
+_version: 2
+
+connection_panel:
+  client:
+    zh-CN: 客户端连接
+    en: Client Connections
+  server:
+    zh-CN: 服务端连接
+    en: Server Connections
+
+tab_container:
+  no_connection:
+    zh-CN: 请先创建连接
+    en: Create a connection first
+
+input_mode:
+  json_pretty:
+    zh-CN: JSON 美化
+    en: Pretty JSON
+  json_minify:
+    zh-CN: JSON 压缩
+    en: Minify JSON
+  hex_invalid:
+    zh-CN: 十六进制输入格式错误，包含非法字符或长度为奇数
+    en: "Invalid hex input: contains illegal characters or has an odd length"
+
+connection_tab:
+  message_input_placeholder:
+    zh-CN: 输入消息内容...
+    en: Enter message content...
+  tab_debug:
+    zh-CN: 调试
+    en: Debug
+  tab_stress:
+    zh-CN: 压测
+    en: Stress Test
+  disconnect:
+    zh-CN: 断开
+    en: Disconnect
+  stop:
+    zh-CN: 停止
+    en: Stop
+  connect:
+    zh-CN: 连接
+    en: Connect
+  start:
+    zh-CN: 启动
+    en: Start
+  protocol_label:
+    zh-CN: "协议:"
+    en: "Protocol:"
+  address_label:
+    zh-CN: "地址:"
+    en: "Address:"
+  status_label:
+    zh-CN: "状态:"
+    en: "Status:"
+  decoder_label:
+    zh-CN: "解码器:"
+    en: "Decoder:"
+  edit:
+    zh-CN: 编辑
+    en: Edit
+  sent_stat:
+    zh-CN: "发送: %{count}"
+    en: "Sent: %{count}"
+  received_stat:
+    zh-CN: "接收: %{count}"
+    en: "Received: %{count}"
+  total_stat:
+    zh-CN: "总计: %{count}"
+    en: "Total: %{count}"
+  log_record:
+    zh-CN: 日志记录
+    en: Logging
+  message_mode_label:
+    zh-CN: "消息模式:"
+    en: "Message Mode:"
+  mode_text:
+    zh-CN: 文本
+    en: Text
+  mode_hex:
+    zh-CN: 十六进制
+    en: Hex
+  auto_reply:
+    zh-CN: 自动回复
+    en: Auto Reply
+  enable_auto_reply:
+    zh-CN: 启用自动回复
+    en: Enable Auto Reply
+  reply_content_label:
+    zh-CN: "回复内容:"
+    en: "Reply Content:"
+  client_connections:
+    zh-CN: 客户端连接
+    en: Client Connections
+  add_client_tooltip:
+    zh-CN: 添加客户端
+    en: Add Client
+  no_client_connections:
+    zh-CN: 暂无客户端连接
+    en: No client connections
+  message_record:
+    zh-CN: 消息记录
+    en: Messages
+  auto_scroll:
+    zh-CN: 自动滚动
+    en: Auto Scroll
+  display_format:
+    zh-CN: "格式:%{label}"
+    en: "Format: %{label}"
+  format_toggle_tooltip:
+    zh-CN: 切换消息显示格式（原始/美化/压缩）
+    en: Toggle message display format (raw/pretty/minified)
+  export:
+    zh-CN: 导出
+    en: Export
+  clear:
+    zh-CN: 清空
+    en: Clear
+  no_messages:
+    zh-CN: 暂无消息记录
+    en: No messages
+  sent_label:
+    zh-CN: 发送
+    en: Sent
+  received_label:
+    zh-CN: 接收
+    en: Received
+  unexpected_reply_tooltip:
+    zh-CN: 非预期地址的回复
+    en: Reply from an unexpected address
+  send_to:
+    zh-CN: "发送给：%{addr}"
+    en: "Send to: %{addr}"
+  send_to_all:
+    zh-CN: 发送给：全部客户端
+    en: "Send to: All Clients"
+  auto_clear:
+    zh-CN: 自动清空
+    en: Auto Clear
+  periodic_send:
+    zh-CN: 周期发送
+    en: Timed Send
+  error_no_client_connections:
+    zh-CN: 无客户端连接
+    en: No client connections
+  send:
+    zh-CN: 发送
+    en: Send
