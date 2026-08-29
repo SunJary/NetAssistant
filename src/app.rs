@@ -18,7 +18,9 @@ use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 
 use crate::ui::connection_tab::ConnectionTabState;
-use crate::ui::dialog::{DecoderSelectionDialogState, StressConfigDialogState};
+use crate::ui::dialog::{
+    DecoderSelectionDialogState, StressConfigDialogState, open_new_connection_dialog,
+};
 use crate::ui::main_window::MainWindow;
 
 use smol::channel::{Receiver, Sender, unbounded as smol_unbounded};
@@ -33,7 +35,6 @@ pub struct NetAssistantApp {
 
     // 客户端连接相关状态
     pub client_expanded: bool,
-    pub show_new_connection: bool,
     pub new_connection_is_client: bool,
     pub host_input: Entity<InputState>,
     pub port_input: Entity<InputState>,
@@ -108,9 +109,6 @@ pub struct NetAssistantApp {
     pub show_language_menu: bool,
 
     // 添加客户端对话框状态（UDP服务端专用）
-    pub show_add_client_dialog: bool,
-    pub add_client_dialog_tab_id: String,
-    pub add_client_dialog_input: Option<Entity<InputState>>,
     pub add_client_dialog_error: Option<String>,
 
     // 侧边栏布局状态
@@ -125,7 +123,6 @@ pub struct NetAssistantApp {
     pub message_container_width: Option<Pixels>,
 
     // 收藏功能状态
-    pub show_favorite_remark: bool,
     pub favorite_remark_content: Option<String>,
     pub favorite_remark_message_type: Option<MessageType>,
     pub favorite_remark_tab_id: Option<String>,
@@ -190,7 +187,6 @@ impl NetAssistantApp {
         let mut app = Self {
             storage,
             client_expanded: true,
-            show_new_connection: false,
             new_connection_is_client: true,
             host_input,
             port_input,
@@ -230,9 +226,6 @@ impl NetAssistantApp {
             // 语言切换下拉菜单
             show_language_menu: false,
             // 添加客户端对话框状态（UDP服务端专用）
-            show_add_client_dialog: false,
-            add_client_dialog_tab_id: String::new(),
-            add_client_dialog_input: None,
             add_client_dialog_error: None,
             // 初始化侧边栏布局状态
             sidebar_width,
@@ -243,7 +236,6 @@ impl NetAssistantApp {
             // 初始化消息容器宽度
             message_container_width: None,
             // 初始化收藏功能状态
-            show_favorite_remark: false,
             favorite_remark_content: None,
             favorite_remark_message_type: None,
             favorite_remark_tab_id: None,
@@ -576,8 +568,8 @@ impl NetAssistantApp {
         self.port_input
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
 
-        self.show_new_connection = true;
-        cx.notify();
+        // 命令式打开对话框(由 Root 管理层叠)
+        open_new_connection_dialog(cx.entity().downgrade(), window, cx);
     }
 
     /// 打开「编辑连接」对话框（从现有配置回填）
@@ -627,19 +619,19 @@ impl NetAssistantApp {
         self.edit_decoder_config = decoder;
         self.show_connection_advanced = true;
 
-        self.show_new_connection = true;
-        cx.notify();
+        // 命令式打开对话框(由 Root 管理层叠)
+        open_new_connection_dialog(cx.entity().downgrade(), window, cx);
     }
 
-    /// 确认连接表单（新建或编辑）
-    pub fn confirm_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// 确认连接表单（新建或编辑），返回是否成功（成功后由调用方关闭对话框）
+    pub fn confirm_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let host = self.host_input.read(cx).value().to_string();
         let port_str = self.port_input.read(cx).value().to_string();
         if host.is_empty() || port_str.is_empty() {
-            return;
+            return false;
         }
         let Ok(port) = port_str.parse::<u16>() else {
-            return;
+            return false;
         };
 
         let message_input_mode = self.edit_message_input_mode.clone();
@@ -710,9 +702,8 @@ impl NetAssistantApp {
 
         // 重置协议为默认
         self.new_connection_protocol = String::from("TCP");
-        // 关闭对话框
-        self.show_new_connection = false;
         cx.notify();
+        true
     }
 
     pub fn close_tab(&mut self, tab_id: String, _cx: &mut Context<Self>) {

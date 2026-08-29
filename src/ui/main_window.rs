@@ -2,10 +2,7 @@ use crate::app::NetAssistantApp;
 use crate::custom_icons::CustomIconName;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::{
-    AddClientDialog, DecoderSelectionDialog, FavoriteListPanel, FavoriteRemarkDialog,
-    NewConnectionDialog, StressConfigDialog,
-};
+use crate::ui::dialog::{FavoriteListPanel, StressConfigDialog};
 use crate::ui::tab_container::TabContainer;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -257,23 +254,6 @@ impl<'a> MainWindow<'a> {
                         .child(TabContainer::new(self.app).render(window, cx))),
 
             )
-            .when(self.app.show_new_connection, |this_div| {
-                this_div.child(NewConnectionDialog::new(self.app).render(window, cx))
-            })
-            .when(self.app.decoder_selection_dialog.is_some(), |this_div| {
-                this_div.child(DecoderSelectionDialog::render(self.app, window, cx))
-            })
-            .when(self.app.show_add_client_dialog, |this_div| {
-                if let Some(input) = self.app.add_client_dialog_input.clone() {
-                    let error = self.app.add_client_dialog_error.clone();
-                    this_div.child(AddClientDialog::new(self.app, input, error).render(window, cx))
-                } else {
-                    this_div
-                }
-            })
-            .when(self.app.show_favorite_remark, |this_div| {
-                this_div.child(FavoriteRemarkDialog::new(self.app, self.app.favorite_remark_input.clone()).render(window, cx))
-            })
             .when(self.app.show_favorite_list, |this_div| {
                 this_div.child(FavoriteListPanel::new(self.app, self.app.favorite_list_search_input.clone()).render(window, cx))
             })

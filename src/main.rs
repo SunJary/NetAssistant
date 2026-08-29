@@ -36,6 +36,27 @@ rust_i18n::i18n!("locales", fallback = "zh-CN");
 /// 默认语言（未做过语言选择时使用中文，与历史版本行为一致）
 pub const DEFAULT_LOCALE: &str = "zh-CN";
 
+/// 应用外壳视图：包装应用主视图 + gpui-component Dialog 层
+///
+/// Dialog 层必须挂在独立视图上，不能挂在 `NetAssistantApp` 自身的 render 里：
+/// 对话框的 builder/content 闭包在渲染期会 `read` app 实体，而在 app 自己的
+/// render（lease 期间）里再读它会 panic（"cannot read ... while it is already
+/// being updated"）。观察 app 实体，app 状态变更（cx.notify）时重渲染本视图，
+/// 让对话框闭包每帧拿到最新状态（动态刷新链路）。
+struct AppShell {
+    view: AnyView,
+}
+
+impl Render for AppShell {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let dialog_layer = gpui_component::Root::render_dialog_layer(window, cx);
+        div()
+            .size_full()
+            .child(self.view.clone())
+            .children(dialog_layer)
+    }
+}
+
 fn main() {
     // 初始化日志
     // - debug 构建: DEBUG 级别（cosmic_text 过滤到 Info 避免字体回退噪音）
@@ -236,6 +257,14 @@ fn run_app() {
                     .set_is_dark_mode(is_dark);
                 apply_theme(is_dark, cx);
 
+                // 应用外壳：包装应用视图并挂载 Dialog 层（见 AppShell 注释）
+                let shell = cx.new(|cx| {
+                    cx.observe(&app, |_, _, cx| cx.notify()).detach();
+                    AppShell {
+                        view: app.clone().into(),
+                    }
+                });
+
                 // 使用 gpui_component::Root 包装应用
                 cx.new(|cx| {
                     // 监听窗口大小变化，实现响应式布局和窗口配置保存
@@ -305,7 +334,7 @@ fn run_app() {
                     })
                     .detach();
 
-                    gpui_component::Root::new(app, window, cx)
+                    gpui_component::Root::new(shell, window, cx)
                 })
             },
         )

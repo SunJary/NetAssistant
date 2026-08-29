@@ -1,5 +1,8 @@
 use crate::ui::components::input_with_mode::InputWithMode;
-use crate::ui::dialog::DecoderSelectionDialogState;
+use crate::ui::dialog::{
+    DecoderSelectionDialogState, open_add_client_dialog, open_decoder_selection_dialog,
+    open_favorite_remark_dialog,
+};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, StyledExt};
@@ -721,6 +724,12 @@ impl<'a> ConnectionTab<'a> {
                                                         cx,
                                                     ),
                                                 );
+                                                // 命令式打开对话框(由 Root 管理层叠)
+                                                open_decoder_selection_dialog(
+                                                    cx.entity().downgrade(),
+                                                    window,
+                                                    cx,
+                                                );
                                                 cx.notify();
                                             }
                                         }))
@@ -1133,13 +1142,18 @@ impl<'a> ConnectionTab<'a> {
                                         .tooltip(|window, cx| {
                                             Tooltip::new(t!("connection_tab.add_client_tooltip").to_string()).build(window, cx)
                                         })
-                                        .on_mouse_down(MouseButton::Left, cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                        .on_mouse_down(MouseButton::Left, cx.listener(move |_app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                             let input = cx.new(|cx| {
                                                 InputState::new(window, cx)
                                             });
-                                            app.show_add_client_dialog = true;
-                                            app.add_client_dialog_tab_id = tab_id_for_add.clone();
-                                            app.add_client_dialog_input = Some(input);
+                                            // 命令式打开对话框(由 Root 管理层叠)
+                                            open_add_client_dialog(
+                                                cx.entity().downgrade(),
+                                                tab_id_for_add.clone(),
+                                                input,
+                                                window,
+                                                cx,
+                                            );
                                             cx.notify();
                                         }))
                                         .child(
@@ -1636,13 +1650,18 @@ impl<'a> ConnectionTab<'a> {
                                                                                         cx.notify();
                                                                                     }
                                                                                 } else {
-                                                                                    app.show_favorite_remark = true;
                                                                                     app.favorite_remark_content = Some(content.clone());
                                                                                     app.favorite_remark_message_type = Some(message_type);
                                                                                     app.favorite_remark_tab_id = Some(tab_id_fav.clone());
                                                                                     app.favorite_remark_input.update(cx, |state, inner_cx| {
                                                                                         state.set_value("", window, inner_cx);
                                                                                     });
+                                                                                    // 命令式打开对话框(由 Root 管理层叠)
+                                                                                    open_favorite_remark_dialog(
+                                                                                        cx.entity().downgrade(),
+                                                                                        window,
+                                                                                        cx,
+                                                                                    );
                                                                                     cx.notify();
                                                                                 }
                                                                             });

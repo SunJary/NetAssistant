@@ -49,3 +49,6 @@ icon = "assets/icon/icon_256x256.png"
 categories = ["Development", "Network"]
 terminal = false
 
+
+[dev-dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", features = ["test-support"] }
