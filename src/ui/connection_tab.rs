@@ -391,6 +391,8 @@ impl<'a> ConnectionTab<'a> {
             .flex()
             .flex_row()
             .flex_1()
+            // min_h_0: 解除 min-content 钉死, 保证压测面板滚动容器拿到受限高度
+            .min_h_0()
             .bg(theme.background)
             .child(self.render_connection_info(window, cx))
             .child(self.render_right_panel(window, cx))
@@ -412,6 +414,7 @@ impl<'a> ConnectionTab<'a> {
             .flex_col()
             .flex_1()
             .min_w_0()
+            .min_h_0()
             // 顶部 tab 切换栏(仅客户端显示压测 tab)
             .when(is_client, |d| {
                 d.child(self.render_view_mode_tabs(&theme, view_mode, tab_id.clone(), cx))

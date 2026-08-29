@@ -37,6 +37,9 @@ impl<'a> TabContainer<'a> {
             .flex()
             .flex_col()
             .flex_1()
+            // min_h_0: 解除 flex 项自动最小尺寸(min-content)对高度的钉死,
+            // 否则内容高于窗口时本层被撑开, 下层滚动容器拿不到受限高度
+            .min_h_0()
             .bg(theme.background)
             .child(self.render_tab_header(&tabs, cx))
             .child(self.render_tab_content(window, cx))
@@ -222,11 +225,11 @@ impl<'a> TabContainer<'a> {
         if let Some((tab_id, tab_state)) =
             self.app.connection_tabs.get_key_value(&self.app.active_tab)
         {
-            div().flex().flex_col().flex_1().child(
+            div().flex().flex_col().flex_1().min_h_0().child(
                 ConnectionTab::new(self.app, (*tab_id).clone(), tab_state).render(window, cx),
             )
         } else {
-            div().flex().flex_col().flex_1().child(
+            div().flex().flex_col().flex_1().min_h_0().child(
                 div().flex().items_center().justify_center().flex_1().child(
                     div()
                         .text_sm()

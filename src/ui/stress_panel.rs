@@ -8,6 +8,7 @@ use gpui::*;
 use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
+use gpui_component::scroll::ScrollableElement;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
@@ -45,36 +46,43 @@ impl<'a> StressPanel<'a> {
         div()
             .flex()
             .flex_col()
-            .h_full()
+            // flex_1 + min_h_0 作为 flex_col 父级的可收缩项 (同调试视图分支),
+            // h_full 会被 min-content 钉死导致滚动容器拿不到受限高度
+            .flex_1()
+            .min_h_0()
             .w_full()
             .bg(theme.background)
             // 顶部控制条
             .child(self.render_control_bar(&theme, is_running, is_finished, cx))
             // 状态指示
             .child(self.render_status_bar(&theme, is_running, is_finished, stats))
-            // 指标网格
+            // 指标内容区 (两层结构, 避免 flex 高度分配冲突)
+            // 外层 flex_1() + overflow_hidden() 分配剩余高度
+            // 内层 size_full() + overflow_y_scrollbar() 负责滚动
             .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .p_4()
-                    .flex()
-                    .flex_col()
-                    .gap_4()
-                    // QPS 大字
-                    .child(self.render_qps_card(&theme, stats))
-                    // 发包统计
-                    .child(self.render_stats_grid(&theme, stats))
-                    // 延迟卡片(仅 ping-pong)
-                    .when(show_latency, |d| {
-                        d.child(self.render_latency_cards(&theme, stats))
-                    })
-                    // 连接/字节统计
-                    .child(self.render_connection_stats(&theme, stats))
-                    // 失败分类(仅在有失败时显示)
-                    .when_some(self.render_failure_breakdown(&theme, stats), |d, fb| {
-                        d.child(fb)
-                    }),
+                div().flex_1().overflow_hidden().child(
+                    div()
+                        .size_full()
+                        .overflow_y_scrollbar()
+                        .p_4()
+                        .flex()
+                        .flex_col()
+                        .gap_4()
+                        // QPS 大字
+                        .child(self.render_qps_card(&theme, stats))
+                        // 发包统计
+                        .child(self.render_stats_grid(&theme, stats))
+                        // 延迟卡片(仅 ping-pong)
+                        .when(show_latency, |d| {
+                            d.child(self.render_latency_cards(&theme, stats))
+                        })
+                        // 连接/字节统计
+                        .child(self.render_connection_stats(&theme, stats))
+                        // 失败分类(仅在有失败时显示)
+                        .when_some(self.render_failure_breakdown(&theme, stats), |d, fb| {
+                            d.child(fb)
+                        }),
+                ),
             )
     }
 
@@ -273,6 +281,7 @@ impl<'a> StressPanel<'a> {
     fn render_stats_grid(&self, theme: &Theme, stats: &crate::stress::StressStats) -> Div {
         div()
             .flex()
+            .flex_wrap()
             .gap_3()
             .child(self.render_stat_cell(
                 theme,
@@ -341,6 +350,7 @@ impl<'a> StressPanel<'a> {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .gap_2()
                     .child(self.render_latency_cell(theme, "p50", stats.latency_p50_us))
                     .child(self.render_latency_cell(theme, "p95", stats.latency_p95_us))
@@ -382,6 +392,7 @@ impl<'a> StressPanel<'a> {
     fn render_connection_stats(&self, theme: &Theme, stats: &crate::stress::StressStats) -> Div {
         div()
             .flex()
+            .flex_wrap()
             .gap_3()
             .child(self.render_stat_cell(
                 theme,
