@@ -1,3 +1,4 @@
+use crate::ui::components::hex_editor::{adapter as hex_adapter, HexEditorState};
 use crate::ui::components::input_with_mode::InputWithMode;
 use crate::ui::dialog::{
     DecoderSelectionDialogState, open_add_client_dialog, open_decoder_selection_dialog,
@@ -54,6 +55,8 @@ pub struct ConnectionTabState {
 
     // 每个标签页独立的功能
     pub message_input: Option<Entity<InputState>>,
+    /// 发送输入框（hex 模式）的十六进制编辑器状态，与 message_input 同步创建
+    pub message_hex_editor: Option<Entity<HexEditorState>>,
     pub message_input_mode: String,
     pub auto_clear_input: bool,
     pub periodic_send_enabled: bool,
@@ -123,6 +126,10 @@ impl ConnectionTabState {
                     .folding(false)
                     .multi_line(true)
                     .placeholder(t!("connection_tab.message_input_placeholder"))
+            })),
+            // 消息发送框: 每行 16 字节
+            message_hex_editor: Some(cx.new(|cx| {
+                HexEditorState::with_inline_bytes_per_row(cx, hex_adapter::INLINE_BYTES_PER_ROW_WIDE)
             })),
             message_input_mode,
             auto_clear_input: true,
@@ -373,11 +380,17 @@ impl<'a> ConnectionTab<'a> {
     fn render_input_with_mode(
         &self,
         input_state: &Entity<InputState>,
+        hex_editor: Option<&Entity<HexEditorState>>,
         mode: &str,
         theme: &Theme,
+        window: &Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
-        InputWithMode::render(input_state, mode, theme, cx)
+        // hex 编辑器状态同步(值变化时才重解析; 渲染层只读不更新)
+        if let Some(editor) = hex_editor {
+            hex_adapter::sync(editor, input_state, cx);
+        }
+        InputWithMode::render(input_state, hex_editor, mode, theme, window, cx)
     }
 
     pub fn render(
@@ -985,7 +998,14 @@ impl<'a> ConnectionTab<'a> {
                                                     if let Some(cfg) = updated {
                                                         app.storage.update_connection(cfg);
                                                     }
-                                                    app.sanitize_hex_input(window, cx);
+                                                    app.sanitize_hex_input(&tab_id_hex, window, cx);
+                                                    // 切到 hex 后聚焦编辑器: 光标立刻可见, 可直接键入
+                                                    if let Some(tab_state) = app.connection_tabs.get(&tab_id_hex) {
+                                                        if let Some(editor) = tab_state.message_hex_editor.as_ref() {
+                                                            let focus = editor.read(cx).focus.clone();
+                                                            focus.focus(window, cx);
+                                                        }
+                                                    }
                                                     // 输入模式影响自动回复内容解析, 同步到网络层
                                                     app.sync_auto_reply_to_network(&tab_id_hex, cx);
                                                     cx.notify();
@@ -1015,7 +1035,7 @@ impl<'a> ConnectionTab<'a> {
     /// 渲染自动回复配置区域
     fn render_auto_reply_config(
         &self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
@@ -1087,6 +1107,7 @@ impl<'a> ConnectionTab<'a> {
             .when(auto_reply_enabled, |this| {
 
                 if let Some(input_state) = self.app.auto_reply_inputs.get(&tab_id) {
+                    let hex_editor = self.app.auto_reply_hex_editors.get(&tab_id);
                     this.child(
                         div()
                             .flex()
@@ -1099,7 +1120,14 @@ impl<'a> ConnectionTab<'a> {
                                     .child(t!("connection_tab.reply_content_label").to_string()),
                             )
                             .child(
-                                self.render_input_with_mode(input_state, &self.tab_state.message_input_mode, &theme, cx),
+                                self.render_input_with_mode(
+                                    input_state,
+                                    hex_editor,
+                                    &self.tab_state.message_input_mode,
+                                    &theme,
+                                    window,
+                                    cx,
+                                ),
                             ),
                     )
                 } else {
@@ -1700,7 +1728,7 @@ impl<'a> ConnectionTab<'a> {
     /// 渲染发送区域
     fn render_send_area(
         &self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
@@ -1742,8 +1770,10 @@ impl<'a> ConnectionTab<'a> {
                     .child(
                         self.render_input_with_mode(
                             self.tab_state.message_input.as_ref().unwrap(),
+                            self.tab_state.message_hex_editor.as_ref(),
                             &self.tab_state.message_input_mode,
                             &theme,
+                            window,
                             cx,
                         ),
                     ),

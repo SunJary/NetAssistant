@@ -26,6 +26,7 @@ use crate::stress::config::{
     ConnectionMode, RampUpConfig, StopCondition, StressMode, StressTestConfig,
 };
 use crate::stress::port_range::{EphemeralPortRange, STATIC_THRESHOLD};
+use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::components::input_with_mode::InputWithMode;
 use crate::ui::dialog::open_port_limit_help_dialog;
 use crate::ui::dialog::variable_picker::render_variable_picker;
@@ -59,6 +60,8 @@ pub struct StressConfigDialogState {
     pub qps_limit_input: Entity<InputState>,
     pub timeout_input: Entity<InputState>,
     pub payload_input: Entity<InputState>,
+    /// 报文输入框（hex 模式）的十六进制编辑器状态，与 payload_input 同步创建
+    pub payload_hex_editor: Entity<HexEditorState>,
     pub duration_input: Entity<InputState>,
     pub count_input: Entity<InputState>,
     pub ramp_up_secs_input: Entity<InputState>,
@@ -131,6 +134,13 @@ impl StressConfigDialogState {
                 });
                 input
             },
+            // 压测 payload: 每行 16 字节
+            payload_hex_editor: cx.new(|cx| {
+                HexEditorState::with_inline_bytes_per_row(
+                    cx,
+                    crate::ui::components::hex_editor::adapter::INLINE_BYTES_PER_ROW_WIDE,
+                )
+            }),
             duration_input: make_input(&duration_val, window, cx),
             count_input: make_input(&count_val, window, cx),
             ramp_up_secs_input: make_input(&config.ramp_up.ramp_up_secs.to_string(), window, cx),
@@ -229,7 +239,19 @@ pub fn open_stress_config_dialog(
                     };
                     // 端口范围兜底检测 (仅首次超过静态阈值时 spawn, 见 ensure_port_range_detected)
                     let _ = entity.update(cx, |app, cx| {
-                        StressConfigDialog::ensure_port_range_detected(app, cx)
+                        StressConfigDialog::ensure_port_range_detected(app, cx);
+                        // hex 编辑器状态同步(值变化时才重解析; 渲染层只读不更新)
+                        if let Some(dialog) = app.stress_config_dialog.as_ref() {
+                            if dialog.message_input_mode == "hex" {
+                                let hex_editor = dialog.payload_hex_editor.clone();
+                                let payload_input = dialog.payload_input.clone();
+                                crate::ui::components::hex_editor::adapter::sync(
+                                    &hex_editor,
+                                    &payload_input,
+                                    cx,
+                                );
+                            }
+                        }
                     });
                     let theme = cx.theme().clone();
                     let content = content.child(
@@ -238,7 +260,7 @@ pub fn open_stress_config_dialog(
                                 .overflow_y_scrollbar()
                                 .px_6()
                                 .pb_4()
-                                .child(render_form(&entity, &theme, cx)),
+                                .child(render_form(&entity, &theme, window, cx)),
                         ),
                     );
                     // 「插入变量」浮层: deferred 独立合成层 + anchored 按按钮 bounds 定位
@@ -308,7 +330,7 @@ impl StressConfigDialog {
 }
 
 /// 渲染表单主体
-fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
+fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, window: &Window, cx: &App) -> Div {
     let state = app.read(cx);
     let Some(state) = state.stress_config_dialog.as_ref() else {
         return div();
@@ -417,8 +439,10 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
                 )
                 .child(InputWithMode::render(
                     &state.payload_input,
+                    Some(&state.payload_hex_editor),
                     &state.message_input_mode,
                     theme,
+                    window,
                     cx,
                 )),
         )
@@ -783,6 +807,9 @@ fn render_payload_mode_chip(
                                 }
                                 s.message_input_mode = "hex".to_string();
                                 s.show_variable_picker = false;
+                                // 切到 hex 后聚焦编辑器: 光标立刻可见, 可直接键入
+                                let focus = s.payload_hex_editor.read(cx).focus.clone();
+                                focus.focus(window, cx);
                             }
                             cx.notify();
                         });

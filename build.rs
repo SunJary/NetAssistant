@@ -13,6 +13,12 @@ fn main() {
             println!("cargo:rustc-link-arg=/SUBSYSTEM:WINDOWS");
             println!("cargo:rustc-link-arg=/ENTRY:mainCRTStartup");
         }
+        // GPUI debug 构建的渲染递归栈帧很深, Windows 主线程默认栈仅 1 MiB,
+        // 深层 UI(如 hex 编辑器网格 + 回退文本框同时渲染)会栈溢出(0xC000041D)。
+        // 与 Zed 上游相同的处理( crates/zed/build.rs: "/stack: 8 MiB" )。
+        if cfg!(target_env = "msvc") {
+            println!("cargo:rustc-link-arg=/stack:{}", 8 * 1024 * 1024);
+        }
 
         let mut res = winres::WindowsResource::new();
         res.set_icon("assets/icon/icon.ico");

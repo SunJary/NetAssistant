@@ -17,6 +17,7 @@ use crate::stress::engine::StressTestEngine;
 use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 
+use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::connection_tab::ConnectionTabState;
 use crate::ui::dialog::{
     DecoderSelectionDialogState, StressConfigDialogState, open_new_connection_dialog,
@@ -61,6 +62,8 @@ pub struct NetAssistantApp {
 
     // 自动回复输入框状态（每个标签页一个）
     pub auto_reply_inputs: HashMap<String, Entity<InputState>>,
+    // 自动回复输入框（hex 模式）的十六进制编辑器状态（与 auto_reply_inputs 同生命周期）
+    pub auto_reply_hex_editors: HashMap<String, Entity<HexEditorState>>,
     // 自动回复输入框变更订阅(保持订阅存活; 内容变化时同步到网络层)
     pub auto_reply_input_subscriptions: HashMap<String, Subscription>,
 
@@ -204,6 +207,7 @@ impl NetAssistantApp {
             connection_tabs,
             tab_multiline: false,
             auto_reply_inputs: HashMap::new(),
+            auto_reply_hex_editors: HashMap::new(),
             auto_reply_input_subscriptions: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
@@ -492,11 +496,24 @@ impl NetAssistantApp {
         }
     }
 
-    pub fn sanitize_hex_input(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
-        // 这里可以实现十六进制输入的清理逻辑
-        // 由于我们现在使用的是每个标签页独立的输入框，
-        // 这个方法可能需要根据具体的标签页来清理
-        debug!("[sanitize_hex_input] 清理十六进制输入");
+    /// 切换到 hex 模式时规范化十六进制输入：统一「两位一组、空格分隔」。
+    /// 解析失败（含非法字符）时不动内容，交由 UI 错误提示。
+    pub fn sanitize_hex_input(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let inputs: Vec<Entity<InputState>> = self
+            .connection_tabs
+            .get(tab_id)
+            .and_then(|tab| tab.message_input.clone())
+            .into_iter()
+            .chain(self.auto_reply_inputs.get(tab_id).cloned())
+            .collect();
+        for input in inputs {
+            let value = input.read(cx).value().to_string();
+            if let Some(normalized) =
+                crate::ui::components::hex_editor::adapter::normalize_hex_value(&value)
+            {
+                input.update(cx, |input, cx| input.replace_all(normalized, window, cx));
+            }
+        }
     }
 
     pub fn ensure_tab_exists(
@@ -533,6 +550,13 @@ impl NetAssistantApp {
             auto_reply_input.update(cx, |input, cx| {
                 input.set_value("ok".to_string(), window, cx);
             });
+            // 自动回复框面板较窄: 每行 5 字节
+            let hex_editor = cx.new(|cx| {
+                crate::ui::components::hex_editor::HexEditorState::with_inline_bytes_per_row(
+                    cx,
+                    crate::ui::components::hex_editor::adapter::INLINE_BYTES_PER_ROW_AUTO_REPLY,
+                )
+            });
             // 订阅输入内容变化: 实时将用户配置的回复内容同步到网络层(严格按用户输入, 不改内容)
             let tab_id_for_sub = tab_id.clone();
             let subscription = cx.subscribe(&auto_reply_input, {
@@ -543,6 +567,7 @@ impl NetAssistantApp {
                 }
             });
             self.auto_reply_inputs.insert(tab_id.clone(), auto_reply_input);
+            self.auto_reply_hex_editors.insert(tab_id.clone(), hex_editor);
             self.auto_reply_input_subscriptions
                 .insert(tab_id, subscription);
         }
@@ -721,6 +746,7 @@ impl NetAssistantApp {
         if self.auto_reply_inputs.remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
         }
+        self.auto_reply_hex_editors.remove(&tab_id);
         if self.auto_reply_input_subscriptions.remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
         }
@@ -2018,6 +2044,7 @@ impl Drop for NetAssistantApp {
             if self.auto_reply_inputs.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
             }
+            self.auto_reply_hex_editors.remove(&tab_id);
 
             if self.auto_reply_input_subscriptions.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);

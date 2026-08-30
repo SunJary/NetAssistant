@@ -25,6 +25,59 @@ input_mode:
     zh-CN: 十六进制输入格式错误，包含非法字符或长度为奇数
     en: "Invalid hex input: contains illegal characters or has an odd length"
 
+hex_editor:
+  bytes:
+    zh-CN: "%{n} 字节"
+    en: "%{n} bytes"
+  bytes_with_vars:
+    zh-CN: "%{n} 字节 · %{vars} 个变量"
+    en: "%{n} bytes · %{vars} vars"
+  expand:
+    zh-CN: 展开编辑
+    en: Expand Editor
+  format:
+    zh-CN: 格式化
+    en: Format
+  clear:
+    zh-CN: 清空
+    en: Clear
+  import:
+    zh-CN: 导入文件
+    en: Import File
+  copy_all:
+    zh-CN: 复制全部
+    en: Copy All
+  expand_title:
+    zh-CN: 十六进制编辑器
+    en: Hex Editor
+  confirm:
+    zh-CN: 确定
+    en: OK
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  empty_hint:
+    zh-CN: 输入十六进制字节，或点击「展开编辑」
+    en: "Type hex bytes, or click Expand Editor"
+  overflow:
+    zh-CN: 仅显示前 %{rows} 行，点击「展开编辑」查看全部
+    en: "Showing first %{rows} rows only — click Expand Editor for all"
+  truncated:
+    zh-CN: 内容超过 %{n} 字节，仅只读显示前 %{n} 字节；如需修改请切换文本模式
+    en: "Content exceeds %{n} bytes — showing first %{n} bytes read-only. Switch to text mode to edit."
+  status_offset:
+    zh-CN: 偏移 %{offset}
+    en: "Offset %{offset}"
+  status_selected:
+    zh-CN: 已选 %{n} 字节
+    en: "%{n} selected"
+  ovr:
+    zh-CN: 覆盖
+    en: OVR
+  ins:
+    zh-CN: 插入
+    en: INS
+
 connection_tab:
   message_input_placeholder:
     zh-CN: 输入消息内容...
