@@ -17,7 +17,8 @@ const NIBBLE_WIDTH: f32 = 8.0;
 /// 字节组之间的间隔
 const BYTE_GAP: f32 = 4.0;
 
-/// 内联视图默认每行字节数（消息发送框/压测 payload；自动回复接入点会覆盖为更小值）
+/// 内联视图默认每行字节数（仅测试用默认构造；生产接入点一律显式指定字节数）
+#[cfg(test)]
 pub const DEFAULT_INLINE_BYTES_PER_ROW: usize = 16;
 
 /// 编辑器组件状态（GPUI Entity 包装）
@@ -34,6 +35,8 @@ pub struct HexEditorState {
 }
 
 impl HexEditorState {
+    /// 默认构造（仅测试用；生产接入点请用 [`Self::with_inline_bytes_per_row`] 显式指定）
+    #[cfg(test)]
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self::with_inline_bytes_per_row(cx, DEFAULT_INLINE_BYTES_PER_ROW)
     }
