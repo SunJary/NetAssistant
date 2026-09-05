@@ -7,8 +7,8 @@ use std::sync::Arc;
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
 #[derive(Debug)]
 pub enum ConnectionEvent {
-    /// 客户端连接成功
-    Connected(String),
+    /// 客户端连接成功(携带实际生效的本地端点, 如 UDP 自动分配的临时端口)
+    Connected(String, SocketAddr),
     /// 客户端或服务端连接断开
     Disconnected(String),
     /// 服务端开始监听

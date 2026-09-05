@@ -40,6 +40,8 @@ pub struct ConnectionTabState {
     pub message_list: MessageListState,
     pub is_connected: bool,
     pub error_message: Option<String>,
+    /// 实际生效的本地端点(IP:端口, 连接成功后由 Connected 事件上报; UDP 自动分配端口也可见)
+    pub local_endpoint: Option<String>,
     pub auto_reply_enabled: bool,
     pub auto_scroll_enabled: bool,
     pub client_connections: Vec<SocketAddr>,
@@ -105,6 +107,7 @@ impl ConnectionTabState {
             message_list: MessageListState::new(),
             is_connected: false,
             error_message: None,
+            local_endpoint: None,
             auto_reply_enabled: false,
             auto_scroll_enabled: true,
             client_connections: Vec::new(),
@@ -652,6 +655,38 @@ impl<'a> ConnectionTab<'a> {
                                     .child(self.tab_state.address()),
                             ),
                     )
+                    // 实际生效的本地端点(仅客户端; 服务端监听地址本身就是本地地址, 不重复显示)
+                    .when(is_client, |div_builder| {
+                        div_builder.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .child(t!("connection_tab.local_address_label").to_string()),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_medium()
+                                        .text_color(theme.foreground)
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .child(
+                                            self.tab_state
+                                                .local_endpoint
+                                                .clone()
+                                                .unwrap_or_else(|| "—".to_string()),
+                                        ),
+                                ),
+                        )
+                    })
                     .child(
                         div()
                             .flex()

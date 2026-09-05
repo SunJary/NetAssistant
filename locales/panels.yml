@@ -106,6 +106,9 @@ connection_tab:
   address_label:
     zh-CN: "地址:"
     en: "Address:"
+  local_address_label:
+    zh-CN: "本地地址:"
+    en: "Local:"
   status_label:
     zh-CN: "状态:"
     en: "Status:"

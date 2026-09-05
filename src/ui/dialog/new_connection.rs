@@ -205,6 +205,50 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
                             .flex_col()
                             .gap_3()
                             .pl_2()
+                            // 本地绑定(仅客户端; 留空=自动选网卡与临时端口)
+                            .when(is_client, |this| {
+                                this.child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(theme.foreground)
+                                                .child(
+                                                    t!("new_connection.local_address_label")
+                                                        .to_string(),
+                                                ),
+                                        )
+                                        .child(
+                                            Input::new(&state.local_address_input).cleanable(true),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(theme.foreground)
+                                                .child(
+                                                    t!("new_connection.local_port_label")
+                                                        .to_string(),
+                                                ),
+                                        )
+                                        .child(Input::new(&state.local_port_input).cleanable(true))
+                                        // 何时需要填写的说明(样式与 host_hint 一致)
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                // TODO: 等待主题增加 disabled.foreground 键后迁移
+                                                .text_color(gpui::rgb(0x9ca3af))
+                                                .child(
+                                                    t!("new_connection.local_bind_hint")
+                                                        .to_string(),
+                                                ),
+                                        ),
+                                )
+                            })
                             // 消息模式（发送格式）
                             .child(
                                 div()

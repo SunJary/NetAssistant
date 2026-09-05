@@ -40,6 +40,10 @@ pub struct NetAssistantApp {
     pub new_connection_is_client: bool,
     pub host_input: Entity<InputState>,
     pub port_input: Entity<InputState>,
+    /// 本地绑定地址输入(仅客户端, 留空=自动选择网卡)
+    pub local_address_input: Entity<InputState>,
+    /// 本地绑定端口输入(仅客户端, 留空=自动分配临时端口)
+    pub local_port_input: Entity<InputState>,
     pub new_connection_protocol: String,
 
     // 连接编辑对话框状态（新建/编辑共用）
@@ -160,6 +164,14 @@ impl NetAssistantApp {
         // 使用window创建InputState实体
         let host_input = cx.new(|cx| InputState::new(window, cx));
         let port_input = cx.new(|cx| InputState::new(window, cx));
+        let local_address_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.local_address_placeholder").to_string())
+        });
+        let local_port_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.local_port_placeholder").to_string())
+        });
 
         // 初始化空的连接标签页状态（不预先创建）
         let connection_tabs = HashMap::new();
@@ -194,6 +206,8 @@ impl NetAssistantApp {
             new_connection_is_client: true,
             host_input,
             port_input,
+            local_address_input,
+            local_port_input,
             new_connection_protocol: String::from("TCP"),
             // 初始化连接编辑对话框状态
             editing_connection_id: None,
@@ -600,6 +614,11 @@ impl NetAssistantApp {
         });
         self.port_input
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        // 本地绑定默认留空 = 系统自动
+        self.local_address_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.local_port_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
 
         // 命令式打开对话框(由 Root 管理层叠)
         open_new_connection_dialog(cx.entity().downgrade(), window, cx);
@@ -629,18 +648,23 @@ impl NetAssistantApp {
             ConnectionType::Udp => "UDP".to_string(),
         };
 
-        let (address, port, message_input_mode, decoder) = match &config {
+        let (address, port, message_input_mode, decoder, local_address, local_port) = match &config
+        {
             ConnectionConfig::Client(c) => (
                 c.server_address.clone(),
                 c.server_port,
                 c.message_input_mode.clone(),
                 c.decoder_config.clone(),
+                c.local_address.clone(),
+                c.local_port,
             ),
             ConnectionConfig::Server(c) => (
                 c.listen_address.clone(),
                 c.listen_port,
                 c.message_input_mode.clone(),
                 c.decoder_config.clone(),
+                None,
+                None,
             ),
         };
 
@@ -648,6 +672,17 @@ impl NetAssistantApp {
             .update(cx, |i, cx| i.set_value(address, window, cx));
         self.port_input
             .update(cx, |i, cx| i.set_value(port.to_string(), window, cx));
+        // 本地绑定为 None 时回填空串(=自动)
+        self.local_address_input.update(cx, |i, cx| {
+            i.set_value(local_address.unwrap_or_default(), window, cx)
+        });
+        self.local_port_input.update(cx, |i, cx| {
+            i.set_value(
+                local_port.map(|p| p.to_string()).unwrap_or_default(),
+                window,
+                cx,
+            )
+        });
         self.edit_message_input_mode = message_input_mode;
         self.edit_decoder_config = decoder;
         self.show_connection_advanced = true;
@@ -665,6 +700,27 @@ impl NetAssistantApp {
         }
         let Ok(port) = port_str.parse::<u16>() else {
             return false;
+        };
+
+        // 本地绑定(仅客户端字段; 服务端忽略): 地址留空=自动选网卡, 端口留空=自动分配。
+        // 校验沿用现有惯例: 非法输入静默拒绝(返回 false, 对话框保持打开)
+        let local_addr_str = self.local_address_input.read(cx).value().trim().to_string();
+        let local_address = if local_addr_str.is_empty() {
+            None
+        } else {
+            match local_addr_str.parse::<std::net::IpAddr>() {
+                Ok(_) => Some(local_addr_str),
+                Err(_) => return false,
+            }
+        };
+        let local_port_str = self.local_port_input.read(cx).value().trim().to_string();
+        let local_port = if local_port_str.is_empty() {
+            None
+        } else {
+            match local_port_str.parse::<u16>() {
+                Ok(p) => Some(p),
+                Err(_) => return false,
+            }
         };
 
         let message_input_mode = self.edit_message_input_mode.clone();
@@ -693,6 +749,8 @@ impl NetAssistantApp {
                         c.server_port = port;
                         c.message_input_mode = message_input_mode;
                         c.decoder_config = decoder_config;
+                        c.local_address = local_address.clone();
+                        c.local_port = local_port;
                     }
                     ConnectionConfig::Server(c) => {
                         c.listen_address = host;
@@ -720,6 +778,8 @@ impl NetAssistantApp {
                 ConnectionConfig::Client(c) => {
                     c.message_input_mode = message_input_mode;
                     c.decoder_config = decoder_config;
+                    c.local_address = local_address.clone();
+                    c.local_port = local_port;
                 }
                 ConnectionConfig::Server(c) => {
                     c.message_input_mode = message_input_mode;
@@ -1907,10 +1967,12 @@ impl NetAssistantApp {
         cx: &mut Context<Self>,
     ) {
         match event {
-            ConnectionEvent::Connected(tab_id) => {
+            ConnectionEvent::Connected(tab_id, local_addr) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     tab_state.is_connected = true;
                     tab_state.connection_status = ConnectionStatus::Connected;
+                    // 记录实际生效的本地端点(UDP 自动分配的端口只有这里能拿到)
+                    tab_state.local_endpoint = Some(local_addr.to_string());
                     tab_state.error_message = None;
                     cx.notify();
                 }
@@ -1919,6 +1981,7 @@ impl NetAssistantApp {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     tab_state.is_connected = false;
                     tab_state.connection_status = ConnectionStatus::Disconnected;
+                    tab_state.local_endpoint = None;
                     cx.notify();
                 }
                 self.client_write_senders.remove(&tab_id);
@@ -1939,6 +2002,7 @@ impl NetAssistantApp {
                     tab_state.is_connected = false;
                     tab_state.connection_status = ConnectionStatus::Error;
                     tab_state.error_message = Some(error);
+                    tab_state.local_endpoint = None;
                     cx.notify();
                 }
                 // 清理连接信息，确保下次发送时直接失败

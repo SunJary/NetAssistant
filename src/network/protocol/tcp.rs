@@ -14,7 +14,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -161,8 +161,33 @@ impl NetworkConnection for TcpClient {
 
             info!("TCP客户端连接到地址: {}", socket_addr);
 
-            let socket = TcpStream::connect(socket_addr).await?;
-            info!("TCP客户端连接成功: {}", socket_addr);
+            // 按配置绑定本地地址/端口后连接; 未配置时保持系统默认(自动选择网卡与临时端口)
+            let socket = match crate::network::bind::resolve_local_bind(&config, socket_addr)? {
+                Some(local_addr) => {
+                    let sock = if socket_addr.is_ipv4() {
+                        TcpSocket::new_v4()?
+                    } else {
+                        TcpSocket::new_v6()?
+                    };
+                    sock.bind(local_addr).map_err(|e| {
+                        format!(
+                            "绑定本地地址 {} 失败: {}（本地端口可能已被占用，或地址不属于本机）",
+                            local_addr, e
+                        )
+                    })?;
+                    // 非 Windows 启用 SO_REUSEADDR 缓解固定本地端口快速重连时的 TIME_WAIT 占用;
+                    // Windows 上 SO_REUSEADDR 语义不同(允许端口劫持), 不启用
+                    #[cfg(not(windows))]
+                    sock.set_reuseaddr(true)?;
+                    sock.connect(socket_addr).await?
+                }
+                None => TcpStream::connect(socket_addr).await?,
+            };
+            let local_addr = socket.local_addr()?;
+            info!(
+                "TCP客户端连接成功: {} (本地端点: {})",
+                socket_addr, local_addr
+            );
 
             // 创建发送器和接收器
             let (tx, rx) = smol_unbounded::<Vec<u8>>();
@@ -173,7 +198,7 @@ impl NetworkConnection for TcpClient {
             if let Some(sender) = &event_sender {
                 debug!("[TCP客户端] 发送 Connected 事件");
                 if let Err(e) = sender
-                    .send(ConnectionEvent::Connected(config.id.clone()))
+                    .send(ConnectionEvent::Connected(config.id.clone(), local_addr))
                     .await
                 {
                     error!("[TCP客户端] 发送 Connected 事件失败: {:?}", e);

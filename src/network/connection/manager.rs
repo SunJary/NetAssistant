@@ -192,4 +192,138 @@ mod tests {
         let result = manager.create_and_connect_client(&config, None).await;
         assert!(result.is_err(), "连接被拒绝时应返回错误,实际: {:?}", result);
     }
+
+    /// 功能测试: TCP 客户端配置本地绑定后, 连接必须从指定的本地地址与端口发起。
+    #[tokio::test]
+    async fn test_tcp_client_local_bind_port() {
+        // 服务端
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = listener.local_addr().unwrap();
+
+        // 客户端要固定的本地端口(listen socket 直接 drop, 无 TIME_WAIT, 可立即复用)
+        let local_port = {
+            let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            probe.local_addr().unwrap().port()
+        };
+
+        // 服务端先挂起 accept, 避免客户端 connect 后读任务无人对接
+        let accept_task = tokio::spawn(async move { listener.accept().await });
+
+        let mut manager = NetworkConnectionManager::new();
+        let config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Tcp,
+            server_address: server_addr.ip().to_string(),
+            server_port: server_addr.port(),
+            local_address: Some("127.0.0.1".to_string()),
+            local_port: Some(local_port),
+            ..Default::default()
+        };
+        manager
+            .create_and_connect_client(&config, None)
+            .await
+            .expect("配置本地绑定后 TCP 连接应成功");
+
+        let (_, peer) = accept_task.await.unwrap().unwrap();
+        assert_eq!(
+            peer.port(),
+            local_port,
+            "服务端看到的客户端源端口应为指定的本地端口"
+        );
+        assert_eq!(peer.ip().to_string(), "127.0.0.1");
+    }
+
+    /// 功能测试: 本地地址族与远端不一致时必须返回明确错误, 而非 panic 或静默失败。
+    #[tokio::test]
+    async fn test_tcp_client_local_bind_family_mismatch_returns_error() {
+        let mut manager = NetworkConnectionManager::new();
+        let config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Tcp,
+            // IPv4 远端 + IPv6 本地地址 → 族校验先失败, 不会真正发起连接
+            server_address: "127.0.0.1".to_string(),
+            server_port: 9,
+            local_address: Some("::1".to_string()),
+            ..Default::default()
+        };
+        let result = manager.create_and_connect_client(&config, None).await;
+        let msg = result.expect_err("地址族不一致应返回错误").to_string();
+        assert!(
+            msg.contains("地址族不一致"),
+            "错误信息应提示地址族不一致, 实际: {}",
+            msg
+        );
+    }
+
+    /// 功能测试: UDP 客户端固定本地端口后, Connected 事件携带的本地端点端口应为配置值。
+    #[tokio::test]
+    async fn test_udp_client_local_bind_port() {
+        use crate::network::events::ConnectionEvent;
+        use std::time::Duration;
+
+        let local_port = {
+            let probe = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            probe.local_addr().unwrap().port()
+        };
+
+        let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let mut manager = NetworkConnectionManager::new();
+        let config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Udp,
+            server_address: "127.0.0.1".to_string(),
+            server_port: 9, // discard 端口, UDP 无真实连接, 仅需可达性无关的合法地址
+            local_address: Some("127.0.0.1".to_string()),
+            local_port: Some(local_port),
+            ..Default::default()
+        };
+        manager
+            .create_and_connect_client(&config, Some(tx))
+            .await
+            .expect("配置本地绑定后 UDP 客户端应启动成功");
+
+        let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("应在超时前收到事件")
+            .expect("事件通道不应关闭");
+        match event {
+            ConnectionEvent::Connected(_, local_addr) => {
+                assert_eq!(local_addr.port(), local_port);
+                assert_eq!(local_addr.ip().to_string(), "127.0.0.1");
+            }
+            other => panic!("首个事件应为 Connected, 实际: {:?}", other),
+        }
+    }
+
+    /// 兼容测试: 未配置本地绑定时 UDP 客户端保持旧行为(系统自动分配临时端口)。
+    #[tokio::test]
+    async fn test_udp_client_without_local_bind_gets_ephemeral_port() {
+        use crate::network::events::ConnectionEvent;
+        use std::time::Duration;
+
+        let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let mut manager = NetworkConnectionManager::new();
+        let config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Udp,
+            server_address: "127.0.0.1".to_string(),
+            server_port: 9,
+            ..Default::default()
+        };
+        manager
+            .create_and_connect_client(&config, Some(tx))
+            .await
+            .expect("未配置本地绑定时 UDP 客户端应启动成功");
+
+        let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("应在超时前收到事件")
+            .expect("事件通道不应关闭");
+        match event {
+            ConnectionEvent::Connected(_, local_addr) => {
+                assert!(
+                    local_addr.port() > 0,
+                    "自动分配的临时端口应大于 0, 实际: {}",
+                    local_addr
+                );
+            }
+            other => panic!("首个事件应为 Connected, 实际: {:?}", other),
+        }
+    }
 }

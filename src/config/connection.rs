@@ -129,6 +129,12 @@ pub struct ClientConfig {
     /// 发送消息输入模式：text / hex
     #[serde(default = "default_message_input_mode")]
     pub message_input_mode: String,
+    /// 本地绑定地址(None=系统自动选择网卡)，仅支持 IP 字面量，如 "192.168.1.100"
+    #[serde(default)]
+    pub local_address: Option<String>,
+    /// 本地绑定端口(None=系统自动分配临时端口)
+    #[serde(default)]
+    pub local_port: Option<u16>,
 }
 
 impl Default for ClientConfig {
@@ -140,6 +146,8 @@ impl Default for ClientConfig {
             server_port: 8080,
             decoder_config: DecoderConfig::default(),
             message_input_mode: default_message_input_mode(),
+            local_address: None,
+            local_port: None,
         }
     }
 }
@@ -244,6 +252,8 @@ impl ConnectionConfig {
             server_port,
             decoder_config: DecoderConfig::default(),
             message_input_mode: default_message_input_mode(),
+            local_address: None,
+            local_port: None,
         })
     }
 
@@ -306,6 +316,35 @@ impl AutoReplyConfig {
 #[cfg(test)]
 mod tests {
     use super::{ClientConfig, ConnectionConfig, ConnectionType, ServerConfig};
+
+    #[test]
+    /// 测试旧版配置 JSON(无 local_address/local_port 字段)反序列化后为 None,
+    /// 保证升级时旧配置文件无损加载
+    fn test_client_config_deserialize_without_local_bind() {
+        let json = r#"{
+            "id": "test-id",
+            "protocol": "tcp",
+            "server_address": "192.168.1.1",
+            "server_port": 8080
+        }"#;
+        let config: ClientConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.local_address, None);
+        assert_eq!(config.local_port, None);
+    }
+
+    #[test]
+    /// 测试本地绑定字段的序列化往返
+    fn test_client_config_local_bind_roundtrip() {
+        let config = ClientConfig {
+            local_address: Some("192.168.1.100".to_string()),
+            local_port: Some(50000),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: ClientConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.local_address, Some("192.168.1.100".to_string()));
+        assert_eq!(parsed.local_port, Some(50000));
+    }
 
     #[test]
     /// 测试客户端配置的默认值

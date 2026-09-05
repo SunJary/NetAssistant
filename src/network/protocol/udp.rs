@@ -7,7 +7,7 @@ use log::{debug, error, info};
 use smol::channel::{Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -70,12 +70,20 @@ impl NetworkConnection for UdpClient {
         Pin::from(Box::new(async move {
             info!("UDP客户端连接到地址: {}", server_addr);
 
-            let bind_addr = if server_addr.is_ipv6() {
-                "[::]:0"
-            } else {
-                "0.0.0.0:0"
+            // 按配置解析本地绑定; 未配置时按远端地址族使用通配地址+自动端口(与旧行为一致)
+            let bind_addr = match crate::network::bind::resolve_local_bind(&config, server_addr)? {
+                Some(addr) => addr,
+                None if server_addr.is_ipv4() => {
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
+                }
+                None => SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
             };
-            let socket = UdpSocket::bind(bind_addr).await?;
+            let socket = UdpSocket::bind(bind_addr).await.map_err(|e| {
+                format!(
+                    "绑定本地地址 {} 失败: {}（本地端口可能已被占用，或地址不属于本机）",
+                    bind_addr, e
+                )
+            })?;
             let local_addr = socket.local_addr().map_err(|e| {
                 error!("获取UDP套接字本地地址失败: {:?}", e);
                 e
@@ -87,7 +95,7 @@ impl NetworkConnection for UdpClient {
             if let Some(sender) = &event_sender {
                 info!("[UDP客户端] 发送 Connected 事件");
                 if let Err(e) = sender
-                    .send(ConnectionEvent::Connected(config.id.clone()))
+                    .send(ConnectionEvent::Connected(config.id.clone(), local_addr))
                     .await
                 {
                     error!("[UDP客户端] 发送 Connected 事件失败: {:?}", e);

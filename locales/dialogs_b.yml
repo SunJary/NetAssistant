@@ -17,6 +17,21 @@ new_connection:
   port_label:
     zh-CN: 端口
     en: Port
+  local_address_label:
+    zh-CN: 本地地址
+    en: Local Address
+  local_address_placeholder:
+    zh-CN: 留空自动；如 192.168.1.100
+    en: Empty = auto; e.g. 192.168.1.100
+  local_port_label:
+    zh-CN: 本地端口
+    en: Local Port
+  local_port_placeholder:
+    zh-CN: 留空自动分配；如 50000
+    en: Empty = auto; e.g. 50000
+  local_bind_hint:
+    zh-CN: "一般留空即可；多网卡或对端按源 IP/源端口过滤时才需填写。仅支持本机 IP，不支持域名"
+    en: "Leave empty in most cases — only needed with multiple NICs or when the peer filters by source IP/port. Local IP only, no hostnames"
   protocol_label:
     zh-CN: 协议
     en: Protocol

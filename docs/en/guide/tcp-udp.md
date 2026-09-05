@@ -52,6 +52,17 @@ Addresses support both IPv4 and IPv6 when creating a connection — enter `::1` 
 
 ![IPv6 screenshot](../../../assets/screenshots/screenshot_ipv6.png)
 
+## Local Port Binding
+
+By default, client connections let the OS pick the local interface and an ephemeral port. When the peer whitelists by source address/port (industrial devices, firewall rules, etc.), specify them under New/Edit Connection → "More Settings":
+
+- **Local Address**: the local IP to use (e.g. `192.168.1.100`); leave empty for auto selection. IP only — hostnames are not accepted
+- **Local Port**: the local port to use (e.g. `50000`); leave empty for automatic assignment
+
+Once connected, the "Local" row in the left info panel shows the effective local endpoint (including auto-assigned UDP ports). The local address family must match the remote: IPv4 remote ↔ IPv4 local, same for IPv6.
+
+Note: with a fixed local port, rapid TCP reconnects may fail briefly with a clear error while the port sits in TIME_WAIT; a local port occupied by another process also fails with an explicit error message.
+
 ## UDP Scenarios
 
 ### Manual Client Addition
