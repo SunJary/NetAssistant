@@ -166,7 +166,11 @@ mod tests {
         };
 
         let result = manager.create_and_start_server(&config, None).await;
-        assert!(result.is_err(), "端口被占用时启动服务端应返回错误,实际: {:?}", result);
+        assert!(
+            result.is_err(),
+            "端口被占用时启动服务端应返回错误,实际: {:?}",
+            result
+        );
     }
 
     /// 回归测试: 客户端连接失败必须返回错误(此前同样被 `let _ =` 吞掉)。

@@ -19,6 +19,12 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+/// 半包数据强制 flush 的延迟
+///
+/// 行/长度前缀等分帧解码器的残留半包,在该延迟后作为一条消息强制落地,
+/// 避免对端半包后静默时数据长时间滞留。
+const FLUSH_DELAY: Duration = Duration::from_millis(50);
+
 /// 处理解码后的数据，转换为消息并发送事件（客户端用）
 fn process_decoded_data(
     data: BytesMut,
@@ -216,6 +222,13 @@ impl NetworkConnection for TcpClient {
                     &decoder_config,
                 );
 
+                // 半包 flush 截止时间: 收到数据后安排 FLUSH_DELAY 后强制 flush 一次。
+                // 关键: 截止时间是绝对时刻且不随后续收包顺延 —— 旧实现每轮循环重建
+                // sleep,持续有数据时 flush 分支被无限推迟(饥饿),半包永不落地。
+                // 截止时间到后该分支保持就绪,select 随机命中或在下一次收包路径内联触发,
+                // 保证最终执行;force_flush 无待处理数据时返回 None,空转无害。
+                let mut flush_deadline: Option<tokio::time::Instant> = None;
+
                 loop {
                     tokio::select! {
                         result = socket_read.read_buf(&mut buffer) => {
@@ -247,6 +260,26 @@ impl NetworkConnection for TcpClient {
                                             }
                                         }
                                     }
+
+                                    // 首次出现待 flush 的机会时安排截止时间(不随收包顺延)
+                                    if flush_deadline.is_none() {
+                                        flush_deadline = Some(tokio::time::Instant::now() + FLUSH_DELAY);
+                                    }
+                                    // 截止时间已过: 在收包路径内联触发,避免依赖 select 随机调度
+                                    if let Some(deadline) = flush_deadline {
+                                        if tokio::time::Instant::now() >= deadline {
+                                            flush_deadline = None;
+                                            if let Some(data) = decoder.force_flush() {
+                                                let data: BytesMut = data;
+                                                process_decoded_data(
+                                                    data,
+                                                    &message_processor_clone,
+                                                    &event_sender_clone,
+                                                    &config_clone.id
+                                                );
+                                            }
+                                        }
+                                    }
                                 },
                                 Err(e) => {
                                     error!("TCP读取错误: {:?}", e);
@@ -255,7 +288,8 @@ impl NetworkConnection for TcpClient {
                             }
                         }
 
-                        _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                        _ = tokio::time::sleep_until(flush_deadline.unwrap()), if flush_deadline.is_some() => {
+                            flush_deadline = None;
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;
                                 process_decoded_data(
@@ -377,6 +411,17 @@ impl Drop for TcpServer {
         if let Some(handle) = self.listener_handle.take() {
             handle.abort();
             debug!("TCP服务器监听任务已取消");
+        }
+        // 同时终止所有客户端任务: 正常路径走 stop() 已处理,
+        // 但绕过 stop 直接 drop 时,若无此兜底会留下持有连接的孤儿 client task
+        if let Ok(handles) = self.client_handles.try_lock() {
+            for (_, handle) in handles.iter() {
+                handle.abort();
+            }
+            let count = handles.len();
+            if count > 0 {
+                debug!("TCP服务器 Drop: 已终止 {} 个客户端任务", count);
+            }
         }
     }
 }
@@ -571,6 +616,12 @@ impl NetworkServer for TcpServer {
                                                 // 使用CodecFactory创建解码器（所有解码器现在都支持force_flush）
                                                 let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&decoder_config);
 
+                                                // 半包 flush 截止时间(与客户端读循环同一策略):
+                                                // 绝对时刻、不随收包顺延,截止后经内联或 select 分支保证执行
+                                                let mut flush_deadline: Option<
+                                                    tokio::time::Instant,
+                                                > = None;
+
                                                 loop {
                                                     tokio::select! {
                                                         // 数据读取事件
@@ -617,6 +668,33 @@ impl NetworkServer for TcpServer {
                                                                             }
                                                                         }
                                                                     }
+
+                                                                    // 首次安排 flush 截止时间(不随收包顺延),截止后在收包路径内联触发
+                                                                    if flush_deadline.is_none() {
+                                                                        flush_deadline = Some(tokio::time::Instant::now() + FLUSH_DELAY);
+                                                                    }
+                                                                    if let Some(deadline) = flush_deadline {
+                                                                        if tokio::time::Instant::now() >= deadline {
+                                                                            flush_deadline = None;
+                                                                            if let Some(data) = decoder.force_flush() {
+                                                                                let data: BytesMut = data;
+                                                                                process_decoded_data_with_addr(
+                                                                                    data,
+                                                                                    &client_message_processor,
+                                                                                    &client_event_sender,
+                                                                                    &client_id_clone,
+                                                                                    &addr.to_string()
+                                                                                );
+                                                                                try_auto_reply(
+                                                                                    &auto_reply_state,
+                                                                                    &client_tx_auto_reply,
+                                                                                    &client_event_sender,
+                                                                                    &client_id_clone,
+                                                                                    &addr,
+                                                                                );
+                                                                            }
+                                                                        }
+                                                                    }
                                                                 },
                                                                 Err(e) => {
                                                                     error!("TCP服务器读取来自 {} 的消息时发生错误: {:?}", addr, e);
@@ -625,8 +703,9 @@ impl NetworkServer for TcpServer {
                                                             }
                                                         }
 
-                                                        // 50ms超时事件 - 强制刷新缓冲区
-                                                        _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                                                        // flush 截止时间到 - 强制刷新解码器缓冲区
+                                                        _ = tokio::time::sleep_until(flush_deadline.unwrap()), if flush_deadline.is_some() => {
+                                                            flush_deadline = None;
                                                             // 强制刷新解码器缓冲区
                                                             if let Some(data) = decoder.force_flush() {
                                                                 let data: BytesMut = data;

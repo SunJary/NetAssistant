@@ -608,17 +608,36 @@ fn build_snapshot(
     }
 }
 
+/// 每秒采样的数量级: StressStats 约百字节,封顶后 ~13MB,防止数天级长压测内存无界增长。
+/// 超出后保留最近的采样: CSV 时序以近段为准;avg_qps 仍按最终 total 计算(精确),
+/// peak_qps 对超长压测只反映保留窗口内的峰值。
+const MAX_PER_SECOND_SAMPLES: usize = 86_400;
+
 /// 每整秒记录一个累计快照(用于 CSV 时序)
 fn push_per_second(
     samples: &Mutex<Vec<StressStats>>,
     last_second_mark: &mut u64,
     snapshot: &StressStats,
 ) {
+    push_per_second_capped(samples, last_second_mark, snapshot, MAX_PER_SECOND_SAMPLES);
+}
+
+fn push_per_second_capped(
+    samples: &Mutex<Vec<StressStats>>,
+    last_second_mark: &mut u64,
+    snapshot: &StressStats,
+    cap: usize,
+) {
     let current_sec = snapshot.elapsed_ms / 1000;
     if current_sec > *last_second_mark {
         *last_second_mark = current_sec;
         if let Ok(mut s) = samples.lock() {
             s.push(snapshot.clone());
+            // 超出上限时丢弃最旧的采样(每秒至多 drain 一条,开销可忽略)
+            let overflow = s.len().saturating_sub(cap);
+            if overflow > 0 {
+                s.drain(0..overflow);
+            }
         }
     }
 }
@@ -743,6 +762,29 @@ mod tests {
             },
         );
         assert_eq!(samples.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_push_per_second_caps_at_limit() {
+        let samples: Arc<Mutex<Vec<StressStats>>> = Arc::new(Mutex::new(Vec::new()));
+        let mut mark = 0u64;
+        // 推入远超上限的采样,验证长度被封顶且保留最近的数据
+        for sec in 1..=50u64 {
+            push_per_second_capped(
+                &samples,
+                &mut mark,
+                &StressStats {
+                    elapsed_ms: sec * 1000,
+                    total_sent: sec,
+                    ..Default::default()
+                },
+                10,
+            );
+        }
+        let s = samples.lock().unwrap();
+        assert_eq!(s.len(), 10);
+        assert_eq!(s.first().unwrap().elapsed_ms, 41_000);
+        assert_eq!(s.last().unwrap().elapsed_ms, 50_000);
     }
 
     /// 端到端集成测试: 本地 TCP echo server + 引擎 ping-pong 模式

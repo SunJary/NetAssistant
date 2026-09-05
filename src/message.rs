@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// 消息方向
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,7 +72,9 @@ impl fmt::Display for MessageType {
 }
 
 /// 单条消息记录
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Clone 为手动实现(display_cache 不可派生克隆,且克隆时重置缓存)
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
     pub timestamp: String,
@@ -85,6 +87,11 @@ pub struct Message {
     pub source_unexpected: bool,
     #[serde(default = "default_cached_content")]
     cached_content: String,
+    /// 显示格式化缓存(惰性): Some((模式, 格式化后的内容))。
+    /// 切换显示模式时不再全量重算(toggle 为 O(1)),渲染可见项时按需计算并填充。
+    /// Clone 时重置为 None(日志/导出克隆走基础内容,无需携带缓存)。
+    #[serde(skip)]
+    display_cache: Mutex<Option<(MessageDisplayMode, String)>>,
 }
 
 fn default_cached_content() -> String {
@@ -105,6 +112,7 @@ impl Message {
             source: None,
             source_unexpected: false,
             cached_content,
+            display_cache: Mutex::new(None),
         }
     }
 
@@ -151,22 +159,58 @@ impl Message {
         }
         self.message_type = message_type;
         self.cached_content = Self::compute_content(&self.raw_data, message_type);
+        // 基础内容已变化,显示缓存失效
+        if let Ok(mut cache) = self.display_cache.lock() {
+            *cache = None;
+        }
     }
 
-    /// 根据显示模式重算 cached_content（从 raw_data 重新生成，保留原始字节）
-    pub fn recompute_content_for_display(&mut self, mode: MessageDisplayMode) {
-        // 先还原为基础内容
-        let base = Self::compute_content(&self.raw_data, self.message_type);
-        self.cached_content = match mode {
-            MessageDisplayMode::Normal => base,
-            MessageDisplayMode::JsonPretty | MessageDisplayMode::JsonMinified => {
-                if self.message_type == MessageType::Text {
-                    format_json_text(&base, mode)
-                } else {
-                    base
+    /// 获取当前显示模式下的内容（惰性计算并缓存）
+    ///
+    /// Normal 模式直接返回基础内容;JSON 美化/压缩模式首次调用时从 raw_data
+    /// 计算并写入 display_cache,后续渲染命中缓存。仅可见项产生计算开销,
+    /// 1 万条消息的列表切换模式为 O(1) 而非 O(全部)。
+    pub fn display_content(&self, mode: MessageDisplayMode) -> String {
+        if mode == MessageDisplayMode::Normal {
+            return self.cached_content.clone();
+        }
+        if let Ok(cache) = self.display_cache.lock() {
+            if let Some((cached_mode, content)) = cache.as_ref() {
+                if *cached_mode == mode {
+                    return content.clone();
                 }
             }
+        }
+        let base = Self::compute_content(&self.raw_data, self.message_type);
+        let formatted = match mode {
+            MessageDisplayMode::JsonPretty | MessageDisplayMode::JsonMinified
+                if self.message_type == MessageType::Text =>
+            {
+                format_json_text(&base, mode)
+            }
+            _ => base,
         };
+        if let Ok(mut cache) = self.display_cache.lock() {
+            *cache = Some((mode, formatted.clone()));
+        }
+        formatted
+    }
+}
+
+// 手动实现 Clone: display_cache(Mutex)不可派生克隆,且克隆件(日志/导出)无需携带缓存
+impl Clone for Message {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            timestamp: self.timestamp.clone(),
+            direction: self.direction,
+            message_type: self.message_type,
+            raw_data: self.raw_data.clone(),
+            source: self.source.clone(),
+            source_unexpected: self.source_unexpected,
+            cached_content: self.cached_content.clone(),
+            display_cache: Mutex::new(None),
+        }
     }
 }
 
@@ -215,6 +259,12 @@ pub type FavoritesMap = HashMap<String, Vec<FavoriteItem>>;
 /// 默认消息列表最大保留条数（超出后丢弃最旧的消息以控制内存占用）
 const DEFAULT_MAX_MESSAGES: usize = 10000;
 
+/// 用户配置 max_messages=0（不限制）时的硬上限护栏
+///
+/// 虚拟列表渲染安全，但内存随消息数无界增长;超过此值后回退为
+/// 与有上限模式相同的分批淘汰（每批 limit/30 条）。
+const HARD_MAX_MESSAGES: usize = 1_000_000;
+
 /// 消息列表状态
 #[derive(Debug, Clone)]
 pub struct MessageListState {
@@ -223,7 +273,7 @@ pub struct MessageListState {
     pub messages: Arc<Vec<Message>>,
     pub total_sent: usize,
     pub total_received: usize,
-    /// 消息列表最大保留条数，0 表示不限制。超出后丢弃最旧的消息。
+    /// 消息列表最大保留条数，0 表示不限制（实际受 HARD_MAX_MESSAGES 硬护栏约束）。超出后丢弃最旧的消息。
     pub max_messages: usize,
 }
 
@@ -243,16 +293,26 @@ impl MessageListState {
         Self::default()
     }
 
+    /// 实际生效的上限: 0(不限制)回退到硬护栏,其余按用户配置
+    fn effective_limit(&self) -> usize {
+        if self.max_messages == 0 {
+            HARD_MAX_MESSAGES
+        } else {
+            self.max_messages
+        }
+    }
+
     /// 添加一条消息，返回因超出上限而从列表头部丢弃的消息条数。
     pub fn add_message(&mut self, message: Message) -> usize {
         match message.direction {
             MessageDirection::Sent => self.total_sent += 1,
             MessageDirection::Received => self.total_received += 1,
         }
+        let limit = self.effective_limit();
         let messages = Arc::make_mut(&mut self.messages);
-        let dropped = if self.max_messages > 0 && messages.len() >= self.max_messages {
+        let dropped = if messages.len() >= limit {
             // 分批丢弃最旧的消息以分摊开销（10% 或至少 1 条）
-            let drop_count = (self.max_messages / 30).max(1).min(messages.len());
+            let drop_count = (limit / 30).max(1).min(messages.len());
             messages.drain(0..drop_count);
             drop_count
         } else {
@@ -274,12 +334,13 @@ impl MessageListState {
                 MessageDirection::Received => self.total_received += 1,
             }
         }
+        let limit = self.effective_limit();
         let messages = Arc::make_mut(&mut self.messages);
         messages.reserve(new_messages.len());
         let mut dropped = 0;
         for message in new_messages {
-            if self.max_messages > 0 && messages.len() >= self.max_messages {
-                let drop_count = (self.max_messages / 30).max(1).min(messages.len());
+            if messages.len() >= limit {
+                let drop_count = (limit / 30).max(1).min(messages.len());
                 messages.drain(0..drop_count);
                 dropped += drop_count;
             }
@@ -358,6 +419,75 @@ mod tests {
     }
 
     #[test]
+    fn test_display_content_lazy_cache() {
+        use super::MessageDisplayMode;
+
+        let json = br#"{"name":"test","value":1}"#.to_vec();
+        let message = Message::new(MessageDirection::Received, json, MessageType::Text);
+
+        // Normal 模式: 直接返回基础内容
+        assert_eq!(
+            message.display_content(MessageDisplayMode::Normal),
+            r#"{"name":"test","value":1}"#
+        );
+
+        // JsonPretty: 惰性计算并缓存(多次调用结果一致)
+        let pretty = message.display_content(MessageDisplayMode::JsonPretty);
+        assert!(pretty.contains("\n"), "美化后应含换行: {}", pretty);
+        assert_eq!(
+            message.display_content(MessageDisplayMode::JsonPretty),
+            pretty
+        );
+
+        // JsonMinified: 与基础内容一致(本就是压缩 JSON)
+        assert_eq!(
+            message.display_content(MessageDisplayMode::JsonMinified),
+            r#"{"name":"test","value":1}"#
+        );
+
+        // 非 JSON 文本: 格式化失败时原样返回
+        let plain = Message::new(MessageDirection::Sent, b"Hello".to_vec(), MessageType::Text);
+        assert_eq!(
+            plain.display_content(MessageDisplayMode::JsonPretty),
+            "Hello"
+        );
+    }
+
+    #[test]
+    fn test_display_cache_invalidated_by_set_message_type() {
+        use super::MessageDisplayMode;
+
+        let mut message =
+            Message::new(MessageDirection::Sent, b"Hello".to_vec(), MessageType::Text);
+        assert_eq!(
+            message.display_content(MessageDisplayMode::JsonPretty),
+            "Hello"
+        );
+
+        // 切换类型后显示缓存应失效,按新基础内容重新计算
+        message.set_message_type(MessageType::Hex);
+        assert_eq!(
+            message.display_content(MessageDisplayMode::JsonPretty),
+            "48 65 6C 6C 6F"
+        );
+    }
+
+    #[test]
+    fn test_clone_drops_display_cache() {
+        use super::MessageDisplayMode;
+
+        let message = Message::new(MessageDirection::Sent, b"Hello".to_vec(), MessageType::Text);
+        let _ = message.display_content(MessageDisplayMode::JsonPretty);
+
+        // 克隆件(日志/导出路径)不携带显示缓存,但显示结果仍可按需重算
+        let clone = message.clone();
+        assert_eq!(
+            clone.display_content(MessageDisplayMode::JsonPretty),
+            "Hello"
+        );
+    }
+
+    #[test]
     fn test_message_list_state() {
         let mut state = MessageListState::new();
 
@@ -389,6 +519,17 @@ mod tests {
         assert_eq!(state.total_sent, 1);
         assert_eq!(state.total_received, 1);
         assert_eq!(state.total_messages(), 2);
+    }
+
+    #[test]
+    fn test_effective_limit_hard_cap() {
+        let mut state = MessageListState::new();
+        // max_messages=0(不限制) 回退到硬护栏,防止内存无界增长
+        state.max_messages = 0;
+        assert_eq!(state.effective_limit(), super::HARD_MAX_MESSAGES);
+        // 有配置时按用户配置生效
+        state.max_messages = 5000;
+        assert_eq!(state.effective_limit(), 5000);
     }
 
     #[test]

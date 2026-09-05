@@ -1523,16 +1523,14 @@ impl NetAssistantApp {
         });
     }
 
-    /// 切换消息显示模式（原始/美化/压缩），并重算所有消息的 cached_content
+    /// 切换消息显示模式（原始/美化/压缩）
+    ///
+    /// 惰性计算: 仅切换标记并触发重绘,格式化由渲染可见项时按需填充
+    /// display_cache 完成,1 万条消息下切换为 O(1) 而非 O(全部消息)。
     pub fn toggle_message_display_mode(&mut self, tab_id: String, cx: &mut Context<Self>) {
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
             let new_mode = tab_state.message_display_mode.next();
             tab_state.message_display_mode = new_mode;
-            // 遍历所有消息，从 raw_data 重新计算 cached_content
-            let messages = std::sync::Arc::make_mut(&mut tab_state.message_list.messages);
-            for message in messages {
-                message.recompute_content_for_display(new_mode);
-            }
             debug!("[消息显示模式] 标签页 {} 切换为: {:?}", tab_id, new_mode);
             cx.notify();
         }

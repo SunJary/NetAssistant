@@ -68,7 +68,9 @@ pub struct ConnectionTabState {
     pub server_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
     pub client_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
 
-    pub favorited_contents: HashSet<String>,
+    /// 收藏内容集合。Arc 包装使渲染路径 clone 为 O(1) 引用计数,
+    /// 避免每次重渲染深拷贝整个集合;修改走 Arc::make_mut。
+    pub favorited_contents: Arc<HashSet<String>>,
 
     // 日志记录相关
     pub log_enabled: bool,
@@ -151,7 +153,7 @@ impl ConnectionTabState {
             server_handle: None,
             client_handle: None,
 
-            favorited_contents: HashSet::new(),
+            favorited_contents: Arc::new(HashSet::new()),
 
             // 初始化日志记录
             log_enabled: false,
@@ -214,14 +216,6 @@ impl ConnectionTabState {
         let dropped = self.message_list.add_message(message);
         let new_count = self.message_list.messages.len();
 
-        // 非原始显示模式下，重算新消息的内容以保持一致的格式化
-        if self.message_display_mode != MessageDisplayMode::Normal {
-            let messages = std::sync::Arc::make_mut(&mut self.message_list.messages);
-            if let Some(last) = messages.last_mut() {
-                last.recompute_content_for_display(self.message_display_mode);
-            }
-        }
-
         // 更新 GPUI 列表状态：先移除头部丢弃项，再在尾部追加新项
         if dropped > 0 {
             self.message_list_state.splice(0..dropped, 0);
@@ -261,15 +255,6 @@ impl ConnectionTabState {
         let old_count = self.message_list.messages.len();
         let dropped = self.message_list.add_messages_batch(messages);
         let new_count = self.message_list.messages.len();
-
-        // 非原始显示模式下，重算新增消息的内容
-        if self.message_display_mode != MessageDisplayMode::Normal {
-            let start = old_count.saturating_sub(dropped);
-            let vec = std::sync::Arc::make_mut(&mut self.message_list.messages);
-            for msg in vec[start..].iter_mut() {
-                msg.recompute_content_for_display(self.message_display_mode);
-            }
-        }
 
         // 批量更新列表状态：先移除丢弃项，再追加新增项（一次 splice）
         if dropped > 0 {
@@ -1508,6 +1493,7 @@ impl<'a> ConnectionTab<'a> {
                 let tab_id_for_list = tab_id.clone();
                 let app_entity = cx.entity().clone();
                 let favorited_contents = self.tab_state.favorited_contents.clone();
+                let display_mode = self.tab_state.message_display_mode;
 
                 div()
                     .relative()
@@ -1523,7 +1509,9 @@ impl<'a> ConnectionTab<'a> {
                                     move |ix, _window, _cx| {
                                         if let Some(message) = messages.get(ix) {
                                             let is_sent = message.direction == MessageDirection::Sent;
-                                            let is_favorited = favorited_contents.contains(message.get_content_by_type());
+                                            // 当前显示模式下的内容(惰性计算并缓存,仅可见项产生开销)
+                                            let display_text = message.display_content(display_mode);
+                                            let is_favorited = favorited_contents.contains(&display_text);
                                             let should_show = if message.source.is_none() {
                                                 true
                                             } else {
@@ -1636,7 +1624,7 @@ impl<'a> ConnectionTab<'a> {
                                                                         .when(!is_sent, |div| {
                                                                             div.text_color(theme.foreground)
                                                                         })
-                                                                        .child(message.get_content_by_type().to_string()),
+                                                                        .child(display_text.clone()),
                                                                 ),
                                                         )
                                                         .child(
@@ -1652,7 +1640,7 @@ impl<'a> ConnectionTab<'a> {
                                                                         })
                                                                         .child(
                                                                             Clipboard::new(ElementId::named_usize("copy-message", ix))
-                                                                                .value(message.get_content_by_type().to_string())
+                                                                                .value(display_text.clone())
                                                                                 .on_copied(|value, _, _| {
                                                                                     debug!("Copied message content: {}", value);
                                                                                 })
@@ -1660,7 +1648,7 @@ impl<'a> ConnectionTab<'a> {
                                                                 )
                                                                 .child({
                                                                     let tab_id_fav = tab_id_for_list.clone();
-                                                                    let content = message.get_content_by_type().to_string();
+                                                                    let content = display_text.clone();
                                                                     let is_fav = is_favorited;
                                                                     let message_type = message.message_type;
                                                                     let entity = app_entity.clone();
@@ -1679,7 +1667,7 @@ impl<'a> ConnectionTab<'a> {
                                                                                     if let Some(fav) = app.storage.find_favorite_by_content(&tab_id_fav, &content) {
                                                                                         app.storage.remove_favorite(&tab_id_fav, &fav.id);
                                                                                         if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_fav) {
-                                                                                            tab_state.favorited_contents.remove(&content);
+                                                                                            Arc::make_mut(&mut tab_state.favorited_contents).remove(&content);
                                                                                         }
                                                                                         cx.notify();
                                                                                     }

@@ -10,6 +10,7 @@ use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::dialog::{DialogAction, DialogClose, DialogFooter};
 use gpui_component::input::{Input, InputState};
 use rust_i18n::t;
+use std::sync::Arc;
 
 use crate::app::NetAssistantApp;
 use crate::message::FavoriteItem;
@@ -86,7 +87,7 @@ fn confirm_favorite_remark(
             let item = FavoriteItem::new(content, message_type, remark.trim().to_string());
             app.storage.add_favorite(&tab_id, item);
             if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                tab_state.favorited_contents.insert(content_for_cache);
+                Arc::make_mut(&mut tab_state.favorited_contents).insert(content_for_cache);
             }
         }
 

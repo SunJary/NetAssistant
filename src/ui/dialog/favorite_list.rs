@@ -6,6 +6,7 @@ use gpui_component::{
     scroll::ScrollableElement,
 };
 use rust_i18n::t;
+use std::sync::Arc;
 
 use crate::app::NetAssistantApp;
 use crate::message::FavoriteItem;
@@ -213,7 +214,7 @@ impl<'a> FavoriteListPanel<'a> {
                                                 cx.stop_propagation();
                                                 app.storage.remove_favorite(&tab_id_for_delete, &item_id);
                                                 if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_for_delete) {
-                                                    tab_state.favorited_contents.remove(&item_content_for_delete);
+                                                    Arc::make_mut(&mut tab_state.favorited_contents).remove(&item_content_for_delete);
                                                 }
                                                 cx.notify();
                                             }))
