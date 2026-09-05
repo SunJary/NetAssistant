@@ -59,8 +59,8 @@ impl NetworkConnectionManager {
         // 创建客户端连接
         let mut client = DefaultNetworkFactory::create_client(config, event_sender);
 
-        // 连接到服务器
-        let _ = client.connect().await;
+        // 连接到服务器(失败直接返回错误,由 UI 层提示;吞掉会导致 tab 永远停在"连接中")
+        client.connect().await?;
 
         // 保存客户端连接
         self.clients.insert(config.id.clone(), client);
@@ -85,12 +85,18 @@ impl NetworkConnectionManager {
         // 保存服务器到映射中
         self.servers.insert(config.id.clone(), server);
 
-        // 从映射中获取服务器并启动
-        if let Some(server) = self.servers.get_mut(&config.id) {
-            let _ = server.start().await;
+        // 从映射中获取服务器并启动(绑定失败等错误直接返回,不再吞掉——
+        // 否则端口被其他实例占用时 UI 无任何提示,表现为"在监听但收不到消息")
+        let start_result = if let Some(server) = self.servers.get_mut(&config.id) {
+            server.start().await
+        } else {
+            Ok(())
+        };
+        if start_result.is_err() {
+            // 启动失败的服务端没有运行中的任务,直接移除避免残留
+            self.servers.remove(&config.id);
         }
-
-        Ok(())
+        start_result
     }
 
     /// 断开客户端连接
@@ -133,5 +139,53 @@ impl NetworkConnectionManager {
         } else {
             Err("仅UDP服务端支持手动添加客户端".to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::connection::ConnectionType;
+
+    /// 回归测试: 端口被占用时 create_and_start_server 必须返回错误。
+    ///
+    /// 此前 start() 的错误被 `let _ =` 吞掉,UI 无任何提示——多实例监听同一
+    /// UDP 端口时表现为"两个实例都显示在监听,但都收不到消息"。
+    #[tokio::test]
+    async fn test_start_server_port_conflict_returns_error() {
+        // 先占用一个随机端口
+        let holder = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let port = holder.local_addr().unwrap().port();
+
+        let mut manager = NetworkConnectionManager::new();
+        let config = ServerConfig {
+            protocol: ConnectionType::Udp,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: port,
+            ..Default::default()
+        };
+
+        let result = manager.create_and_start_server(&config, None).await;
+        assert!(result.is_err(), "端口被占用时启动服务端应返回错误,实际: {:?}", result);
+    }
+
+    /// 回归测试: 客户端连接失败必须返回错误(此前同样被 `let _ =` 吞掉)。
+    #[tokio::test]
+    async fn test_connect_client_failure_returns_error() {
+        // 取一个当前无人监听的 TCP 端口: 先 bind 再 drop
+        let port = {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            listener.local_addr().unwrap().port()
+        };
+
+        let mut manager = NetworkConnectionManager::new();
+        let config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Tcp,
+            server_address: "127.0.0.1".to_string(),
+            server_port: port,
+            ..Default::default()
+        };
+        let result = manager.create_and_connect_client(&config, None).await;
+        assert!(result.is_err(), "连接被拒绝时应返回错误,实际: {:?}", result);
     }
 }

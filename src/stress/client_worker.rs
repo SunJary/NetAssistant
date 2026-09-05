@@ -549,7 +549,10 @@ async fn run_udp(
             // 让压测结束日志的 diagnose_failures 能给出"调大端口范围"建议
             warn!("[worker{}] UDP bind 失败: {}", worker_id, e);
             stats.failure.fetch_add(1, Ordering::Relaxed);
-            stats.failures.connect_failed.fetch_add(1, Ordering::Relaxed);
+            stats
+                .failures
+                .connect_failed
+                .fetch_add(1, Ordering::Relaxed);
             if stats.failures.connect_failed.load(Ordering::Relaxed) % 100 == 1 {
                 stats.set_last_connect_error(&e.to_string());
             }

@@ -10,14 +10,14 @@ use std::borrow::Cow;
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::clipboard::Clipboard;
-use gpui_component::dialog::DialogFooter;
-use gpui_component::scroll::ScrollableElement;
 use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
 use gpui_component::WindowExt as _;
+use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::clipboard::Clipboard;
+use gpui_component::dialog::DialogFooter;
+use gpui_component::scroll::ScrollableElement;
 
 use rust_i18n::t;
 
@@ -26,7 +26,11 @@ use crate::app::NetAssistantApp;
 use super::{dialog_content_max_height, dialog_height};
 
 /// 打开端口说明对话框(命令式, 叠在压测配置对话框之上)
-pub fn open_port_limit_help_dialog(app: WeakEntity<NetAssistantApp>, window: &mut Window, cx: &mut App) {
+pub fn open_port_limit_help_dialog(
+    app: WeakEntity<NetAssistantApp>,
+    window: &mut Window,
+    cx: &mut App,
+) {
     window.open_dialog(cx, move |dialog, window, _cx| {
         dialog
             .title(t!("port_limit_help.title").to_string())
@@ -132,19 +136,19 @@ fn render_help_content(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -
             div()
                 .text_sm()
                 .text_color(theme.foreground)
-                .child(t!("port_limit_help.time_wait_desc_1").to_string())
+                .child(t!("port_limit_help.time_wait_desc_1").to_string()),
         )
         .child(
             div()
                 .text_sm()
                 .text_color(theme.foreground)
-                .child(t!("port_limit_help.time_wait_desc_2").to_string())
+                .child(t!("port_limit_help.time_wait_desc_2").to_string()),
         )
         .child(
             div()
                 .text_sm()
                 .text_color(theme.foreground)
-                .child(t!("port_limit_help.udp_desc").to_string())
+                .child(t!("port_limit_help.udp_desc").to_string()),
         )
         // ===== 平台相关: 调优命令 =====
         .child(render_platform_tune_section(theme))
@@ -218,16 +222,13 @@ fn render_command_line(cmd: &str, note: &str, theme: &Theme, id: &str) -> Div {
                         .child(cmd.to_string()),
                 )
                 .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .child(
-                            Clipboard::new(ElementId::Name(format!("port-help-{}", id).into()))
-                                .value(cmd.to_string())
-                                .on_copied(|value, _, _| {
-                                    log::debug!("[端口说明] 已复制命令: {}", value);
-                                }),
-                        ),
+                    div().flex().items_center().child(
+                        Clipboard::new(ElementId::Name(format!("port-help-{}", id).into()))
+                            .value(cmd.to_string())
+                            .on_copied(|value, _, _| {
+                                log::debug!("[端口说明] 已复制命令: {}", value);
+                            }),
+                    ),
                 ),
         )
         .when(!note.is_empty(), |d| {
@@ -274,10 +275,7 @@ fn platform_view_command() -> (&'static str, Cow<'static, str>) {
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
-        (
-            "",
-            t!("port_limit_help.platform_not_supported"),
-        )
+        ("", t!("port_limit_help.platform_not_supported"))
     }
 }
 

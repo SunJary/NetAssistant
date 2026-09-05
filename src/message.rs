@@ -343,11 +343,8 @@ mod tests {
     #[test]
     fn test_set_message_type_idempotent() {
         // 同类型重复设置: 幂等跳过重算，内容保持不变
-        let mut message = Message::new(
-            MessageDirection::Sent,
-            b"Hello".to_vec(),
-            MessageType::Text,
-        );
+        let mut message =
+            Message::new(MessageDirection::Sent, b"Hello".to_vec(), MessageType::Text);
         message.set_message_type(MessageType::Text);
         assert_eq!(message.get_content_by_type(), "Hello");
 

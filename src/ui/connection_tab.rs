@@ -1,4 +1,4 @@
-use crate::ui::components::hex_editor::{adapter as hex_adapter, HexEditorState};
+use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
 use crate::ui::components::input_with_mode::InputWithMode;
 use crate::ui::dialog::{
     DecoderSelectionDialogState, open_add_client_dialog, open_decoder_selection_dialog,
@@ -129,7 +129,10 @@ impl ConnectionTabState {
             })),
             // 消息发送框: 每行 16 字节
             message_hex_editor: Some(cx.new(|cx| {
-                HexEditorState::with_inline_bytes_per_row(cx, hex_adapter::INLINE_BYTES_PER_ROW_WIDE)
+                HexEditorState::with_inline_bytes_per_row(
+                    cx,
+                    hex_adapter::INLINE_BYTES_PER_ROW_WIDE,
+                )
             })),
             message_input_mode,
             auto_clear_input: true,
@@ -1505,7 +1508,7 @@ impl<'a> ConnectionTab<'a> {
                 let tab_id_for_list = tab_id.clone();
                 let app_entity = cx.entity().clone();
                 let favorited_contents = self.tab_state.favorited_contents.clone();
-               
+
                 div()
                     .relative()
                     .w_full()
@@ -1528,11 +1531,11 @@ impl<'a> ConnectionTab<'a> {
                                                     message.source.as_ref() == Some(&selected.to_string())
                                                 })
                                             };
-                                            
+
                                             if !should_show {
                                                 return div().into_any();
                                             }
-                                            
+
                                             div()
                                                 .flex()
                                                 .flex_col()
@@ -1930,7 +1933,7 @@ impl<'a> ConnectionTab<'a> {
                                     .when(self.tab_state.periodic_send_enabled, |builder| {
                                         builder.child(
                                             div()
-                                                .w_20() 
+                                                .w_20()
                                                 .min_w_16()
                                                 .h_7()
                                                 .bg(theme.secondary)

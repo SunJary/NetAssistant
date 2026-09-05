@@ -11,9 +11,9 @@
 use std::borrow::Cow;
 
 use gpui::*;
-use gpui_component::scroll::ScrollableElement;
-use gpui_component::Theme;
 use gpui_component::StyledExt as _;
+use gpui_component::Theme;
+use gpui_component::scroll::ScrollableElement;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
@@ -117,17 +117,13 @@ pub fn render_variable_picker(
                 )
                 // 变量列表 (两层结构: 外层分配剩余高度, 内层滚动)
                 .child(
-                    div()
-                        .flex_1()
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .size_full()
-                                .overflow_y_scrollbar()
-                                .children(variables().iter().map(|var_def| {
-                                    render_variable_row(&entity, var_def, theme)
-                                })),
+                    div().flex_1().overflow_hidden().child(
+                        div().size_full().overflow_y_scrollbar().children(
+                            variables()
+                                .iter()
+                                .map(|var_def| render_variable_row(&entity, var_def, theme)),
                         ),
+                    ),
                 )
                 // 底部提示 (固定)
                 .child(
@@ -147,11 +143,7 @@ pub fn render_variable_picker(
 }
 
 /// 渲染单行变量(变量名 + 说明), 点击插入到光标处并关闭浮层
-fn render_variable_row(
-    app: &Entity<NetAssistantApp>,
-    var_def: &VariableDef,
-    theme: &Theme,
-) -> Div {
+fn render_variable_row(app: &Entity<NetAssistantApp>, var_def: &VariableDef, theme: &Theme) -> Div {
     let insert_text = var_def.insert_text;
     let entity = app.clone();
     div()

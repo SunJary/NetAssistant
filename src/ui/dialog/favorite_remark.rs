@@ -5,9 +5,9 @@
 // 由 Dialog 的 on_ok/on_cancel 处理。
 
 use gpui::*;
+use gpui_component::WindowExt as _;
 use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::dialog::{DialogAction, DialogClose, DialogFooter};
-use gpui_component::WindowExt as _;
 use gpui_component::input::{Input, InputState};
 use rust_i18n::t;
 
@@ -26,7 +26,9 @@ pub fn open_favorite_remark_dialog(
     cx: &mut App,
 ) {
     window.open_dialog(cx, move |dialog, window, cx| {
-        let Some(input) = app.upgrade().map(|entity| entity.read(cx).favorite_remark_input.clone())
+        let Some(input) = app
+            .upgrade()
+            .map(|entity| entity.read(cx).favorite_remark_input.clone())
         else {
             return dialog;
         };

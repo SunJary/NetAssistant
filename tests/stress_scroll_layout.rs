@@ -5,8 +5,8 @@
 //! 目的: 定位高度约束链断点 (滚动失效 = 某层被内容撑开, scroll_max 恒为 0)。
 
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, Render, ScrollDelta,
-    ScrollWheelEvent, Size, Styled, TestAppContext, VisualTestContext, Window, div, point, px,
+    Context, InteractiveElement, IntoElement, ParentElement, Render, ScrollDelta, ScrollWheelEvent,
+    Size, Styled, TestAppContext, VisualTestContext, Window, div, point, px,
 };
 use gpui_component::scroll::ScrollableElement;
 

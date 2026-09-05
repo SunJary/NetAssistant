@@ -2,15 +2,15 @@ use crate::custom_icons::CustomIconName;
 use crate::message::{MessageDisplayMode, format_json_text};
 use crate::utils::hex::validate_hex_input;
 use gpui::*;
-use rust_i18n::t;
 use gpui_component::{
     Icon, StyledExt, Theme,
     input::{Input, InputState},
     tooltip::Tooltip,
 };
+use rust_i18n::t;
 
-use super::hex_editor::adapter as hex_adapter;
 use super::hex_editor::HexEditorState;
+use super::hex_editor::adapter as hex_adapter;
 
 /// 通用输入框组件（支持文本/十六进制模式）
 pub struct InputWithMode;
@@ -34,7 +34,8 @@ impl InputWithMode {
         if mode == "hex" {
             if let Some(editor) = hex_editor {
                 if editor.read(cx).core.doc.is_some() {
-                    let editor_view = hex_adapter::render_inline(editor, input_state, theme, window, cx);
+                    let editor_view =
+                        hex_adapter::render_inline(editor, input_state, theme, window, cx);
                     return div().flex().flex_col().gap_1().w_full().child(editor_view);
                 }
                 // 解析失败 → 回退文本框 + 错误提示（不丢用户内容）
@@ -84,12 +85,13 @@ impl InputWithMode {
                             MouseButton::Left,
                             move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
                                 let content = pretty_entity.read(cx).value().to_string();
-                                let formatted = format_json_text(&content, MessageDisplayMode::JsonPretty);
+                                let formatted =
+                                    format_json_text(&content, MessageDisplayMode::JsonPretty);
                                 pretty_entity.update(cx, |input, cx| {
                                     input.set_value(formatted, window, cx);
                                 });
-                            }
-                        )
+                            },
+                        ),
                 )
                 // 压缩按钮
                 .child(
@@ -108,13 +110,14 @@ impl InputWithMode {
                             MouseButton::Left,
                             move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
                                 let content = minify_entity.read(cx).value().to_string();
-                                let formatted = format_json_text(&content, MessageDisplayMode::JsonMinified);
+                                let formatted =
+                                    format_json_text(&content, MessageDisplayMode::JsonMinified);
                                 minify_entity.update(cx, |input, cx| {
                                     input.set_value(formatted, window, cx);
                                 });
-                            }
-                        )
-                )
+                            },
+                        ),
+                ),
         );
 
         div().flex().flex_col().gap_1().w_full().child(container)
@@ -136,7 +139,11 @@ fn text_input_container(
         .rounded_md()
         .border_1()
         // 根据验证结果设置边框颜色
-        .border_color(if !is_valid { theme.danger } else { theme.border })
+        .border_color(if !is_valid {
+            theme.danger
+        } else {
+            theme.border
+        })
         .child(
             Input::new(input_state)
                 .w_full()
@@ -162,14 +169,14 @@ mod repro_tests {
     //! 复现：自动回复输入框默认值 "ok" 切到 hex 模式后的完整真实序列
     //! （渲染中创建实体/订阅 → text 模式渲染 → 切 hex + sanitize → 继续渲染）
     use gpui::{
-        div, px, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-        Styled as _, TestAppContext, Window,
+        AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+        TestAppContext, Window, div, px,
     };
-    use gpui_component::{input::InputState, ActiveTheme as _, Root};
+    use gpui_component::{ActiveTheme as _, Root, input::InputState};
     use rust_i18n::t;
 
     use super::InputWithMode;
-    use crate::ui::components::hex_editor::{adapter as hex_adapter, HexEditorState};
+    use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
 
     struct Host {
         tab_id: String,
@@ -264,11 +271,25 @@ mod repro_tests {
             let mut panel = div().flex().flex_col().gap_2().w(px(480.0));
             if let (Some(input), Some(editor)) = (&self.message_input, &self.message_editor) {
                 hex_adapter::sync(editor, input, cx);
-                panel = panel.child(InputWithMode::render(input, Some(editor), self.mode, &theme, window, cx));
+                panel = panel.child(InputWithMode::render(
+                    input,
+                    Some(editor),
+                    self.mode,
+                    &theme,
+                    window,
+                    cx,
+                ));
             }
             if let (Some(input), Some(editor)) = (&self.auto_reply_input, &self.auto_reply_editor) {
                 hex_adapter::sync(editor, input, cx);
-                panel = panel.child(InputWithMode::render(input, Some(editor), self.mode, &theme, window, cx));
+                panel = panel.child(InputWithMode::render(
+                    input,
+                    Some(editor),
+                    self.mode,
+                    &theme,
+                    window,
+                    cx,
+                ));
             }
             let _ = t!("input_mode.hex_invalid").to_string();
             panel
@@ -295,12 +316,7 @@ mod repro_tests {
         // 切换到 hex: 与 chip handler 一致 (mode 更新 + sanitize)
         cx.update(|window, cx| {
             let root = window.root::<Root>().unwrap().unwrap();
-            let host = root
-                .read(cx)
-                .view()
-                .clone()
-                .downcast::<Host>()
-                .unwrap();
+            let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
             host.update(cx, |host, cx| {
                 host.mode = "hex";
                 host.sanitize(window, cx);

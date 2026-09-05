@@ -8,15 +8,15 @@
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::input::{Input, InputState};
-use gpui_component::scroll::ScrollableElement;
 use gpui_component::ActiveTheme as _;
 use gpui_component::ElementExt as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
 use gpui_component::WindowExt as _;
+use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::dialog::DialogFooter;
+use gpui_component::input::{Input, InputState};
+use gpui_component::scroll::ScrollableElement;
 
 use rust_i18n::t;
 
@@ -351,15 +351,18 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, window: &Window, cx
                         .child(t!("stress_config.target_label").to_string()),
                 )
                 .child(
-                    div().text_sm().text_color(theme.muted_foreground).child(format!(
-                        "{}:{} ({})",
-                        state.target_address,
-                        state.target_port,
-                        match state.protocol {
-                            ConnectionType::Tcp => "TCP",
-                            ConnectionType::Udp => "UDP",
-                        }
-                    )),
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(format!(
+                            "{}:{} ({})",
+                            state.target_address,
+                            state.target_port,
+                            match state.protocol {
+                                ConnectionType::Tcp => "TCP",
+                                ConnectionType::Udp => "UDP",
+                            }
+                        )),
                 ),
         )
         // 压测模式
@@ -431,7 +434,9 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, window: &Window, cx
                                         .text_sm()
                                         .font_semibold()
                                         .text_color(theme.foreground)
-                                        .child(t!("stress_config.payload_content_label").to_string()),
+                                        .child(
+                                            t!("stress_config.payload_content_label").to_string(),
+                                        ),
                                 )
                                 .child(render_insert_var_button(app, state, theme, cx)),
                         )
@@ -486,7 +491,13 @@ fn render_port_warning(
 
     // 手动"重新检测"进行中: 给予反馈 (懒触发的 in-flight 不显示, 避免红框闪烁)
     if app_state.port_range_detected && app_state.port_range_detecting {
-        return render_warning_box(app, theme, &t!("stress_config.reading_port_config"), false, cx);
+        return render_warning_box(
+            app,
+            theme,
+            &t!("stress_config.reading_port_config"),
+            false,
+            cx,
+        );
     }
     // 懒触发尚未完成 (detected=false): 暂不显示
     if !app_state.port_range_detected {
@@ -535,22 +546,18 @@ fn render_warning_box(
     _cx: &App,
 ) -> Div {
     let entity = app.clone();
-    let mut actions = div()
-        .flex()
-        .justify_end()
-        .gap_3()
-        .child(
-            div()
-                .text_xs()
-                .text_color(theme.primary)
-                .cursor_pointer()
-                .hover(|d| d.underline())
-                .child(t!("stress_config.port_help_link").to_string())
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    // 打开端口说明对话框(层叠在压测配置之上)
-                    open_port_limit_help_dialog(entity.downgrade(), window, cx);
-                }),
-        );
+    let mut actions = div().flex().justify_end().gap_3().child(
+        div()
+            .text_xs()
+            .text_color(theme.primary)
+            .cursor_pointer()
+            .hover(|d| d.underline())
+            .child(t!("stress_config.port_help_link").to_string())
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                // 打开端口说明对话框(层叠在压测配置之上)
+                open_port_limit_help_dialog(entity.downgrade(), window, cx);
+            }),
+    );
     if retry {
         let entity = app.clone();
         actions = actions.child(
@@ -703,26 +710,20 @@ fn render_insert_var_button(
             this.text_color(gpui::white()).bg(theme.primary)
         })
         .when(!filled, |this| {
-            this.text_color(theme.primary).bg(theme.primary.opacity(0.06))
+            this.text_color(theme.primary)
+                .bg(theme.primary.opacity(0.06))
         })
-        .hover(|this| {
-            this.text_color(gpui::white()).bg(theme.primary)
-        })
-        .active(|this| {
-            this.text_color(gpui::white()).bg(theme.primary)
-        })
+        .hover(|this| this.text_color(gpui::white()).bg(theme.primary))
+        .active(|this| this.text_color(gpui::white()).bg(theme.primary))
         .child(t!("stress_config.insert_variable").to_string())
-        .on_mouse_down(
-            MouseButton::Left,
-            move |_, _, cx| {
-                entity.update(cx, |app, cx| {
-                    if let Some(s) = &mut app.stress_config_dialog {
-                        s.show_variable_picker = !s.show_variable_picker;
-                    }
-                    cx.notify();
-                });
-            },
-        )
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                if let Some(s) = &mut app.stress_config_dialog {
+                    s.show_variable_picker = !s.show_variable_picker;
+                }
+                cx.notify();
+            });
+        })
         .on_prepaint(prepaint_handler)
 }
 
@@ -753,29 +754,22 @@ fn render_payload_mode_chip(
                     d.bg(theme.border).text_color(theme.foreground)
                 })
                 .child(t!("stress_config.mode_text").to_string())
-                .on_mouse_down(
-                    MouseButton::Left,
-                    move |_, window, cx| {
-                        entity.update(cx, |app, cx| {
-                            if let Some(s) = &mut app.stress_config_dialog {
-                                // 切回文本时，若当前是 hex 默认报文则换回文本默认
-                                let current = s.payload_input.read(cx).value().to_string();
-                                if current == DEFAULT_HEX_PAYLOAD {
-                                    s.payload_input.update(cx, |input, cx| {
-                                        input.set_value(
-                                            DEFAULT_TEXT_PAYLOAD.to_string(),
-                                            window,
-                                            cx,
-                                        );
-                                    });
-                                }
-                                s.message_input_mode = "text".to_string();
-                                s.show_variable_picker = false;
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    entity.update(cx, |app, cx| {
+                        if let Some(s) = &mut app.stress_config_dialog {
+                            // 切回文本时，若当前是 hex 默认报文则换回文本默认
+                            let current = s.payload_input.read(cx).value().to_string();
+                            if current == DEFAULT_HEX_PAYLOAD {
+                                s.payload_input.update(cx, |input, cx| {
+                                    input.set_value(DEFAULT_TEXT_PAYLOAD.to_string(), window, cx);
+                                });
                             }
-                            cx.notify();
-                        });
-                    },
-                ),
+                            s.message_input_mode = "text".to_string();
+                            s.show_variable_picker = false;
+                        }
+                        cx.notify();
+                    });
+                }),
         )
         .child(
             div()
@@ -789,32 +783,25 @@ fn render_payload_mode_chip(
                 })
                 .when(is_text, |d| d.bg(theme.border).text_color(theme.foreground))
                 .child("Hex")
-                .on_mouse_down(
-                    MouseButton::Left,
-                    move |_, window, cx| {
-                        entity_hex.update(cx, |app, cx| {
-                            if let Some(s) = &mut app.stress_config_dialog {
-                                // 切到 hex 时，若当前是文本默认报文则换为 hex 默认
-                                let current = s.payload_input.read(cx).value().to_string();
-                                if current == DEFAULT_TEXT_PAYLOAD {
-                                    s.payload_input.update(cx, |input, cx| {
-                                        input.set_value(
-                                            DEFAULT_HEX_PAYLOAD.to_string(),
-                                            window,
-                                            cx,
-                                        );
-                                    });
-                                }
-                                s.message_input_mode = "hex".to_string();
-                                s.show_variable_picker = false;
-                                // 切到 hex 后聚焦编辑器: 光标立刻可见, 可直接键入
-                                let focus = s.payload_hex_editor.read(cx).focus.clone();
-                                focus.focus(window, cx);
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    entity_hex.update(cx, |app, cx| {
+                        if let Some(s) = &mut app.stress_config_dialog {
+                            // 切到 hex 时，若当前是文本默认报文则换为 hex 默认
+                            let current = s.payload_input.read(cx).value().to_string();
+                            if current == DEFAULT_TEXT_PAYLOAD {
+                                s.payload_input.update(cx, |input, cx| {
+                                    input.set_value(DEFAULT_HEX_PAYLOAD.to_string(), window, cx);
+                                });
                             }
-                            cx.notify();
-                        });
-                    },
-                ),
+                            s.message_input_mode = "hex".to_string();
+                            s.show_variable_picker = false;
+                            // 切到 hex 后聚焦编辑器: 光标立刻可见, 可直接键入
+                            let focus = s.payload_hex_editor.read(cx).focus.clone();
+                            focus.focus(window, cx);
+                        }
+                        cx.notify();
+                    });
+                }),
         )
 }
 
@@ -842,20 +829,17 @@ fn render_advanced(
                 } else {
                     t!("stress_config.more_settings_expand").to_string()
                 })
-                .on_mouse_down(
-                    MouseButton::Left,
-                    {
-                        let entity = entity.clone();
-                        move |_, _, cx| {
-                            entity.update(cx, |app, cx| {
-                                if let Some(s) = &mut app.stress_config_dialog {
-                                    s.show_advanced = !s.show_advanced;
-                                }
-                                cx.notify();
-                            });
-                        }
-                    },
-                ),
+                .on_mouse_down(MouseButton::Left, {
+                    let entity = entity.clone();
+                    move |_, _, cx| {
+                        entity.update(cx, |app, cx| {
+                            if let Some(s) = &mut app.stress_config_dialog {
+                                s.show_advanced = !s.show_advanced;
+                            }
+                            cx.notify();
+                        });
+                    }
+                }),
         )
         .when(state.show_advanced, |this| {
             this.child(
@@ -967,11 +951,13 @@ fn render_advanced(
                                                 div()
                                                     .text_xs()
                                                     .text_color(theme.muted_foreground)
-                                                    .child(t!("stress_config.stop_duration_secs").to_string()),
+                                                    .child(
+                                                        t!("stress_config.stop_duration_secs")
+                                                            .to_string(),
+                                                    ),
                                             )
                                             .child(
-                                                Input::new(&state.duration_input)
-                                                    .cleanable(true),
+                                                Input::new(&state.duration_input).cleanable(true),
                                             ),
                                     )
                                 },
@@ -991,11 +977,12 @@ fn render_advanced(
                                                 div()
                                                     .text_xs()
                                                     .text_color(theme.muted_foreground)
-                                                    .child(t!("stress_config.stop_count_total").to_string()),
+                                                    .child(
+                                                        t!("stress_config.stop_count_total")
+                                                            .to_string(),
+                                                    ),
                                             )
-                                            .child(
-                                                Input::new(&state.count_input).cleanable(true),
-                                            ),
+                                            .child(Input::new(&state.count_input).cleanable(true)),
                                     )
                                 },
                             ),
@@ -1019,20 +1006,17 @@ fn render_advanced(
                                             .text_color(theme.foreground)
                                             .child(t!("stress_config.ramp_up_label").to_string()),
                                     )
-                                    .on_mouse_down(
-                                        MouseButton::Left,
-                                        {
-                                            let entity = entity.clone();
-                                            move |_, _, cx| {
-                                                entity.update(cx, |app, cx| {
-                                                    if let Some(s) = &mut app.stress_config_dialog {
-                                                        s.ramp_up_enabled = !s.ramp_up_enabled;
-                                                    }
-                                                    cx.notify();
-                                                });
-                                            }
-                                        },
-                                    ),
+                                    .on_mouse_down(MouseButton::Left, {
+                                        let entity = entity.clone();
+                                        move |_, _, cx| {
+                                            entity.update(cx, |app, cx| {
+                                                if let Some(s) = &mut app.stress_config_dialog {
+                                                    s.ramp_up_enabled = !s.ramp_up_enabled;
+                                                }
+                                                cx.notify();
+                                            });
+                                        }
+                                    }),
                             )
                             .when(state.ramp_up_enabled, |this| {
                                 this.child(
@@ -1044,11 +1028,13 @@ fn render_advanced(
                                             div()
                                                 .text_xs()
                                                 .text_color(theme.muted_foreground)
-                                                .child(t!("stress_config.ramp_up_duration").to_string()),
+                                                .child(
+                                                    t!("stress_config.ramp_up_duration")
+                                                        .to_string(),
+                                                ),
                                         )
                                         .child(
-                                            Input::new(&state.ramp_up_secs_input)
-                                                .cleanable(true),
+                                            Input::new(&state.ramp_up_secs_input).cleanable(true),
                                         ),
                                 )
                             }),
@@ -1067,20 +1053,17 @@ fn render_advanced(
                                     .text_color(theme.foreground)
                                     .child(t!("stress_config.auto_reconnect_label").to_string()),
                             )
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                {
-                                    let entity = entity.clone();
-                                    move |_, _, cx| {
-                                        entity.update(cx, |app, cx| {
-                                            if let Some(s) = &mut app.stress_config_dialog {
-                                                s.auto_reconnect = !s.auto_reconnect;
-                                            }
-                                            cx.notify();
-                                        });
-                                    }
-                                },
-                            ),
+                            .on_mouse_down(MouseButton::Left, {
+                                let entity = entity.clone();
+                                move |_, _, cx| {
+                                    entity.update(cx, |app, cx| {
+                                        if let Some(s) = &mut app.stress_config_dialog {
+                                            s.auto_reconnect = !s.auto_reconnect;
+                                        }
+                                        cx.notify();
+                                    });
+                                }
+                            }),
                     ),
             )
         })
@@ -1189,17 +1172,14 @@ fn render_stress_mode_chip(
             d.bg(theme.border).text_color(theme.foreground)
         })
         .child(div().text_sm().font_medium().child(label.to_string()))
-        .on_mouse_down(
-            MouseButton::Left,
-            move |_, _, cx| {
-                entity.update(cx, |app, cx| {
-                    if let Some(s) = &mut app.stress_config_dialog {
-                        s.stress_mode = mode;
-                    }
-                    cx.notify();
-                });
-            },
-        )
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                if let Some(s) = &mut app.stress_config_dialog {
+                    s.stress_mode = mode;
+                }
+                cx.notify();
+            });
+        })
 }
 
 /// 渲染连接模式芯片
@@ -1224,17 +1204,14 @@ fn render_conn_mode_chip(
             d.bg(theme.border).text_color(theme.foreground)
         })
         .child(div().text_sm().font_medium().child(label.to_string()))
-        .on_mouse_down(
-            MouseButton::Left,
-            move |_, _, cx| {
-                entity.update(cx, |app, cx| {
-                    if let Some(s) = &mut app.stress_config_dialog {
-                        s.connection_mode = mode;
-                    }
-                    cx.notify();
-                });
-            },
-        )
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                if let Some(s) = &mut app.stress_config_dialog {
+                    s.connection_mode = mode;
+                }
+                cx.notify();
+            });
+        })
 }
 
 /// 渲染停止条件芯片
@@ -1260,15 +1237,12 @@ fn render_stop_chip(
             d.bg(theme.border).text_color(theme.foreground)
         })
         .child(div().text_sm().font_medium().child(label.to_string()))
-        .on_mouse_down(
-            MouseButton::Left,
-            move |_, _, cx| {
-                entity.update(cx, |app, cx| {
-                    if let Some(s) = &mut app.stress_config_dialog {
-                        s.stop_condition_type = stop_type;
-                    }
-                    cx.notify();
-                });
-            },
-        )
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                if let Some(s) = &mut app.stress_config_dialog {
+                    s.stop_condition_type = stop_type;
+                }
+                cx.notify();
+            });
+        })
 }

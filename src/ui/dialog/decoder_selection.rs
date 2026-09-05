@@ -9,14 +9,14 @@ use std::borrow::Cow;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
 use gpui_component::WindowExt as _;
+use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::dialog::DialogFooter;
 use gpui_component::input::{Input, InputState};
+use gpui_component::scroll::ScrollableElement as _;
 
 use rust_i18n::t;
 
@@ -190,7 +190,9 @@ pub fn open_decoder_selection_dialog(
                         // 若 max_h 直接放滚动容器上, 被跟踪元素自身高度=可视区高度,
                         // 滚动机制认为内容未溢出, 滚轮不响应。
                         div().max_h(dialog_content_max_height(window)).child(
-                            div().overflow_y_scrollbar().child(render_form(&entity, state, &theme, cx)),
+                            div()
+                                .overflow_y_scrollbar()
+                                .child(render_form(&entity, state, &theme, cx)),
                         ),
                     )
                 }
@@ -228,7 +230,13 @@ fn render_form(
                         .flex_wrap()
                         .gap_2()
                         .child(render_kind_chip(app, state, DecoderKind::Bytes, theme, cx))
-                        .child(render_kind_chip(app, state, DecoderKind::LineBased, theme, cx))
+                        .child(render_kind_chip(
+                            app,
+                            state,
+                            DecoderKind::LineBased,
+                            theme,
+                            cx,
+                        ))
                         .child(render_kind_chip(
                             app,
                             state,
@@ -236,7 +244,13 @@ fn render_form(
                             theme,
                             cx,
                         ))
-                        .child(render_kind_chip(app, state, DecoderKind::FixedLength, theme, cx))
+                        .child(render_kind_chip(
+                            app,
+                            state,
+                            DecoderKind::FixedLength,
+                            theme,
+                            cx,
+                        ))
                         .child(render_kind_chip(app, state, DecoderKind::Json, theme, cx)),
                 )
                 // 当前选中说明
@@ -248,9 +262,10 @@ fn render_form(
                 ),
         )
         // 长度前缀配置区(条件渲染)
-        .when(state.selected_kind == DecoderKind::LengthDelimited, |this| {
-            this.child(render_length_delimited_config(app, state, theme, cx))
-        })
+        .when(
+            state.selected_kind == DecoderKind::LengthDelimited,
+            |this| this.child(render_length_delimited_config(app, state, theme, cx)),
+        )
         // 固定长度配置区(条件渲染)
         .when(state.selected_kind == DecoderKind::FixedLength, |this| {
             this.child(render_fixed_length_config(state, theme, cx))
@@ -316,9 +331,10 @@ fn render_length_delimited_config(
         )
         // 帧结构示意
         .child(
-            div().text_xs().text_color(theme.muted_foreground).child(
-                t!("decoder_selection.frame_structure").to_string(),
-            ),
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(t!("decoder_selection.frame_structure").to_string()),
         )
         // 第一行: 长度字段偏移量 + 长度字段长度
         .child(
@@ -340,10 +356,9 @@ fn render_length_delimited_config(
                         )
                         .child(Input::new(&state.length_field_offset_input).cleanable(true))
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(t!("decoder_selection.length_field_offset_hint").to_string()),
+                            div().text_xs().text_color(theme.muted_foreground).child(
+                                t!("decoder_selection.length_field_offset_hint").to_string(),
+                            ),
                         ),
                 )
                 .child(
@@ -361,10 +376,9 @@ fn render_length_delimited_config(
                         )
                         .child(Input::new(&state.length_field_length_input).cleanable(true))
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(t!("decoder_selection.length_field_length_hint").to_string()),
+                            div().text_xs().text_color(theme.muted_foreground).child(
+                                t!("decoder_selection.length_field_length_hint").to_string(),
+                            ),
                         ),
                 ),
         )
@@ -438,26 +452,22 @@ fn render_length_delimited_config(
                                 .child(t!("decoder_selection.length_includes_self").to_string()),
                         )
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(t!("decoder_selection.length_includes_self_hint").to_string()),
+                            div().text_xs().text_color(theme.muted_foreground).child(
+                                t!("decoder_selection.length_includes_self_hint").to_string(),
+                            ),
                         ),
                 )
-                .on_mouse_down(
-                    MouseButton::Left,
-                    {
-                        let entity = entity.clone();
-                        move |_, _, cx| {
-                            entity.update(cx, |app, cx| {
-                                if let Some(s) = &mut app.decoder_selection_dialog {
-                                    s.length_includes_self = !s.length_includes_self;
-                                }
-                                cx.notify();
-                            });
-                        }
-                    },
-                ),
+                .on_mouse_down(MouseButton::Left, {
+                    let entity = entity.clone();
+                    move |_, _, cx| {
+                        entity.update(cx, |app, cx| {
+                            if let Some(s) = &mut app.decoder_selection_dialog {
+                                s.length_includes_self = !s.length_includes_self;
+                            }
+                            cx.notify();
+                        });
+                    }
+                }),
         )
         // 长度字段字节序: 大端序 / 小端序 chip 选择
         .child(
@@ -465,7 +475,12 @@ fn render_length_delimited_config(
                 .flex()
                 .gap_2()
                 .items_center()
-                .child(div().text_sm().text_color(theme.foreground).child(t!("decoder_selection.byte_order").to_string()))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.foreground)
+                        .child(t!("decoder_selection.byte_order").to_string()),
+                )
                 .child(
                     div()
                         .flex()
@@ -483,21 +498,23 @@ fn render_length_delimited_config(
                                 .when(state.length_little_endian, |d| {
                                     d.bg(theme.border).text_color(theme.foreground)
                                 })
-                                .child(div().text_xs().font_medium().child(t!("decoder_selection.byte_order_big").to_string()))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    {
-                                        let entity = entity.clone();
-                                        move |_, _, cx| {
-                                            entity.update(cx, |app, cx| {
-                                                if let Some(s) = &mut app.decoder_selection_dialog {
-                                                    s.length_little_endian = false;
-                                                }
-                                                cx.notify();
-                                            });
-                                        }
-                                    },
-                                ),
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_medium()
+                                        .child(t!("decoder_selection.byte_order_big").to_string()),
+                                )
+                                .on_mouse_down(MouseButton::Left, {
+                                    let entity = entity.clone();
+                                    move |_, _, cx| {
+                                        entity.update(cx, |app, cx| {
+                                            if let Some(s) = &mut app.decoder_selection_dialog {
+                                                s.length_little_endian = false;
+                                            }
+                                            cx.notify();
+                                        });
+                                    }
+                                }),
                         )
                         // 小端序 chip
                         .child(
@@ -512,21 +529,22 @@ fn render_length_delimited_config(
                                 .when(!state.length_little_endian, |d| {
                                     d.bg(theme.border).text_color(theme.foreground)
                                 })
-                                .child(div().text_xs().font_medium().child(t!("decoder_selection.byte_order_little").to_string()))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    {
-                                        let entity = entity.clone();
-                                        move |_, _, cx| {
-                                            entity.update(cx, |app, cx| {
-                                                if let Some(s) = &mut app.decoder_selection_dialog {
-                                                    s.length_little_endian = true;
-                                                }
-                                                cx.notify();
-                                            });
-                                        }
-                                    },
-                                ),
+                                .child(
+                                    div().text_xs().font_medium().child(
+                                        t!("decoder_selection.byte_order_little").to_string(),
+                                    ),
+                                )
+                                .on_mouse_down(MouseButton::Left, {
+                                    let entity = entity.clone();
+                                    move |_, _, cx| {
+                                        entity.update(cx, |app, cx| {
+                                            if let Some(s) = &mut app.decoder_selection_dialog {
+                                                s.length_little_endian = true;
+                                            }
+                                            cx.notify();
+                                        });
+                                    }
+                                }),
                         ),
                 ),
         )
@@ -552,30 +570,32 @@ fn render_length_delimited_config(
                                 .child(t!("decoder_selection.keep_full_frame").to_string()),
                         )
                         .child(
-                            div().text_xs().text_color(theme.muted_foreground).child(
-                                t!("decoder_selection.keep_full_frame_hint").to_string(),
-                            ),
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child(t!("decoder_selection.keep_full_frame_hint").to_string()),
                         ),
                 )
-                .on_mouse_down(
-                    MouseButton::Left,
-                    {
-                        let entity = entity.clone();
-                        move |_, _, cx| {
-                            entity.update(cx, |app, cx| {
-                                if let Some(s) = &mut app.decoder_selection_dialog {
-                                    s.length_keep_full_frame = !s.length_keep_full_frame;
-                                }
-                                cx.notify();
-                            });
-                        }
-                    },
-                ),
+                .on_mouse_down(MouseButton::Left, {
+                    let entity = entity.clone();
+                    move |_, _, cx| {
+                        entity.update(cx, |app, cx| {
+                            if let Some(s) = &mut app.decoder_selection_dialog {
+                                s.length_keep_full_frame = !s.length_keep_full_frame;
+                            }
+                            cx.notify();
+                        });
+                    }
+                }),
         )
 }
 
 /// 渲染固定长度配置区
-fn render_fixed_length_config(state: &DecoderSelectionDialogState, theme: &Theme, _cx: &App) -> Div {
+fn render_fixed_length_config(
+    state: &DecoderSelectionDialogState,
+    theme: &Theme,
+    _cx: &App,
+) -> Div {
     div()
         .flex()
         .flex_col()

@@ -16,7 +16,10 @@ pub const HALF_EMPTY: char = '\0';
 /// 网格单元格。字节保留用户输入的大小写，未编辑的字符不做改写。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Cell {
-    Byte { hi: char, lo: char },
+    Byte {
+        hi: char,
+        lo: char,
+    },
     /// 不透明 token 占位（core 不解释内容，如项目侧的 `${seq}`），保存原文
     Token(String),
 }
@@ -143,10 +146,16 @@ impl State {
         Some(match self.cursor {
             Some(c) if c.cell < len => {
                 let max = self.cells()?[c.cell].cursor_positions() - 1;
-                Cursor { cell: c.cell, nibble: c.nibble.min(max) }
+                Cursor {
+                    cell: c.cell,
+                    nibble: c.nibble.min(max),
+                }
             }
-            Some(_) => Cursor { cell: len, nibble: 0 }, // 显式虚拟末尾(导航可达)
-            None => Cursor { cell: 0, nibble: 0 },      // 从未定位 → 首字节
+            Some(_) => Cursor {
+                cell: len,
+                nibble: 0,
+            }, // 显式虚拟末尾(导航可达)
+            None => Cursor { cell: 0, nibble: 0 }, // 从未定位 → 首字节
         })
     }
 
@@ -170,9 +179,15 @@ impl State {
         let cells = self.cells()?;
         let positions = cells.get(cur.cell)?.cursor_positions();
         if cur.nibble + 1 < positions {
-            return Some(Cursor { cell: cur.cell, nibble: cur.nibble + 1 });
+            return Some(Cursor {
+                cell: cur.cell,
+                nibble: cur.nibble + 1,
+            });
         }
-        Some(Cursor { cell: cur.cell + 1, nibble: 0 })
+        Some(Cursor {
+            cell: cur.cell + 1,
+            nibble: 0,
+        })
     }
 
     fn type_digit(&mut self, c: char) -> Option<String> {
@@ -185,35 +200,62 @@ impl State {
         if cur.cell < len && self.cells()?[cur.cell].is_token() {
             cur = match self.next_byte_cell(cur.cell) {
                 Some(i) => Cursor { cell: i, nibble: 0 },
-                None => Cursor { cell: len, nibble: 0 },
+                None => Cursor {
+                    cell: len,
+                    nibble: 0,
+                },
             };
         }
         let d = c.to_ascii_lowercase();
         // 虚拟末尾：键入即追加（覆盖模式同样行为，与文本框"末尾输入即追加"直觉一致）
         if cur.cell >= len {
-            self.cells_mut()?.push(Cell::Byte { hi: d, lo: HALF_EMPTY });
-            self.cursor = Some(Cursor { cell: len, nibble: 1 });
+            self.cells_mut()?.push(Cell::Byte {
+                hi: d,
+                lo: HALF_EMPTY,
+            });
+            self.cursor = Some(Cursor {
+                cell: len,
+                nibble: 1,
+            });
             self.clear_selection();
             return Some(self.serialize_doc());
         }
         if self.insert_mode {
             // 插入模式：半字节空槽上键入 → 补全低位；否则新建半字节单元格，
             // 下一次键入补全（连续键入即逐字节追加）
-            let is_half = matches!(self.cells()?[cur.cell], Cell::Byte { lo, .. } if lo == HALF_EMPTY);
+            let is_half =
+                matches!(self.cells()?[cur.cell], Cell::Byte { lo, .. } if lo == HALF_EMPTY);
             if is_half && cur.nibble == 1 {
                 if let Cell::Byte { lo, .. } = &mut self.cells_mut()?[cur.cell] {
                     *lo = d;
                 }
                 self.cursor = self.advance(cur);
             } else {
-                let insert_at = if cur.nibble == 0 { cur.cell } else { cur.cell + 1 };
-                self.cells_mut()?.insert(insert_at, Cell::Byte { hi: d, lo: HALF_EMPTY });
-                self.cursor = Some(Cursor { cell: insert_at, nibble: 1 });
+                let insert_at = if cur.nibble == 0 {
+                    cur.cell
+                } else {
+                    cur.cell + 1
+                };
+                self.cells_mut()?.insert(
+                    insert_at,
+                    Cell::Byte {
+                        hi: d,
+                        lo: HALF_EMPTY,
+                    },
+                );
+                self.cursor = Some(Cursor {
+                    cell: insert_at,
+                    nibble: 1,
+                });
             }
         } else {
             match &mut self.cells_mut()?[cur.cell] {
                 Cell::Byte { hi, lo } => {
-                    if cur.nibble == 0 { *hi = d } else { *lo = d }
+                    if cur.nibble == 0 {
+                        *hi = d
+                    } else {
+                        *lo = d
+                    }
                 }
                 Cell::Token(_) => return None,
             }
@@ -233,17 +275,26 @@ impl State {
             // 末尾追加完整字节
             let [hi, lo] = char_to_hex_chars(c);
             self.cells_mut()?.push(Cell::Byte { hi, lo });
-            self.cursor = Some(Cursor { cell: len + 1, nibble: 0 });
+            self.cursor = Some(Cursor {
+                cell: len + 1,
+                nibble: 0,
+            });
             self.clear_selection();
             return Some(self.serialize_doc());
         }
         if self.cells()?[cur.cell].is_token() {
-            cur = Cursor { cell: self.next_byte_cell(cur.cell)?, nibble: 0 };
+            cur = Cursor {
+                cell: self.next_byte_cell(cur.cell)?,
+                nibble: 0,
+            };
         }
         let [hi, lo] = char_to_hex_chars(c);
         if self.insert_mode {
             self.cells_mut()?.insert(cur.cell, Cell::Byte { hi, lo });
-            self.cursor = Some(Cursor { cell: cur.cell + 1, nibble: 0 });
+            self.cursor = Some(Cursor {
+                cell: cur.cell + 1,
+                nibble: 0,
+            });
         } else {
             self.cells_mut()?[cur.cell] = Cell::Byte { hi, lo };
             self.cursor = self.advance(cur);
@@ -264,7 +315,10 @@ impl State {
             return None;
         }
         self.cells_mut()?.remove(cur.cell - 1);
-        self.cursor = Some(Cursor { cell: cur.cell - 1, nibble: 0 });
+        self.cursor = Some(Cursor {
+            cell: cur.cell - 1,
+            nibble: 0,
+        });
         Some(self.serialize_doc())
     }
 
@@ -294,47 +348,67 @@ impl State {
             return None;
         }
         self.cells_mut()?.drain(s..e);
-        self.cursor = Some(Cursor { cell: s.min(len - (e - s)), nibble: 0 });
+        self.cursor = Some(Cursor {
+            cell: s.min(len - (e - s)),
+            nibble: 0,
+        });
         self.clear_selection();
         Some(())
     }
 
     fn move_cursor(&mut self, dir: MoveDir, extend: bool) {
         let Some(len) = self.len() else { return };
-        let from = self.resolved_cursor().unwrap_or(Cursor { cell: 0, nibble: 0 });
+        let from = self
+            .resolved_cursor()
+            .unwrap_or(Cursor { cell: 0, nibble: 0 });
         let next = match dir {
             MoveDir::Left => {
                 if from.nibble > 0 {
-                    Cursor { cell: from.cell, nibble: from.nibble - 1 }
+                    Cursor {
+                        cell: from.cell,
+                        nibble: from.nibble - 1,
+                    }
                 } else if from.cell > 0 {
                     let max = self
                         .cells()
                         .and_then(|c| c.get(from.cell - 1))
                         .map(|c| c.cursor_positions() - 1)
                         .unwrap_or(0);
-                    Cursor { cell: from.cell - 1, nibble: max }
+                    Cursor {
+                        cell: from.cell - 1,
+                        nibble: max,
+                    }
                 } else {
                     from
                 }
             }
             MoveDir::Right => self.advance(from).unwrap_or(from),
-            MoveDir::Up { stride } if stride > 0 => {
-                Cursor { cell: from.cell.saturating_sub(stride), nibble: 0 }
-            }
-            MoveDir::Down { stride } if stride > 0 => {
-                Cursor { cell: (from.cell + stride).min(len), nibble: 0 }
-            }
-            MoveDir::Home { stride } if stride > 0 => {
-                Cursor { cell: from.cell / stride * stride, nibble: 0 }
-            }
+            MoveDir::Up { stride } if stride > 0 => Cursor {
+                cell: from.cell.saturating_sub(stride),
+                nibble: 0,
+            },
+            MoveDir::Down { stride } if stride > 0 => Cursor {
+                cell: (from.cell + stride).min(len),
+                nibble: 0,
+            },
+            MoveDir::Home { stride } if stride > 0 => Cursor {
+                cell: from.cell / stride * stride,
+                nibble: 0,
+            },
             MoveDir::End { stride } if stride > 0 => {
                 let row_end = ((from.cell / stride + 1) * stride).min(len);
-                Cursor { cell: row_end, nibble: 0 }
+                Cursor {
+                    cell: row_end,
+                    nibble: 0,
+                }
             }
             // stride 为 0 属于调用方错误，忽略移动
             _ => from,
         };
-        let next = Cursor { cell: next.cell.min(len), nibble: next.nibble };
+        let next = Cursor {
+            cell: next.cell.min(len),
+            nibble: next.nibble,
+        };
         if extend {
             let anchor = *self.selection_anchor.get_or_insert(from.cell);
             let (s, e) = ordered_range(anchor, next.cell);
@@ -392,11 +466,7 @@ impl State {
         }
         self.cursor = None;
         self.clear_selection();
-        if empty {
-            None
-        } else {
-            Some(String::new())
-        }
+        if empty { None } else { Some(String::new()) }
     }
 
     fn paste(&mut self, cells: Vec<Cell>) -> Option<String> {
@@ -414,11 +484,18 @@ impl State {
                 (at, at)
             }
         };
-        let cells = if cells.len() > MAX_CELLS { cells[..MAX_CELLS].to_vec() } else { cells };
+        let cells = if cells.len() > MAX_CELLS {
+            cells[..MAX_CELLS].to_vec()
+        } else {
+            cells
+        };
         let inserted = cells.len();
         let new_len = len - (e - s) + inserted;
         self.cells_mut()?.splice(s..e, cells);
-        self.cursor = Some(Cursor { cell: (s + inserted).min(new_len), nibble: 0 });
+        self.cursor = Some(Cursor {
+            cell: (s + inserted).min(new_len),
+            nibble: 0,
+        });
         self.clear_selection();
         Some(self.serialize_doc())
     }
@@ -450,7 +527,9 @@ impl State {
 
     /// (完整字节数, 半字节数, token 数)
     pub fn counts(&self) -> (usize, usize, usize) {
-        let Some(doc) = self.doc.as_ref() else { return (0, 0, 0) };
+        let Some(doc) = self.doc.as_ref() else {
+            return (0, 0, 0);
+        };
         let mut full = 0;
         let mut half = 0;
         let mut tokens = 0;
@@ -472,7 +551,9 @@ impl State {
     }
 
     pub fn selection_len(&self) -> usize {
-        self.selection.map(|(s, e)| e.saturating_sub(s)).unwrap_or(0)
+        self.selection
+            .map(|(s, e)| e.saturating_sub(s))
+            .unwrap_or(0)
     }
 }
 
@@ -495,9 +576,15 @@ pub enum Action {
     Backspace,
     Delete,
     InsertToggle,
-    Move { dir: MoveDir, extend: bool },
+    Move {
+        dir: MoveDir,
+        extend: bool,
+    },
     /// 鼠标点击/定位到单元格（含 nibble 精度）
-    Click { cell: usize, nibble: usize },
+    Click {
+        cell: usize,
+        nibble: usize,
+    },
     /// 拖选经过单元格
     DragTo(usize),
     SelectAll,
@@ -659,7 +746,13 @@ mod tests {
         // 奇数 hex 段 + token：合法（变量输出长度运行时确定）
         let d = doc("50494E4${seq}");
         assert_eq!(d.cells.len(), 5);
-        assert_eq!(d.cells[3], Cell::Byte { hi: '4', lo: HALF_EMPTY });
+        assert_eq!(
+            d.cells[3],
+            Cell::Byte {
+                hi: '4',
+                lo: HALF_EMPTY
+            }
+        );
     }
 
     #[test]
@@ -706,7 +799,10 @@ mod tests {
         let mut s = state("50 49 4E 47 ${seq}");
         s.cursor = Some(Cursor { cell: 4, nibble: 0 });
         // token 上键入 → 跳到 token 后追加
-        assert_eq!(s.apply(Action::Digit('a')), Some("50 49 4E 47 ${seq} a".into()));
+        assert_eq!(
+            s.apply(Action::Digit('a')),
+            Some("50 49 4E 47 ${seq} a".into())
+        );
     }
 
     #[test]
@@ -749,15 +845,30 @@ mod tests {
     fn navigation_with_stride() {
         let mut s = state("00 01 02 03 04 05 06 07 08");
         s.cursor = Some(Cursor { cell: 4, nibble: 1 });
-        s.apply(Action::Move { dir: MoveDir::Up { stride: 8 }, extend: false });
+        s.apply(Action::Move {
+            dir: MoveDir::Up { stride: 8 },
+            extend: false,
+        });
         assert_eq!(s.cursor, Some(Cursor { cell: 0, nibble: 0 }));
-        s.apply(Action::Move { dir: MoveDir::Down { stride: 8 }, extend: false });
+        s.apply(Action::Move {
+            dir: MoveDir::Down { stride: 8 },
+            extend: false,
+        });
         assert_eq!(s.cursor, Some(Cursor { cell: 8, nibble: 0 }));
-        s.apply(Action::Move { dir: MoveDir::Left, extend: false });
+        s.apply(Action::Move {
+            dir: MoveDir::Left,
+            extend: false,
+        });
         assert_eq!(s.cursor, Some(Cursor { cell: 7, nibble: 1 }));
-        s.apply(Action::Move { dir: MoveDir::Home { stride: 8 }, extend: false });
+        s.apply(Action::Move {
+            dir: MoveDir::Home { stride: 8 },
+            extend: false,
+        });
         assert_eq!(s.cursor, Some(Cursor { cell: 0, nibble: 0 }));
-        s.apply(Action::Move { dir: MoveDir::End { stride: 8 }, extend: false });
+        s.apply(Action::Move {
+            dir: MoveDir::End { stride: 8 },
+            extend: false,
+        });
         assert_eq!(s.cursor, Some(Cursor { cell: 8, nibble: 0 }));
     }
 
@@ -765,8 +876,14 @@ mod tests {
     fn selection_and_shift_extend() {
         let mut s = state("00 01 02 03");
         s.cursor = Some(Cursor { cell: 0, nibble: 0 });
-        s.apply(Action::Move { dir: MoveDir::Right, extend: true });
-        s.apply(Action::Move { dir: MoveDir::Right, extend: true });
+        s.apply(Action::Move {
+            dir: MoveDir::Right,
+            extend: true,
+        });
+        s.apply(Action::Move {
+            dir: MoveDir::Right,
+            extend: true,
+        });
         assert_eq!(s.selection, Some((0, 2)));
         assert_eq!(s.selection_value(), Some("00 01".into()));
         // 删除选区
@@ -812,7 +929,10 @@ mod tests {
                 Cell::Byte { hi: '6', lo: '5' },
                 Cell::Byte { hi: '6', lo: 'C' },
                 Cell::Byte { hi: '7', lo: '6' },
-                Cell::Byte { hi: 'F', lo: HALF_EMPTY },
+                Cell::Byte {
+                    hi: 'F',
+                    lo: HALF_EMPTY
+                },
             ]
         );
         assert_eq!(parse_tolerant("zz"), Err(0));
@@ -831,7 +951,10 @@ mod tests {
     #[test]
     fn truncated_is_readonly() {
         let mut s = State {
-            doc: Some(HexDoc { cells: vec![Cell::Byte { hi: '4', lo: '8' }], truncated: true }),
+            doc: Some(HexDoc {
+                cells: vec![Cell::Byte { hi: '4', lo: '8' }],
+                truncated: true,
+            }),
             ..Default::default()
         };
         s.cursor = Some(Cursor { cell: 0, nibble: 0 });
@@ -839,7 +962,10 @@ mod tests {
         assert_eq!(s.apply(Action::Backspace), None);
         assert_eq!(s.apply(Action::Paste(parse_tolerant("11").unwrap())), None);
         // 导航仍可用（用于复制）
-        s.apply(Action::Move { dir: MoveDir::Right, extend: true });
+        s.apply(Action::Move {
+            dir: MoveDir::Right,
+            extend: true,
+        });
         assert_eq!(s.selection, Some((0, 1)));
     }
 

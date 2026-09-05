@@ -8,14 +8,14 @@ mod stress_config;
 mod variable_picker;
 
 pub use add_client::open_add_client_dialog;
-pub use decoder_selection::{open_decoder_selection_dialog, DecoderSelectionDialogState};
+pub use decoder_selection::{DecoderSelectionDialogState, open_decoder_selection_dialog};
 pub use favorite_list::FavoriteListPanel;
 pub use favorite_remark::open_favorite_remark_dialog;
 pub use new_connection::open_new_connection_dialog;
 pub use port_limit_help::open_port_limit_help_dialog;
-pub use stress_config::{open_stress_config_dialog, StressConfigDialogState};
+pub use stress_config::{StressConfigDialogState, open_stress_config_dialog};
 
-use gpui::{px, Pixels, Window};
+use gpui::{Pixels, Window, px};
 
 /// 对话框标准最大高度：窗口高度 × 0.8，永不超过窗口高度 - 32px，下限 240。
 ///

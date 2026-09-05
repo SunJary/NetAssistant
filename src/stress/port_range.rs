@@ -40,7 +40,9 @@ pub struct EphemeralPortRange {
 impl EphemeralPortRange {
     /// 结束端口 (含)
     pub fn end(&self) -> u16 {
-        let end_u32 = (self.start as u32).saturating_add(self.count).saturating_sub(1);
+        let end_u32 = (self.start as u32)
+            .saturating_add(self.count)
+            .saturating_sub(1);
         end_u32.min(65535) as u16
     }
 
@@ -172,14 +174,20 @@ impl EphemeralPortRange {
         let content = match std::fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range") {
             Ok(c) => c,
             Err(e) => {
-                warn!("[端口检测] 读取 /proc/sys/net/ipv4/ip_local_port_range 失败: {}", e);
+                warn!(
+                    "[端口检测] 读取 /proc/sys/net/ipv4/ip_local_port_range 失败: {}",
+                    e
+                );
                 return None;
             }
         };
         match parse_linux_proc(&content) {
             Some(r) => Some(r),
             None => {
-                warn!("[端口检测] 无法解析 ip_local_port_range 内容: {:?}", content.trim());
+                warn!(
+                    "[端口检测] 无法解析 ip_local_port_range 内容: {:?}",
+                    content.trim()
+                );
                 None
             }
         }

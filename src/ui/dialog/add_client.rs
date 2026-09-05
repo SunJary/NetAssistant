@@ -6,12 +6,12 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::{DialogAction, DialogClose, DialogFooter};
-use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::ActiveTheme as _;
 use gpui_component::WindowExt as _;
+use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::dialog::{DialogAction, DialogClose, DialogFooter};
 use gpui_component::input::{Input, InputState};
+use gpui_component::scroll::ScrollableElement as _;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;

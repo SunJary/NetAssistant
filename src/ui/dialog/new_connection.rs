@@ -7,14 +7,14 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::ActiveTheme as _;
 use gpui_component::StyledExt;
 use gpui_component::Theme;
 use gpui_component::WindowExt as _;
+use gpui_component::button::{Button, ButtonVariants as _};
+use gpui_component::dialog::DialogFooter;
 use gpui_component::input::Input;
+use gpui_component::scroll::ScrollableElement as _;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
@@ -90,7 +90,9 @@ pub fn open_new_connection_dialog(
                         // max_h 在外层普通 div 钳制可视区, 内层滚动容器不限高让内容自然撑高,
                         // 否则被跟踪元素自身高度=可视区高度, 滚动机制认为未溢出, 滚轮不响应。
                         div().max_h(dialog_content_max_height(window)).child(
-                            div().overflow_y_scrollbar().child(render_form(&entity, &theme, cx)),
+                            div()
+                                .overflow_y_scrollbar()
+                                .child(render_form(&entity, &theme, cx)),
                         ),
                     )
                 }
@@ -214,7 +216,9 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
                                             .text_sm()
                                             .font_semibold()
                                             .text_color(theme.foreground)
-                                            .child(t!("new_connection.message_mode_label").to_string()),
+                                            .child(
+                                                t!("new_connection.message_mode_label").to_string(),
+                                            ),
                                     )
                                     .child(
                                         div()
@@ -377,11 +381,7 @@ fn render_decoder_chip(
 }
 
 /// 渲染底部操作按钮
-fn render_footer(
-    app: &WeakEntity<NetAssistantApp>,
-    ok_label: String,
-    _cx: &App,
-) -> DialogFooter {
+fn render_footer(app: &WeakEntity<NetAssistantApp>, ok_label: String, _cx: &App) -> DialogFooter {
     let app_ok = app.clone();
     let app_cancel = app.clone();
     DialogFooter::new()

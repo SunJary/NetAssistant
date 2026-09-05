@@ -52,61 +52,62 @@ pub struct StressStats {
     pub failures: FailureBreakdownSnapshot,
 }
 
-/// 延迟直方图
+/// 对数分桶延迟直方图
 ///
 /// worker 写入(每包 RTT)、聚合 task 读取(每 250ms 取百分位)。
-/// 保留全部样本，超过 cap 后按等概率采样缩减，防止 OOM。
-pub struct LatencyHistogram {
-    samples: Vec<u64>, // 单位: 微秒
-    cap: usize,
-    /// 用于等概率采样的计数(已记录总数，含被丢弃的)
-    total_recorded: u64,
-    /// 简单 LCG 状态用于采样决策
-    sample_state: u64,
+/// 记录 O(1),聚合 O(桶数) —— 替代全量样本 clone+sort,高 QPS 下不再有周期性 CPU 热点。
+///
+/// 桶按数量级划分: 值 v 落在 [2^e, 2^(e+1)) 内,再均分 4 个子桶(64 × 4 = 256 桶)。
+/// 百分位在命中桶内按均匀分布线性插值,误差上界约 ±19%,对 p50/p95/p99 展示足够;
+/// avg 与 max 精确统计。内存固定 1KB/实例,无蓄水池采样。
+pub struct BucketHistogram {
+    buckets: [u32; 256],
+    count: u64,
+    sum: u64, // 单位: 微秒
+    max: u64,
 }
 
-impl LatencyHistogram {
-    pub fn new(cap: usize) -> Self {
+impl BucketHistogram {
+    pub fn new() -> Self {
         Self {
-            samples: Vec::with_capacity(cap.min(1024)),
-            cap,
-            total_recorded: 0,
-            sample_state: 0x2545F4914F6CDD1D, // 任意非零初值
+            buckets: [0; 256],
+            count: 0,
+            sum: 0,
+            max: 0,
         }
-    }
-
-    pub fn with_default_cap() -> Self {
-        Self::new(100_000)
     }
 
     /// 记录一个延迟样本(微秒)
     pub fn record(&mut self, latency_us: u64) {
-        self.total_recorded += 1;
-        if self.samples.len() < self.cap {
-            self.samples.push(latency_us);
-            return;
+        let idx = if latency_us == 0 {
+            0
+        } else {
+            let e = 63 - latency_us.leading_zeros() as usize; // v ∈ [2^e, 2^(e+1))
+            let base = 1u64 << e;
+            // u128 中间量避免 e=63 时 (v-base)*4 溢出
+            let sub = (((latency_us - base) as u128 * 4) >> e) as usize; // 0..=3
+            e * 4 + sub
+        };
+        self.buckets[idx] = self.buckets[idx].wrapping_add(1);
+        self.count += 1;
+        self.sum = self.sum.wrapping_add(latency_us);
+        self.max = self.max.max(latency_us);
+    }
+
+    /// 合并另一个直方图的计数(用于分片聚合)
+    pub fn merge(&mut self, other: &BucketHistogram) {
+        for (dst, src) in self.buckets.iter_mut().zip(other.buckets.iter()) {
+            *dst = dst.wrapping_add(*src);
         }
-        // 容量已满: 等概率替换(蓄水池采样)
-        // 用自增计数器驱动伪随机，避免引入 rand
-        self.sample_state = self
-            .sample_state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        let rand = self.sample_state >> 33; // 高 31 位作为随机数
-        let idx = (rand as usize) % self.total_recorded as usize;
-        if idx < self.cap {
-            self.samples[idx] = latency_us;
-        }
+        self.count += other.count;
+        self.sum = self.sum.wrapping_add(other.sum);
+        self.max = self.max.max(other.max);
     }
 
     /// 计算百分位: 返回 (p50, p95, p99, avg, max)，单位微秒。
     /// 样本为空时对应字段为 None。
-    ///
-    /// 原地排序(不 clone)，避免每 250ms 快照时分配 800KB 临时内存。
-    /// 蓄水池采样不依赖样本顺序，排序不影响后续 record() 的正确性。
-    #[allow(dead_code)]
     pub fn percentiles(
-        &mut self,
+        &self,
     ) -> (
         Option<u64>,
         Option<u64>,
@@ -114,49 +115,80 @@ impl LatencyHistogram {
         Option<u64>,
         Option<u64>,
     ) {
-        if self.samples.is_empty() {
+        if self.count == 0 {
             return (None, None, None, None, None);
         }
-        self.samples.sort_unstable();
-        let len = self.samples.len();
         let pct = |p: f64| -> u64 {
-            // 向上取整索引，确保 p99 真实反映尾延迟
-            let idx = ((len as f64) * p).ceil() as usize;
-            self.samples[idx.saturating_sub(1).min(len - 1)]
+            // 向上取整秩，确保 p99 真实反映尾延迟
+            let rank = ((self.count as f64) * p).ceil() as u64;
+            let rank = rank.clamp(1, self.count);
+            let mut acc = 0u64;
+            for (idx, &c) in self.buckets.iter().enumerate() {
+                let c = c as u64;
+                if c == 0 {
+                    continue;
+                }
+                if acc + c >= rank {
+                    let (lo, hi) = bucket_range(idx);
+                    // 桶内均匀分布假设: 按秩在桶内的比例线性插值
+                    let within = (rank - acc) as f64 / c as f64;
+                    let est = lo as f64 + within * (hi - lo) as f64;
+                    return est.round() as u64;
+                }
+                acc += c;
+            }
+            self.max
         };
-        let avg = self.samples.iter().sum::<u64>() / len as u64;
-        let max = *self.samples.last().unwrap();
+        let avg = self.sum / self.count;
         (
             Some(pct(0.50)),
             Some(pct(0.95)),
             Some(pct(0.99)),
             Some(avg),
-            Some(max),
+            Some(self.max),
         )
     }
 
     /// 样本数
     #[allow(dead_code)]
-    pub fn sample_count(&self) -> usize {
-        self.samples.len()
+    pub fn sample_count(&self) -> u64 {
+        self.count
     }
+}
 
-    /// 重置(用于新一轮压测)
-    #[allow(dead_code)]
-    pub fn reset(&mut self) {
-        self.samples.clear();
-        self.total_recorded = 0;
+impl Default for BucketHistogram {
+    fn default() -> Self {
+        Self::new()
     }
+}
+
+/// 桶 idx 覆盖的延迟区间 [lo, hi)(微秒)
+fn bucket_range(idx: usize) -> (u64, u64) {
+    let e = idx / 4;
+    let sub = (idx % 4) as u128;
+    let base = 1u128 << e;
+    let width = base / 4;
+    let lo = if e == 0 && sub == 0 {
+        0
+    } else {
+        (base + width * sub) as u64
+    };
+    let hi = if e >= 63 && sub >= 3 {
+        u64::MAX
+    } else {
+        (base + width * (sub + 1)) as u64
+    };
+    (lo, hi)
 }
 
 /// 分片延迟直方图
 ///
 /// 将 worker 按 `worker_id % shards.len()` 分到不同分片,各分片独立 Mutex,
-/// 竞争降低 N 倍(默认 32 分片)。聚合时合并各分片样本再算百分位。
+/// 竞争降低 N 倍(默认 32 分片)。聚合时合并各分片桶计数再算百分位。
 ///
 /// 解决高并发(≥10000 worker)下所有 worker 串行抢同一把锁的瓶颈。
 pub struct ShardedHistogram {
-    shards: Vec<Mutex<LatencyHistogram>>,
+    shards: Vec<Mutex<BucketHistogram>>,
 }
 
 impl ShardedHistogram {
@@ -164,7 +196,7 @@ impl ShardedHistogram {
     pub fn new(concurrency: usize) -> Self {
         let shard_count = concurrency.clamp(1, 64);
         let shards = (0..shard_count)
-            .map(|_| Mutex::new(LatencyHistogram::with_default_cap()))
+            .map(|_| Mutex::new(BucketHistogram::new()))
             .collect();
         Self { shards }
     }
@@ -177,7 +209,7 @@ impl ShardedHistogram {
         }
     }
 
-    /// 合并所有分片样本并计算百分位
+    /// 合并所有分片桶计数并计算百分位
     pub fn percentiles(
         &self,
     ) -> (
@@ -187,30 +219,13 @@ impl ShardedHistogram {
         Option<u64>,
         Option<u64>,
     ) {
-        let mut all: Vec<u64> = Vec::new();
+        let mut merged = BucketHistogram::new();
         for s in &self.shards {
             if let Ok(h) = s.lock() {
-                all.extend_from_slice(&h.samples);
+                merged.merge(&h);
             }
         }
-        if all.is_empty() {
-            return (None, None, None, None, None);
-        }
-        all.sort_unstable();
-        let len = all.len();
-        let pct = |p: f64| -> u64 {
-            let idx = ((len as f64) * p).ceil() as usize;
-            all[idx.saturating_sub(1).min(len - 1)]
-        };
-        let avg = all.iter().sum::<u64>() / len as u64;
-        let max = *all.last().unwrap();
-        (
-            Some(pct(0.50)),
-            Some(pct(0.95)),
-            Some(pct(0.99)),
-            Some(avg),
-            Some(max),
-        )
+        merged.percentiles()
     }
 }
 
@@ -356,63 +371,85 @@ mod tests {
 
     #[test]
     fn test_empty_histogram_percentiles() {
-        let mut h = LatencyHistogram::with_default_cap();
+        let h = BucketHistogram::new();
         let (p50, p95, p99, avg, max) = h.percentiles();
         assert!(p50.is_none() && p95.is_none() && p99.is_none() && avg.is_none() && max.is_none());
     }
 
     #[test]
     fn test_record_and_percentiles_basic() {
-        let mut h = LatencyHistogram::with_default_cap();
+        let mut h = BucketHistogram::new();
         for v in [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000] {
             h.record(v);
         }
         let (p50, p95, p99, avg, max) = h.percentiles();
-        // 10 样本: p50 应在 500/600 附近, p95 在 1000, p99 在 1000
+        // 分桶插值有上界 ~19% 误差(数量级 4 子步),分位数断言放宽到 ±25%;
+        // avg 与 max 为精确统计
         let p50 = p50.unwrap();
-        assert!(p50 >= 500 && p50 <= 600, "p50={}", p50);
-        assert_eq!(p95.unwrap(), 1000);
-        assert_eq!(p99.unwrap(), 1000);
+        assert!(p50 >= 375 && p50 <= 625, "p50={}", p50);
+        let p95 = p95.unwrap();
+        assert!(p95 >= 750 && p95 <= 1250, "p95={}", p95);
+        let p99 = p99.unwrap();
+        assert!(p99 >= 750 && p99 <= 1250, "p99={}", p99);
         assert_eq!(avg.unwrap(), 550); // (100+...+1000)/10 = 550
         assert_eq!(max.unwrap(), 1000);
     }
 
     #[test]
     fn test_single_sample() {
-        let mut h = LatencyHistogram::with_default_cap();
+        let mut h = BucketHistogram::new();
         h.record(42);
         let (p50, p95, p99, avg, max) = h.percentiles();
-        assert_eq!(p50.unwrap(), 42);
-        assert_eq!(p95.unwrap(), 42);
-        assert_eq!(p99.unwrap(), 42);
+        // 42 落在 [40,48) 桶,单样本插值取桶上界 48
+        let p50 = p50.unwrap();
+        assert!((40..=48).contains(&p50), "p50={}", p50);
+        assert_eq!(p95.unwrap(), p50);
+        assert_eq!(p99.unwrap(), p50);
         assert_eq!(avg.unwrap(), 42);
         assert_eq!(max.unwrap(), 42);
     }
 
     #[test]
-    fn test_reset() {
-        let mut h = LatencyHistogram::with_default_cap();
-        h.record(100);
-        h.record(200);
-        assert_eq!(h.sample_count(), 2);
-        h.reset();
-        assert_eq!(h.sample_count(), 0);
-        assert!(h.percentiles().0.is_none());
+    fn test_large_volume_bounded_memory() {
+        let mut h = BucketHistogram::new();
+        // 远超旧版蓄水池 cap(10万) 的样本量,分桶结构内存固定不增长
+        for i in 0..1_000_000u64 {
+            h.record(i % 10_000);
+        }
+        assert_eq!(h.sample_count(), 1_000_000);
+        let (p50, _, _, avg, max) = h.percentiles();
+        let p50 = p50.unwrap();
+        assert!(p50 > 4000 && p50 < 6000, "p50={}", p50);
+        assert_eq!(avg.unwrap(), 4999);
+        assert_eq!(max.unwrap(), 9999);
     }
 
     #[test]
-    fn test_cap_reservoir_sampling() {
-        let cap = 100;
-        let mut h = LatencyHistogram::new(cap);
-        // 记录远超 cap 的样本，验证不会 OOM 且样本数 <= cap
-        for i in 0..10_000u64 {
-            h.record(i);
+    fn test_merge() {
+        let mut a = BucketHistogram::new();
+        let mut b = BucketHistogram::new();
+        a.record(100);
+        b.record(900);
+        a.merge(&b);
+        assert_eq!(a.sample_count(), 2);
+        let (_, _, _, avg, max) = a.percentiles();
+        assert_eq!(avg.unwrap(), 500);
+        assert_eq!(max.unwrap(), 900);
+    }
+
+    #[test]
+    fn test_sharded_histogram_percentiles() {
+        let h = ShardedHistogram::new(8);
+        for w in 0..64usize {
+            for i in 1..=100u64 {
+                h.record(w, i);
+            }
         }
-        assert_eq!(h.sample_count(), cap);
-        // 百分位仍能正常计算
-        let (p50, _, _, _, max) = h.percentiles();
-        assert!(p50.is_some());
-        assert!(max.unwrap() < 10_000);
+        let (p50, _, _, avg, max) = h.percentiles();
+        let p50 = p50.unwrap();
+        assert!(p50 > 40 && p50 < 60, "p50={}", p50);
+        assert_eq!(avg.unwrap(), 50);
+        assert_eq!(max.unwrap(), 100);
     }
 
     #[test]

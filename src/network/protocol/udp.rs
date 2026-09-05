@@ -13,7 +13,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 /// UDP客户端实现
@@ -218,8 +217,9 @@ pub struct UdpServer {
     clients: Arc<Mutex<HashMap<SocketAddr, Sender<Vec<u8>>>>>,
     message_processor: Arc<dyn MessageProcessor>,
     is_running: bool,
-    read_handle: Option<JoinHandle<()>>,
-    write_handle: Option<JoinHandle<()>>,
+    /// 取消令牌：stop() 时取消,收/发 task 通过 select! 感知并退出,
+    /// 两个 task 退出后 socket 的 Arc 引用计数归零,端口随之释放
+    stop_token: CancellationToken,
     /// 主发送通道，用于手动添加客户端时接入发送链路
     main_send_tx: Arc<Mutex<Option<Sender<(SocketAddr, Vec<u8>)>>>>,
     /// 自动回复共享状态(UI 下发 → 网络层每个数据报读取)
@@ -234,8 +234,7 @@ impl UdpServer {
             clients: Arc::new(Mutex::new(HashMap::new())),
             message_processor: Arc::new(DefaultMessageProcessor),
             is_running: false,
-            read_handle: None,
-            write_handle: None,
+            stop_token: CancellationToken::new(),
             main_send_tx: Arc::new(Mutex::new(None)),
             auto_reply_state: Arc::new(AutoReplyConfig::new()),
         }
@@ -314,6 +313,8 @@ impl NetworkServer for UdpServer {
         let clients = self.clients.clone();
         // 保存主发送通道，用于手动添加客户端
         let main_send_tx = self.main_send_tx.clone();
+        // 每次启动派生子令牌:支持反复启停,stop() 取消父令牌即可终止当前这轮任务
+        let stop_token = self.stop_token.child_token();
 
         Pin::from(Box::new(async move {
             // 绑定地址，支持IPv4和IPv6
@@ -336,7 +337,12 @@ impl NetworkServer for UdpServer {
             info!("UDP服务器启动在地址: {}", socket_addr);
             debug!("UDP服务器配置: {:?}", config);
 
-            let socket = UdpSocket::bind(socket_addr).await?;
+            let socket = UdpSocket::bind(socket_addr).await.map_err(|e| {
+                format!(
+                    "绑定 {} 失败: {}（端口可能已被其他进程或另一个实例占用）",
+                    address, e
+                )
+            })?;
             info!("UDP服务器成功绑定到地址: {}", address);
             debug!("UDP套接字创建成功: {:?}", socket);
 
@@ -385,11 +391,14 @@ impl NetworkServer for UdpServer {
             let auto_reply_state_clone = auto_reply_state.clone();
             // 供网络层自动回复投递回复数据报(addr, content)
             let main_tx_for_auto_reply = tx.clone();
+            let recv_stop_token = stop_token.clone();
 
             tokio::spawn(async move {
                 let mut buffer = [0; 1024];
                 loop {
-                    match socket_recv.recv_from(&mut buffer).await {
+                    tokio::select! {
+                        result = socket_recv.recv_from(&mut buffer) => {
+                        match result {
                         Ok((n, addr)) => {
                             // 处理接收到的消息
                             let data = buffer[..n].to_vec();
@@ -485,18 +494,41 @@ impl NetworkServer for UdpServer {
                             error!("UDP服务器读取消息时发生错误: {:?}", e);
                             break;
                         }
+                        }
+                        }
+                        _ = recv_stop_token.cancelled() => {
+                            info!("[UDP服务器] 接收任务收到停止信号，退出");
+                            break;
+                        }
                     }
                 }
             });
 
             // 创建消息发送任务
             let socket_write = socket_arc;
+            let write_stop_token = stop_token;
             tokio::spawn(async move {
-                while let Ok((addr, message)) = rx.recv().await {
-                    if let Err(e) = socket_write.send_to(&message, addr).await {
-                        error!("UDP服务器发送消息时发生错误: {:?}", e);
-                    } else {
-                        info!("UDP服务器向 {} 发送消息: {:?}", addr, message);
+                loop {
+                    tokio::select! {
+                        data = rx.recv() => {
+                            match data {
+                                Ok((addr, message)) => {
+                                    if let Err(e) = socket_write.send_to(&message, addr).await {
+                                        error!("UDP服务器发送消息时发生错误: {:?}", e);
+                                    } else {
+                                        info!("UDP服务器向 {} 发送消息: {:?}", addr, message);
+                                    }
+                                }
+                                Err(_) => {
+                                    debug!("[UDP服务器] 发送通道已关闭，发送任务退出");
+                                    break;
+                                }
+                            }
+                        }
+                        _ = write_stop_token.cancelled() => {
+                            info!("[UDP服务器] 发送任务收到停止信号，退出");
+                            break;
+                        }
                     }
                 }
             });
@@ -513,17 +545,9 @@ impl NetworkServer for UdpServer {
         let clients = self.clients.clone();
         let main_send_tx = self.main_send_tx.clone();
 
-        // 取消接收任务
-        if let Some(handle) = self.read_handle.take() {
-            handle.abort();
-            debug!("UDP服务器接收任务已取消");
-        }
-
-        // 取消发送任务
-        if let Some(handle) = self.write_handle.take() {
-            handle.abort();
-            debug!("UDP服务器发送任务已取消");
-        }
+        // 取消收/发任务(select! 分支感知,退出后释放 socket 的 Arc 引用,端口随之关闭)
+        self.stop_token.cancel();
+        debug!("UDP服务器已发送停止信号");
 
         // 更新状态为停止
         self.is_running = false;
@@ -554,5 +578,12 @@ impl NetworkServer for UdpServer {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+impl Drop for UdpServer {
+    fn drop(&mut self) {
+        // 绕过 stop() 直接 drop 时兜底终止收/发任务,避免孤儿 task 持有 socket
+        self.stop_token.cancel();
     }
 }

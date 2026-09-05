@@ -202,10 +202,7 @@ impl<'a> StressPanel<'a> {
         stats: &crate::stress::StressStats,
     ) -> Div {
         let (status_text, status_color) = if is_running {
-            (
-                t!("stress_panel.status_running").to_string(),
-                theme.success,
-            )
+            (t!("stress_panel.status_running").to_string(), theme.success)
         } else if is_finished {
             (
                 t!("stress_panel.status_finished").to_string(),
@@ -270,10 +267,13 @@ impl<'a> StressPanel<'a> {
                     .child(format!("{:.0}", stats.current_qps)),
             )
             .child(
-                div()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(t!("stress_panel.peak_qps", qps = format!("{:.0}", stats.peak_qps)).to_string()),
+                div().text_xs().text_color(theme.muted_foreground).child(
+                    t!(
+                        "stress_panel.peak_qps",
+                        qps = format!("{:.0}", stats.peak_qps)
+                    )
+                    .to_string(),
+                ),
             )
     }
 
@@ -304,7 +304,10 @@ impl<'a> StressPanel<'a> {
             .child(self.render_stat_cell(
                 theme,
                 &t!("stress_panel.active_connections"),
-                &format!("{} / {}", stats.active_connections, stats.peak_active_connections),
+                &format!(
+                    "{} / {}",
+                    stats.active_connections, stats.peak_active_connections
+                ),
                 theme.foreground,
             ))
     }

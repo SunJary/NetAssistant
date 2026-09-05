@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use gpui::*;
 use gpui_component::{
+    ActiveTheme as _, Icon, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogFooter,
     input::InputState,
     tooltip::Tooltip,
-    ActiveTheme as _, Icon, IconName, WindowExt as _,
 };
 use rust_i18n::t;
 
@@ -22,7 +22,7 @@ use crate::utils::hex::validate_hex_input;
 
 use super::{
     core::{self, Cell},
-    widget::{apply_action, render_grid, HexEditorState, HexEditorStyle, HexViewConfig, WriteBack},
+    widget::{HexEditorState, HexEditorStyle, HexViewConfig, WriteBack, apply_action, render_grid},
 };
 
 /// 内联紧凑视图总高（与原 Input 的 min_h_32 一致，三处调用点布局不回归）
@@ -107,10 +107,14 @@ pub fn render_inline(
         view_key: SharedString::from(format!("hex-inline-{}", editor.entity_id())),
         empty_hint: Some(t!("hex_editor.empty_hint").to_string().into()),
         overflow_notice: Some(
-            t!("hex_editor.overflow", rows = INLINE_MAX_ROWS).to_string().into(),
+            t!("hex_editor.overflow", rows = INLINE_MAX_ROWS)
+                .to_string()
+                .into(),
         ),
         truncated_notice: Some(
-            t!("hex_editor.truncated", n = core::MAX_CELLS).to_string().into(),
+            t!("hex_editor.truncated", n = core::MAX_CELLS)
+                .to_string()
+                .into(),
         ),
     };
     let grid = render_grid(editor, &config, &style, window, cx, write_back(input));
@@ -182,7 +186,12 @@ pub fn render_inline(
                                     let input = input.clone();
                                     let editor = editor.clone();
                                     move |_, window, cx| {
-                                        open_expand_dialog(input.clone(), editor.clone(), window, cx);
+                                        open_expand_dialog(
+                                            input.clone(),
+                                            editor.clone(),
+                                            window,
+                                            cx,
+                                        );
                                     }
                                 }),
                         ),
@@ -284,7 +293,9 @@ pub fn open_expand_dialog(
                     empty_hint: Some(t!("hex_editor.empty_hint").to_string().into()),
                     overflow_notice: None,
                     truncated_notice: Some(
-                        t!("hex_editor.truncated", n = core::MAX_CELLS).to_string().into(),
+                        t!("hex_editor.truncated", n = core::MAX_CELLS)
+                            .to_string()
+                            .into(),
                     ),
                 };
                 let grid = render_grid(&editor, &config, &style, window, cx, write_back(&input));
@@ -310,19 +321,22 @@ pub fn open_expand_dialog(
                                         IconName::Delete.into(),
                                         t!("hex_editor.clear").to_string(),
                                     )
-                                    .on_mouse_down(MouseButton::Left, {
-                                        let input = input.clone();
-                                        let editor = editor.clone();
-                                        move |_, window, cx| {
-                                            apply_action(
-                                                &editor,
-                                                core::Action::Clear,
-                                                &write_back(&input),
-                                                window,
-                                                cx,
-                                            );
-                                        }
-                                    }),
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        {
+                                            let input = input.clone();
+                                            let editor = editor.clone();
+                                            move |_, window, cx| {
+                                                apply_action(
+                                                    &editor,
+                                                    core::Action::Clear,
+                                                    &write_back(&input),
+                                                    window,
+                                                    cx,
+                                                );
+                                            }
+                                        },
+                                    ),
                                 )
                                 .child(
                                     dialog_tool_button(
@@ -330,14 +344,17 @@ pub fn open_expand_dialog(
                                         IconName::FolderOpen.into(),
                                         t!("hex_editor.import").to_string(),
                                     )
-                                    .on_mouse_down(MouseButton::Left, {
-                                        let input = input.clone();
-                                        let editor = editor.clone();
-                                        let window_handle = window.window_handle();
-                                        move |_, _window, cx| {
-                                            start_import(&input, &editor, window_handle, cx);
-                                        }
-                                    }),
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        {
+                                            let input = input.clone();
+                                            let editor = editor.clone();
+                                            let window_handle = window.window_handle();
+                                            move |_, _window, cx| {
+                                                start_import(&input, &editor, window_handle, cx);
+                                            }
+                                        },
+                                    ),
                                 )
                                 .child(
                                     dialog_tool_button(
@@ -345,15 +362,20 @@ pub fn open_expand_dialog(
                                         IconName::Copy.into(),
                                         t!("hex_editor.copy_all").to_string(),
                                     )
-                                    .on_mouse_down(MouseButton::Left, {
-                                        let editor = editor.clone();
-                                        move |_, _, cx| {
-                                            let text = editor.read(cx).core.full_value();
-                                            if !text.is_empty() {
-                                                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        {
+                                            let editor = editor.clone();
+                                            move |_, _, cx| {
+                                                let text = editor.read(cx).core.full_value();
+                                                if !text.is_empty() {
+                                                    cx.write_to_clipboard(
+                                                        ClipboardItem::new_string(text),
+                                                    );
+                                                }
                                             }
-                                        }
-                                    }),
+                                        },
+                                    ),
                                 ),
                         )
                         // 网格：外层 flex 分配高度（max_h 由父容器钳制），内层滚动
@@ -379,15 +401,13 @@ pub fn open_expand_dialog(
                                         }),
                                     ),
                                 )
-                                .child(
-                                    div().flex().items_center().gap_2().child(
-                                        div().child(if sel_len > 0 {
-                                            t!("hex_editor.status_selected", n = sel_len).to_string()
-                                        } else {
-                                            bytes_label(full + half, tokens)
-                                        }),
-                                    ),
-                                )
+                                .child(div().flex().items_center().gap_2().child(div().child(
+                                    if sel_len > 0 {
+                                        t!("hex_editor.status_selected", n = sel_len).to_string()
+                                    } else {
+                                        bytes_label(full + half, tokens)
+                                    },
+                                )))
                                 .child(div().child(mode_label)),
                         ),
                 )

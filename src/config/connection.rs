@@ -1,8 +1,8 @@
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex as StdMutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 连接类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,7 +36,9 @@ pub enum ConnectionStatus {
 impl fmt::Display for ConnectionStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConnectionStatus::NotConnected => write!(f, "{}", t!("connection_status.not_connected")),
+            ConnectionStatus::NotConnected => {
+                write!(f, "{}", t!("connection_status.not_connected"))
+            }
             ConnectionStatus::Disconnected => write!(f, "{}", t!("connection_status.disconnected")),
             ConnectionStatus::Connecting => write!(f, "{}", t!("connection_status.connecting")),
             ConnectionStatus::Connected => write!(f, "{}", t!("connection_status.connected")),
@@ -100,7 +102,9 @@ impl fmt::Display for DecoderConfig {
         match self {
             DecoderConfig::Bytes => write!(f, "{}", t!("decoder_config.bytes")),
             DecoderConfig::LineBased => write!(f, "{}", t!("decoder_config.line_based")),
-            DecoderConfig::LengthDelimited(_) => write!(f, "{}", t!("decoder_config.length_delimited")),
+            DecoderConfig::LengthDelimited(_) => {
+                write!(f, "{}", t!("decoder_config.length_delimited"))
+            }
             DecoderConfig::FixedLength(_) => write!(f, "{}", t!("decoder_config.fixed_length")),
             DecoderConfig::Json => write!(f, "JSON"),
         }

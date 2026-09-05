@@ -546,8 +546,7 @@ impl NetworkServer for TcpServer {
                                         let config_clone_for_client = config.clone();
                                         let client_handles_clone_for_client =
                                             client_handles.clone();
-                                        let auto_reply_state_for_client =
-                                            auto_reply_state.clone();
+                                        let auto_reply_state_for_client = auto_reply_state.clone();
 
                                         // 创建客户端连接的任务句柄
                                         let client_task = tokio::spawn(async move {

@@ -1,9 +1,9 @@
 /// 对话框滚动布局的无头测试：复现 Dialog 组件内「auto 高度面板 + max_h 封顶 + 滚动容器」
 /// 的精确结构，验证内容超高时滚动容器被 clamp 且可滚动。
 use gpui::{
-    div, px, point, AppContext as _, Context, Div, IntoElement, InteractiveElement as _,
-    ParentElement as _, Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext,
-    VisualTestContext, Window,
+    AppContext as _, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _,
+    Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext, VisualTestContext, Window,
+    div, point, px,
 };
 use gpui_component::dialog::Dialog;
 use gpui_component::scroll::ScrollableElement as _;
@@ -59,18 +59,18 @@ impl DialogHost {
                     content.child(
                         // 正确结构: max_h 在外层普通 div(钳制可视区), 滚动容器自身不限高
                         // (内容自然撑高 -> 滚动区内容 > 可视区 -> 滚轮生效)
-                        div()
-                            .max_h(content_cap)
-                            .child(
-                                div()
-                                    .overflow_y_scrollbar()
-                                    .debug_selector(|| "content-wrap".to_string())
-                                    .child(v_flex().children(
+                        div().max_h(content_cap).child(
+                            div()
+                                .overflow_y_scrollbar()
+                                .debug_selector(|| "content-wrap".to_string())
+                                .child(
+                                    v_flex().children(
                                         (0..20)
                                             .map(|i| row(format!("row-{}", i), 40.))
                                             .collect::<Vec<_>>(),
-                                    )),
-                            ),
+                                    ),
+                                ),
+                        ),
                     )
                 })
                 .on_cancel(|_, _, _| true)
@@ -106,7 +106,10 @@ fn dialog_content_with_max_h_clamps_and_scrolls(cx: &mut TestAppContext) {
     // 诊断输出: 各层实际 bounds
     for key in ["content-wrap", "row-0", "row-19", "footer-btn"] {
         if let Some(b) = cx.debug_bounds(key) {
-            eprintln!("DIAG {key}: origin=({},{}) size={}x{}", b.origin.x, b.origin.y, b.size.width, b.size.height);
+            eprintln!(
+                "DIAG {key}: origin=({},{}) size={}x{}",
+                b.origin.x, b.origin.y, b.size.width, b.size.height
+            );
         } else {
             eprintln!("DIAG {key}: <no bounds>");
         }
@@ -165,9 +168,7 @@ fn dialog_esc_and_overlay_click_both_close(cx: &mut TestAppContext) {
     draw(&mut cx);
     draw(&mut cx);
 
-    let is_open = |cx: &mut VisualTestContext| {
-        cx.update(|window, cx| window.has_active_dialog(cx))
-    };
+    let is_open = |cx: &mut VisualTestContext| cx.update(|window, cx| window.has_active_dialog(cx));
     assert!(is_open(&mut cx), "dialog should be open");
 
     // 点击面板外的蒙层: 关闭弹窗(overlay_closable 默认 true)

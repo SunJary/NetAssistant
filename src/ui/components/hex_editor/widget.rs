@@ -121,7 +121,10 @@ pub fn render_grid(
     let selection = state.core.selection;
     let stride = config.bytes_per_row.max(1);
     let total_rows = len.div_ceil(stride);
-    let mut rendered_rows = config.max_rows.map(|m| m.min(total_rows)).unwrap_or(total_rows);
+    let mut rendered_rows = config
+        .max_rows
+        .map(|m| m.min(total_rows))
+        .unwrap_or(total_rows);
     // 光标在虚拟末尾(内容尾部的空位)且恰好压在行边界时, 该位置属于新的一行:
     // 补渲染一行, 保证末尾光标格可见
     let cursor_at_row_boundary_end = cursor_cell == Some(len) && len % stride == 0 && len > 0;
@@ -218,7 +221,8 @@ pub fn render_grid(
         }
         if clipped {
             if let Some(notice) = config.overflow_notice.as_ref() {
-                scroll = scroll.child(                    div()
+                scroll = scroll.child(
+                    div()
                         .h(px(ROW_HEIGHT))
                         .flex()
                         .items_center()
@@ -240,7 +244,15 @@ pub fn render_grid(
             let editor = editor.clone();
             let on_write = on_write.clone();
             move |event: &KeyDownEvent, window: &mut Window, cx: &mut App| {
-                handle_key(&editor, event, &on_write, ascii_editable, stride, window, cx);
+                handle_key(
+                    &editor,
+                    event,
+                    &on_write,
+                    ascii_editable,
+                    stride,
+                    window,
+                    cx,
+                );
             }
         })
         // 点击空白处也能聚焦（单元格点击各自处理聚焦与定位）
@@ -322,13 +334,26 @@ fn render_row(
                 let selected = is_selected(selection, idx);
                 let hi_cursor = cursor_cell == Some(idx) && cursor_nibble == 0;
                 let lo_cursor = cursor_cell == Some(idx) && cursor_nibble == 1;
-                let lo_char = if *lo == core::HALF_EMPTY { None } else { Some(*lo) };
+                let lo_char = if *lo == core::HALF_EMPTY {
+                    None
+                } else {
+                    Some(*lo)
+                };
                 // 字节组之间的间隙：点击定位到下一格(末尾空位则落到虚拟末尾)
                 let gap_editor = editor.clone();
                 let gap_on_write = on_write.clone();
                 hex_area = hex_area
                     .child(byte_span(
-                        Some(*hi), false, hi_cursor, selected, focused, style, editor, on_write, idx, 0,
+                        Some(*hi),
+                        false,
+                        hi_cursor,
+                        selected,
+                        focused,
+                        style,
+                        editor,
+                        on_write,
+                        idx,
+                        0,
                     ))
                     .child(byte_span(
                         lo_char,
@@ -466,7 +491,11 @@ fn byte_span(
         (None, false) => String::new(),
     };
     // 基础文字色先写,光标态在后面覆盖(反白生效);非光标态的空槽提示符用 muted 弱化
-    let base_color = if half_slot && !cursor { style.muted } else { style.text };
+    let base_color = if half_slot && !cursor {
+        style.muted
+    } else {
+        style.text
+    };
     let mut span = div()
         .w(px(NIBBLE_WIDTH))
         .flex_none()
@@ -627,7 +656,12 @@ fn key_to_action(
         "delete" => return Some(Action::Delete),
         "insert" => return Some(Action::InsertToggle),
         // 空格: 前进到下一格(hex 网格中无空字符可键入, 用作光标行走)
-        "space" => return Some(Action::Move { dir: MoveDir::Right, extend }),
+        "space" => {
+            return Some(Action::Move {
+                dir: MoveDir::Right,
+                extend,
+            });
+        }
         "a" if m.platform || m.control => return Some(Action::SelectAll),
         _ => {}
     }
@@ -662,13 +696,13 @@ mod visual_tests {
     use std::sync::Arc;
 
     use gpui::{
-        div, px, point, white, AppContext as _, Context, Entity, IntoElement, MouseButton,
-        MouseDownEvent, ParentElement as _, Render, ScrollDelta, ScrollWheelEvent, Styled as _,
-        TestAppContext, VisualTestContext, Window,
+        AppContext as _, Context, Entity, IntoElement, MouseButton, MouseDownEvent,
+        ParentElement as _, Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext,
+        VisualTestContext, Window, div, point, px, white,
     };
     use gpui_component::Root;
 
-    use super::{render_grid, HexEditorState, HexEditorStyle, HexViewConfig};
+    use super::{HexEditorState, HexEditorStyle, HexViewConfig, render_grid};
     use crate::ui::components::hex_editor::core::{self, Cursor};
 
     fn draw(cx: &mut VisualTestContext) {
@@ -749,7 +783,11 @@ mod visual_tests {
         let editor = seed(cx, 64); // 8 行
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: true, height: 100.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: true,
+                height: 100.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -759,7 +797,10 @@ mod visual_tests {
         // debug_selector 以行起始 cell 索引命名: 8 字节/行 → 第 8 行为 "hex-row-56"
         let row56 = cx.debug_bounds("hex-row-56").expect("row-56 bounds");
         let span = row56.origin.y - row0.origin.y;
-        assert!((span - px(140.0)).abs() < px(2.0), "7 rows span, got {span:?}");
+        assert!(
+            (span - px(140.0)).abs() < px(2.0),
+            "7 rows span, got {span:?}"
+        );
 
         // 滚轮滚动后内容上移
         cx.simulate_event(ScrollWheelEvent {
@@ -781,7 +822,11 @@ mod visual_tests {
         let editor = seed(cx, 16);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: true, height: 100.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: true,
+                height: 100.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -834,7 +879,11 @@ mod visual_tests {
         let editor = seed(cx, 4);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: true, height: 100.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: true,
+                height: 100.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -882,7 +931,11 @@ mod visual_tests {
         let editor = seed(cx, 4);
         let (host, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: false, height: 100.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: false,
+                height: 100.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -933,7 +986,11 @@ mod visual_tests {
         let editor = seed(cx, 0); // 空内容
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: true, height: 100.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: true,
+                height: 100.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -971,7 +1028,11 @@ mod visual_tests {
         let editor = seed(cx, 3); // 3 字节, 每行 8: 末尾空位在首行 slot 3
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: true, height: 100.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: true,
+                height: 100.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -1024,7 +1085,11 @@ mod visual_tests {
         let editor = seed(cx, 8); // 恰好填满一行(8 字节/行)
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: true, height: 400.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: true,
+                height: 400.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -1054,7 +1119,11 @@ mod visual_tests {
         let editor = seed(cx, 4);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
-            let host = cx.new(|_| HexHost { editor, show_grid: true, height: 100.0 });
+            let host = cx.new(|_| HexHost {
+                editor,
+                show_grid: true,
+                height: 100.0,
+            });
             gpui_component::Root::new(host, window, cx)
         });
         draw(&mut cx);
@@ -1080,7 +1149,10 @@ mod visual_tests {
                     "cursor should advance to low nibble"
                 );
                 let value = state.core.full_value();
-                assert!(value.starts_with("f0"), "first byte overwritten, got {value}");
+                assert!(
+                    value.starts_with("f0"),
+                    "first byte overwritten, got {value}"
+                );
                 assert!(
                     state.parsed_from.as_deref() == Some(value.as_str()),
                     "parsed_from synced"
@@ -1098,7 +1170,10 @@ mod visual_tests {
                     Some(Cursor { cell: 1, nibble: 0 }),
                     "cursor should advance to next byte"
                 );
-                assert!(state.core.full_value().starts_with("ff 01"), "second nibble written");
+                assert!(
+                    state.core.full_value().starts_with("ff 01"),
+                    "second nibble written"
+                );
             });
         });
     }

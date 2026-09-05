@@ -498,7 +498,12 @@ impl NetAssistantApp {
 
     /// 切换到 hex 模式时规范化十六进制输入：统一「两位一组、空格分隔」。
     /// 解析失败（含非法字符）时不动内容，交由 UI 错误提示。
-    pub fn sanitize_hex_input(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn sanitize_hex_input(
+        &mut self,
+        tab_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let inputs: Vec<Entity<InputState>> = self
             .connection_tabs
             .get(tab_id)
@@ -566,8 +571,10 @@ impl NetAssistantApp {
                     }
                 }
             });
-            self.auto_reply_inputs.insert(tab_id.clone(), auto_reply_input);
-            self.auto_reply_hex_editors.insert(tab_id.clone(), hex_editor);
+            self.auto_reply_inputs
+                .insert(tab_id.clone(), auto_reply_input);
+            self.auto_reply_hex_editors
+                .insert(tab_id.clone(), hex_editor);
             self.auto_reply_input_subscriptions
                 .insert(tab_id, subscription);
         }
@@ -747,7 +754,11 @@ impl NetAssistantApp {
             debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
         }
         self.auto_reply_hex_editors.remove(&tab_id);
-        if self.auto_reply_input_subscriptions.remove(&tab_id).is_some() {
+        if self
+            .auto_reply_input_subscriptions
+            .remove(&tab_id)
+            .is_some()
+        {
             debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
         }
         if self.server_auto_reply_states.remove(&tab_id).is_some() {
@@ -1054,14 +1065,25 @@ impl NetAssistantApp {
             let network_manager_arc = self.network_manager.clone();
             let client_config_clone = client_config.clone();
             let connection_event_sender_clone = self.connection_event_sender.clone();
+            let tab_id_for_error = tab_id.clone();
 
             tokio::spawn(async move {
                 let mut network_manager = network_manager_arc.lock().await;
                 if let Err(e) = network_manager
-                    .create_and_connect_client(&client_config_clone, connection_event_sender_clone)
+                    .create_and_connect_client(
+                        &client_config_clone,
+                        connection_event_sender_clone.clone(),
+                    )
                     .await
                 {
                     error!("客户端连接失败: {:?}", e);
+                    // 复位乐观设置的连接状态并在 UI 提示(如目标端口不可达/连接被拒绝)
+                    if let Some(sender) = &connection_event_sender_clone {
+                        let _ = sender.try_send(ConnectionEvent::Error(
+                            tab_id_for_error,
+                            format!("连接失败: {}", e),
+                        ));
+                    }
                 }
             });
         }
@@ -1078,17 +1100,25 @@ impl NetAssistantApp {
                 let network_manager_arc = self.network_manager.clone();
                 let server_config_clone = server_config.clone();
                 let connection_event_sender_clone = self.connection_event_sender.clone();
+                let tab_id_for_error = tab_id.clone();
 
                 tokio::spawn(async move {
                     let mut network_manager = network_manager_arc.lock().await;
                     if let Err(e) = network_manager
                         .create_and_start_server(
                             &server_config_clone,
-                            connection_event_sender_clone,
+                            connection_event_sender_clone.clone(),
                         )
                         .await
                     {
                         error!("服务端启动失败: {:?}", e);
+                        // 复位乐观设置的连接状态并在 UI 提示(如端口被其他实例/进程占用)
+                        if let Some(sender) = &connection_event_sender_clone {
+                            let _ = sender.try_send(ConnectionEvent::Error(
+                                tab_id_for_error,
+                                format!("启动失败: {}", e),
+                            ));
+                        }
                     }
                 });
             }
@@ -2046,7 +2076,11 @@ impl Drop for NetAssistantApp {
             }
             self.auto_reply_hex_editors.remove(&tab_id);
 
-            if self.auto_reply_input_subscriptions.remove(&tab_id).is_some() {
+            if self
+                .auto_reply_input_subscriptions
+                .remove(&tab_id)
+                .is_some()
+            {
                 debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
             }
 
