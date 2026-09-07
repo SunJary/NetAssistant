@@ -173,6 +173,73 @@ mod tests {
         );
     }
 
+    /// 回归测试: TCP 服务端端口被占用时必须返回错误。
+    ///
+    /// 此前 TCP bind 失败会静默回退绑定 `127.0.0.1:0` 随机端口,start() 仍返回
+    /// Ok,UI 停在"连接中"且无法收发;回退也失败时甚至 panic。
+    #[tokio::test]
+    async fn test_start_tcp_server_port_conflict_returns_error() {
+        // 先占用一个 TCP 端口并保持存活
+        let holder = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = holder.local_addr().unwrap().port();
+
+        let mut manager = NetworkConnectionManager::new();
+        let config = ServerConfig {
+            protocol: ConnectionType::Tcp,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: port,
+            ..Default::default()
+        };
+
+        let result = manager.create_and_start_server(&config, None).await;
+        assert!(
+            result.is_err(),
+            "TCP端口被占用时启动服务端应返回错误,实际: {:?}",
+            result
+        );
+    }
+
+    /// 回归测试: TCP 服务端正常启动路径(listener 真实绑定、可被连接、stop 后端口释放)。
+    /// 锁定 start() 重构后的行为: bind 在 future 内执行,成功后 accept 任务就绪。
+    #[tokio::test]
+    async fn test_start_tcp_server_success_and_stop_releases_port() {
+        // 取一个空闲端口
+        let port = {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            listener.local_addr().unwrap().port()
+        };
+
+        let mut manager = NetworkConnectionManager::new();
+        let config = ServerConfig {
+            protocol: ConnectionType::Tcp,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: port,
+            ..Default::default()
+        };
+
+        manager
+            .create_and_start_server(&config, None)
+            .await
+            .expect("空闲端口启动 TCP 服务端应成功");
+
+        // listener 已真实绑定: 原始 TCP 连接应能接入(accept 任务已在收)
+        let _conn = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .expect("应能连接到已启动的 TCP 服务端");
+
+        // 停止后端口应释放: 重新绑定同一端口应成功。
+        // 注: stop() 的 handle.abort() 是异步生效的,accept 任务持有的 listener Arc
+        // 要等调度器下次运行时才随任务一起 drop,这里让出一个调度点。
+        manager.stop_server(&config.id).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let rebind = tokio::net::TcpListener::bind(("127.0.0.1", port)).await;
+        assert!(
+            rebind.is_ok(),
+            "stop 后端口应被释放,实际: {:?}",
+            rebind.err()
+        );
+    }
+
     /// 回归测试: 客户端连接失败必须返回错误(此前同样被 `let _ =` 吞掉)。
     #[tokio::test]
     async fn test_connect_client_failure_returns_error() {
