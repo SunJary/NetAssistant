@@ -1,10 +1,13 @@
 import { defineConfig } from 'vitepress'
 
+// 默认走 GitHub Pages 子路径；Cloudflare Pages 构建时设置 VITEPRESS_BASE=/ 覆盖
+const base = process.env.VITEPRESS_BASE || '/NetAssistant/'
+
 // https://vitepress.dev/zh/reference/site-config
 export default defineConfig({
   title: 'NetAssistant',
-  base: '/NetAssistant/',
-  head: [['link', { rel: 'icon', type: 'image/png', href: '/NetAssistant/logo.png' }]],
+  base,
+  head: [['link', { rel: 'icon', type: 'image/png', href: `${base}logo.png` }]],
   locales: {
     root: {
       label: '简体中文',

@@ -2,6 +2,13 @@
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## v1.1.1 <Badge type="tip" text="2026-09-13" />
+
+- **Client local address/port binding**: specify the local IP and local port under "More Settings" when creating/editing a connection, for multi-NIC setups or peers filtering by source address; the effective local endpoint is shown in the info panel once connected
+- **TCP listen refactor**: reworked the TCP listen implementation and fixed TCP message receiving issues
+- Performance improvements: batched log flushing, lazy message display recompute, faster stress latency histogram and HEX editor
+- Fixed UDP socket leak on stop and port bind error reporting
+
 ## v1.1.0 <Badge type="tip" text="2026-08-31" />
 
 - **Multilingual interface (i18n)**: multi-language support built on rust-i18n, with full internationalization of UI texts, dialogs and panels
