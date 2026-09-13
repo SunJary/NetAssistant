@@ -10,7 +10,7 @@ NetAssistant 内置 TCP/UDP 高并发压力测试引擎，用于对服务端进�
 4. 选择压测模式与连接模式
 5. 点击开始；压测配置自动保存，下次打开自动回填
 
-![配置压力测试（暗黑模式）](../../assets/screenshots/screenshot_udp_stress_dark.png)
+![配置压力测试（暗黑模式）](../../assets/screenshots/zh/screenshot_udp_stress_dark.png)
 
 ## 压测模式
 
@@ -45,7 +45,7 @@ NetAssistant 内置 TCP/UDP 高并发压力测试引擎，用于对服务端进�
 - **延迟分位数**：p50 / p95 / p99 / 平均 / 最大（仅 Ping-Pong 模式）
 - **失败原因分类**：连接失败 / 发送失败 / 接收超时 / 对端关闭 / 校验失败，帮助快速定位瓶颈
 
-![压力测试结果](../../assets/screenshots/screenshot_stress.png)
+![压力测试结果](../../assets/screenshots/zh/screenshot_stress.png)
 
 ## 报告导出
 

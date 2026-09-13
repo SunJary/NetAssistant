@@ -11,7 +11,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **聊天式报文记录**：直观展示报文交互过程，便于调试和分析
 - **配置持久化**：自动保存连接配置，下次启动直接使用
 
-![TCP 解码器截图](../assets/screenshots/screenshot_tcp_decoder.png)
+![TCP 解码器截图](../assets/screenshots/zh/screenshot_tcp_decoder.png)
 
 ## 消息管理功能
 
@@ -22,7 +22,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **UDP 广播回复智能展示**：针对上位机/物联网设备发现场景优化，向广播地址发送指令后接收所有设备回复，非预期地址的回复用红色高亮标识，不丢失重要响应
 - **连接配置编辑**：已保存的连接配置支持直接编辑修改，无需删除重建
 
-![收藏消息截图](../assets/screenshots/screenshot_favorite_message.png)
+![收藏消息截图](../assets/screenshots/zh/screenshot_favorite_message.png)
 
 ## 自动化测试功能
 
@@ -37,7 +37,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **客户端消息查看**：在服务端模式下，可选择特定客户端查看其消息
 - **UDP 手动添加客户端**：在 UDP 服务端模式下，可手动添加客户端地址，便于主动向指定地址发送数据
 
-![UDP 手动添加客户端截图](../assets/screenshots/screenshot_udp_add_client.png)
+![UDP 手动添加客户端截图](../assets/screenshots/zh/screenshot_udp_add_client.png)
 
 ## 技术亮点
 

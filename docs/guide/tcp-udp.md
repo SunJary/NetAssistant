@@ -11,7 +11,7 @@ TCP 是字节流协议，存在粘包/拆包问题。NetAssistant 在连接详�
 | 长度前缀 | 按长度字段分包，适合二进制协议 |
 | JSON | 自动识别 JSON 报文，适合 JSON over TCP |
 
-![TCP 解码器截图](../../assets/screenshots/screenshot_tcp_decoder.png)
+![TCP 解码器截图](../../assets/screenshots/zh/screenshot_tcp_decoder.png)
 
 ## 消息模式
 
@@ -50,7 +50,7 @@ TCP 是字节流协议，存在粘包/拆包问题。NetAssistant 在连接详�
 
 创建连接时地址支持 IPv4 与 IPv6 双栈，例如填入 `::1` 或 `fe80::xxxx` 即可调试 IPv6 环境。
 
-![IPv6 截图](../../assets/screenshots/screenshot_ipv6.png)
+![IPv6 截图](../../assets/screenshots/zh/screenshot_ipv6.png)
 
 ## 本地端口绑定
 
@@ -73,7 +73,7 @@ UDP 是无连接协议，服务端无法天然感知客户端。在 UDP 服务�
 2. 输入目标客户端的 IP 和端口
 3. 添加完成后即可主动向该地址发送消息
 
-![UDP 手动添加客户端截图](../../assets/screenshots/screenshot_udp_add_client.png)
+![UDP 手动添加客户端截图](../../assets/screenshots/zh/screenshot_udp_add_client.png)
 
 ### 设备发现（上位机/物联网调试）
 
@@ -84,7 +84,7 @@ UDP 是无连接协议，服务端无法天然感知客户端。在 UDP 服务�
 3. 来自非目标地址的设备回复，源地址会用**浅红色高亮**标识，鼠标悬停显示「非预期地址的回复」提示
 4. 既不丢失重要的设备响应，又能清晰区分广播回复与目标地址正常回复
 
-![UDP 广播暗黑模式截图](../../assets/screenshots/screenshot_udp_stress_dark.png)
+![UDP 广播暗黑模式截图](../../assets/screenshots/zh/screenshot_udp_stress_dark.png)
 
 ## 多连接与客户端查看
 
@@ -93,4 +93,4 @@ UDP 是无连接协议，服务端无法天然感知客户端。在 UDP 服务�
 
 ## 十六进制模式与 HEX 编辑
 
-![十六进制模式截图](../../assets/screenshots/screenshot_hex.png)
+![十六进制模式截图](../../assets/screenshots/zh/screenshot_hex.png)

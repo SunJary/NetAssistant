@@ -10,7 +10,7 @@ NetAssistant ships with a built-in TCP/UDP high-concurrency stress test engine f
 4. Choose the test mode and connection mode
 5. Click start; the stress test config is saved automatically and restored the next time you open it
 
-![Configuring a stress test (dark mode)](../../../assets/screenshots/screenshot_udp_stress_dark.png)
+![Configuring a stress test (dark mode)](../../../assets/screenshots/en/screenshot_udp_stress_dark.png)
 
 ## Test Modes
 
@@ -45,7 +45,7 @@ While the test is running, the stress panel shows in real time:
 - **Latency percentiles**: p50 / p95 / p99 / avg / max (Ping-Pong mode only)
 - **Failure breakdown**: connection failure / send failure / receive timeout / closed by peer / verification failure, to help locate bottlenecks quickly
 
-![Stress test results](../../../assets/screenshots/screenshot_stress.png)
+![Stress test results](../../../assets/screenshots/en/screenshot_stress.png)
 
 ## Report Export
 

@@ -55,6 +55,8 @@ See the [Download page](/en/download) for more details.
 2. **Start the connection**: for a client connection, click `[Connect]`; for a server connection, click `[Start]`.
 3. **Send a message**: choose the send mode (text or hex) above the input box at the bottom, type your content, then click `[Send]` or press Enter.
 
+![New connection screenshot](../../../assets/screenshots/en/screenshot_new_client.png)
+
 Next steps:
 
 - Running into sticky packet issues while debugging TCP? → Read [TCP/UDP Debugging](/en/guide/tcp-udp)

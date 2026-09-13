@@ -41,19 +41,19 @@ features:
 
 ### Client Mode
 
-![Client mode screenshot](../../assets/screenshots/screenshot_client.png)
+![Client mode screenshot](../../assets/screenshots/en/screenshot_client.png)
 
 ### Server Mode
 
-![Server mode screenshot](../../assets/screenshots/screenshot_server.png)
+![Server mode screenshot](../../assets/screenshots/en/screenshot_server.png)
 
 ### Stress Testing
 
-![Stress testing screenshot](../../assets/screenshots/screenshot_stress.png)
+![Stress testing screenshot](../../assets/screenshots/en/screenshot_stress.png)
 
 ### Dark Mode
 
-![UDP server dark mode screenshot](../../assets/screenshots/screenshot_udp_server_dark.png)
+![UDP server dark mode screenshot](../../assets/screenshots/en/screenshot_udp_server_dark.png)
 
 ## Why NetAssistant
 

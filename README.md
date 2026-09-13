@@ -54,41 +54,44 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 
 ## 📸 界面预览
 
+### 新建连接
+![新建连接截图](assets/screenshots/zh/screenshot_new_client.png)
+
 ### 客户端模式
-![客户端截图](assets/screenshots/screenshot_client.png)
+![客户端截图](assets/screenshots/zh/screenshot_client.png)
 
 ### 服务端模式
-![服务端截图](assets/screenshots/screenshot_server.png)
+![服务端截图](assets/screenshots/zh/screenshot_server.png)
 
 ### IPv6 支持
-![IPv6 截图](assets/screenshots/screenshot_ipv6.png)
+![IPv6 截图](assets/screenshots/zh/screenshot_ipv6.png)
 
 ### TCP 解码器
-![TCP 解码器截图](assets/screenshots/screenshot_tcp_decoder.png)
+![TCP 解码器截图](assets/screenshots/zh/screenshot_tcp_decoder.png)
 
 ### 十六进制模式
-![十六进制模式截图](assets/screenshots/screenshot_hex.png)
+![十六进制模式截图](assets/screenshots/zh/screenshot_hex.png)
 
 ### 收藏消息
-![收藏消息截图](assets/screenshots/screenshot_favorite_message.png)
+![收藏消息截图](assets/screenshots/zh/screenshot_favorite_message.png)
 
 ### UDP 手动添加客户端
-![UDP 手动添加客户端截图](assets/screenshots/screenshot_udp_add_client.png)
+![UDP 手动添加客户端截图](assets/screenshots/zh/screenshot_udp_add_client.png)
 
 ### 配置压力测试（暗黑模式）
-![配置压力测试截图](assets/screenshots/screenshot_udp_stress_dark.png)
+![配置压力测试截图](assets/screenshots/zh/screenshot_udp_stress_dark.png)
 
 ### 压力测试结果
-![压力测试结果截图](assets/screenshots/screenshot_stress.png)
+![压力测试结果截图](assets/screenshots/zh/screenshot_stress.png)
 
 ### UDP 客户端暗黑模式
-![UDP 客户端暗黑模式截图](assets/screenshots/screenshot_udp_client_dark.png)
+![UDP 客户端暗黑模式截图](assets/screenshots/zh/screenshot_udp_client_dark.png)
 
 ### UDP 服务端暗黑模式
-![UDP 服务端暗黑模式截图](assets/screenshots/screenshot_udp_server_dark.png)
+![UDP 服务端暗黑模式截图](assets/screenshots/zh/screenshot_udp_server_dark.png)
 
 ### 折叠模式
-![折叠模式截图](assets/screenshots/screenshot_collapsed.png)
+![折叠模式截图](assets/screenshots/zh/screenshot_collapsed.png)
 
 ## 🚀 快速开始
 

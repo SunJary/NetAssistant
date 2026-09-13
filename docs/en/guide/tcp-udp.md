@@ -11,7 +11,7 @@ TCP is a byte-stream protocol and suffers from sticky/split packet issues. NetAs
 | Length-prefix | Splits packets by a length field, suitable for binary protocols |
 | JSON | Automatically detects JSON messages, suitable for JSON over TCP |
 
-![TCP decoder screenshot](../../../assets/screenshots/screenshot_tcp_decoder.png)
+![TCP decoder screenshot](../../../assets/screenshots/en/screenshot_tcp_decoder.png)
 
 ## Message Modes
 
@@ -50,7 +50,7 @@ Suitable for simulating server or client responses and verifying the peer's hand
 
 Addresses support both IPv4 and IPv6 when creating a connection — enter `::1` or `fe80::xxxx` to debug in an IPv6 environment.
 
-![IPv6 screenshot](../../../assets/screenshots/screenshot_ipv6.png)
+![IPv6 screenshot](../../../assets/screenshots/en/screenshot_ipv6.png)
 
 ## Local Port Binding
 
@@ -73,7 +73,7 @@ UDP is connectionless, so a server cannot inherently detect its clients. In UDP 
 2. Enter the target client's IP and port
 3. Once added, you can proactively send messages to that address
 
-![UDP manual client addition screenshot](../../../assets/screenshots/screenshot_udp_add_client.png)
+![UDP manual client addition screenshot](../../../assets/screenshots/en/screenshot_udp_add_client.png)
 
 ### Device Discovery (Host Workstation / IoT Debugging)
 
@@ -84,7 +84,7 @@ When you need to discover IoT/embedded devices on the local network:
 3. Device replies from non-target addresses are marked with a **light-red highlight** on the source address, with an "Unexpected address reply" tooltip on hover
 4. No important device response is lost, while broadcast replies stay clearly distinguished from normal replies to the target address
 
-![UDP broadcast dark mode screenshot](../../../assets/screenshots/screenshot_udp_stress_dark.png)
+![UDP broadcast dark mode screenshot](../../../assets/screenshots/en/screenshot_udp_stress_dark.png)
 
 ## Multiple Connections & Client View
 
@@ -93,4 +93,4 @@ When you need to discover IoT/embedded devices on the local network:
 
 ## Hex Mode & HEX Editor
 
-![Hex mode screenshot](../../../assets/screenshots/screenshot_hex.png)
+![Hex mode screenshot](../../../assets/screenshots/en/screenshot_hex.png)

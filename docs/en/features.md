@@ -11,7 +11,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Chat-style message log**: intuitive display of packet exchanges for easier debugging and analysis
 - **Persistent configuration**: connection configs are saved automatically and restored on the next launch
 
-![TCP decoder screenshot](../../assets/screenshots/screenshot_tcp_decoder.png)
+![TCP decoder screenshot](../../assets/screenshots/en/screenshot_tcp_decoder.png)
 
 ## Message Management
 
@@ -22,7 +22,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Smart UDP broadcast reply display**: optimized for host workstation / IoT device discovery scenarios — send a command to a broadcast address and receive replies from all devices; replies from unexpected addresses are highlighted in red so no important response is lost
 - **Connection config editing**: saved connection configs can be edited directly, no need to delete and recreate
 
-![Favorite message screenshot](../../assets/screenshots/screenshot_favorite_message.png)
+![Favorite message screenshot](../../assets/screenshots/en/screenshot_favorite_message.png)
 
 ## Automated Testing
 
@@ -37,7 +37,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Per-client message view**: in server mode, view messages of a specific client
 - **Manual client addition for UDP**: in UDP server mode, add client addresses manually to proactively send data to a specific address
 
-![UDP manual client addition screenshot](../../assets/screenshots/screenshot_udp_add_client.png)
+![UDP manual client addition screenshot](../../assets/screenshots/en/screenshot_udp_add_client.png)
 
 ## Technical Highlights
 

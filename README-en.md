@@ -54,41 +54,44 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 
 ## 📸 Interface Preview
 
+### New Connection
+![New Connection Screenshot](assets/screenshots/en/screenshot_new_client.png)
+
 ### Client Mode
-![Client Screenshot](assets/screenshots/screenshot_client.png)
+![Client Screenshot](assets/screenshots/en/screenshot_client.png)
 
 ### Server Mode
-![Server Screenshot](assets/screenshots/screenshot_server.png)
+![Server Screenshot](assets/screenshots/en/screenshot_server.png)
 
 ### IPv6 Support
-![IPv6 Screenshot](assets/screenshots/screenshot_ipv6.png)
+![IPv6 Screenshot](assets/screenshots/en/screenshot_ipv6.png)
 
 ### TCP Decoder
-![TCP Decoder Screenshot](assets/screenshots/screenshot_tcp_decoder.png)
+![TCP Decoder Screenshot](assets/screenshots/en/screenshot_tcp_decoder.png)
 
 ### Hex Mode
-![Hex Mode Screenshot](assets/screenshots/screenshot_hex.png)
+![Hex Mode Screenshot](assets/screenshots/en/screenshot_hex.png)
 
 ### Favorite Message
-![Favorite Message Screenshot](assets/screenshots/screenshot_favorite_message.png)
+![Favorite Message Screenshot](assets/screenshots/en/screenshot_favorite_message.png)
 
 ### UDP Manual Add Client
-![UDP Manual Add Client Screenshot](assets/screenshots/screenshot_udp_add_client.png)
+![UDP Manual Add Client Screenshot](assets/screenshots/en/screenshot_udp_add_client.png)
 
 ### Stress Testing Configuration (Dark Mode)
-![Stress Testing Configuration Screenshot](assets/screenshots/screenshot_udp_stress_dark.png)
+![Stress Testing Configuration Screenshot](assets/screenshots/en/screenshot_udp_stress_dark.png)
 
 ### Stress Testing Result
-![Stress Testing Result Screenshot](assets/screenshots/screenshot_stress.png)
+![Stress Testing Result Screenshot](assets/screenshots/en/screenshot_stress.png)
 
 ### UDP Client Dark Mode
-![UDP Client Dark Mode Screenshot](assets/screenshots/screenshot_udp_client_dark.png)
+![UDP Client Dark Mode Screenshot](assets/screenshots/en/screenshot_udp_client_dark.png)
 
 ### UDP Server Dark Mode
-![UDP Server Dark Mode Screenshot](assets/screenshots/screenshot_udp_server_dark.png)
+![UDP Server Dark Mode Screenshot](assets/screenshots/en/screenshot_udp_server_dark.png)
 
 ### Collapsed Mode
-![Collapsed Mode Screenshot](assets/screenshots/screenshot_collapsed.png)
+![Collapsed Mode Screenshot](assets/screenshots/en/screenshot_collapsed.png)
 
 ## 🚀 Quick Start
 

@@ -55,6 +55,8 @@ AppImage 方式首次运行需安装 libfuse2：`sudo apt install libfuse2`。
 2. **启动连接**：客户端连接点击 `[连接]` 按钮；服务端连接点击 `[启动]` 按钮。
 3. **发送消息**：在底部输入框上方选择消息发送模式（文本或十六进制），输入内容后点击 `[发送]` 按钮或按 Enter 键发送。
 
+![新建连接截图](../../assets/screenshots/zh/screenshot_new_client.png)
+
 接下来可以：
 
 - 调试 TCP 协议时遇到粘包问题？→ 阅读 [TCP/UDP 调试](/guide/tcp-udp)

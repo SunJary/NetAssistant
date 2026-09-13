@@ -41,19 +41,19 @@ features:
 
 ### 客户端模式
 
-![客户端模式截图](../assets/screenshots/screenshot_client.png)
+![客户端模式截图](../assets/screenshots/zh/screenshot_client.png)
 
 ### 服务端模式
 
-![服务端模式截图](../assets/screenshots/screenshot_server.png)
+![服务端模式截图](../assets/screenshots/zh/screenshot_server.png)
 
 ### 压力测试
 
-![压力测试截图](../assets/screenshots/screenshot_stress.png)
+![压力测试截图](../assets/screenshots/zh/screenshot_stress.png)
 
 ### 暗黑模式
 
-![UDP 服务端暗黑模式截图](../assets/screenshots/screenshot_udp_server_dark.png)
+![UDP 服务端暗黑模式截图](../assets/screenshots/zh/screenshot_udp_server_dark.png)
 
 ## 为什么选择 NetAssistant
 
