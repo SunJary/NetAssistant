@@ -313,7 +313,15 @@ impl NetworkConnection for TcpClient {
                             }
                         }
 
-                        _ = tokio::time::sleep_until(flush_deadline.unwrap()), if flush_deadline.is_some() => {
+                        // 注意: tokio::select! 对被 precondition 禁用的分支仍会求值 async expression,
+                        // 因此不能用 flush_deadline.unwrap() —— 初始 None 时该分支每次循环都会 panic,
+                        // 静默杀死读任务(socket 因写半句柄存活而保持打开),表现为"已连接但永远收不到消息"。
+                        // 与服务器读循环一致,用 async { if let Some(d) } 包裹保证求值安全。
+                        _ = async {
+                            if let Some(d) = flush_deadline {
+                                tokio::time::sleep_until(d).await;
+                            }
+                        }, if flush_deadline.is_some() => {
                             flush_deadline = None;
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;

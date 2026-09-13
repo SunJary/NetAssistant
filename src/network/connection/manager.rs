@@ -359,6 +359,87 @@ mod tests {
         }
     }
 
+    /// 端到端回归: TCP 服务端广播消息, 客户端 tab 必须通过事件通道收到。
+    ///
+    /// 完整复现用户场景: 服务端 tab(Bytes 解码器)广播 'ee' 给所有已连接客户端,
+    /// 同实例客户端 tab(Bytes 解码器)应收到 MessageReceived 事件。
+    /// 验证链路: 服务端 clients 通道 → 服务端发送任务(encode+write_all)
+    /// → 客户端读任务(decode) → MessageReceived 事件。
+    #[tokio::test]
+    async fn test_tcp_server_broadcast_client_receives() {
+        use crate::network::events::ConnectionEvent;
+        use std::time::Duration;
+
+        let port = {
+            let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            probe.local_addr().unwrap().port()
+        };
+
+        let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let mut manager = NetworkConnectionManager::new();
+
+        let server_config = ServerConfig {
+            protocol: ConnectionType::Tcp,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: port,
+            ..Default::default()
+        };
+        manager
+            .create_and_start_server(&server_config, Some(tx.clone()))
+            .await
+            .expect("服务端应启动成功");
+
+        let client_config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Tcp,
+            server_address: "127.0.0.1".to_string(),
+            server_port: port,
+            ..Default::default()
+        };
+        manager
+            .create_and_connect_client(&client_config, Some(tx))
+            .await
+            .expect("客户端应连接成功");
+
+        // 等待服务端 accept: ServerClientConnected 携带该客户端的写入发送器
+        let mut write_sender = None;
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+                .await
+                .expect("等待 ServerClientConnected 超时")
+                .expect("事件通道不应关闭");
+            match event {
+                ConnectionEvent::ServerClientConnected(_, _, sender) => {
+                    write_sender = Some(sender);
+                    break;
+                }
+                _ => continue,
+            }
+        }
+
+        // 模拟 app.rs 广播路径: 向写入发送器投递消息, 由服务端发送任务写出
+        write_sender
+            .unwrap()
+            .send(b"ee".to_vec())
+            .await
+            .expect("投递到服务端发送通道应成功");
+
+        // 客户端必须在超时前收到 MessageReceived, 且路由到客户端 tab
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let event = tokio::time::timeout(remaining, rx.recv())
+                .await
+                .expect("等待客户端 MessageReceived 超时")
+                .expect("事件通道不应关闭");
+            if let ConnectionEvent::MessageReceived(tab_id, message) = event {
+                assert_eq!(tab_id, client_config.id, "消息应路由到客户端 tab");
+                assert_eq!(message.raw_data, b"ee", "客户端收到的字节应与服务端发送一致");
+                assert_eq!(message.direction, crate::message::MessageDirection::Received);
+                return;
+            }
+        }
+    }
+
     /// 兼容测试: 未配置本地绑定时 UDP 客户端保持旧行为(系统自动分配临时端口)。
     #[tokio::test]
     async fn test_udp_client_without_local_bind_gets_ephemeral_port() {

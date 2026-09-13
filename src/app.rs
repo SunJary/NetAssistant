@@ -619,6 +619,21 @@ impl NetAssistantApp {
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
         self.local_port_input
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        // 占位符跟随当前语言(placeholder 在 InputState 创建时固化, 语言切换后需刷新)
+        self.local_address_input.update(cx, |i, cx| {
+            i.set_placeholder(
+                t!("new_connection.local_address_placeholder").to_string(),
+                window,
+                cx,
+            )
+        });
+        self.local_port_input.update(cx, |i, cx| {
+            i.set_placeholder(
+                t!("new_connection.local_port_placeholder").to_string(),
+                window,
+                cx,
+            )
+        });
 
         // 命令式打开对话框(由 Root 管理层叠)
         open_new_connection_dialog(cx.entity().downgrade(), window, cx);
@@ -679,6 +694,21 @@ impl NetAssistantApp {
         self.local_port_input.update(cx, |i, cx| {
             i.set_value(
                 local_port.map(|p| p.to_string()).unwrap_or_default(),
+                window,
+                cx,
+            )
+        });
+        // 占位符跟随当前语言(placeholder 在 InputState 创建时固化, 语言切换后需刷新)
+        self.local_address_input.update(cx, |i, cx| {
+            i.set_placeholder(
+                t!("new_connection.local_address_placeholder").to_string(),
+                window,
+                cx,
+            )
+        });
+        self.local_port_input.update(cx, |i, cx| {
+            i.set_placeholder(
+                t!("new_connection.local_port_placeholder").to_string(),
                 window,
                 cx,
             )
