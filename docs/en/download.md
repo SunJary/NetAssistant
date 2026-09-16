@@ -1,3 +1,8 @@
+---
+title: Download
+description: Download NetAssistant cross-platform network debugging tool: available for Windows, Linux and macOS via winget, AppImage, tar.gz or building from source, with system requirements.
+---
+
 # Download
 
 NetAssistant is available for Windows, Linux and macOS. All releases can be downloaded from [GitHub Releases](https://github.com/sunjary/netassistant/releases).

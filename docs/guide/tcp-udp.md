@@ -1,3 +1,8 @@
+---
+title: TCP/UDP 调试
+description: TCP 粘包与拆包处理教程：原始/行分隔/长度前缀/JSON 四种解码器；十六进制模式、周期发送、自动回复、消息管理、IPv6 与 UDP 广播设备发现调试。
+---
+
 # TCP/UDP 调试
 
 ## TCP 解码器

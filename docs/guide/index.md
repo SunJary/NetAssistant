@@ -1,3 +1,8 @@
+---
+title: 快速上手
+description: NetAssistant 安装与快速上手教程：Windows（winget）、Linux（AppImage）、macOS 三种安装方式，三步完成第一次 TCP/UDP 调试。
+---
+
 # 快速上手
 
 ## 系统要求

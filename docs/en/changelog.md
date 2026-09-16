@@ -1,3 +1,8 @@
+---
+title: Changelog
+description: NetAssistant changelog and roadmap: TCP decoders, UDP broadcast device discovery, high-concurrency stress testing, multi-language UI and hex editor features.
+---
+
 # Changelog
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.

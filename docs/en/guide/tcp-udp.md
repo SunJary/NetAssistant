@@ -1,3 +1,8 @@
+---
+title: TCP/UDP Debugging
+description: TCP sticky packet and packet fragmentation guide: raw, line-delimited, length-prefix and JSON decoders; hex mode, periodic send, auto-reply, message management, IPv6 and UDP broadcast device discovery.
+---
+
 # TCP/UDP Debugging
 
 ## TCP Decoders

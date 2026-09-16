@@ -1,3 +1,8 @@
+---
+title: 压力测试
+description: NetAssistant 内置 TCP/UDP 高并发压力测试教程：Ping-Pong 与吞吐模式、变量模板、实时 QPS 与延迟分位数（p50/p95/p99）、CSV 报告导出。
+---
+
 # 压力测试
 
 NetAssistant 内置 TCP/UDP 高并发压力测试引擎，用于对服务端进行并发吞吐、延迟分布和稳定性评估。压测引擎为零 GPUI 依赖的独立逻辑层，基于令牌桶精确控制发送速率。

@@ -1,6 +1,27 @@
 ---
 layout: home
 
+title: NetAssistant - 开源跨平台网络调试助手
+description: NetAssistant 是基于 Rust 的开源跨平台网络调试工具：TCP/UDP 客户端与服务端、四种解码器、消息管理与高并发压力测试，支持 Windows、Linux、macOS。
+
+head:
+  - - script
+    - type: application/ld+json
+    - |
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "NetAssistant",
+        "description": "基于 Rust 构建的高性能跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows, Linux, macOS",
+        "url": "https://netassistant.trydo.top/",
+        "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
+        "sameAs": "https://github.com/SunJary/NetAssistant",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+
 hero:
   name: NetAssistant
   text: 高性能跨平台网络调试工具
@@ -62,4 +83,4 @@ features:
 - **跨平台**：Windows、Linux、macOS 全平台支持
 - **开源免费**：基于 Apache-2.0 许可证，欢迎参与贡献
 
-更多功能细节请查看 [功能特性](/features)，上手请阅读 [使用指南](/guide/)。
+更多功能细节请查看 [功能特性](/features)，上手请阅读 [使用指南](/guide/)。想了解它与网络调试助手等工具的区别，可参考[同类工具对比](/comparison)。

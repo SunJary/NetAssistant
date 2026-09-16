@@ -3,11 +3,37 @@ import { defineConfig } from 'vitepress'
 // 默认走 GitHub Pages 子路径；Cloudflare Pages 构建时设置 VITEPRESS_BASE=/ 覆盖
 const base = process.env.VITEPRESS_BASE || '/NetAssistant/'
 
+const siteUrl = 'https://netassistant.trydo.top'
+
 // https://vitepress.dev/zh/reference/site-config
 export default defineConfig({
   title: 'NetAssistant',
   base,
-  head: [['link', { rel: 'icon', type: 'image/png', href: `${base}logo.png` }]],
+  // 基于 git 提交时间生成页面更新时间，供主题展示与 sitemap <lastmod> 使用
+  lastUpdated: true,
+  sitemap: {
+    hostname: siteUrl
+  },
+  head: [
+    ['link', { rel: 'icon', type: 'image/png', href: `${base}logo.png` }],
+    ['meta', { property: 'og:site_name', content: 'NetAssistant' }],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:title', content: 'NetAssistant - 开源跨平台网络调试助手' }],
+    ['meta', { property: 'og:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
+    ['meta', { property: 'og:image', content: `${siteUrl}/logo.png` }],
+    ['meta', { name: 'twitter:card', content: 'summary' }],
+    ['meta', { name: 'twitter:title', content: 'NetAssistant - 开源跨平台网络调试助手' }],
+    ['meta', { name: 'twitter:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
+    ['meta', { name: 'twitter:image', content: `${siteUrl}/logo.png` }]
+  ],
+  // 为每个页面生成指向唯一规范域名的 canonical，避免 GitHub Pages 与正式域名重复内容
+  transformPageData(pageData) {
+    const canonicalUrl = `${siteUrl}/${pageData.relativePath}`
+      .replace(/index\.md$/, '')
+      .replace(/\.md$/, '.html')
+    pageData.frontmatter.head ??= []
+    pageData.frontmatter.head.push(['link', { rel: 'canonical', href: canonicalUrl }])
+  },
   locales: {
     root: {
       label: '简体中文',
@@ -19,6 +45,7 @@ export default defineConfig({
         nav: [
           { text: '首页', link: '/' },
           { text: '功能特性', link: '/features' },
+          { text: '同类对比', link: '/comparison' },
           { text: '使用指南', link: '/guide/' },
           { text: '下载', link: '/download' },
           { text: '更新日志', link: '/changelog' }
@@ -52,6 +79,7 @@ export default defineConfig({
           }
         },
         outline: { level: [2, 3] },
+        lastUpdated: { text: '最后更新于' },
         footer: {
           message: '基于 Apache-2.0 许可证发布',
           copyright: 'Copyright © 2026 SunJary'
@@ -69,6 +97,7 @@ export default defineConfig({
         nav: [
           { text: 'Home', link: '/en/' },
           { text: 'Features', link: '/en/features' },
+          { text: 'Comparison', link: '/en/comparison' },
           { text: 'Guide', link: '/en/guide/' },
           { text: 'Download', link: '/en/download' },
           { text: 'Changelog', link: '/en/changelog' }
@@ -92,6 +121,7 @@ export default defineConfig({
           provider: 'local'
         },
         outline: { level: [2, 3] },
+        lastUpdated: { text: 'Last updated' },
         footer: {
           message: 'Released under the Apache-2.0 License',
           copyright: 'Copyright © 2026 SunJary'

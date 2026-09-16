@@ -1,3 +1,8 @@
+---
+title: 更新日志
+description: NetAssistant 网络调试助手版本更新记录与路线图：TCP 解码器、UDP 广播设备发现、高并发压力测试、多语言界面、十六进制编辑器等新功能。
+---
+
 # 更新日志
 
 所有正式版本的更新记录发布在 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 页面。

@@ -1,3 +1,8 @@
+---
+title: 下载
+description: 下载 NetAssistant 跨平台网络调试工具：支持 Windows、Linux、macOS；winget 安装、AppImage、tar.gz 与源码编译方式，附系统要求。
+---
+
 # 下载
 
 NetAssistant 支持 Windows、Linux 和 macOS。所有版本均可从 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 下载。

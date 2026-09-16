@@ -1,3 +1,8 @@
+---
+title: Stress Testing
+description: NetAssistant built-in TCP/UDP high-concurrency stress testing guide: Ping-Pong and throughput modes, variable templates, real-time QPS and latency percentiles (p50/p95/p99), CSV report export.
+---
+
 # Stress Testing
 
 NetAssistant ships with a built-in TCP/UDP high-concurrency stress test engine for evaluating a server's concurrent throughput, latency distribution and stability. The engine is a standalone logic layer with zero GPUI dependency, and uses a token bucket for precise send-rate control.
