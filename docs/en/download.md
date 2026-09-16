@@ -1,6 +1,6 @@
 ---
 title: Download
-description: Download NetAssistant cross-platform network debugging tool: available for Windows, Linux and macOS via winget, AppImage, tar.gz or building from source, with system requirements.
+description: "Download NetAssistant cross-platform network debugging tool: available for Windows, Linux and macOS via winget, AppImage, tar.gz or building from source, with system requirements."
 ---
 
 # Download

@@ -1,6 +1,6 @@
 ---
 title: Stress Testing
-description: NetAssistant built-in TCP/UDP high-concurrency stress testing guide: Ping-Pong and throughput modes, variable templates, real-time QPS and latency percentiles (p50/p95/p99), CSV report export.
+description: "NetAssistant built-in TCP/UDP high-concurrency stress testing guide: Ping-Pong and throughput modes, variable templates, real-time QPS and latency percentiles (p50/p95/p99), CSV report export."
 ---
 
 # Stress Testing

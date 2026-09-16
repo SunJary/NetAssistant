@@ -1,6 +1,6 @@
 ---
 title: Comparison with Similar Tools
-description: NetAssistant vs NetAssist, SocketTool, Packet Sender and Wireshark — a comparison of TCP/UDP network debugging tools: cross-platform, open source, built-in stress testing, and why choose NetAssistant.
+description: "NetAssistant vs NetAssist, SocketTool, Packet Sender and Wireshark — a comparison of TCP/UDP network debugging tools: cross-platform, open source, built-in stress testing, and why choose NetAssistant."
 ---
 
 # Comparison with Similar Tools

@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: NetAssistant installation and getting-started guide: Windows (winget), Linux (AppImage) and macOS install options, plus a three-step first TCP/UDP debugging session.
+description: "NetAssistant installation and getting-started guide: Windows (winget), Linux (AppImage) and macOS install options, plus a three-step first TCP/UDP debugging session."
 ---
 
 # Getting Started
