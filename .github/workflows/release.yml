@@ -100,6 +100,26 @@ jobs:
           Copy-Item target\${{ matrix.target }}\release\netassistant.exe netassistant.exe
           Compress-Archive -Path netassistant.exe -DestinationPath ${{ matrix.asset_name }}.zip
 
+      - name: Build Inno Setup installer (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          # Inno Setup 6 ships preinstalled on the windows-latest image.
+          $iscc = @(
+            (Join-Path "${env:ProgramFiles(x86)}" "Inno Setup 6\ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found under 'Inno Setup 6'" }
+          $ver = ("${{ inputs.version || github.ref_name }}").TrimStart('v')
+          & $iscc "/DMyAppVersion=$ver" packaging\NetAssistant.iss
+
+      - name: Upload Inno Setup artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-setup
+          path: packaging/dist/netassistant-windows-x86_64-setup.exe
+
       - name: Prepare artifact (Unix)
         if: matrix.os != 'windows-latest'
         run: |
