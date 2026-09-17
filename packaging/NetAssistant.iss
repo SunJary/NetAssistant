@@ -24,7 +24,6 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
-InstallMode=perUser
 UninstallDisplayName=NetAssistant
 UninstallDisplayIcon={app}\netassistant.exe
 

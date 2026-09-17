@@ -104,11 +104,14 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          choco install inno-setup -y --no-progress
-          $iscc = Join-Path "${env:ProgramFiles(x86)}" "Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { $iscc = Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe" }
+          # Inno Setup 6 ships preinstalled on the windows-latest image.
+          $iscc = @(
+            (Join-Path "${env:ProgramFiles(x86)}" "Inno Setup 6\ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found under 'Inno Setup 6'" }
           $ver = ("${{ inputs.version || github.ref_name }}").TrimStart('v')
-          & $iscc /DMyAppVersion=$ver packaging/NetAssistant.iss
+          & $iscc "/DMyAppVersion=$ver" packaging\NetAssistant.iss
 
       - name: Upload Inno Setup artifact
         if: matrix.os == 'windows-latest'
