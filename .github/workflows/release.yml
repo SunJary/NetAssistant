@@ -115,7 +115,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}-setup
-          path: dist/netassistant-windows-x86_64-setup.exe
+          path: packaging/dist/netassistant-windows-x86_64-setup.exe
 
       - name: Prepare artifact (Unix)
         if: matrix.os != 'windows-latest'
@@ -272,8 +272,7 @@ jobs:
             
             ### 下载说明
 
-            - **Windows (安装版，推荐)**: 下载 `netassistant-windows-x86_64-setup.exe`（安装快捷，自动创建开始菜单/桌面图标）
-            - **Windows (便携版)**: 下载 `netassistant-windows-x86_64.zip`
+            - **Windows**: 下载 `netassistant-windows-x86_64.zip`
             - **Linux (AppImage)**: 下载 `netassistant-linux-x86_64.AppImage`（推荐，开箱即用）
             - **Linux (tar.gz)**: 下载 `netassistant-linux-x86_64.tar.gz`（轻量，需自行安装依赖）
             - **macOS (Intel)**: 下载 `netassistant-macos-x86_64.tar.gz`
@@ -283,11 +282,9 @@ jobs:
 
             #### Windows
             1. **推荐方法：使用 winget 安装**
-               - 安装：`winget install SunJary.NetAssistant`（自动创建开始菜单/桌面图标）
+               - 安装：`winget install SunJary.NetAssistant`
                - 升级：`winget upgrade SunJary.NetAssistant`
-            2. **备选方法：手动运行安装包**
-               - 下载 `netassistant-windows-x86_64-setup.exe` 并运行（自动创建桌面/开始菜单图标）
-            3. **便携版（绿色，无图标）**
+            2. **备选方法：手动安装**
                - 下载并解压 `netassistant-windows-x86_64.zip`
                - 运行 `netassistant.exe`
 

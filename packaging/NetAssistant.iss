@@ -3,8 +3,7 @@
 #endif
 
 ; Build: iscc /DMyAppVersion=1.2.0 packaging/NetAssistant.iss
-SourceDir=..
-
+; Source paths below are resolved relative to this .iss file's directory.
 [Setup]
 AppId={{E0A6C7F4-9D6B-4A1E-B8C3-4F7D2A9B5E1C}
 AppName=NetAssistant
@@ -18,7 +17,7 @@ DefaultDirName={localappdata}\Programs\NetAssistant
 DefaultGroupName=NetAssistant
 OutputDir=dist
 OutputBaseFilename=netassistant-windows-x86_64-setup
-SetupIconFile=packaging\NetAssistant.ico
+SetupIconFile=NetAssistant.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -30,7 +29,7 @@ UninstallDisplayName=NetAssistant
 UninstallDisplayIcon={app}\netassistant.exe
 
 [Files]
-Source: "target\x86_64-pc-windows-msvc\release\netassistant.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\target\x86_64-pc-windows-msvc\release\netassistant.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\NetAssistant"; Filename: "{app}\netassistant.exe"
