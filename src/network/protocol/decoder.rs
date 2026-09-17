@@ -171,12 +171,6 @@ impl Decoder for LineToBytesMutDecoder {
                 line.split_to(line.len() - 1) // 移除\n
             };
 
-            debug!(
-                "LineToBytesMutDecoder: 解码出完整行: {:?}, 长度: {}",
-                String::from_utf8_lossy(&line),
-                line.len()
-            );
-
             // 返回完整行
             return Ok(Some(line));
         }
@@ -322,7 +316,6 @@ impl Decoder for FixedLengthDecoder {
         // 凑够一帧则切出(即使 src 为空, 也要检查 pending_data 中的剩余数据)
         if self.pending_data.len() >= self.frame_length {
             let frame = self.pending_data.split_to(self.frame_length);
-            debug!("FixedLengthDecoder: 解码出帧, 长度: {}", frame.len());
             Ok(Some(frame))
         } else {
             Ok(None)
@@ -396,11 +389,6 @@ impl Decoder for JsonDecoder {
         match parse_result {
             Ok(Some(offset)) => {
                 let frame = self.pending_data.split_to(offset);
-                debug!(
-                    "JsonDecoder: 解码出一帧, 长度: {}, 内容: {:?}",
-                    frame.len(),
-                    String::from_utf8_lossy(&frame)
-                );
                 Ok(Some(frame))
             }
             Ok(None) => Ok(None),

@@ -12,7 +12,7 @@ use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
 use crate::message::{Message, MessageDirection, MessageType};
-use crate::network::events::ConnectionEvent;
+use crate::network::events::{ConnectionEvent, NetCounters};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
@@ -74,6 +74,9 @@ pub struct NetAssistantApp {
     // 连接事件通道（用于通知UI更新）- 使用smol channel与GPUI兼容
     pub connection_event_sender: Option<Sender<ConnectionEvent>>,
     pub connection_event_receiver: Option<Receiver<ConnectionEvent>>,
+
+    // 网络层精确计数器(每 tab 一份, 随连接创建; UI 每拍读快照覆盖显示计数)
+    pub net_counters: HashMap<String, NetCounters>,
 
     // 压测事件通道（引擎→UI，同 smol channel 模式）
     pub stress_event_sender: Option<Sender<StressEvent>>,
@@ -225,6 +228,7 @@ impl NetAssistantApp {
             auto_reply_input_subscriptions: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
+            net_counters: HashMap::new(),
             stress_event_sender: Some(stress_event_sender),
             stress_event_receiver: Some(stress_event_receiver),
             stress_config_dialog: None,
@@ -293,27 +297,31 @@ impl NetAssistantApp {
             };
             let bg_executor_conn = async_app.background_executor().clone();
             loop {
-                bg_executor_conn.timer(Duration::from_millis(50)).await;
-                let mut batch: Vec<ConnectionEvent> = Vec::with_capacity(64);
+                // 16ms 节拍对齐帧率(约 60fps): 让同一帧内到达的网络事件合并成一次渲染
+                bg_executor_conn.timer(Duration::from_millis(16)).await;
+                // 排空优先: 一次 try_recv 循环把可用事件全部取出, 去掉旧的 500 条上限,
+                // 通道积压在整批渲染时一次性消化, 不产生"结束后仍在回放积压"的问题
+                let mut batch: Vec<ConnectionEvent> = Vec::with_capacity(128);
                 while let Ok(event) = receiver.try_recv() {
                     batch.push(event);
-                    if batch.len() >= 500 {
+                    if batch.len() >= 100_000 {
                         break;
                     }
                 }
-                if batch.is_empty() {
-                    if weak_app.upgrade().is_none() {
-                        return;
-                    }
-                    continue;
-                }
-                if let Some(app) = weak_app.upgrade() {
-                    let _ = app.update(async_app, |app, cx| {
-                        app.handle_connection_events_batch(batch, cx);
-                    });
-                } else {
+                let has_events = !batch.is_empty();
+                let Some(app) = weak_app.upgrade() else {
                     return;
-                }
+                };
+                let _ = app.update(async_app, |app, cx| {
+                    // 每拍同步网络层精确计数到显示(洪泛下 UI 侧批次累加可能漏计,且手动发送不产生连接事件,
+                    // 故必须周期同步才能反映真实的发送/接收总数)。仅计数变化时才触发重绘。
+                    let counters_changed = app.sync_net_counters_to_ui();
+                    if has_events {
+                        app.handle_connection_events_batch(batch, cx);
+                    } else if counters_changed {
+                        cx.notify();
+                    }
+                });
             }
         })
         .detach();
@@ -865,6 +873,9 @@ impl NetAssistantApp {
             debug!("[关闭标签页] 移除服务端客户端连接: {}", tab_id);
         }
 
+        // 清理网络层计数器(避免残留条目被后续同步读取到已关闭的 tab)
+        self.net_counters.remove(&tab_id);
+
         debug!("[关闭标签页] 标签页 {} 已关闭", tab_id);
     }
 
@@ -1156,13 +1167,20 @@ impl NetAssistantApp {
             let client_config_clone = client_config.clone();
             let connection_event_sender_clone = self.connection_event_sender.clone();
             let tab_id_for_error = tab_id.clone();
+            // 每 tab 一份网络层精确计数器: 重复连接时复用(计数在断开后仍累计需由 UI 层在断开时置零处理)
+            let counters = self
+                .net_counters
+                .entry(tab_id.clone())
+                .or_default()
+                .clone();
 
             tokio::spawn(async move {
                 let mut network_manager = network_manager_arc.lock().await;
                 if let Err(e) = network_manager
-                    .create_and_connect_client(
+                    .create_and_connect_client_with_counters(
                         &client_config_clone,
                         connection_event_sender_clone.clone(),
+                        Some(counters),
                     )
                     .await
                 {
@@ -1191,13 +1209,20 @@ impl NetAssistantApp {
                 let server_config_clone = server_config.clone();
                 let connection_event_sender_clone = self.connection_event_sender.clone();
                 let tab_id_for_error = tab_id.clone();
+                // 每 tab 一份网络层精确计数器
+                let counters = self
+                    .net_counters
+                    .entry(tab_id.clone())
+                    .or_default()
+                    .clone();
 
                 tokio::spawn(async move {
                     let mut network_manager = network_manager_arc.lock().await;
                     if let Err(e) = network_manager
-                        .create_and_start_server(
+                        .create_and_start_server_with_counters(
                             &server_config_clone,
                             connection_event_sender_clone.clone(),
+                            Some(counters),
                         )
                         .await
                     {
@@ -1887,6 +1912,36 @@ impl NetAssistantApp {
                         message_batch.push(message);
                     }
                 }
+                ConnectionEvent::MessagesReceived(tab_id, mut batch) => {
+                    // 与单条消息同处理: tab 切换时先 flush 已收集的单条消息批
+                    if batch_tab_id.as_ref() != Some(&tab_id) {
+                        self.flush_message_batch(
+                            batch_tab_id.take(),
+                            std::mem::take(&mut message_batch),
+                            &mut need_notify,
+                        );
+                    }
+                    batch_tab_id = Some(tab_id.clone());
+
+                    if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                        // 按 tab 输入模式统一标注消息类型(与单条 MessageReceived 路径一致)
+                        let mode = if tab_state.message_input_mode == "text" {
+                            MessageType::Text
+                        } else {
+                            MessageType::Hex
+                        };
+                        for m in batch.messages.iter_mut() {
+                            m.set_message_type(mode);
+                        }
+                        // 自动回复的 Sent 明细聚合在同一批, 合并进列表展示
+                        for m in batch.sent_messages.iter_mut() {
+                            m.set_message_type(mode);
+                        }
+                        // batch 里的 Vec 通过 extend 移入 message_batch, 无额外拷贝
+                        message_batch.extend(batch.messages);
+                        message_batch.extend(batch.sent_messages);
+                    }
+                }
                 // 其他事件: 先 flush 待处理消息批, 再走单条处理
                 other => {
                     self.flush_message_batch(
@@ -1909,6 +1964,32 @@ impl NetAssistantApp {
 
         if need_notify {
             cx.notify();
+        }
+    }
+
+    /// 每拍将网络层精确计数器快照同步到各 tab 的显示计数。
+    ///
+    /// 返回是否有任一 tab 计数发生变化(由调用方决定是否触发重绘)。
+    fn sync_net_counters_to_ui(&mut self) -> bool {
+        let mut changed = false;
+        for (tab_id, counters) in &self.net_counters {
+            if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
+                let (received, sent, _rb, _sb) = counters.snapshot();
+                if tab_state.message_list.total_received != received as usize
+                    || tab_state.message_list.total_sent != sent as usize
+                {
+                    tab_state.message_list.sync_totals(received, sent);
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
+
+    /// 清空消息时调用: 网络层计数一并归零, 避免下一拍同步把显示计数覆盖回原值。
+    pub fn reset_net_counters(&mut self, tab_id: &str) {
+        if let Some(counters) = self.net_counters.get(tab_id) {
+            counters.reset();
         }
     }
 
@@ -1997,6 +2078,8 @@ impl NetAssistantApp {
         cx: &mut Context<Self>,
     ) {
         match event {
+            // 批量接收事件仅在 handle_connection_events_batch 处理, 不应到达单条路径
+            ConnectionEvent::MessagesReceived(_, _) => {}
             ConnectionEvent::Connected(tab_id, local_addr) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     tab_state.is_connected = true;

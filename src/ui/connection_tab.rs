@@ -1505,8 +1505,10 @@ impl<'a> ConnectionTab<'a> {
                                                 app.connection_tabs.get_mut(&tab_id_clear).map(|tab_state| {
                                                     tab_state.message_list.clear_messages();
                                                     tab_state.message_list_state.reset(0);
-                                                    cx.notify();
                                                 });
+                                                // 网络层计数一并归零(否则下一拍同步会覆盖回原值)
+                                                app.reset_net_counters(&tab_id_clear);
+                                                cx.notify();
                                             }
                                         }),
                                     ),

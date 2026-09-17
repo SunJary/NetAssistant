@@ -349,6 +349,15 @@ impl MessageListState {
         dropped
     }
 
+    /// 用网络层精确计数覆盖显示计数(接收/发送 total)。
+    ///
+    /// 洪泛压测下 UI 侧按批次累加可能漏计(通道限流时), 每拍以网络层原子计数快照为准覆盖,
+    /// 使展示计数与网络层真实收发一致。
+    pub fn sync_totals(&mut self, total_received: u64, total_sent: u64) {
+        self.total_received = total_received as usize;
+        self.total_sent = total_sent as usize;
+    }
+
     /// 累计消息总数（含已丢弃的）
     pub fn total_messages(&self) -> usize {
         self.total_sent + self.total_received

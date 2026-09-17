@@ -13,20 +13,30 @@ impl NetworkFactory for DefaultNetworkFactory {
     fn create_client(
         config: &ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<crate::network::events::NetCounters>,
     ) -> Box<dyn NetworkConnection> {
         match config.protocol {
-            ConnectionType::Tcp => Box::new(TcpClient::new(config.clone(), event_sender)),
-            ConnectionType::Udp => Box::new(UdpClient::new(config.clone(), event_sender)),
+            ConnectionType::Tcp => {
+                Box::new(TcpClient::new(config.clone(), event_sender, net_counters))
+            }
+            ConnectionType::Udp => {
+                Box::new(UdpClient::new(config.clone(), event_sender, net_counters))
+            }
         }
     }
 
     fn create_server(
         config: &ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<crate::network::events::NetCounters>,
     ) -> Box<dyn NetworkServer> {
         match config.protocol {
-            ConnectionType::Tcp => Box::new(TcpServer::new(config.clone(), event_sender)),
-            ConnectionType::Udp => Box::new(UdpServer::new(config.clone(), event_sender)),
+            ConnectionType::Tcp => {
+                Box::new(TcpServer::new(config.clone(), event_sender, net_counters))
+            }
+            ConnectionType::Udp => {
+                Box::new(UdpServer::new(config.clone(), event_sender, net_counters))
+            }
         }
     }
 }
@@ -45,11 +55,23 @@ impl NetworkConnectionManager {
         }
     }
 
-    /// 创建并启动客户端连接
+    /// 创建并启动客户端连接(不注入计数器, 用于回归测试)
+    #[allow(dead_code)]
     pub async fn create_and_connect_client(
         &mut self,
         config: &ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.create_and_connect_client_with_counters(config, event_sender, None)
+            .await
+    }
+
+    /// 创建并启动客户端连接(携带网络层精确计数器)
+    pub async fn create_and_connect_client_with_counters(
+        &mut self,
+        config: &ClientConfig,
+        event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<crate::network::events::NetCounters>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果连接已存在，则先断开
         if self.clients.contains_key(&config.id) {
@@ -57,7 +79,7 @@ impl NetworkConnectionManager {
         }
 
         // 创建客户端连接
-        let mut client = DefaultNetworkFactory::create_client(config, event_sender);
+        let mut client = DefaultNetworkFactory::create_client(config, event_sender, net_counters);
 
         // 连接到服务器(失败直接返回错误,由 UI 层提示;吞掉会导致 tab 永远停在"连接中")
         client.connect().await?;
@@ -68,11 +90,23 @@ impl NetworkConnectionManager {
         Ok(())
     }
 
-    /// 创建并启动服务器
+    /// 创建并启动服务端(不注入计数器, 用于回归测试)
+    #[allow(dead_code)]
     pub async fn create_and_start_server(
         &mut self,
         config: &ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.create_and_start_server_with_counters(config, event_sender, None)
+            .await
+    }
+
+    /// 创建并启动服务器(携带网络层精确计数器)
+    pub async fn create_and_start_server_with_counters(
+        &mut self,
+        config: &ServerConfig,
+        event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<crate::network::events::NetCounters>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果服务器已存在，则先停止
         if self.servers.contains_key(&config.id) {
@@ -80,7 +114,7 @@ impl NetworkConnectionManager {
         }
 
         // 创建服务器
-        let server = DefaultNetworkFactory::create_server(config, event_sender);
+        let server = DefaultNetworkFactory::create_server(config, event_sender, net_counters);
 
         // 保存服务器到映射中
         self.servers.insert(config.id.clone(), server);

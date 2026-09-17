@@ -1,7 +1,7 @@
 use crate::config::connection::{AutoReplyConfig, ClientConfig, DecoderConfig, ServerConfig};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
-use crate::message::MessageType;
-use crate::network::events::ConnectionEvent;
+use crate::message::{Message, MessageDirection, MessageType};
+use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch};
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::decoder::CodecFactory;
 use bytes::BytesMut;
@@ -25,59 +25,45 @@ use tokio_util::sync::CancellationToken;
 /// 避免对端半包后静默时数据长时间滞留。
 const FLUSH_DELAY: Duration = Duration::from_millis(50);
 
-/// 处理解码后的数据，转换为消息并发送事件（客户端用）
-fn process_decoded_data(
+/// 将解码出的数据构造为 Message 并累加入批(客户端方向, 无 source)。
+///
+/// 同时累加网络层精确计数(与显示解耦, 洪泛下不漏计)。
+#[allow(clippy::too_many_arguments)]
+fn accumulate_decoded(
     data: BytesMut,
     processor: &Arc<dyn MessageProcessor>,
-    event_sender: &Option<Sender<ConnectionEvent>>,
-    connection_id: &str,
+    batch: &mut ReceivedBatch,
+    counters: &Option<NetCounters>,
+    message_type: MessageType,
 ) {
+    let raw_len = data.len() as u64;
     let raw_data: Vec<u8> = data.to_vec();
-    let message = processor.process_received_message(raw_data, MessageType::Text);
-
-    if let Some(sender) = event_sender {
-        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(
-            connection_id.to_string(),
-            message,
-        )) {
-            error!("[TCP] 发送 MessageReceived 事件失败: {:?}", e);
-        }
+    let message = processor.process_received_message(raw_data, message_type);
+    if let Some(c) = counters {
+        c.add_received(1);
+        c.add_received_bytes(raw_len);
     }
+    batch.count += 1;
+    batch.bytes += raw_len;
+    batch.messages.push(message);
 }
 
-/// 处理解码后的数据，转换为消息并发送事件（服务器端用，包含地址信息）
-fn process_decoded_data_with_addr(
-    data: BytesMut,
-    processor: &Arc<dyn MessageProcessor>,
+/// 将本批消息一次性推送为单个 MessagesReceived 事件(洪泛聚合路径)。
+fn flush_batch(
     event_sender: &Option<Sender<ConnectionEvent>>,
     connection_id: &str,
-    addr: &str,
+    batch: &mut ReceivedBatch,
 ) {
-    let raw_data: Vec<u8> = data.to_vec();
-
-    // 尝试将数据转换为文本，如果失败则显示十六进制
-    let message_str = match String::from_utf8(raw_data.clone()) {
-        Ok(s) => s,
-        Err(_) => {
-            // 转换为十六进制
-            let hex: Vec<String> = raw_data.iter().map(|b| format!("{:02x}", b)).collect();
-            hex.join(" ")
-        }
-    };
-    debug!("TCP服务器从 {} 收到消息: {}", addr, message_str);
-
-    // 创建消息对象
-    let message = processor
-        .process_received_message(raw_data, MessageType::Text)
-        .with_source(addr.to_string());
-
-    // 发送消息事件到UI线程
+    if batch.is_empty() {
+        return;
+    }
+    let batch = std::mem::take(batch);
     if let Some(sender) = event_sender {
-        if let Err(e) = sender.try_send(ConnectionEvent::MessageReceived(
+        if let Err(e) = sender.try_send(ConnectionEvent::MessagesReceived(
             connection_id.to_string(),
-            message,
+            batch,
         )) {
-            error!("[TCP服务器] 发送 MessageReceived 事件失败: {:?}", e);
+            error!("[TCP] 发送 MessagesReceived 事件失败: {:?}", e);
         }
     }
 }
@@ -90,9 +76,10 @@ fn process_decoded_data_with_addr(
 fn try_auto_reply(
     auto_reply_state: &Arc<AutoReplyConfig>,
     client_tx: &Sender<Vec<u8>>,
-    event_sender: &Option<Sender<ConnectionEvent>>,
-    connection_id: &str,
+    batch: &mut ReceivedBatch,
+    _connection_id: &str,
     source: &SocketAddr,
+    _counters: &Option<NetCounters>,
 ) {
     if !auto_reply_state.is_enabled() {
         return;
@@ -105,14 +92,12 @@ fn try_auto_reply(
     if client_tx.try_send(content.clone()).is_err() {
         return;
     }
-    // 在 UI 消息列表中展示回复(Sent 方向)
-    if let Some(sender) = event_sender {
-        let _ = sender.try_send(ConnectionEvent::auto_reply_sent(
-            connection_id,
-            content,
-            &source.to_string(),
-        ));
-    }
+    // Sent 方向明细聚合到本批, 随批 flush(避免自动回复洪泛时二次事件洪泛)。
+    // 发送计数在发送任务统一累加(手动发送与自动回复共用汇聚点), 这里不重复计数。
+    batch.sent_messages.push(
+        Message::new(MessageDirection::Sent, content, MessageType::Text)
+            .with_source(source.to_string()),
+    );
 }
 
 /// TCP客户端实现
@@ -120,16 +105,22 @@ pub struct TcpClient {
     config: ClientConfig,
     event_sender: Option<Sender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
+    net_counters: Option<NetCounters>,
     is_connected: bool,
     cancel_token: CancellationToken,
 }
 
 impl TcpClient {
-    pub fn new(config: ClientConfig, event_sender: Option<Sender<ConnectionEvent>>) -> Self {
+    pub fn new(
+        config: ClientConfig,
+        event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<NetCounters>,
+    ) -> Self {
         TcpClient {
             config,
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
+            net_counters,
             is_connected: false,
             cancel_token: CancellationToken::new(),
         }
@@ -144,6 +135,7 @@ impl NetworkConnection for TcpClient {
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
+        let net_counters = self.net_counters.clone();
         let cancel_token = self.cancel_token.clone();
 
         Pin::from(Box::new(async move {
@@ -237,11 +229,13 @@ impl NetworkConnection for TcpClient {
             let event_sender_clone = event_sender.clone();
             let config_clone = config.clone();
             let message_processor_clone = message_processor.clone();
+            let net_counters_clone = net_counters.clone();
             let decoder_config = config.decoder_config.clone();
             let read_cancel_token = cancel_token.clone();
             let decoder_control_rx = decoder_control_rx;
             tokio::spawn(async move {
                 let mut buffer = BytesMut::with_capacity(16384);
+                let mut batch = ReceivedBatch::with_capacity(64);
 
                 let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(
                     &decoder_config,
@@ -265,15 +259,19 @@ impl NetworkConnection for TcpClient {
                                 Ok(n) => {
                                     debug!("TCP客户端读取了 {} 字节数据", n);
 
+                                    // 本次 read 解码出的所有帧聚合为一个批次事件(洪泛聚合路径)
+                                    let mut batch = std::mem::replace(&mut batch, ReceivedBatch::with_capacity(64));
+
                                     loop {
                                         match decoder.decode(&mut buffer) {
                                             Ok(Some(data)) => {
                                                 let data: BytesMut = data;
-                                                process_decoded_data(
+                                                accumulate_decoded(
                                                     data,
                                                     &message_processor_clone,
-                                                    &event_sender_clone,
-                                                    &config_clone.id
+                                                    &mut batch,
+                                                    &net_counters_clone,
+                                                    MessageType::Text,
                                                 );
                                             },
                                             Ok(None) => {
@@ -285,6 +283,7 @@ impl NetworkConnection for TcpClient {
                                             }
                                         }
                                     }
+                                    flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
 
                                     // 首次出现待 flush 的机会时安排截止时间(不随收包顺延)
                                     if flush_deadline.is_none() {
@@ -296,12 +295,14 @@ impl NetworkConnection for TcpClient {
                                             flush_deadline = None;
                                             if let Some(data) = decoder.force_flush() {
                                                 let data: BytesMut = data;
-                                                process_decoded_data(
+                                                accumulate_decoded(
                                                     data,
                                                     &message_processor_clone,
-                                                    &event_sender_clone,
-                                                    &config_clone.id
+                                                    &mut batch,
+                                                    &net_counters_clone,
+                                                    MessageType::Text,
                                                 );
+                                                flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                                             }
                                         }
                                     }
@@ -325,12 +326,14 @@ impl NetworkConnection for TcpClient {
                             flush_deadline = None;
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;
-                                process_decoded_data(
+                                accumulate_decoded(
                                     data,
                                     &message_processor_clone,
-                                    &event_sender_clone,
-                                    &config_clone.id
+                                    &mut batch,
+                                    &net_counters_clone,
+                                    MessageType::Text,
                                 );
+                                flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                             }
                         }
 
@@ -340,12 +343,14 @@ impl NetworkConnection for TcpClient {
                                 debug!("[TCP客户端] 收到运行时解码器配置更新: {:?}", new_config);
                                 if let Some(data) = decoder.force_flush() {
                                     let data: BytesMut = data;
-                                    process_decoded_data(
+                                    accumulate_decoded(
                                         data,
                                         &message_processor_clone,
-                                        &event_sender_clone,
-                                        &config_clone.id
+                                        &mut batch,
+                                        &net_counters_clone,
+                                        MessageType::Text,
                                     );
+                                    flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                                 }
                                 decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
                                 info!("[TCP客户端] 解码器已运行时更新");
@@ -372,6 +377,7 @@ impl NetworkConnection for TcpClient {
             // 启动发送消息任务
             let encoder_for_write = CodecFactory::create_encoder(&config.decoder_config);
             let write_cancel_token = cancel_token.clone();
+            let net_counters_clone_write = net_counters.clone();
             tokio::spawn(async move {
                 let mut encoder = encoder_for_write;
                 loop {
@@ -390,6 +396,11 @@ impl NetworkConnection for TcpClient {
                                     if let Err(e) = socket_write.write_all(&buffer).await {
                                         error!("TCP写入错误: {:?}", e);
                                         break;
+                                    }
+                                    // 网络层发送计数
+                                    if let Some(c) = &net_counters_clone_write {
+                                        c.add_sent(1);
+                                        c.add_sent_bytes(buffer.len() as u64);
                                     }
                                 },
                                 Err(_) => {
@@ -429,6 +440,7 @@ pub struct TcpServer {
     event_sender: Option<Sender<ConnectionEvent>>,
     clients: Arc<Mutex<HashMap<SocketAddr, Sender<Vec<u8>>>>>,
     message_processor: Arc<dyn MessageProcessor>,
+    net_counters: Option<NetCounters>,
     is_running: bool,
     listener_handle: Option<JoinHandle<()>>,
     client_handles: Arc<Mutex<HashMap<SocketAddr, JoinHandle<()>>>>,
@@ -460,12 +472,17 @@ impl Drop for TcpServer {
 }
 
 impl TcpServer {
-    pub fn new(config: ServerConfig, event_sender: Option<Sender<ConnectionEvent>>) -> Self {
+    pub fn new(
+        config: ServerConfig,
+        event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<NetCounters>,
+    ) -> Self {
         TcpServer {
             config,
             event_sender,
             clients: Arc::new(Mutex::new(HashMap::new())),
             message_processor: Arc::new(DefaultMessageProcessor),
+            net_counters,
             is_running: false,
             listener_handle: None,
             client_handles: Arc::new(Mutex::new(HashMap::new())),
@@ -515,6 +532,7 @@ impl NetworkServer for TcpServer {
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
+        let net_counters = self.net_counters.clone();
         let clients = self.clients.clone();
         let client_handles = self.client_handles.clone();
         let auto_reply_state = self.auto_reply_state.clone();
@@ -563,6 +581,7 @@ impl NetworkServer for TcpServer {
                 let config = config.clone();
                 let event_sender = event_sender.clone();
                 let message_processor = message_processor.clone();
+                let net_counters = net_counters.clone();
                 let clients = clients.clone();
                 let client_handles = client_handles.clone();
                 let auto_reply_state = auto_reply_state.clone();
@@ -623,6 +642,7 @@ impl NetworkServer for TcpServer {
                                 let client_id_clone = config.id.clone();
                                 let client_event_sender = event_sender.clone();
                                 let client_message_processor = message_processor.clone();
+                                let client_net_counters = net_counters.clone();
                                 let clients_clone_for_disconnect = clients.clone();
                                 let config_clone_for_client = config.clone();
                                 let client_handles_clone_for_client = client_handles.clone();
@@ -647,6 +667,7 @@ impl NetworkServer for TcpServer {
                                     // 启动接收消息循环
                                     let recv_fut = async {
                                         let mut buffer = BytesMut::with_capacity(16384); // 16KB缓冲区
+                                        let mut batch = ReceivedBatch::with_capacity(64);
 
                                         // 使用CodecFactory创建解码器（所有解码器现在都支持force_flush）
                                         let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&decoder_config);
@@ -668,26 +689,30 @@ impl NetworkServer for TcpServer {
                                                         Ok(n) => {
                                                             debug!("TCP服务器从 {} 读取了 {} 字节数据", addr, n);
 
+                                                            // 本次 read 解码出的所有帧聚合为一个批次事件(洪泛聚合路径)
+                                                            let mut batch = std::mem::replace(&mut batch, ReceivedBatch::with_capacity(64));
+
                                                             // 使用decoder解码数据，循环处理所有可用消息
                                                             loop {
                                                                 match decoder.decode(&mut buffer) {
                                                                     Ok(Some(data)) => {
                                                                         // 处理接收到的消息
                                                                         let data: BytesMut = data;
-                                                                        process_decoded_data_with_addr(
+                                                                        accumulate_decoded(
                                                                             data,
                                                                             &client_message_processor,
-                                                                            &client_event_sender,
-                                                                            &client_id_clone,
-                                                                            &addr.to_string()
+                                                                            &mut batch,
+                                                                            &client_net_counters,
+                                                                            MessageType::Text,
                                                                         );
                                                                         // 网络层自动回复(每条解码出的完整消息触发一次)
                                                                         try_auto_reply(
                                                                             &auto_reply_state,
                                                                             &client_tx_auto_reply,
-                                                                            &client_event_sender,
+                                                                            &mut batch,
                                                                             &client_id_clone,
                                                                             &addr,
+                                                                            &client_net_counters,
                                                                         );
                                                                     },
                                                                     Ok(None) => {
@@ -701,6 +726,7 @@ impl NetworkServer for TcpServer {
                                                                     }
                                                                 }
                                                             }
+                                                            flush_batch(&client_event_sender, &client_id_clone, &mut batch);
 
                                                             // 首次安排 flush 截止时间(不随收包顺延),截止后在收包路径内联触发
                                                             if flush_deadline.is_none() {
@@ -711,20 +737,22 @@ impl NetworkServer for TcpServer {
                                                                     flush_deadline = None;
                                                                     if let Some(data) = decoder.force_flush() {
                                                                         let data: BytesMut = data;
-                                                                        process_decoded_data_with_addr(
+                                                                        accumulate_decoded(
                                                                             data,
                                                                             &client_message_processor,
-                                                                            &client_event_sender,
-                                                                            &client_id_clone,
-                                                                            &addr.to_string()
+                                                                            &mut batch,
+                                                                            &client_net_counters,
+                                                                            MessageType::Text,
                                                                         );
                                                                         try_auto_reply(
                                                                             &auto_reply_state,
                                                                             &client_tx_auto_reply,
-                                                                            &client_event_sender,
+                                                                            &mut batch,
                                                                             &client_id_clone,
                                                                             &addr,
+                                                                            &client_net_counters,
                                                                         );
+                                                                        flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                                     }
                                                                 }
                                                             }
@@ -746,20 +774,22 @@ impl NetworkServer for TcpServer {
                                                     // 强制刷新解码器缓冲区
                                                     if let Some(data) = decoder.force_flush() {
                                                         let data: BytesMut = data;
-                                                        process_decoded_data_with_addr(
+                                                        accumulate_decoded(
                                                             data,
                                                             &client_message_processor,
-                                                            &client_event_sender,
-                                                            &client_id_clone,
-                                                            &addr.to_string()
+                                                            &mut batch,
+                                                            &client_net_counters,
+                                                            MessageType::Text,
                                                         );
                                                         try_auto_reply(
                                                             &auto_reply_state,
                                                             &client_tx_auto_reply,
-                                                            &client_event_sender,
+                                                            &mut batch,
                                                             &client_id_clone,
                                                             &addr,
+                                                            &client_net_counters,
                                                         );
+                                                        flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                     }
                                                 }
 
@@ -769,20 +799,22 @@ impl NetworkServer for TcpServer {
                                                         debug!("[TCP服务器] 客户端 {} 收到运行时解码器配置更新: {:?}", addr, new_config);
                                                         if let Some(data) = decoder.force_flush() {
                                                             let data: BytesMut = data;
-                                                            process_decoded_data_with_addr(
+                                                            accumulate_decoded(
                                                                 data,
                                                                 &client_message_processor,
-                                                                &client_event_sender,
-                                                                &client_id_clone,
-                                                                &addr.to_string()
+                                                                &mut batch,
+                                                                &client_net_counters,
+                                                                MessageType::Text,
                                                             );
                                                             try_auto_reply(
                                                                 &auto_reply_state,
                                                                 &client_tx_auto_reply,
-                                                                &client_event_sender,
+                                                                &mut batch,
                                                                 &client_id_clone,
                                                                 &addr,
+                                                                &client_net_counters,
                                                             );
+                                                            flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                         }
                                                         decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
                                                         info!("[TCP服务器] 客户端 {} 解码器已运行时更新", addr);
@@ -823,6 +855,11 @@ impl NetworkServer for TcpServer {
                                                             addr, e
                                                         );
                                                         break;
+                                                    }
+                                                    // 网络层发送计数(手动发送与自动回复共用此汇聚点)
+                                                    if let Some(c) = &client_net_counters {
+                                                        c.add_sent(1);
+                                                        c.add_sent_bytes(buffer.len() as u64);
                                                     }
 
                                                     // 尝试将消息转换为文本，如果失败则显示十六进制

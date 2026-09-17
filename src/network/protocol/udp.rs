@@ -1,7 +1,7 @@
 use crate::config::connection::{AutoReplyConfig, ClientConfig, ServerConfig};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
-use crate::message::MessageType;
-use crate::network::events::ConnectionEvent;
+use crate::message::{Message, MessageDirection, MessageType};
+use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch};
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use log::{debug, error, info};
 use smol::channel::{Sender, unbounded as smol_unbounded};
@@ -10,10 +10,44 @@ use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+
+/// 单批最多聚合的数据报数(排空循环上界)。
+///
+/// 排空必须有上界: 持续洪泛时内核接收缓冲可能始终非空, 无界排空会让循环永不退出,
+/// 表现为「批次内存无界增长 + 永不下发事件 + 无法响应停止信号」。达到上界即先下发一批。
+const UDP_MAX_BATCH_PACKETS: u64 = 1024;
+
+/// UDP 网络层自动回复: 每个数据报触发一次回复, Sent 明细聚合入批随批 flush。
+///
+/// 回复内容为用户配置的原始字节, 原样经主发送通道发回源地址, 不额外修改。
+/// 发送计数在发送任务统一累加(手动发送与自动回复共用一个汇聚点), 这里只聚合明细, 不计数。
+fn try_udp_auto_reply(
+    auto_reply_state: &Arc<AutoReplyConfig>,
+    main_tx: &Sender<(SocketAddr, Vec<u8>)>,
+    batch: &mut ReceivedBatch,
+    addr: &SocketAddr,
+) {
+    if !auto_reply_state.is_enabled() {
+        return;
+    }
+    let content = auto_reply_state.content();
+    if content.is_empty() {
+        return;
+    }
+    // 投递到主发送通道, 由发送任务 send_to 回发源地址
+    if main_tx.try_send((*addr, content.clone())).is_err() {
+        return;
+    }
+    // Sent 方向明细聚合到本批, 随批 flush(避免自动回复洪泛时二次事件洪泛)
+    batch.sent_messages.push(
+        Message::new(MessageDirection::Sent, content, MessageType::Text)
+            .with_source(addr.to_string()),
+    );
+}
 
 /// UDP客户端实现
 pub struct UdpClient {
@@ -21,12 +55,17 @@ pub struct UdpClient {
     server_addr: SocketAddr,
     event_sender: Option<Sender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
+    net_counters: Option<NetCounters>,
     is_connected: bool,
     cancel_token: CancellationToken,
 }
 
 impl UdpClient {
-    pub fn new(config: ClientConfig, event_sender: Option<Sender<ConnectionEvent>>) -> Self {
+    pub fn new(
+        config: ClientConfig,
+        event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<NetCounters>,
+    ) -> Self {
         // 解析地址，支持IPv4和IPv6
         let address = if config.server_address.contains(':') && !config.server_address.contains('[')
         {
@@ -44,6 +83,7 @@ impl UdpClient {
             server_addr,
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
+            net_counters,
             is_connected: false,
             cancel_token: CancellationToken::new(),
         }
@@ -63,6 +103,7 @@ impl NetworkConnection for UdpClient {
         let server_host = self.config.server_address.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
+        let net_counters = self.net_counters.clone();
         let cancel_token = self.cancel_token.clone();
 
         self.is_connected = true;
@@ -121,11 +162,13 @@ impl NetworkConnection for UdpClient {
             let event_sender_clone = event_sender.clone();
             let id_clone = config.id.clone();
             let message_processor_clone = message_processor.clone();
+            let net_counters_clone = net_counters.clone();
             let read_cancel_token = cancel_token.clone();
             let expected_host = server_host;
 
             tokio::spawn(async move {
                 let mut buffer = [0; 1024];
+                let mut batch = ReceivedBatch::with_capacity(32);
                 loop {
                     tokio::select! {
                         result = socket_read.recv_from(&mut buffer) => {
@@ -133,16 +176,46 @@ impl NetworkConnection for UdpClient {
                                 Ok((n, addr)) => {
                                     // 移除源地址过滤，允许接收来自任何地址的回复
                                     // 这对于广播场景很重要：下位机回复来自其真实IP而非广播地址
+                                    let raw_len = n as u64;
                                     let raw_data = buffer[..n].to_vec();
                                     let message = message_processor_clone.process_received_message(raw_data, MessageType::Text)
                                         .with_unexpected_source(addr.to_string(), &expected_host);
 
-                                    info!("UDP客户端从 {} 收到 {} 字节", addr, n);
+                                    if let Some(c) = &net_counters_clone {
+                                        c.add_received(1);
+                                        c.add_received_bytes(raw_len);
+                                    }
+                                    batch.count += 1;
+                                    batch.bytes += raw_len;
+                                    batch.messages.push(message);
 
-                                    if let Some(sender) = &event_sender_clone {
-                                        if let Err(e) = sender.send(ConnectionEvent::MessageReceived(id_clone.clone(), message)).await {
-                                            error!("[UDP客户端] 发送 MessageReceived 事件失败: {:?}", e);
+                                    // 非阻塞排空: 聚合突发到达的数据报为单个批次事件(洪泛聚合路径)。
+                                    // try_recv_from 无可读数据时返回 WouldBlock 自动终止; 达到上界先下发一批, 保证有界
+                                    while batch.count < UDP_MAX_BATCH_PACKETS {
+                                        match socket_read.try_recv_from(&mut buffer) {
+                                            Ok((n, addr)) => {
+                                                let raw_len = n as u64;
+                                                let raw_data = buffer[..n].to_vec();
+                                                let message = message_processor_clone.process_received_message(raw_data, MessageType::Text)
+                                                    .with_unexpected_source(addr.to_string(), &expected_host);
+                                                if let Some(c) = &net_counters_clone {
+                                                    c.add_received(1);
+                                                    c.add_received_bytes(raw_len);
+                                                }
+                                                batch.count += 1;
+                                                batch.bytes += raw_len;
+                                                batch.messages.push(message);
+                                            }
+                                            Err(_) => break,
                                         }
+                                    }
+                                    if let Some(sender) = &event_sender_clone {
+                                        let batch = std::mem::take(&mut batch);
+                                        if let Err(e) = sender.try_send(ConnectionEvent::MessagesReceived(id_clone.clone(), batch)) {
+                                            error!("[UDP客户端] 发送 MessagesReceived 事件失败: {:?}", e);
+                                        }
+                                    } else {
+                                        batch = ReceivedBatch::with_capacity(32);
                                     }
                                 },
                                 Err(e) => {
@@ -167,6 +240,7 @@ impl NetworkConnection for UdpClient {
 
             let event_sender_clone_write = event_sender.clone();
             let id_clone_write = config.id.clone();
+            let net_counters_clone_write = net_counters.clone();
             let write_cancel_token = cancel_token.clone();
 
             tokio::spawn(async move {
@@ -183,6 +257,10 @@ impl NetworkConnection for UdpClient {
                                             }
                                         }
                                         break;
+                                    }
+                                    if let Some(c) = &net_counters_clone_write {
+                                        c.add_sent(1);
+                                        c.add_sent_bytes(data.len() as u64);
                                     }
                                 },
                                 Err(_) => {
@@ -222,8 +300,9 @@ impl NetworkConnection for UdpClient {
 pub struct UdpServer {
     config: ServerConfig,
     event_sender: Option<Sender<ConnectionEvent>>,
-    clients: Arc<Mutex<HashMap<SocketAddr, Sender<Vec<u8>>>>>,
+    clients: Arc<RwLock<HashMap<SocketAddr, Sender<Vec<u8>>>>>,
     message_processor: Arc<dyn MessageProcessor>,
+    net_counters: Option<NetCounters>,
     is_running: bool,
     /// 取消令牌：stop() 时取消,收/发 task 通过 select! 感知并退出,
     /// 两个 task 退出后 socket 的 Arc 引用计数归零,端口随之释放
@@ -235,12 +314,17 @@ pub struct UdpServer {
 }
 
 impl UdpServer {
-    pub fn new(config: ServerConfig, event_sender: Option<Sender<ConnectionEvent>>) -> Self {
+    pub fn new(
+        config: ServerConfig,
+        event_sender: Option<Sender<ConnectionEvent>>,
+        net_counters: Option<NetCounters>,
+    ) -> Self {
         UdpServer {
             config,
             event_sender,
-            clients: Arc::new(Mutex::new(HashMap::new())),
+            clients: Arc::new(RwLock::new(HashMap::new())),
             message_processor: Arc::new(DefaultMessageProcessor),
+            net_counters,
             is_running: false,
             stop_token: CancellationToken::new(),
             main_send_tx: Arc::new(Mutex::new(None)),
@@ -253,7 +337,7 @@ impl UdpServer {
     pub async fn add_client(&self, addr: SocketAddr) -> Result<Sender<Vec<u8>>, String> {
         // 检查是否已存在
         {
-            let clients = self.clients.lock().await;
+            let clients = self.clients.read().unwrap();
             if clients.contains_key(&addr) {
                 return Err(format!("客户端 {} 已存在", addr));
             }
@@ -285,7 +369,7 @@ impl UdpServer {
 
         // 添加到 clients 列表
         {
-            let mut clients = self.clients.lock().await;
+            let mut clients = self.clients.write().unwrap();
             clients.insert(addr, client_tx.clone());
         }
 
@@ -315,6 +399,7 @@ impl NetworkServer for UdpServer {
         let config = self.config.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
+        let net_counters = self.net_counters.clone();
         let auto_reply_state = self.auto_reply_state.clone();
 
         // 使用现有的clients字段
@@ -395,6 +480,7 @@ impl NetworkServer for UdpServer {
             let event_sender_clone = event_sender.clone();
             let id_clone = config.id.clone();
             let message_processor_clone = message_processor.clone();
+            let net_counters_clone = net_counters.clone();
             let socket_recv = socket_arc.clone();
             let auto_reply_state_clone = auto_reply_state.clone();
             // 供网络层自动回复投递回复数据报(addr, content)
@@ -403,39 +489,47 @@ impl NetworkServer for UdpServer {
 
             tokio::spawn(async move {
                 let mut buffer = [0; 1024];
+                let mut batch = ReceivedBatch::with_capacity(32);
                 loop {
                     tokio::select! {
                         result = socket_recv.recv_from(&mut buffer) => {
                         match result {
                         Ok((n, addr)) => {
-                            // 处理接收到的消息
-                            let data = buffer[..n].to_vec();
-                            info!("UDP服务器从 {} 收到消息: {:?}", addr, data);
 
-                            // 检查是否是新客户端
-                            let mut clients_guard = clients_clone.lock().await;
-                            let is_new_client = !clients_guard.contains_key(&addr);
+                            // 检查是否是新客户端(读多写少: RwLock 读锁快速路径)。
+                            // 锁均在下方作用域内释放, 不跨越任何 await, 保证 async block 是 Send。
+                            let new_client = {
+                                let clients_guard = clients_clone.read().unwrap();
+                                if !clients_guard.contains_key(&addr) {
+                                    // 仅新客户端时才升级为写锁注册
+                                    drop(clients_guard);
+                                    let mut clients_mut = clients_clone.write().unwrap();
+                                    if !clients_mut.contains_key(&addr) {
+                                        // 创建客户端发送通道
+                                        let (client_tx, client_rx) = smol_unbounded::<Vec<u8>>();
+                                        clients_mut.insert(addr, client_tx.clone());
+                                        drop(clients_mut);
 
-                            // 如果是新客户端，添加到客户端列表并发送连接事件
-                            if is_new_client {
-                                // 创建客户端发送通道
-                                let (client_tx, client_rx) = smol_unbounded::<Vec<u8>>();
-
-                                // 保存客户端信息
-                                clients_guard.insert(addr, client_tx.clone());
-                                drop(clients_guard);
-
-                                // 处理从UI来的消息
-                                let tx_clone = tx.clone();
-                                let addr_clone = addr.clone();
-                                tokio::spawn(async move {
-                                    while let Ok(data) = client_rx.recv().await {
-                                        if tx_clone.send((addr_clone, data)).await.is_err() {
-                                            break;
-                                        }
+                                        // 处理从UI来的消息
+                                        let tx_clone = tx.clone();
+                                        let addr_clone = addr;
+                                        tokio::spawn(async move {
+                                            while let Ok(data) = client_rx.recv().await {
+                                                if tx_clone.send((addr_clone, data)).await.is_err() {
+                                                    break;
+                                                }
+                                            }
+                                        });
+                                        Some((addr, client_tx))
+                                    } else {
+                                        None
                                     }
-                                });
-
+                                } else {
+                                    None
+                                }
+                            };
+                            // 锁已全部释放, 此处 await 安全
+                            if let Some((addr, client_tx)) = new_client {
                                 // 发送客户端连接事件到UI线程
                                 if let Some(sender) = &event_sender_clone {
                                     if let Err(e) = sender
@@ -452,49 +546,96 @@ impl NetworkServer for UdpServer {
                                         );
                                     }
                                 }
-                            } else {
-                                drop(clients_guard);
                             }
 
-                            // 创建消息对象
-                            let mut message = message_processor_clone
-                                .process_received_message(data, MessageType::Text);
-                            message = message.with_source(addr.to_string());
-
-                            // 发送消息事件到UI线程
-                            if let Some(sender) = &event_sender_clone {
-                                if let Err(e) = sender
-                                    .send(ConnectionEvent::MessageReceived(
-                                        id_clone.clone(),
-                                        message,
-                                    ))
-                                    .await
-                                {
-                                    error!("[UDP服务器] 发送 MessageReceived 事件失败: {:?}", e);
-                                }
+                            // 创建消息对象并累加入批
+                            let raw_len = n as u64;
+                            let data = buffer[..n].to_vec();
+                            let message = message_processor_clone
+                                .process_received_message(data, MessageType::Text)
+                                .with_source(addr.to_string());
+                            if let Some(c) = &net_counters_clone {
+                                c.add_received(1);
+                                c.add_received_bytes(raw_len);
                             }
+                            batch.count += 1;
+                            batch.bytes += raw_len;
+                            batch.messages.push(message);
 
-                            // 网络层自动回复: 每个数据报触发一次回复
+                            // 网络层自动回复: 每个数据报触发一次回复, Sent 明细聚合入批
                             // 回复内容为用户配置的原始字节, 原样经主发送通道发回源地址, 不额外修改
-                            if auto_reply_state_clone.is_enabled() {
-                                let content = auto_reply_state_clone.content();
-                                if !content.is_empty() {
-                                    if main_tx_for_auto_reply
-                                        .send((addr, content.clone()))
-                                        .await
-                                        .is_ok()
-                                    {
-                                        if let Some(sender) = &event_sender_clone {
-                                            let _ = sender.try_send(
-                                                ConnectionEvent::auto_reply_sent(
-                                                    &id_clone,
-                                                    content,
-                                                    &addr.to_string(),
-                                                ),
-                                            );
+                            try_udp_auto_reply(
+                                &auto_reply_state_clone,
+                                &main_tx_for_auto_reply,
+                                &mut batch,
+                                &addr,
+                            );
+
+                            // 非阻塞排空: 聚合突发到达的数据报为单个批次事件(洪泛聚合路径)。
+                            // try_recv_from 无可读数据时返回 WouldBlock 自动终止; 达到上界先下发一批, 保证有界
+                            while batch.count < UDP_MAX_BATCH_PACKETS {
+                                let (n, addr) = match socket_recv.try_recv_from(&mut buffer) {
+                                    Ok(v) => v,
+                                    Err(_) => break,
+                                };
+                                {
+                                    let clients_guard = clients_clone.read().unwrap();
+                                    if !clients_guard.contains_key(&addr) {
+                                        drop(clients_guard);
+                                        let mut clients_mut = clients_clone.write().unwrap();
+                                        if !clients_mut.contains_key(&addr) {
+                                            let (client_tx, client_rx) = smol_unbounded::<Vec<u8>>();
+                                            clients_mut.insert(addr, client_tx.clone());
+                                            drop(clients_mut);
+                                            let tx_clone = tx.clone();
+                                            let addr_clone = addr;
+                                            tokio::spawn(async move {
+                                                while let Ok(data) = client_rx.recv().await {
+                                                    if tx_clone.send((addr_clone, data)).await.is_err() {
+                                                        break;
+                                                    }
+                                                }
+                                            });
+                                            if let Some(sender) = &event_sender_clone {
+                                                let _ = sender.try_send(
+                                                    ConnectionEvent::ServerClientConnected(
+                                                        id_clone.clone(),
+                                                        addr,
+                                                        client_tx,
+                                                    ),
+                                                );
+                                            }
                                         }
                                     }
                                 }
+                                let raw_len = n as u64;
+                                let data = buffer[..n].to_vec();
+                                let message = message_processor_clone
+                                    .process_received_message(data, MessageType::Text)
+                                    .with_source(addr.to_string());
+                                if let Some(c) = &net_counters_clone {
+                                    c.add_received(1);
+                                    c.add_received_bytes(raw_len);
+                                }
+                                batch.count += 1;
+                                batch.bytes += raw_len;
+                                batch.messages.push(message);
+                                try_udp_auto_reply(
+                                    &auto_reply_state_clone,
+                                    &main_tx_for_auto_reply,
+                                    &mut batch,
+                                    &addr,
+                                );
+                            }
+
+                            // 批量事件推送(一次通道操作取代每包一次)
+                            if let Some(sender) = &event_sender_clone {
+                                let batch = std::mem::take(&mut batch);
+                                if let Err(e) = sender.try_send(ConnectionEvent::MessagesReceived(id_clone.clone(), batch)) {
+                                    error!("[UDP服务器] 发送 MessagesReceived 事件失败: {:?}", e);
+                                }
+                            } else {
+                                batch = ReceivedBatch::with_capacity(32);
                             }
                         }
                         Err(e) => {
@@ -514,6 +655,7 @@ impl NetworkServer for UdpServer {
 
             // 创建消息发送任务
             let socket_write = socket_arc;
+            let net_counters_clone_write = net_counters.clone();
             let write_stop_token = stop_token;
             tokio::spawn(async move {
                 loop {
@@ -523,8 +665,10 @@ impl NetworkServer for UdpServer {
                                 Ok((addr, message)) => {
                                     if let Err(e) = socket_write.send_to(&message, addr).await {
                                         error!("UDP服务器发送消息时发生错误: {:?}", e);
-                                    } else {
-                                        info!("UDP服务器向 {} 发送消息: {:?}", addr, message);
+                                    } else if let Some(c) = &net_counters_clone_write {
+                                        // 洪泛下逐包日志会疯狂写文件且格式化字节开销大, 发送路径不再逐包记录
+                                        c.add_sent(1);
+                                        c.add_sent_bytes(message.len() as u64);
                                     }
                                 }
                                 Err(_) => {
@@ -567,10 +711,11 @@ impl NetworkServer for UdpServer {
                 *guard = None;
             }
 
-            // 清空客户端列表
-            let mut clients_guard = clients.lock().await;
-            clients_guard.clear();
-            drop(clients_guard);
+            // 清空客户端列表(作用域内借用到 await 之前释放, 避免非 Send 的 RwLockWriteGuard 跨越 await)
+            {
+                let mut clients_guard = clients.write().unwrap();
+                clients_guard.clear();
+            }
 
             // 发送断开连接事件
             if let Some(sender) = &event_sender {
