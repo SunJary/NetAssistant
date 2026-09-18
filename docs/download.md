@@ -21,6 +21,8 @@ winget install SunJary.NetAssistant
 winget upgrade SunJary.NetAssistant
 ```
 
+**或使用安装程序**：下载 `netassistant-windows-x86_64-setup.exe`，按向导安装（自动创建开始菜单与桌面快捷方式）。
+
 **备选**：从 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 下载 `netassistant-windows-x86_64.zip`，解压后运行 `netassistant.exe`。
 
 ## Linux

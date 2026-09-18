@@ -7,6 +7,12 @@ description: NetAssistant 网络调试助手版本更新记录与路线图：TCP
 
 所有正式版本的更新记录发布在 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 页面。
 
+## v1.1.2 <Badge type="tip" text="2026-09-17" />
+
+- **Windows 安装程序**：新增基于 Inno Setup 的官方安装包（`netassistant-windows-x86_64-setup.exe`），自动创建开始菜单与桌面快捷方式，支持 winget 安装及自动升级
+- **压测场景性能优化**：将网络事件与 UI 事件分离并按批处理，洪泛压测下服务端消息实时同步，显著降低内存占用与界面卡顿
+- **TCP/UDP 收发路径优化**：重构网络层收发与解码流程，提升吞吐与稳定性
+
 ## v1.1.1 <Badge type="tip" text="2026-09-13" />
 
 - **客户端本地地址/端口绑定**：新建/编辑连接「更多设置」中可指定本地 IP 与本地端口，适配多网卡及对端按源地址过滤的场景；连接成功后信息面板显示实际生效的本地端点

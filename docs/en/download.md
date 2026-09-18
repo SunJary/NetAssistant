@@ -21,6 +21,8 @@ To upgrade:
 winget upgrade SunJary.NetAssistant
 ```
 
+**Or use the installer**: download `netassistant-windows-x86_64-setup.exe` and follow the wizard (creates Start Menu and desktop shortcuts automatically).
+
 **Alternative**: download `netassistant-windows-x86_64.zip` from [GitHub Releases](https://github.com/sunjary/netassistant/releases), extract it and run `netassistant.exe`.
 
 ## Linux

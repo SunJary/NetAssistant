@@ -7,6 +7,12 @@ description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast de
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## v1.1.2 <Badge type="tip" text="2026-09-17" />
+
+- **Windows installer**: new official Inno Setup installer (`netassistant-windows-x86_64-setup.exe`) that creates Start Menu and desktop shortcuts automatically, and supports winget install & auto-upgrade
+- **Stress-test performance**: separated network events from UI events and process them in batches, keeping the server message list in sync during heavy floods while lowering memory usage and UI stutter
+- **TCP/UDP path optimization**: reworked send/receive and decode flow for improved throughput and stability
+
 ## v1.1.1 <Badge type="tip" text="2026-09-13" />
 
 - **Client local address/port binding**: specify the local IP and local port under "More Settings" when creating/editing a connection, for multi-NIC setups or peers filtering by source address; the effective local endpoint is shown in the info panel once connected
