@@ -25,9 +25,9 @@ use crate::ui::dialog::{
 };
 use crate::ui::main_window::MainWindow;
 
+use indexmap::IndexMap;
 use smol::channel::{Receiver, Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
-use indexmap::IndexMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -575,11 +575,7 @@ impl NetAssistantApp {
     /// 说明: 焦点在消息输入框时, Ctrl+Enter 会被 gpui-component Input 内部的
     /// 多行换行绑定拦截, 不会冒泡到主窗口的 on_key_down。故在此订阅
     /// `InputEvent::PressEnter { secondary: true }`(即 Ctrl/Cmd+Enter)。
-    fn ensure_message_input_enter_subscription(
-        &mut self,
-        tab_id: &str,
-        cx: &mut Context<Self>,
-    ) {
+    fn ensure_message_input_enter_subscription(&mut self, tab_id: &str, cx: &mut Context<Self>) {
         if self.message_input_enter_subscriptions.contains_key(tab_id) {
             return;
         }
@@ -594,16 +590,22 @@ impl NetAssistantApp {
         let app_handle = cx.entity().clone();
         let subscription = cx.subscribe(&message_input, {
             move |app, _input, event, cx| {
-                if !matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
+                if !matches!(
+                    event,
+                    InputEvent::PressEnter {
+                        secondary: true,
+                        ..
+                    }
+                ) {
                     return;
                 }
                 let Some(window_handle) = cx.active_window() else {
                     return;
                 };
-                let Some(input_entity) =
-                    app.connection_tabs
-                        .get(&sub_tab_id)
-                        .and_then(|t| t.message_input.clone())
+                let Some(input_entity) = app
+                    .connection_tabs
+                    .get(&sub_tab_id)
+                    .and_then(|t| t.message_input.clone())
                 else {
                     return;
                 };
@@ -621,9 +623,8 @@ impl NetAssistantApp {
                 cx.defer(move |cx: &mut App| {
                     let _ = window_handle.update(cx, |_view, window, cx| {
                         // 先回写清理后的内容, 再发送(发送内部按 auto_clear 决定是否清空)
-                        let _ = input_entity.update(cx, |input, cx| {
-                            input.set_value(cleaned, window, cx)
-                        });
+                        let _ = input_entity
+                            .update(cx, |input, cx| input.set_value(cleaned, window, cx));
                         let _ = app_handle.update(cx, |app, cx| {
                             app.send_message_from_tab(&sub_tab_id, window, cx);
                         });
@@ -917,6 +918,12 @@ impl NetAssistantApp {
     pub fn close_tab(&mut self, tab_id: String, _cx: &mut Context<Self>) {
         debug!("[关闭标签页] 开始关闭标签页: {}", tab_id);
 
+        // 角色判定必须在移除 tab 状态之前: 决定后续走客户端断开还是服务端停止
+        let is_client = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|tab_state| tab_state.connection_config.is_client());
+
         if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
             tab_state.disconnect();
         }
@@ -953,6 +960,31 @@ impl NetAssistantApp {
 
         // 清理网络层计数器(避免残留条目被后续同步读取到已关闭的 tab)
         self.net_counters.remove(&tab_id);
+
+        // 清理解码器控制通道(此前仅由 Disconnected 事件分支清理, 关闭标签页不走该分支)
+        self.decoder_control_senders.remove(&tab_id);
+        self.server_decoder_controls.remove(&tab_id);
+
+        // 断开网络层: socket 与监听端口由 NetworkConnectionManager 持有, 不经过这里则
+        // 端口不释放、读任务继续把消息投递给已关闭(或被重开复用同一 config.id)的 tab_id
+        if let Some(is_client) = is_client {
+            let network_manager_arc = self.network_manager.clone();
+            let tab_id_clone = tab_id.clone();
+            tokio::spawn(async move {
+                let mut network_manager = network_manager_arc.lock().await;
+                let result = if is_client {
+                    network_manager.disconnect_client(&tab_id_clone).await
+                } else {
+                    network_manager.stop_server(&tab_id_clone).await
+                };
+                if let Err(e) = result {
+                    error!(
+                        "关闭标签页时断开网络连接失败: tab={}, {:?}",
+                        tab_id_clone, e
+                    );
+                }
+            });
+        }
 
         debug!("[关闭标签页] 标签页 {} 已关闭", tab_id);
     }
@@ -1298,11 +1330,7 @@ impl NetAssistantApp {
             let connection_event_sender_clone = self.connection_event_sender.clone();
             let tab_id_for_error = tab_id.clone();
             // 每 tab 一份网络层精确计数器: 重复连接时复用(计数在断开后仍累计需由 UI 层在断开时置零处理)
-            let counters = self
-                .net_counters
-                .entry(tab_id.clone())
-                .or_default()
-                .clone();
+            let counters = self.net_counters.entry(tab_id.clone()).or_default().clone();
 
             tokio::spawn(async move {
                 let mut network_manager = network_manager_arc.lock().await;
@@ -1340,11 +1368,7 @@ impl NetAssistantApp {
                 let connection_event_sender_clone = self.connection_event_sender.clone();
                 let tab_id_for_error = tab_id.clone();
                 // 每 tab 一份网络层精确计数器
-                let counters = self
-                    .net_counters
-                    .entry(tab_id.clone())
-                    .or_default()
-                    .clone();
+                let counters = self.net_counters.entry(tab_id.clone()).or_default().clone();
 
                 tokio::spawn(async move {
                     let mut network_manager = network_manager_arc.lock().await;
@@ -1396,12 +1420,12 @@ impl NetAssistantApp {
                 message_input_clone = Some(message_input.clone());
 
                 // 读取周期发送间隔值
-                let interval_str = if let Some(periodic_interval_input) = &tab_state.periodic_interval_input
-                {
-                    periodic_interval_input.read(cx).text().to_string()
-                } else {
-                    "1000".to_string()
-                };
+                let interval_str =
+                    if let Some(periodic_interval_input) = &tab_state.periodic_interval_input {
+                        periodic_interval_input.read(cx).text().to_string()
+                    } else {
+                        "1000".to_string()
+                    };
                 interval_ms = interval_str.parse::<u32>().map(u64::from).unwrap_or(1000);
 
                 // 存储其他需要的值
@@ -2387,6 +2411,14 @@ impl NetAssistantApp {
                 self.server_decoder_controls.remove(&tab_id);
             }
             ConnectionEvent::ClientWriteSenderReady(tab_id, write_sender) => {
+                // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满
+                if !self.connection_tabs.contains_key(&tab_id) {
+                    debug!(
+                        "[handle_connection_events] 忽略已关闭标签页的事件: tab_id={}",
+                        tab_id
+                    );
+                    return;
+                }
                 debug!(
                     "[handle_connection_events] 客户端写入发送器就绪: {}",
                     tab_id
@@ -2394,6 +2426,14 @@ impl NetAssistantApp {
                 self.client_write_senders.insert(tab_id, write_sender);
             }
             ConnectionEvent::DecoderControlSenderReady(tab_id, control_sender) => {
+                // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满
+                if !self.connection_tabs.contains_key(&tab_id) {
+                    debug!(
+                        "[handle_connection_events] 忽略已关闭标签页的事件: tab_id={}",
+                        tab_id
+                    );
+                    return;
+                }
                 debug!(
                     "[handle_connection_events] 客户端解码器控制发送器就绪: {}",
                     tab_id
@@ -2401,6 +2441,14 @@ impl NetAssistantApp {
                 self.decoder_control_senders.insert(tab_id, control_sender);
             }
             ConnectionEvent::ServerDecoderControlSenderReady(tab_id, addr, control_sender) => {
+                // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满
+                if !self.connection_tabs.contains_key(&tab_id) {
+                    debug!(
+                        "[handle_connection_events] 忽略已关闭标签页的事件: tab_id={}",
+                        tab_id
+                    );
+                    return;
+                }
                 debug!(
                     "[handle_connection_events] 服务端解码器控制发送器就绪: tab_id={}, addr={}",
                     tab_id, addr
@@ -2414,6 +2462,14 @@ impl NetAssistantApp {
                 }
             }
             ConnectionEvent::ServerClientConnected(tab_id, addr, write_sender) => {
+                // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满
+                if !self.connection_tabs.contains_key(&tab_id) {
+                    debug!(
+                        "[handle_connection_events] 忽略已关闭标签页的事件: tab_id={}",
+                        tab_id
+                    );
+                    return;
+                }
                 debug!(
                     "[handle_connection_events] 服务端客户端连接: tab_id={}, addr={}",
                     tab_id, addr

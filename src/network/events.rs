@@ -2,8 +2,8 @@ use crate::config::connection::{AutoReplyConfig, DecoderConfig};
 use crate::message::Message;
 use smol::channel::Sender;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 一批接收到的消息(源头聚合)。
 ///

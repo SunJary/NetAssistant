@@ -467,8 +467,14 @@ mod tests {
                 .expect("事件通道不应关闭");
             if let ConnectionEvent::MessageReceived(tab_id, message) = event {
                 assert_eq!(tab_id, client_config.id, "消息应路由到客户端 tab");
-                assert_eq!(message.raw_data, b"ee", "客户端收到的字节应与服务端发送一致");
-                assert_eq!(message.direction, crate::message::MessageDirection::Received);
+                assert_eq!(
+                    message.raw_data, b"ee",
+                    "客户端收到的字节应与服务端发送一致"
+                );
+                assert_eq!(
+                    message.direction,
+                    crate::message::MessageDirection::Received
+                );
                 return;
             }
         }
