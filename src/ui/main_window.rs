@@ -2,7 +2,7 @@ use crate::app::NetAssistantApp;
 use crate::custom_icons::CustomIconName;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::FavoriteListPanel;
+use crate::ui::dialog::{FavoriteListPanel, open_new_connection_dialog};
 use crate::ui::tab_container::TabContainer;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -40,12 +40,96 @@ impl<'a> MainWindow<'a> {
             .flex()
             .flex_col()
             .bg(theme.background)
-            .on_key_down(cx.listener(|app, event: &KeyDownEvent, _window, cx| {
-                if event.keystroke.key.as_str() == "escape" {
+            // 将根元素加入焦点路径, 保证未聚焦输入框时快捷键仍能命中本 on_key_down
+            .track_focus(&self.app.root_focus)
+            .on_key_down(cx.listener(|app, event: &KeyDownEvent, window, cx| {
+                // ===== 应用级快捷键分发 =====
+                let key = event.keystroke.key.as_str();
+                let mods = &event.keystroke.modifiers;
+                let is_ctrl = mods.control || mods.platform; // 兼容 Mac Cmd
+                let ctrl_shift = mods.shift;
+                let ctrl_alt = mods.alt;
+
+                // 已有行为: Escape 关闭收藏夹列表
+                if key == "escape" {
                     if app.show_favorite_list {
                         app.show_favorite_list = false;
                         cx.notify();
                     }
+                    return;
+                }
+
+                // 模态守卫: 应用内浮层打开时屏蔽全局快捷键, 避免误触
+                let modal_open = app.show_favorite_list
+                    || app.show_language_menu
+                    || app.show_context_menu;
+                if modal_open {
+                    return;
+                }
+
+                // 以下快捷键均需 Ctrl/Cmd 组合
+                if !is_ctrl {
+                    return;
+                }
+
+                // Ctrl+Tab / Ctrl+Shift+Tab 循环切换标签页
+                if key == "tab" && !ctrl_alt {
+                    let step = if ctrl_shift { -1 } else { 1 };
+                    app.switch_tab(step, cx);
+                    return;
+                }
+                // Ctrl+PageDown / Ctrl+PageUp 上/下一个标签页
+                if !ctrl_shift && !ctrl_alt {
+                    if key == "pagedown" || key == "page_down" {
+                        app.switch_tab(1, cx);
+                        return;
+                    }
+                    if key == "pageup" || key == "page_up" {
+                        app.switch_tab(-1, cx);
+                        return;
+                    }
+                }
+                // Ctrl+1..9 直接跳转到对应标签页
+                if !ctrl_shift && !ctrl_alt {
+                    if let Ok(digit) = key.parse::<usize>() {
+                        if (1..=9).contains(&digit) {
+                            app.activate_tab_by_index(digit, cx);
+                            return;
+                        }
+                    }
+                }
+
+                // 以下操作的组合不允许 shift/alt
+                if ctrl_shift || ctrl_alt {
+                    return;
+                }
+
+                // Ctrl+Enter 发送当前标签页消息
+                if key == "enter" {
+                    if !app.active_tab.is_empty() {
+                        let active_tab = app.active_tab.clone();
+                        app.send_message_from_tab(&active_tab, window, cx);
+                    }
+                    return;
+                }
+                // Ctrl+W 关闭当前标签页
+                if key == "w" {
+                    app.close_active_tab(cx);
+                    return;
+                }
+                // Ctrl+N 新建连接
+                if key == "n" {
+                    open_new_connection_dialog(cx.entity().downgrade(), window, cx);
+                    return;
+                }
+                // Ctrl+K 聚焦当前标签页的消息输入框
+                if key == "k" {
+                    if let Some(tab_state) = app.connection_tabs.get(&app.active_tab) {
+                        if let Some(message_input) = &tab_state.message_input {
+                            message_input.update(cx, |input, cx| input.focus(window, cx));
+                        }
+                    }
+                    return;
                 }
             }))
             .on_mouse_move(cx.listener(|app, event: &MouseMoveEvent, _window, cx| {

@@ -205,3 +205,6 @@ connection_tab:
   send:
     zh-CN: 发送
     en: Send
+  send_shortcut_tooltip:
+    zh-CN: "发送 (Ctrl+Enter)"
+    en: "Send (Ctrl+Enter)"

@@ -159,6 +159,11 @@ pub struct NetAssistantApp {
 
     // 统计存储
     pub stats: AppStats,
+
+    // 根元素焦点句柄: 保证未聚焦任何输入框时, 全局快捷键也能命中主窗口 on_key_down
+    pub root_focus: FocusHandle,
+    // 消息输入框 Ctrl+Enter 发送订阅(每个标签页一份, 随关闭清理)
+    pub message_input_enter_subscriptions: HashMap<String, Subscription>,
 }
 
 impl NetAssistantApp {
@@ -279,7 +284,12 @@ impl NetAssistantApp {
             show_star_prompt: false,
             // 统计存储
             stats: AppStats::default(),
+            root_focus: cx.focus_handle(),
+            message_input_enter_subscriptions: HashMap::new(),
         };
+
+        // 启动时聚焦根元素, 保证未点击任何输入框时快捷键也全局生效
+        app.root_focus.focus(window, cx);
 
         // 创建专门的异步任务来处理连接事件
         // 驱动源: GPUI BackgroundExecutor::timer (Windows ThreadPoolTimer)
@@ -557,6 +567,72 @@ impl NetAssistantApp {
                 ConnectionTabState::new(connection_config, window, cx),
             );
         }
+        self.ensure_message_input_enter_subscription(&tab_id, cx);
+    }
+
+    /// 订阅消息输入框的 Ctrl+Enter 事件, 复用发送逻辑完成发送。
+    ///
+    /// 说明: 焦点在消息输入框时, Ctrl+Enter 会被 gpui-component Input 内部的
+    /// 多行换行绑定拦截, 不会冒泡到主窗口的 on_key_down。故在此订阅
+    /// `InputEvent::PressEnter { secondary: true }`(即 Ctrl/Cmd+Enter)。
+    fn ensure_message_input_enter_subscription(
+        &mut self,
+        tab_id: &str,
+        cx: &mut Context<Self>,
+    ) {
+        if self.message_input_enter_subscriptions.contains_key(tab_id) {
+            return;
+        }
+        let Some(message_input) = self
+            .connection_tabs
+            .get(tab_id)
+            .and_then(|t| t.message_input.clone())
+        else {
+            return;
+        };
+        let sub_tab_id = tab_id.to_string();
+        let app_handle = cx.entity().clone();
+        let subscription = cx.subscribe(&message_input, {
+            move |app, _input, event, cx| {
+                if !matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
+                    return;
+                }
+                let Some(window_handle) = cx.active_window() else {
+                    return;
+                };
+                let Some(input_entity) =
+                    app.connection_tabs
+                        .get(&sub_tab_id)
+                        .and_then(|t| t.message_input.clone())
+                else {
+                    return;
+                };
+                // 去掉 Input 多行模式按下 Ctrl+Enter 自动插入的换行符, 避免发送多余空行
+                let raw = input_entity.read(cx).text().to_string();
+                let cleaned = raw.trim_end_matches(&['\n', '\r'][..]).to_string();
+                if cleaned.trim().is_empty() {
+                    return;
+                }
+                // 当前处于 app 实体更新(订阅回调)期间, 不能同步重入 app 实体。
+                // 用 cx.defer 推迟到本次更新结束、实体解锁后再真正发送。
+                let app_handle = app_handle.clone();
+                let sub_tab_id = sub_tab_id.clone();
+                let input_entity = input_entity.clone();
+                cx.defer(move |cx: &mut App| {
+                    let _ = window_handle.update(cx, |_view, window, cx| {
+                        // 先回写清理后的内容, 再发送(发送内部按 auto_clear 决定是否清空)
+                        let _ = input_entity.update(cx, |input, cx| {
+                            input.set_value(cleaned, window, cx)
+                        });
+                        let _ = app_handle.update(cx, |app, cx| {
+                            app.send_message_from_tab(&sub_tab_id, window, cx);
+                        });
+                    });
+                });
+            }
+        });
+        self.message_input_enter_subscriptions
+            .insert(tab_id.to_string(), subscription);
     }
 
     pub fn ensure_auto_reply_input_exists(
@@ -860,6 +936,7 @@ impl NetAssistantApp {
         {
             debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
         }
+        self.message_input_enter_subscriptions.remove(&tab_id);
         if self.server_auto_reply_states.remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
         }
@@ -878,6 +955,58 @@ impl NetAssistantApp {
         self.net_counters.remove(&tab_id);
 
         debug!("[关闭标签页] 标签页 {} 已关闭", tab_id);
+    }
+
+    // ============== 快捷键相关方法 ==============
+
+    /// 返回按插入顺序排列的标签页 id 列表(序号即快捷键 Ctrl+1..9 的定位)
+    pub fn tab_ids_in_order(&self) -> Vec<String> {
+        self.connection_tabs.keys().cloned().collect()
+    }
+
+    /// 按偏移量循环切换标签页(step>0 向后, step<0 向前)
+    pub fn switch_tab(&mut self, step: isize, cx: &mut Context<Self>) {
+        let ids = self.tab_ids_in_order();
+        if ids.is_empty() {
+            return;
+        }
+        let current = ids
+            .iter()
+            .position(|id| *id == self.active_tab)
+            .unwrap_or(0);
+        let len = ids.len() as isize;
+        let mut next = (current as isize + step) % len;
+        if next < 0 {
+            next += len;
+        }
+        self.active_tab = ids[next as usize].clone();
+        cx.notify();
+    }
+
+    /// 直接跳转到序号(从 1 计)对应的标签页, 越界或无标签时不生效
+    pub fn activate_tab_by_index(&mut self, index_1_based: usize, cx: &mut Context<Self>) {
+        let ids = self.tab_ids_in_order();
+        if index_1_based == 0 || index_1_based > ids.len() {
+            return;
+        }
+        self.active_tab = ids[index_1_based - 1].clone();
+        cx.notify();
+    }
+
+    /// 关闭当前激活的标签页(快捷键 Ctrl+W), 复用时保留 close_tab 的清理与关闭后自动切换语义
+    pub fn close_active_tab(&mut self, cx: &mut Context<Self>) {
+        if self.active_tab.is_empty() {
+            return;
+        }
+        let tab_id = self.active_tab.clone();
+        self.close_tab(tab_id.clone(), cx);
+        // 关闭后自动切换到剩余第一个标签页
+        if let Some(first_tab_id) = self.connection_tabs.keys().next() {
+            self.active_tab = (*first_tab_id).to_string();
+        } else {
+            self.active_tab = String::new();
+        }
+        cx.notify();
     }
 
     // ============== 压测相关方法 ==============
@@ -1237,6 +1366,138 @@ impl NetAssistantApp {
                         }
                     }
                 });
+            }
+        }
+    }
+
+    /// 从指定标签页的消息输入框读取内容并发送，供"发送按钮"和"Ctrl+Enter 快捷键"共用。
+    /// 逻辑与原先发送按钮的 on_mouse_down 闭包保持一致（含 hex 校验、连接状态校验、
+    /// 自动清空、周期发送、错误提示）。
+    pub fn send_message_from_tab(
+        &mut self,
+        tab_id: &str,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) {
+        // 首先获取所有需要的值，避免后续的借用冲突
+        let mut message_input_clone = None;
+        let mut content = String::new();
+        let mut tab_message_input_mode = String::new();
+        let mut auto_clear_input = false;
+        let mut periodic_send_enabled = false;
+        let mut connection_config = None;
+        let mut interval_ms: u64 = 1000;
+
+        // 获取当前标签页的状态
+        if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
+            // 获取消息输入内容
+            if let Some(message_input) = &tab_state.message_input {
+                content = message_input.read(cx).text().to_string();
+                message_input_clone = Some(message_input.clone());
+
+                // 读取周期发送间隔值
+                let interval_str = if let Some(periodic_interval_input) = &tab_state.periodic_interval_input
+                {
+                    periodic_interval_input.read(cx).text().to_string()
+                } else {
+                    "1000".to_string()
+                };
+                interval_ms = interval_str.parse::<u32>().map(u64::from).unwrap_or(1000);
+
+                // 存储其他需要的值
+                tab_message_input_mode = tab_state.message_input_mode.clone();
+                auto_clear_input = tab_state.auto_clear_input;
+                periodic_send_enabled = tab_state.periodic_send_enabled;
+                connection_config = Some(tab_state.connection_config.clone());
+
+                // 在发送前再次验证十六进制输入是否有效
+                let is_hex_valid = if tab_message_input_mode == "hex" {
+                    let hex_content = message_input.read(cx).text().to_string();
+                    crate::utils::hex::validate_hex_input(&hex_content)
+                } else {
+                    true
+                };
+                if !is_hex_valid {
+                    debug!("[发送] 十六进制输入格式错误，不发送");
+                    return;
+                }
+            }
+        } else {
+            // Tab not found
+            error!("[发送] 发送失败: 标签页不存在");
+            return;
+        }
+
+        // 检查消息内容是否为空
+        if content.trim().is_empty() {
+            debug!("[发送] 消息内容为空，不发送");
+            return;
+        }
+
+        // 确保获取到了所有必要的值
+        if let Some(connection_config) = connection_config {
+            // Check connection status before sending
+            let can_send = if connection_config.is_client() {
+                if let Some(tab_state) = self.connection_tabs.get(tab_id) {
+                    tab_state.is_connected
+                } else {
+                    false
+                }
+            } else {
+                // Server mode: check if there are connected clients
+                self.server_clients
+                    .get(tab_id)
+                    .map_or(false, |clients| !clients.is_empty())
+            };
+
+            if can_send {
+                // 发送消息
+                if tab_message_input_mode == "hex" {
+                    let bytes = crate::utils::hex::hex_to_bytes(&content);
+                    self.send_message_bytes(tab_id.to_string(), bytes, content.clone());
+                } else {
+                    self.send_message(tab_id.to_string(), content.clone());
+                }
+
+                // Clear input ONLY on successful send initiation and if auto_clear_input is true
+                if auto_clear_input {
+                    if let Some(message_input) = message_input_clone {
+                        message_input.update(cx, |input: &mut InputState, cx| {
+                            input.set_value("", window, cx);
+                        });
+                    }
+                }
+
+                // 启动周期发送（如果启用）
+                if periodic_send_enabled {
+                    let tab_id_periodic = tab_id.to_string();
+                    let content_periodic = content.clone();
+                    let message_input_mode_periodic = tab_message_input_mode.clone();
+                    self.start_periodic_send(
+                        tab_id_periodic,
+                        interval_ms,
+                        content_periodic,
+                        message_input_mode_periodic,
+                        cx,
+                    );
+                }
+
+                // 清除错误消息
+                if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
+                    tab_state.error_message = None;
+                }
+            } else {
+                // Send failed due to connection issue
+                warn!("[发送] 发送失败: 连接未建立或无客户端连接");
+                if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
+                    tab_state.error_message = Some(if connection_config.is_client() {
+                        t!("app_ui.send_not_connected").to_string()
+                    } else {
+                        t!("connection_tab.error_no_client_connections").to_string()
+                    });
+                }
+                cx.notify();
+                // DO NOT clear input on connection failure
             }
         }
     }
@@ -2259,6 +2520,7 @@ impl Drop for NetAssistantApp {
             {
                 debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
             }
+            self.message_input_enter_subscriptions.remove(&tab_id);
 
             if self.server_auto_reply_states.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);

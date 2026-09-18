@@ -15,7 +15,7 @@ use gpui_component::{
     tooltip::Tooltip,
 };
 
-use log::{debug, error, info, warn};
+use log::{debug, info};
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -30,7 +30,6 @@ use crate::message::{Message, MessageDirection, MessageDisplayMode, MessageListS
 use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
 use crate::ui::stress_panel::StressPanel;
-use crate::utils::hex::hex_to_bytes;
 
 /// 连接标签页状态
 #[derive(Clone)]
@@ -2030,124 +2029,15 @@ impl<'a> ConnectionTab<'a> {
                                     .hover(|style| {
                                         style.bg(theme.primary_hover)
                                     })
+                                    .id(format!("send-btn-{}", tab_id_send))
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new(t!("connection_tab.send_shortcut_tooltip").to_string()).build(window, cx)
+                                    })
                                     .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, window, cx| {
                                         let tab_id_send = tab_id_send.clone();
                                         debug!("[发送按钮] 点击事件触发，tab_id: {}", tab_id_send);
-
-                                        // 首先获取所有需要的值，避免后续的借用冲突
-                                        let mut message_input_clone = None;
-                                        let mut content = String::new();
-                                        let mut message_input_mode = String::new();
-                                        let mut auto_clear_input = false;
-                                        let mut periodic_send_enabled = false;
-                                        let mut connection_config = None;
-                                        let mut interval_ms = 1000;
-
-                                        // 获取当前标签页的状态
-                                        if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_send) {
-                                            // 获取消息输入内容
-                                            if let Some(message_input) = &tab_state.message_input {
-                                                content = message_input.read(cx).text().to_string();
-                                                message_input_clone = Some(message_input.clone());
-                                                debug!("[发送按钮] 消息内容: '{}', 长度: {}, 模式: {}", content, content.len(), tab_state.message_input_mode);
-
-                                                // 读取周期发送间隔值
-                                                let interval_str = if let Some(periodic_interval_input) = &tab_state.periodic_interval_input {
-                                                    periodic_interval_input.read(cx).text().to_string()
-                                                } else {
-                                                    "1000".to_string()
-                                                };
-                                                interval_ms = interval_str.parse::<u32>().unwrap_or(1000);
-                                                debug!("[发送按钮] 周期发送间隔: {}ms", interval_ms);
-
-                                                // 存储其他需要的值
-                                                message_input_mode = tab_state.message_input_mode.clone();
-                                                auto_clear_input = tab_state.auto_clear_input;
-                                                periodic_send_enabled = tab_state.periodic_send_enabled;
-                                                connection_config = Some(tab_state.connection_config.clone());
-
-                                                // 在发送前再次验证十六进制输入是否有效
-                                                let is_hex_valid = if message_input_mode == "hex" {
-                                                    let content = message_input.read(cx).text().to_string();
-                                                    crate::utils::hex::validate_hex_input(&content)
-                                                } else {
-                                                    true
-                                                };
-                                                if !is_hex_valid {
-                                                    debug!("[发送按钮] 十六进制输入格式错误，不发送");
-                                                    return;
-                                                }
-                                            }
-                                        } else {
-                                            // Tab not found
-                                            error!("[发送按钮] 发送失败: 标签页不存在");
-                                            return;
-                                        }
-
-                                        // 检查消息内容是否为空
-                                        if content.trim().is_empty() {
-                                            debug!("[发送按钮] 消息内容为空，不发送");
-                                            return;
-                                        }
-
-                                        // 确保获取到了所有必要的值
-                                        if let Some(connection_config) = connection_config {
-                                            // Check connection status before sending
-                                            let can_send = if connection_config.is_client() {
-                                                if let Some(tab_state) = app.connection_tabs.get(&tab_id_send) {
-                                                    tab_state.is_connected
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                // Server mode: check if there are connected clients
-                                                app.server_clients.get(&tab_id_send).map_or(false, |clients| !clients.is_empty())
-                                            };
-
-                                            if can_send {
-                                                // 发送消息
-                                                if message_input_mode == "hex" {
-                                                    let bytes = hex_to_bytes(&content);
-                                                    app.send_message_bytes(tab_id_send.clone(), bytes, content.clone());
-                                                } else {
-                                                    app.send_message(tab_id_send.clone(), content.clone());
-                                                }
-
-                                                // Clear input ONLY on successful send initiation and if auto_clear_input is true
-                                                if auto_clear_input {
-                                                    if let Some(message_input) = message_input_clone {
-                                                        message_input.update(cx, |input: &mut InputState, cx| {
-                                                            input.set_value("", window, cx);
-                                                        });
-                                                    }
-                                                }
-
-                                                // 启动周期发送（如果启用）
-                                                if periodic_send_enabled {
-                                                    let tab_id_periodic = tab_id_send.clone();
-                                                    let content_periodic = content.clone();
-                                                    let message_input_mode_periodic = message_input_mode.clone();
-                                                    app.start_periodic_send(tab_id_periodic, interval_ms.into(), content_periodic, message_input_mode_periodic, cx);
-                                                }
-
-                                                // 清除错误消息
-                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_send) {
-                                                    tab_state.error_message = None;
-                                                }
-                                            } else {
-                                                // Send failed due to connection issue
-                                                warn!("[发送按钮] 发送失败: 连接未建立或无客户端连接");
-                                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_send) {
-                                                    tab_state.error_message = Some(if connection_config.is_client() {
-                                                        t!("app_ui.send_not_connected").to_string()
-                                                    } else {
-                                                        t!("connection_tab.error_no_client_connections").to_string()
-                                                    });
-                                                }
-                                                cx.notify();
-                                                // DO NOT clear input on connection failure
-                                            }
-                                        }
+                                        // 发送逻辑与 Ctrl+Enter 快捷键共用同一方法
+                                        app.send_message_from_tab(&tab_id_send, window, cx);
                                     }))
                                     .child(
                                         div()
