@@ -3930,6 +3930,7 @@ dependencies = [
  "gpui-component-assets",
  "gpui_platform",
  "hex",
+ "indexmap",
  "lazy_static",
  "log",
  "objc",

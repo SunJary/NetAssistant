@@ -27,6 +27,7 @@ use crate::ui::main_window::MainWindow;
 
 use smol::channel::{Receiver, Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -61,7 +62,7 @@ pub struct NetAssistantApp {
 
     // Tab页状态（每个标签页独立管理自己的网络连接）
     pub active_tab: String,
-    pub connection_tabs: HashMap<String, ConnectionTabState>,
+    pub connection_tabs: IndexMap<String, ConnectionTabState>,
     pub tab_multiline: bool,
 
     // 自动回复输入框状态（每个标签页一个）
@@ -177,7 +178,7 @@ impl NetAssistantApp {
         });
 
         // 初始化空的连接标签页状态（不预先创建）
-        let connection_tabs = HashMap::new();
+        let connection_tabs = IndexMap::new();
         let active_tab = String::new();
 
         // 创建连接事件通道 - 使用smol channel与GPUI兼容
@@ -844,7 +845,7 @@ impl NetAssistantApp {
             tab_state.disconnect();
         }
 
-        if self.connection_tabs.remove(&tab_id).is_some() {
+        if self.connection_tabs.shift_remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
         }
 
@@ -2242,7 +2243,7 @@ impl Drop for NetAssistantApp {
                 tab_state.disconnect();
             }
 
-            if self.connection_tabs.remove(&tab_id).is_some() {
+            if self.connection_tabs.shift_remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
             }
 
