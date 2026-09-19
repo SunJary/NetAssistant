@@ -24,6 +24,24 @@ input_mode:
   hex_invalid:
     zh-CN: 十六进制输入格式错误，包含非法字符或长度为奇数
     en: "Invalid hex input: contains illegal characters or has an odd length"
+  to_hex:
+    zh-CN: 转换为 Hex
+    en: Convert to Hex
+  to_text:
+    zh-CN: 转换为文本
+    en: Convert to Text
+  cut:
+    zh-CN: 剪切
+    en: Cut
+  copy:
+    zh-CN: 复制
+    en: Copy
+  paste:
+    zh-CN: 粘贴
+    en: Paste
+  select_all:
+    zh-CN: 全选
+    en: Select All
 
 hex_editor:
   bytes:

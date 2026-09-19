@@ -498,7 +498,7 @@ fn file_to_hex_cells(bytes: &[u8]) -> Vec<Cell> {
     bytes
         .iter()
         .map(|b| {
-            let s = format!("{:02x}", b);
+            let s = format!("{:02X}", b);
             let mut chars = s.chars();
             Cell::Byte {
                 hi: chars.next().unwrap(),

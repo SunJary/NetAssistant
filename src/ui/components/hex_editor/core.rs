@@ -206,7 +206,7 @@ impl State {
                 },
             };
         }
-        let d = c.to_ascii_lowercase();
+        let d = c.to_ascii_uppercase();
         // 虚拟末尾：键入即追加（覆盖模式同样行为，与文本框"末尾输入即追加"直觉一致）
         if cur.cell >= len {
             self.cells_mut()?.push(Cell::Byte {
@@ -601,7 +601,7 @@ fn char_to_hex_chars(c: char) -> [char; 2] {
     let mut buf = [0u8; 4];
     let s = c.encode_utf8(&mut buf);
     let byte = s.as_bytes()[0];
-    let s = format!("{:02x}", byte);
+    let s = format!("{:02X}", byte);
     let mut chars = s.chars();
     [chars.next().unwrap(), chars.next().unwrap()]
 }
@@ -778,9 +778,9 @@ mod tests {
     fn type_digit_overwrite_advances() {
         let mut s = state("48 65");
         s.cursor = Some(Cursor { cell: 0, nibble: 0 });
-        assert_eq!(s.apply(Action::Digit('A')), Some("a8 65".into()));
+        assert_eq!(s.apply(Action::Digit('A')), Some("A8 65".into()));
         assert_eq!(s.cursor, Some(Cursor { cell: 0, nibble: 1 }));
-        assert_eq!(s.apply(Action::Digit('B')), Some("ab 65".into()));
+        assert_eq!(s.apply(Action::Digit('B')), Some("AB 65".into()));
         assert_eq!(s.cursor, Some(Cursor { cell: 1, nibble: 0 }));
     }
 
@@ -788,10 +788,10 @@ mod tests {
     fn type_digit_appends_at_end() {
         let mut s = state("48");
         s.cursor = Some(Cursor { cell: 1, nibble: 1 });
-        assert_eq!(s.apply(Action::Digit('f')), Some("48 f".into()));
-        assert_eq!(s.apply(Action::Digit('0')), Some("48 f0".into()));
+        assert_eq!(s.apply(Action::Digit('f')), Some("48 F".into()));
+        assert_eq!(s.apply(Action::Digit('0')), Some("48 F0".into()));
         // 虚拟末尾继续键入 → 再追加
-        assert_eq!(s.apply(Action::Digit('1')), Some("48 f0 1".into()));
+        assert_eq!(s.apply(Action::Digit('1')), Some("48 F0 1".into()));
     }
 
     #[test]
@@ -801,7 +801,7 @@ mod tests {
         // token 上键入 → 跳到 token 后追加
         assert_eq!(
             s.apply(Action::Digit('a')),
-            Some("50 49 4E 47 ${seq} a".into())
+            Some("50 49 4E 47 ${seq} A".into())
         );
     }
 
@@ -906,7 +906,7 @@ mod tests {
         // 点击内容末尾空位(cell == len) → 定位到虚拟末尾, 键入即追加
         s.apply(Action::Click { cell: 2, nibble: 0 });
         assert_eq!(s.cursor, Some(Cursor { cell: 2, nibble: 0 }));
-        assert_eq!(s.apply(Action::Digit('a')), Some("48 65 a".into()));
+        assert_eq!(s.apply(Action::Digit('a')), Some("48 65 A".into()));
         // 更远的空位同样钳制到虚拟末尾
         s.apply(Action::Click { cell: 9, nibble: 0 });
         assert_eq!(s.cursor, Some(Cursor { cell: 3, nibble: 0 }));
@@ -973,7 +973,7 @@ mod tests {
     fn type_ascii_sets_byte() {
         let mut s = state("48 65");
         s.cursor = Some(Cursor { cell: 0, nibble: 0 });
-        assert_eq!(s.apply(Action::Ascii('Z')), Some("5a 65".into()));
+        assert_eq!(s.apply(Action::Ascii('Z')), Some("5A 65".into()));
         // 不可打印字符忽略
         assert_eq!(s.apply(Action::Ascii('\n')), None);
     }

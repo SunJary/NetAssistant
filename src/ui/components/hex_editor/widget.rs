@@ -714,7 +714,7 @@ mod visual_tests {
 
     fn test_value(bytes: usize) -> String {
         (0..bytes)
-            .map(|i| format!("{:02x}", i))
+            .map(|i| format!("{:02X}", i))
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -970,7 +970,7 @@ mod visual_tests {
                     "first typed digit should land at byte 0 high nibble"
                 );
                 assert!(
-                    state.core.full_value().starts_with("a0 01"),
+                    state.core.full_value().starts_with("A0 01"),
                     "got {}",
                     state.core.full_value()
                 );
@@ -1071,7 +1071,7 @@ mod visual_tests {
         cx.update(|_window, cx| {
             let state = editor.read(cx);
             assert!(
-                state.core.full_value().starts_with("00 01 02 a"),
+                state.core.full_value().starts_with("00 01 02 A"),
                 "typing after clicking end slot should append, got {}",
                 state.core.full_value()
             );
@@ -1150,7 +1150,7 @@ mod visual_tests {
                 );
                 let value = state.core.full_value();
                 assert!(
-                    value.starts_with("f0"),
+                    value.starts_with("F0"),
                     "first byte overwritten, got {value}"
                 );
                 assert!(
@@ -1171,7 +1171,7 @@ mod visual_tests {
                     "cursor should advance to next byte"
                 );
                 assert!(
-                    state.core.full_value().starts_with("ff 01"),
+                    state.core.full_value().starts_with("FF 01"),
                     "second nibble written"
                 );
             });

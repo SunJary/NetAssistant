@@ -129,6 +129,8 @@ impl ConnectionTabState {
                     .line_number(false)
                     .folding(false)
                     .multi_line(true)
+                    // 关闭 Input 内置的原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」绘制菜单
+                    .context_menu(false)
                     .placeholder(t!("connection_tab.message_input_placeholder"))
             })),
             // 消息发送框: 每行 16 字节
@@ -966,8 +968,10 @@ impl<'a> ConnectionTab<'a> {
                                             .child(div().text_xs().font_medium().child(t!("connection_tab.mode_text").to_string()))
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_text = tab_id.clone();
-                                                move |app, _event, _window, cx| {
+                                                move |app, _event, window, cx| {
+                                                    let mut from_mode = String::new();
                                                     let updated = app.connection_tabs.get_mut(&tab_id_text).map(|tab_state| {
+                                                        from_mode = tab_state.message_input_mode.clone();
                                                         tab_state.message_input_mode = String::from("text");
                                                         match &mut tab_state.connection_config {
                                                             ConnectionConfig::Client(c) => c.message_input_mode = "text".to_string(),
@@ -978,6 +982,8 @@ impl<'a> ConnectionTab<'a> {
                                                     if let Some(cfg) = updated {
                                                         app.storage.update_connection(cfg);
                                                     }
+                                                    // 转换型语义: 切模式时把输入内容整体互转(hex → 文本)
+                                                    app.convert_input_on_mode_switch(&tab_id_text, &from_mode, "text", window, cx);
                                                     // 输入模式影响自动回复内容解析, 同步到网络层
                                                     app.sync_auto_reply_to_network(&tab_id_text, cx);
                                                     cx.notify();
@@ -1009,7 +1015,9 @@ impl<'a> ConnectionTab<'a> {
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id_hex = tab_id.clone();
                                                 move |app, _event, window, cx| {
+                                                    let mut from_mode = String::new();
                                                     let updated = app.connection_tabs.get_mut(&tab_id_hex).map(|tab_state| {
+                                                        from_mode = tab_state.message_input_mode.clone();
                                                         tab_state.message_input_mode = String::from("hex");
                                                         match &mut tab_state.connection_config {
                                                             ConnectionConfig::Client(c) => c.message_input_mode = "hex".to_string(),
@@ -1020,7 +1028,8 @@ impl<'a> ConnectionTab<'a> {
                                                     if let Some(cfg) = updated {
                                                         app.storage.update_connection(cfg);
                                                     }
-                                                    app.sanitize_hex_input(&tab_id_hex, window, cx);
+                                                    // 转换型语义: 切模式时把输入内容整体互转(文本 → hex)并规范化
+                                                    app.convert_input_on_mode_switch(&tab_id_hex, &from_mode, "hex", window, cx);
                                                     // 切到 hex 后聚焦编辑器: 光标立刻可见, 可直接键入
                                                     if let Some(tab_state) = app.connection_tabs.get(&tab_id_hex) {
                                                         if let Some(editor) = tab_state.message_hex_editor.as_ref() {

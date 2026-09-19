@@ -33,11 +33,6 @@ use crate::ui::dialog::variable_picker::render_variable_picker;
 
 use super::{dialog_content_max_height, dialog_height};
 
-/// 文本模式默认报文
-const DEFAULT_TEXT_PAYLOAD: &str = "PING ${seq}";
-/// hex 模式默认报文 ("PING" 的十六进制)
-const DEFAULT_HEX_PAYLOAD: &str = "50494E47${seq}";
-
 /// 停止条件类型(UI 选择用)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopConditionType {
@@ -127,6 +122,8 @@ impl StressConfigDialogState {
                         .line_number(false)
                         .folding(false)
                         .multi_line(true)
+                        // 关闭 Input 内置的原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」绘制菜单
+                        .context_menu(false)
                         .placeholder(t!("stress_config.payload_placeholder").to_string())
                 });
                 input.update(cx, |input, cx| {
@@ -757,14 +754,8 @@ fn render_payload_mode_chip(
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     entity.update(cx, |app, cx| {
                         if let Some(s) = &mut app.stress_config_dialog {
-                            // 切回文本时，若当前是 hex 默认报文则换回文本默认
-                            let current = s.payload_input.read(cx).value().to_string();
-                            if current == DEFAULT_HEX_PAYLOAD {
-                                s.payload_input.update(cx, |input, cx| {
-                                    input.set_value(DEFAULT_TEXT_PAYLOAD.to_string(), window, cx);
-                                });
-                            }
-                            s.message_input_mode = "text".to_string();
+                            // 转换型语义: 切模式时把报文内容整体互转(hex → 文本)
+                            convert_payload_on_mode_switch(s, "text", window, cx);
                             s.show_variable_picker = false;
                         }
                         cx.notify();
@@ -786,14 +777,8 @@ fn render_payload_mode_chip(
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     entity_hex.update(cx, |app, cx| {
                         if let Some(s) = &mut app.stress_config_dialog {
-                            // 切到 hex 时，若当前是文本默认报文则换为 hex 默认
-                            let current = s.payload_input.read(cx).value().to_string();
-                            if current == DEFAULT_TEXT_PAYLOAD {
-                                s.payload_input.update(cx, |input, cx| {
-                                    input.set_value(DEFAULT_HEX_PAYLOAD.to_string(), window, cx);
-                                });
-                            }
-                            s.message_input_mode = "hex".to_string();
+                            // 转换型语义: 切模式时把报文内容整体互转(文本 → hex)
+                            convert_payload_on_mode_switch(s, "hex", window, cx);
                             s.show_variable_picker = false;
                             // 切到 hex 后聚焦编辑器: 光标立刻可见, 可直接键入
                             let focus = s.payload_hex_editor.read(cx).focus.clone();
@@ -803,6 +788,29 @@ fn render_payload_mode_chip(
                     });
                 }),
         )
+}
+
+/// 压测报文模式切换时转换内容（与消息输入框同一套转换语义）。
+/// 内容非法 hex 时不动内容，保持既有「不擅自改动用户内容」。
+fn convert_payload_on_mode_switch(
+    state: &mut StressConfigDialogState,
+    to_mode: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let from_mode = state.message_input_mode.clone();
+    if from_mode == to_mode {
+        return;
+    }
+    let value = state.payload_input.read(cx).value().to_string();
+    if let Some(converted) = crate::utils::hex::convert_value(&value, &from_mode, to_mode) {
+        if converted != value {
+            state.payload_input.update(cx, |input, cx| {
+                input.replace_all(converted, window, cx)
+            });
+        }
+    }
+    state.message_input_mode = to_mode.to_string();
 }
 
 /// 渲染更多设置折叠区

@@ -16,6 +16,7 @@ use crate::network::events::{ConnectionEvent, NetCounters};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
+use crate::utils::hex::convert_value;
 
 use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::connection_tab::ConnectionTabState;
@@ -529,14 +530,25 @@ impl NetAssistantApp {
         }
     }
 
-    /// 切换到 hex 模式时规范化十六进制输入：统一「两位一组、空格分隔」。
-    /// 解析失败（含非法字符）时不动内容，交由 UI 错误提示。
-    pub fn sanitize_hex_input(
+    /// 模式切换时转换输入框内容（转换型语义：文本 ↔ Hex 双向互转）。
+    ///
+    /// - `text → hex`：内容按 UTF-8 逐字节编码为 hex（`${...}` 变量原样保留），
+    ///   再按既有规范格式化为「两位一组、空格分隔」
+    /// - `hex → text`：内容为合法 hex 时解码回字符（不可打印字节用 `\xNN` 转义）；
+    ///   内容非法时不动内容（与既有「不擅自改动用户内容」一致）
+    ///
+    /// 覆盖消息输入框与自动回复输入框；`from_mode == to_mode` 时不做任何事。
+    pub fn convert_input_on_mode_switch(
         &mut self,
         tab_id: &str,
+        from_mode: &str,
+        to_mode: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if from_mode == to_mode {
+            return;
+        }
         let inputs: Vec<Entity<InputState>> = self
             .connection_tabs
             .get(tab_id)
@@ -546,10 +558,17 @@ impl NetAssistantApp {
             .collect();
         for input in inputs {
             let value = input.read(cx).value().to_string();
-            if let Some(normalized) =
-                crate::ui::components::hex_editor::adapter::normalize_hex_value(&value)
-            {
-                input.update(cx, |input, cx| input.replace_all(normalized, window, cx));
+            let Some(converted) = convert_value(&value, from_mode, to_mode) else {
+                continue;
+            };
+            let next = if to_mode == "hex" {
+                crate::ui::components::hex_editor::adapter::normalize_hex_value(&converted)
+                    .unwrap_or(converted)
+            } else {
+                converted
+            };
+            if next != value {
+                input.update(cx, |input, cx| input.replace_all(next, window, cx));
             }
         }
     }
@@ -643,6 +662,18 @@ impl NetAssistantApp {
         cx: &mut Context<Self>,
     ) {
         if !self.auto_reply_inputs.contains_key(&tab_id) {
+            // 默认回复内容随当前模式生成: 文本模式下 "ok", hex 模式下为 "ok" 的编码,
+            // 避免默认值在 hex 模式被判为非法 hex
+            let default_reply = if self
+                .connection_tabs
+                .get(&tab_id)
+                .map(|tab| tab.message_input_mode == "hex")
+                .unwrap_or(false)
+            {
+                "6F 6B"
+            } else {
+                "ok"
+            };
             let auto_reply_input = cx.new(|cx| {
                 InputState::new(window, cx)
                     .code_editor("json")
@@ -650,10 +681,12 @@ impl NetAssistantApp {
                     .folding(false)
                     // .rows(5)
                     .multi_line(true)
+                    // 关闭 Input 内置的原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」绘制菜单
+                    .context_menu(false)
                     .placeholder(t!("app_ui.auto_reply_placeholder").to_string())
             });
             auto_reply_input.update(cx, |input, cx| {
-                input.set_value("ok".to_string(), window, cx);
+                input.set_value(default_reply.to_string(), window, cx);
             });
             // 自动回复框面板较窄: 每行 5 字节
             let hex_editor = cx.new(|cx| {
@@ -877,11 +910,21 @@ impl NetAssistantApp {
                 }
                 let updated_config = existing.clone();
                 self.storage.update_connection(updated_config.clone());
-                // 同步已打开的标签页
+                // 同步已打开的标签页; 模式变更时按「转换型语义」整体互转输入内容
+                // (否则切到 hex 后原文本会被判为非法 hex)
+                let to_mode = updated_config.message_input_mode().to_string();
+                let from_mode = self
+                    .connection_tabs
+                    .get(&edit_id)
+                    .map(|tab_state| tab_state.message_input_mode.clone())
+                    .unwrap_or_else(|| to_mode.clone());
                 if let Some(tab_state) = self.connection_tabs.get_mut(&edit_id) {
                     tab_state.connection_config = updated_config.clone();
-                    tab_state.message_input_mode = updated_config.message_input_mode().to_string();
+                    tab_state.message_input_mode = to_mode.clone();
                 }
+                self.convert_input_on_mode_switch(&edit_id, &from_mode, &to_mode, window, cx);
+                // 转换走的是 replace_all(不发 Change 事件), 需手动把自动回复同步到网络层
+                self.sync_auto_reply_to_network(&edit_id, cx);
             }
         } else {
             // 新建模式
