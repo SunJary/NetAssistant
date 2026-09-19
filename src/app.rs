@@ -2404,11 +2404,13 @@ impl NetAssistantApp {
                     tab_state.local_endpoint = None;
                     cx.notify();
                 }
-                // 清理连接信息，确保下次发送时直接失败
+                // 清理连接信息，确保下次发送时直接失败。
+                // 注意: 解码器控制通道(decoder_control_senders/server_decoder_controls)不在此清理——
+                // 发送方向出错不代表读方向已结束, 读任务仍需持有其控制通道; 丢弃 sender 会让该连接
+                // 从此收不到运行时解码器下发(历史上还会因该分支恒就绪而让读任务忙转独占运行时)。
+                // 这些条目由重连覆盖或 close_tab 统一清理。
                 self.client_write_senders.remove(&tab_id);
                 self.server_clients.remove(&tab_id);
-                self.decoder_control_senders.remove(&tab_id);
-                self.server_decoder_controls.remove(&tab_id);
             }
             ConnectionEvent::ClientWriteSenderReady(tab_id, write_sender) => {
                 // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满

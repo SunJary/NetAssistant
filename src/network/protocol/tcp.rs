@@ -232,7 +232,8 @@ impl NetworkConnection for TcpClient {
             let net_counters_clone = net_counters.clone();
             let decoder_config = config.decoder_config.clone();
             let read_cancel_token = cancel_token.clone();
-            let decoder_control_rx = decoder_control_rx;
+            // 用 Option 包装: 控制通道关闭后置 None, 让 select! 中该分支退化为 pending
+            let mut decoder_control_rx = Some(decoder_control_rx);
             tokio::spawn(async move {
                 let mut buffer = BytesMut::with_capacity(16384);
                 let mut batch = ReceivedBatch::with_capacity(64);
@@ -337,8 +338,21 @@ impl NetworkConnection for TcpClient {
                             }
                         }
 
-                        // 运行时下发解码器配置: 先刷新旧解码器待处理数据, 再替换为新解码器
-                        new_config = decoder_control_rx.recv() => {
+                        // 运行时下发解码器配置: 先刷新旧解码器待处理数据, 再替换为新解码器。
+                        // 注意: 发送端被 drop 后 recv() 恒为就绪的 Err(通道为空且无发送端),
+                        // 该分支若既不 break 也不 await, select! 每轮都会命中且全程无让出点,
+                        // 单次 poll 永不返回 Pending → 整个运行时被独占(100% CPU 忙转), 同
+                        // 运行时的其他任务(含超时)全部饿死。故置 None 让分支退化为 pending:
+                        // 此后不再有解码器下发, 连接照常收发。
+                        new_config = async {
+                            match decoder_control_rx.as_ref() {
+                                Some(rx) => rx.recv().await,
+                                None => std::future::pending::<
+                                    Result<DecoderConfig, smol::channel::RecvError>,
+                                >()
+                                .await,
+                            }
+                        } => {
                             if let Ok(new_config) = new_config {
                                 debug!("[TCP客户端] 收到运行时解码器配置更新: {:?}", new_config);
                                 if let Some(data) = decoder.force_flush() {
@@ -354,6 +368,9 @@ impl NetworkConnection for TcpClient {
                                 }
                                 decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
                                 info!("[TCP客户端] 解码器已运行时更新");
+                            } else {
+                                debug!("[TCP客户端] 解码器控制通道已关闭, 不再接收运行时解码器下发");
+                                decoder_control_rx = None;
                             }
                         }
 
@@ -660,7 +677,8 @@ impl NetworkServer for TcpServer {
                                     let encoder = CodecFactory::create_encoder(
                                         &config_clone_for_client.decoder_config,
                                     );
-                                    let decoder_control_rx = decoder_control_rx;
+                                    // 用 Option 包装: 控制通道关闭后置 None, 让 select! 中该分支退化为 pending
+                                    let mut decoder_control_rx = Some(decoder_control_rx);
                                     let auto_reply_state = auto_reply_state_for_client;
                                     let client_tx_auto_reply = client_tx_auto_reply;
 
@@ -793,8 +811,19 @@ impl NetworkServer for TcpServer {
                                                     }
                                                 }
 
-                                                // 运行时下发解码器配置: 先刷新旧解码器待处理数据, 再替换为新解码器
-                                                new_config = decoder_control_rx.recv() => {
+                                                // 运行时下发解码器配置: 先刷新旧解码器待处理数据, 再替换为新解码器。
+                                                // 与客户端读循环同一处理: 发送端被 drop 后 recv() 恒为就绪的
+                                                // Err, 分支无让出点会让 select! 每轮空转并独占整个运行时,
+                                                // 故置 None 使其退化为 pending(此后不再有解码器下发)。
+                                                new_config = async {
+                                                    match decoder_control_rx.as_ref() {
+                                                        Some(rx) => rx.recv().await,
+                                                        None => std::future::pending::<
+                                                            Result<DecoderConfig, smol::channel::RecvError>,
+                                                        >()
+                                                        .await,
+                                                    }
+                                                } => {
                                                     if let Ok(new_config) = new_config {
                                                         debug!("[TCP服务器] 客户端 {} 收到运行时解码器配置更新: {:?}", addr, new_config);
                                                         if let Some(data) = decoder.force_flush() {
@@ -818,6 +847,9 @@ impl NetworkServer for TcpServer {
                                                         }
                                                         decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
                                                         info!("[TCP服务器] 客户端 {} 解码器已运行时更新", addr);
+                                                    } else {
+                                                        debug!("[TCP服务器] 客户端 {} 解码器控制通道已关闭, 不再接收运行时解码器下发", addr);
+                                                        decoder_control_rx = None;
                                                     }
                                                 }
                                             }
