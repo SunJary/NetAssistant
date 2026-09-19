@@ -256,16 +256,23 @@ impl FavoriteItem {
 
 pub type FavoritesMap = HashMap<String, Vec<FavoriteItem>>;
 
-/// 默认消息列表最大保留条数（超出后丢弃最旧的消息以控制内存占用）
-const DEFAULT_MAX_MESSAGES: usize = 10000;
+/// 默认「保留最后 N 条」条数（0 = 不限制）。
+pub const DEFAULT_KEEP_LAST: usize = 10_000;
 
-/// 用户配置 max_messages=0（不限制）时的硬上限护栏
-///
-/// 虚拟列表渲染安全，但内存随消息数无界增长;超过此值后回退为
-/// 与有上限模式相同的分批淘汰（每批 limit/30 条）。
-const HARD_MAX_MESSAGES: usize = 1_000_000;
+/// 「保留最后 N 条」的上限，防止手误输入超大值（10_000_000 条约 2.4 GB）。
+pub const MAX_KEEP_LAST: usize = 10_000_000;
+
+/// 触发裁剪的滞后量：积累到 keep_last + slack 才裁回 keep_last，
+/// 把一次 O(N) 的 memmove 摊薄到 slack 次追加上。
+fn evict_slack(keep_last: usize) -> usize {
+    (keep_last / 30).max(1)
+}
 
 /// 消息列表状态
+///
+/// 尾部追加 + 可选按条数淘汰：`keep_last` 为 0 时不淘汰，否则只保留最后
+/// `keep_last` 条。不变式：仅当标签页的「自动滚动」开启时才可能非 0，
+/// 这样头部淘汰只会发生在视口跟随尾部、用户不可见的时刻。
 #[derive(Debug, Clone)]
 pub struct MessageListState {
     /// 使用 Arc 包装，渲染时 clone 仅增加引用计数（O(1)），避免每帧克隆整个 Vec。
@@ -273,8 +280,8 @@ pub struct MessageListState {
     pub messages: Arc<Vec<Message>>,
     pub total_sent: usize,
     pub total_received: usize,
-    /// 消息列表最大保留条数，0 表示不限制（实际受 HARD_MAX_MESSAGES 硬护栏约束）。超出后丢弃最旧的消息。
-    pub max_messages: usize,
+    /// 保留最后 N 条；0 = 不限制（不淘汰）。
+    pub keep_last: usize,
 }
 
 impl Default for MessageListState {
@@ -283,7 +290,7 @@ impl Default for MessageListState {
             messages: Arc::new(Vec::new()),
             total_sent: 0,
             total_received: 0,
-            max_messages: DEFAULT_MAX_MESSAGES,
+            keep_last: DEFAULT_KEEP_LAST,
         }
     }
 }
@@ -293,37 +300,51 @@ impl MessageListState {
         Self::default()
     }
 
-    /// 实际生效的上限: 0(不限制)回退到硬护栏,其余按用户配置
-    fn effective_limit(&self) -> usize {
-        if self.max_messages == 0 {
-            HARD_MAX_MESSAGES
-        } else {
-            self.max_messages
+    /// 精确裁剪到 keep_last；返回被丢弃条数。keep_last == 0 时不动。
+    ///
+    /// 注意：无需淘汰时必须在 `Arc::make_mut` 之前返回。导出等路径会 clone 这个 Arc
+    /// （refcount>1），此时 make_mut 会整体深拷贝整个 Vec，白白付出几十~几百 MB。
+    fn evict(&mut self) -> usize {
+        let keep_last = self.keep_last;
+        let len = self.messages.len();
+        if keep_last == 0 || len <= keep_last {
+            return 0;
         }
+        let dropped = len - keep_last;
+        Arc::make_mut(&mut self.messages).drain(0..dropped);
+        dropped
     }
 
-    /// 添加一条消息，返回因超出上限而从列表头部丢弃的消息条数。
+    /// 滞后裁剪，常规追加路径使用。未超过阈值时不产生任何开销。
+    fn evict_with_hysteresis(&mut self) -> usize {
+        if self.keep_last == 0
+            || self.messages.len() <= self.keep_last + evict_slack(self.keep_last)
+        {
+            return 0;
+        }
+        self.evict()
+    }
+
+    /// 设置保留条数并**立即**精确裁剪（不走滞后），返回被丢弃条数。
+    ///
+    /// 用户显式改设置时要求立刻看到效果（内存立刻释放、条数立刻收敛）。
+    pub fn set_keep_last(&mut self, keep_last: usize) -> usize {
+        self.keep_last = keep_last;
+        self.evict()
+    }
+
+    /// 添加一条消息，返回被淘汰条数。
     pub fn add_message(&mut self, message: Message) -> usize {
         match message.direction {
             MessageDirection::Sent => self.total_sent += 1,
             MessageDirection::Received => self.total_received += 1,
         }
-        let limit = self.effective_limit();
-        let messages = Arc::make_mut(&mut self.messages);
-        let dropped = if messages.len() >= limit {
-            // 分批丢弃最旧的消息以分摊开销（10% 或至少 1 条）
-            let drop_count = (limit / 30).max(1).min(messages.len());
-            messages.drain(0..drop_count);
-            drop_count
-        } else {
-            0
-        };
-        messages.push(message);
-        dropped
+        Arc::make_mut(&mut self.messages).push(message);
+        self.evict_with_hysteresis()
     }
 
-    /// 批量添加消息，返回因超出上限而从列表头部丢弃的消息条数。
-    /// 相比逐条 add_message，仅重建一次 Arc，显著降低高并发消息洪泛下的开销。
+    /// 批量添加消息，返回被淘汰条数。相比逐条 add_message，仅重建一次 Arc 且只做一次
+    /// reserve，显著降低高并发消息洪泛下的开销。
     pub fn add_messages_batch(&mut self, new_messages: Vec<Message>) -> usize {
         if new_messages.is_empty() {
             return 0;
@@ -334,19 +355,10 @@ impl MessageListState {
                 MessageDirection::Received => self.total_received += 1,
             }
         }
-        let limit = self.effective_limit();
         let messages = Arc::make_mut(&mut self.messages);
         messages.reserve(new_messages.len());
-        let mut dropped = 0;
-        for message in new_messages {
-            if messages.len() >= limit {
-                let drop_count = (limit / 30).max(1).min(messages.len());
-                messages.drain(0..drop_count);
-                dropped += drop_count;
-            }
-            messages.push(message);
-        }
-        dropped
+        messages.extend(new_messages);
+        self.evict_with_hysteresis()
     }
 
     /// 用网络层精确计数覆盖显示计数(接收/发送 total)。
@@ -530,66 +542,28 @@ mod tests {
         assert_eq!(state.total_messages(), 2);
     }
 
-    #[test]
-    fn test_effective_limit_hard_cap() {
-        let mut state = MessageListState::new();
-        // max_messages=0(不限制) 回退到硬护栏,防止内存无界增长
-        state.max_messages = 0;
-        assert_eq!(state.effective_limit(), super::HARD_MAX_MESSAGES);
-        // 有配置时按用户配置生效
-        state.max_messages = 5000;
-        assert_eq!(state.effective_limit(), 5000);
-    }
-
-    #[test]
-    fn test_message_list_max_limit() {
-        let mut state = MessageListState::new();
-        state.max_messages = 5;
-
-        // 添加 5 条消息（未超限，不丢弃）
-        for i in 0..5u8 {
-            let dropped = state.add_message(Message::new(
-                MessageDirection::Received,
-                vec![i],
-                MessageType::Hex,
-            ));
-            assert_eq!(dropped, 0);
-        }
-        assert_eq!(state.messages.len(), 5);
-        assert_eq!(state.total_messages(), 5);
-
-        // 添加第 6 条，触发丢弃（max_messages/10=0，至少丢弃 1 条）
-        let dropped = state.add_message(Message::new(
+    /// 造一条内容为序号 i 的文本消息，便于断言保留窗口。
+    fn numbered_message(i: usize) -> Message {
+        Message::new(
             MessageDirection::Received,
-            vec![5],
-            MessageType::Hex,
-        ));
-        assert_eq!(dropped, 1);
-        assert_eq!(state.messages.len(), 5);
-        // 最旧的消息（vec![0]）已被丢弃
-        assert_eq!(state.messages[0].raw_data, vec![1]);
-        assert_eq!(state.messages.last().unwrap().raw_data, vec![5]);
-        // 累计总数仍为 6（含已丢弃的）
-        assert_eq!(state.total_messages(), 6);
+            i.to_string().into_bytes(),
+            MessageType::Text,
+        )
+    }
 
-        // 再添加一条，继续丢弃最旧的
-        let dropped = state.add_message(Message::new(
-            MessageDirection::Sent,
-            vec![6],
-            MessageType::Hex,
-        ));
-        assert_eq!(dropped, 1);
-        assert_eq!(state.messages.len(), 5);
-        assert_eq!(state.messages[0].raw_data, vec![2]);
-        // 累计：5 接收 + 1 发送 = 6，加新发送 = 7
-        assert_eq!(state.total_messages(), 7);
+    /// 取消息内容中的序号。
+    fn message_number(message: &Message) -> usize {
+        String::from_utf8(message.raw_data.clone())
+            .unwrap()
+            .parse::<usize>()
+            .unwrap()
     }
 
     #[test]
-    fn test_message_list_unlimited() {
+    fn test_message_list_append_within_cap() {
         let mut state = MessageListState::new();
-        state.max_messages = 0; // 不限制
 
+        // 默认上限 10000，连续添加 100 条：不触发淘汰，最早的消息仍在头部
         for i in 0..100u8 {
             let dropped = state.add_message(Message::new(
                 MessageDirection::Received,
@@ -600,40 +574,30 @@ mod tests {
         }
         assert_eq!(state.messages.len(), 100);
         assert_eq!(state.total_messages(), 100);
+        assert_eq!(state.messages[0].raw_data, vec![0]);
+        assert_eq!(state.messages[99].raw_data, vec![99]);
     }
 
     #[test]
-    fn test_message_list_default_max() {
-        // 默认上限应为 10000
-        let state = MessageListState::new();
-        assert_eq!(state.max_messages, 10000);
-    }
-
-    #[test]
-    fn test_add_messages_batch() {
+    fn test_add_messages_batch_within_cap() {
         let mut state = MessageListState::new();
-        state.max_messages = 5;
 
-        // 批量添加 3 条消息（未超限，不丢弃）
         let batch: Vec<Message> = (0..3u8)
             .map(|i| Message::new(MessageDirection::Received, vec![i], MessageType::Hex))
             .collect();
-        let dropped = state.add_messages_batch(batch);
-        assert_eq!(dropped, 0);
+        assert_eq!(state.add_messages_batch(batch), 0);
         assert_eq!(state.messages.len(), 3);
         assert_eq!(state.total_received, 3);
         assert_eq!(state.messages[0].raw_data, vec![0]);
         assert_eq!(state.messages[2].raw_data, vec![2]);
 
-        // 批量添加 3 条消息，触发丢弃（max=5, 当前=3, 加3=6 超1）
+        // 第二批：远未到上限，全部追加，头部未被丢弃
         let batch: Vec<Message> = (3..6u8)
             .map(|i| Message::new(MessageDirection::Sent, vec![i], MessageType::Hex))
             .collect();
-        let dropped = state.add_messages_batch(batch);
-        assert_eq!(dropped, 1);
-        assert_eq!(state.messages.len(), 5);
-        // 最旧的 vec![0] 已被丢弃
-        assert_eq!(state.messages[0].raw_data, vec![1]);
+        assert_eq!(state.add_messages_batch(batch), 0);
+        assert_eq!(state.messages.len(), 6);
+        assert_eq!(state.messages[0].raw_data, vec![0]);
         assert_eq!(state.messages.last().unwrap().raw_data, vec![5]);
         // 累计：3 接收 + 3 发送 = 6
         assert_eq!(state.total_messages(), 6);
@@ -642,23 +606,124 @@ mod tests {
     #[test]
     fn test_add_messages_batch_empty() {
         let mut state = MessageListState::new();
-        let dropped = state.add_messages_batch(Vec::new());
-        assert_eq!(dropped, 0);
+        assert_eq!(state.add_messages_batch(Vec::new()), 0);
         assert_eq!(state.messages.len(), 0);
     }
 
     #[test]
-    fn test_add_messages_batch_unlimited() {
-        let mut state = MessageListState::new();
-        state.max_messages = 0;
+    fn test_default_keep_last() {
+        assert_eq!(MessageListState::default().keep_last, super::DEFAULT_KEEP_LAST);
+        assert_eq!(super::DEFAULT_KEEP_LAST, 10_000);
+    }
 
-        let batch: Vec<Message> = (0..100u8)
-            .map(|i| Message::new(MessageDirection::Received, vec![i], MessageType::Hex))
-            .collect();
-        let dropped = state.add_messages_batch(batch);
-        assert_eq!(dropped, 0);
+    #[test]
+    fn test_keep_last_zero_never_evicts() {
+        let mut state = MessageListState::new();
+        assert_eq!(state.set_keep_last(0), 0);
+
+        // 0 = 不限制：追加 50000 条也不能丢弃任何消息
+        for i in 0..50_000usize {
+            assert_eq!(state.add_message(numbered_message(i)), 0);
+        }
+        assert_eq!(state.messages.len(), 50_000);
+        assert_eq!(message_number(&state.messages[0]), 0);
+        assert_eq!(message_number(state.messages.last().unwrap()), 49_999);
+    }
+
+    #[test]
+    fn test_keep_last_evicts_oldest() {
+        let mut state = MessageListState::new();
+        state.set_keep_last(100);
+        let slack = super::evict_slack(100);
+
+        for i in 0..500usize {
+            let dropped = state.add_message(numbered_message(i));
+            // 滞后裁剪：每次追加后长度不超过 keep_last + slack
+            assert!(state.messages.len() <= 100 + slack);
+            // 滞后窗口内不淘汰，超阈值时一次裁回 keep_last
+            assert!(dropped == 0 || dropped >= slack + 1);
+        }
+
         assert_eq!(state.messages.len(), 100);
-        assert_eq!(state.total_messages(), 100);
+        // 保留窗口是从尾部起来的连续区间
+        let first = message_number(&state.messages[0]);
+        assert_eq!(first + state.messages.len(), 500);
+        assert_eq!(message_number(state.messages.last().unwrap()), 499);
+    }
+
+    #[test]
+    fn test_add_messages_batch_evicts() {
+        let mut state = MessageListState::new();
+        state.set_keep_last(100);
+        let slack = super::evict_slack(100);
+
+        let mut total_dropped = 0;
+        for batch_ix in 0..5usize {
+            let batch: Vec<Message> = (0..50usize)
+                .map(|i| numbered_message(batch_ix * 50 + i))
+                .collect();
+            total_dropped += state.add_messages_batch(batch);
+            assert!(state.messages.len() <= 100 + slack);
+        }
+
+        assert!(total_dropped > 0);
+        assert_eq!(state.messages.len(), 100);
+        // 保留的是最后 100 条
+        assert_eq!(message_number(&state.messages[0]), 150);
+        assert_eq!(message_number(state.messages.last().unwrap()), 249);
+    }
+
+    #[test]
+    fn test_no_drop_keeps_arc_shared() {
+        // 无需淘汰时不得触发 Arc::make_mut 的深拷贝（导出路径会 clone 该 Arc）
+        let mut state = MessageListState::new();
+        for i in 0..10usize {
+            state.add_message(numbered_message(i));
+        }
+        // 模拟导出：外部持有一份引用
+        let export_ref = state.messages.clone();
+        let ptr_before = Arc::as_ptr(&state.messages);
+
+        // 0（不淘汰）与放大上限都不该产生任何拷贝
+        assert_eq!(state.set_keep_last(0), 0);
+        assert_eq!(state.set_keep_last(100), 0);
+        assert_eq!(Arc::as_ptr(&state.messages), ptr_before);
+        assert_eq!(export_ref.len(), 10);
+    }
+
+    #[test]
+    fn test_set_keep_last_trims_immediately() {
+        let mut state = MessageListState::new();
+        for i in 0..1000usize {
+            state.add_message(numbered_message(i));
+        }
+        assert_eq!(state.messages.len(), 1000);
+
+        // 显式改设置不走滞后，立即精确裁剪
+        assert_eq!(state.set_keep_last(100), 900);
+        assert_eq!(state.messages.len(), 100);
+        assert_eq!(message_number(&state.messages[0]), 900);
+
+        // 放大上限不恢复已丢弃的消息
+        assert_eq!(state.set_keep_last(500), 0);
+        assert_eq!(state.messages.len(), 100);
+    }
+
+    #[test]
+    fn test_batch_larger_than_keep_last() {
+        let mut state = MessageListState::new();
+        state.set_keep_last(10);
+
+        let batch: Vec<Message> = (0..100usize).map(numbered_message).collect();
+        let dropped = state.add_messages_batch(batch);
+
+        assert_eq!(dropped, 90);
+        assert_eq!(state.messages.len(), 10);
+        // 保留本批最后 10 条
+        assert_eq!(message_number(&state.messages[0]), 90);
+        assert_eq!(message_number(state.messages.last().unwrap()), 99);
+        // 累计计数不回退
+        assert_eq!(state.total_received, 100);
     }
 
     #[test]

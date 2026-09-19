@@ -181,6 +181,18 @@ connection_tab:
   auto_scroll:
     zh-CN: 自动滚动
     en: Auto Scroll
+  keep_last:
+    zh-CN: 保留最后
+    en: Keep last
+  keep_last_unit:
+    zh-CN: 条
+    en: messages
+  keep_last_tooltip:
+    zh-CN: 限制消息记录最多保留 N 条，超出后自动淘汰最早的消息，防止内存占用过多；0 表示不限制
+    en: Keep at most N messages; older ones are dropped to limit memory usage. 0 means unlimited
+  keep_last_disabled_tooltip:
+    zh-CN: 关闭自动滚动时不淘汰消息，因此固定为 0
+    en: Auto scroll is off, so no messages are dropped (fixed at 0)
   display_format:
     zh-CN: "格式:%{label}"
     en: "Format: %{label}"

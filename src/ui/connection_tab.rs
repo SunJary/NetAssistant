@@ -26,7 +26,9 @@ use crate::app::NetAssistantApp;
 use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
 use crate::custom_icons::CustomIconName;
 use crate::log_writer::LogWriter;
-use crate::message::{Message, MessageDirection, MessageDisplayMode, MessageListState};
+use crate::message::{
+    DEFAULT_KEEP_LAST, Message, MessageDirection, MessageDisplayMode, MessageListState,
+};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
 use crate::ui::stress_panel::StressPanel;
@@ -64,6 +66,11 @@ pub struct ConnectionTabState {
     pub periodic_interval_input: Option<Entity<InputState>>,
     // 使用 Arc<Mutex> 包装以支持克隆
     pub periodic_send_timer: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
+
+    /// 「保留最后 N 条」输入框（0 = 不限制）。关闭自动滚动时禁用并强制为 0。
+    pub keep_last_input: Entity<InputState>,
+    /// 关闭自动滚动前的保留条数，用于重新开启时恢复（含 0）。
+    pub keep_last_backup: usize,
 
     // 服务端和客户端的控制句柄
     pub server_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
@@ -153,6 +160,15 @@ impl ConnectionTabState {
             },
             periodic_send_timer: None,
 
+            keep_last_input: {
+                let input = cx.new(|cx| InputState::new(window, cx));
+                input.update(cx, |input, cx| {
+                    input.set_value(DEFAULT_KEEP_LAST.to_string(), window, cx);
+                });
+                input
+            },
+            keep_last_backup: DEFAULT_KEEP_LAST,
+
             // 初始化服务端和客户端的控制句柄
             server_handle: None,
             client_handle: None,
@@ -220,12 +236,12 @@ impl ConnectionTabState {
         let dropped = self.message_list.add_message(message);
         let new_count = self.message_list.messages.len();
 
-        // 更新 GPUI 列表状态：先移除头部丢弃项，再在尾部追加新项
+        // 先补尾部、再删头部：每一步都作用在当时的索引空间上
+        self.message_list_state.splice(old_count..old_count, 1);
         if dropped > 0 {
+            // 不变式：淘汰只发生在自动滚动开启时，随后的 scroll_to 会覆盖锚点
             self.message_list_state.splice(0..dropped, 0);
         }
-        let insert_pos = old_count - dropped;
-        self.message_list_state.splice(insert_pos..insert_pos, 1);
 
         if self.auto_scroll_enabled && new_count > 0 {
             self.message_list_state.scroll_to(gpui::ListOffset {
@@ -257,18 +273,19 @@ impl ConnectionTabState {
         }
 
         let old_count = self.message_list.messages.len();
+        let added = messages.len();
         let dropped = self.message_list.add_messages_batch(messages);
         let new_count = self.message_list.messages.len();
 
-        // 批量更新列表状态：先移除丢弃项，再追加新增项（一次 splice）
-        if dropped > 0 {
-            self.message_list_state.splice(0..dropped, 0);
-        }
-        let added = new_count - (old_count - dropped);
-        let insert_pos = old_count - dropped;
+        // 先补尾部、再删头部：尾部 splice 必须无条件执行，
+        // 否则 GPUI 的 item_count 会与 Vec 长度错位
         if added > 0 {
             self.message_list_state
-                .splice(insert_pos..insert_pos, added);
+                .splice(old_count..old_count, added);
+        }
+        if dropped > 0 {
+            // 不变式：淘汰只发生在自动滚动开启时，随后的 scroll_to 会覆盖锚点
+            self.message_list_state.splice(0..dropped, 0);
         }
 
         // 批末单次滚动
@@ -1414,11 +1431,38 @@ impl<'a> ConnectionTab<'a> {
                                             })
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id = tab_id.clone();
-                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                    if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
-                                                        tab_state.auto_scroll_enabled = !tab_state.auto_scroll_enabled;
-                                                        cx.notify();
+                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) else { return };
+
+                                                    if tab_state.auto_scroll_enabled {
+                                                        // 开 → 关：备份当前 N，置 0（不淘汰），输入框置 0 并禁用
+                                                        tab_state.auto_scroll_enabled = false;
+                                                        tab_state.keep_last_backup = tab_state.message_list.keep_last;
+                                                        // 0 不删任何消息，无需 splice
+                                                        tab_state.message_list.set_keep_last(0);
+                                                        tab_state.keep_last_input.update(cx, |input, cx| {
+                                                            input.set_value("0", window, cx);
+                                                        });
+                                                    } else {
+                                                        // 关 → 开：逐字恢复备份值（含 0），立即裁剪，滚到底部
+                                                        tab_state.auto_scroll_enabled = true;
+                                                        let restore = tab_state.keep_last_backup;
+                                                        let dropped = tab_state.message_list.set_keep_last(restore);
+                                                        if dropped > 0 {
+                                                            tab_state.message_list_state.splice(0..dropped, 0);
+                                                        }
+                                                        tab_state.keep_last_input.update(cx, |input, cx| {
+                                                            input.set_value(restore.to_string(), window, cx);
+                                                        });
+                                                        let new_count = tab_state.message_list.messages.len();
+                                                        if new_count > 0 {
+                                                            tab_state.message_list_state.scroll_to(gpui::ListOffset {
+                                                                item_ix: new_count,
+                                                                offset_in_item: px(0.),
+                                                            });
+                                                        }
                                                     }
+                                                    cx.notify();
                                                 }
                                             })),
                                     )
@@ -1429,6 +1473,57 @@ impl<'a> ConnectionTab<'a> {
                                             .child(t!("connection_tab.auto_scroll").to_string()),
                                     ),
                             )
+                            // 保留最后 N 条（与自动滚动联动：关闭自动滚动时不淘汰，固定为 0）
+                            .child({
+                                let disabled = !self.tab_state.auto_scroll_enabled;
+                                div()
+                                    .id(format!("keep-last-{}", tab_id))
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme.muted_foreground)
+                                            .child(t!("connection_tab.keep_last").to_string()),
+                                    )
+                                    .child(
+                                        div()
+                                            .w_20()
+                                            .min_w_16()
+                                            .h_7()
+                                            .bg(theme.secondary)
+                                            .rounded_md()
+                                            .border_1()
+                                            .border_color(theme.border)
+                                            .when(disabled, |d| d.opacity(0.5))
+                                            .child(
+                                                Input::new(&self.tab_state.keep_last_input)
+                                                    .disabled(disabled)
+                                                    .w_full()
+                                                    .h_full()
+                                                    .bg(theme.secondary)
+                                                    .rounded_md()
+                                                    .border_0()
+                                                    .text_center(),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme.muted_foreground)
+                                            .child(t!("connection_tab.keep_last_unit").to_string()),
+                                    )
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(if disabled {
+                                            t!("connection_tab.keep_last_disabled_tooltip")
+                                                .to_string()
+                                        } else {
+                                            t!("connection_tab.keep_last_tooltip").to_string()
+                                        })
+                                        .build(window, cx)
+                                    })
+                            })
                             // 消息显示模式切换按钮（原始/美化/压缩）
                             .child(
                                 div()
@@ -1532,7 +1627,6 @@ impl<'a> ConnectionTab<'a> {
                 )
                 .into_any()
             } else {
-                let messages = self.tab_state.message_list.messages.clone();
                 let selected_client = self.tab_state.selected_client.clone();
                 let scrollbar_state = self.tab_state.message_list_state.clone();
                 let tab_id_for_list = tab_id.clone();
@@ -1551,12 +1645,38 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 list(
                                     self.tab_state.message_list_state.clone(),
-                                    move |ix, _window, _cx| {
-                                        if let Some(message) = messages.get(ix) {
+                                    move |ix, _window, cx| {
+                                        // 方案 B:闭包不捕获 Arc<Vec<Message>>,否则渲染元素树会一直持有
+                                        // 一个额外引用计数,使事件泵侧 Arc::make_mut 退化为整体深拷贝。
+                                        // 此处(列表 prepaint 阶段)App 实体未被借用,可安全 read。
+                                        let app = app_entity.read(cx);
+                                        let message = app
+                                            .connection_tabs
+                                            .get(&tab_id_for_list)
+                                            .and_then(|tab| tab.message_list.messages.get(ix));
+                                        if let Some(message) = message {
                                             let is_sent = message.direction == MessageDirection::Sent;
-                                            // 当前显示模式下的内容(惰性计算并缓存,仅可见项产生开销)
-                                            let display_text = message.display_content(display_mode);
-                                            let is_favorited = favorited_contents.contains(&display_text);
+                                            // 原始内容(未格式化),收藏 key 的基准
+                                            let raw_text = message.get_content_by_type();
+                                            // 展示/复制按当前显示模式(惰性计算并缓存,仅可见项产生开销)
+                                            let display_text: SharedString =
+                                                if display_mode == MessageDisplayMode::Normal {
+                                                    SharedString::from(raw_text)
+                                                } else {
+                                                    SharedString::from(
+                                                        message.display_content(display_mode),
+                                                    )
+                                                };
+                                            // 收藏 key 固定用原始内容,与显示模式解耦:
+                                            // 切换格式化不会让星标熄灭,也不会重复收藏
+                                            let favorite_key: SharedString =
+                                                if display_mode == MessageDisplayMode::Normal {
+                                                    display_text.clone()
+                                                } else {
+                                                    SharedString::from(raw_text)
+                                                };
+                                            let is_favorited =
+                                                favorited_contents.contains(favorite_key.as_ref());
                                             let should_show = if message.source.is_none() {
                                                 true
                                             } else {
@@ -1693,7 +1813,8 @@ impl<'a> ConnectionTab<'a> {
                                                                 )
                                                                 .child({
                                                                     let tab_id_fav = tab_id_for_list.clone();
-                                                                    let content = display_text.clone();
+                                                                    // 收藏与取消收藏都用原始内容作 key(见 favorite_key)
+                                                                    let content = favorite_key.clone();
                                                                     let is_fav = is_favorited;
                                                                     let message_type = message.message_type;
                                                                     let entity = app_entity.clone();
@@ -1709,15 +1830,15 @@ impl<'a> ConnectionTab<'a> {
                                                                         .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
                                                                             entity.update(cx, |app, cx| {
                                                                                 if is_fav {
-                                                                                    if let Some(fav) = app.storage.find_favorite_by_content(&tab_id_fav, &content) {
+                                                                                    if let Some(fav) = app.storage.find_favorite_by_content(&tab_id_fav, content.as_ref()) {
                                                                                         app.storage.remove_favorite(&tab_id_fav, &fav.id);
                                                                                         if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_fav) {
-                                                                                            Arc::make_mut(&mut tab_state.favorited_contents).remove(&content);
+                                                                                            Arc::make_mut(&mut tab_state.favorited_contents).remove(content.as_ref());
                                                                                         }
                                                                                         cx.notify();
                                                                                     }
                                                                                 } else {
-                                                                                    app.favorite_remark_content = Some(content.clone());
+                                                                                    app.favorite_remark_content = Some(content.to_string());
                                                                                     app.favorite_remark_message_type = Some(message_type);
                                                                                     app.favorite_remark_tab_id = Some(tab_id_fav.clone());
                                                                                     app.favorite_remark_input.update(cx, |state, inner_cx| {

@@ -11,7 +11,7 @@ use crate::config::connection::{
 use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
-use crate::message::{Message, MessageDirection, MessageType};
+use crate::message::{MAX_KEEP_LAST, Message, MessageDirection, MessageType};
 use crate::network::events::{ConnectionEvent, NetCounters};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::port_range::EphemeralPortRange;
@@ -28,7 +28,7 @@ use crate::ui::main_window::MainWindow;
 
 use indexmap::IndexMap;
 use smol::channel::{Receiver, Sender, unbounded as smol_unbounded};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -165,6 +165,8 @@ pub struct NetAssistantApp {
     pub root_focus: FocusHandle,
     // 消息输入框 Ctrl+Enter 发送订阅(每个标签页一份, 随关闭清理)
     pub message_input_enter_subscriptions: HashMap<String, Subscription>,
+    // 「保留最后 N 条」输入框的回车/失焦提交订阅(每个标签页一份, 随关闭清理)
+    pub keep_last_subscriptions: HashMap<String, Subscription>,
 }
 
 impl NetAssistantApp {
@@ -287,6 +289,7 @@ impl NetAssistantApp {
             stats: AppStats::default(),
             root_focus: cx.focus_handle(),
             message_input_enter_subscriptions: HashMap::new(),
+            keep_last_subscriptions: HashMap::new(),
         };
 
         // 启动时聚焦根元素, 保证未点击任何输入框时快捷键也全局生效
@@ -581,12 +584,21 @@ impl NetAssistantApp {
         cx: &mut Context<Self>,
     ) {
         if !self.connection_tabs.contains_key(&tab_id) {
-            self.connection_tabs.insert(
-                tab_id.clone(),
-                ConnectionTabState::new(connection_config, window, cx),
-            );
+            let mut tab_state = ConnectionTabState::new(connection_config, window, cx);
+            // 回填该连接已有收藏的内容 key,否则重开标签页后星标全部不亮
+            let favorited: HashSet<String> = self
+                .storage
+                .get_favorites_ref(&tab_id)
+                .iter()
+                .map(|item| item.content.clone())
+                .collect();
+            if !favorited.is_empty() {
+                tab_state.favorited_contents = Arc::new(favorited);
+            }
+            self.connection_tabs.insert(tab_id.clone(), tab_state);
         }
         self.ensure_message_input_enter_subscription(&tab_id, cx);
+        self.ensure_keep_last_subscription(&tab_id, cx);
     }
 
     /// 订阅消息输入框的 Ctrl+Enter 事件, 复用发送逻辑完成发送。
@@ -653,6 +665,85 @@ impl NetAssistantApp {
         });
         self.message_input_enter_subscriptions
             .insert(tab_id.to_string(), subscription);
+    }
+
+    /// 订阅「保留最后 N 条」输入框：回车 / 失焦时提交。
+    ///
+    /// 生效时机取回车/失焦而非逐字符：逐字符输入 50000 的过程中会先按 5 裁到 5 条，
+    /// 破坏性且不可撤销。
+    fn ensure_keep_last_subscription(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        if self.keep_last_subscriptions.contains_key(tab_id) {
+            return;
+        }
+        let Some(input) = self
+            .connection_tabs
+            .get(tab_id)
+            .map(|t| t.keep_last_input.clone())
+        else {
+            return;
+        };
+        let sub_tab_id = tab_id.to_string();
+        let subscription = cx.subscribe(&input, move |app, _input, event, cx| {
+            if !matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                return;
+            }
+            app.apply_keep_last_from_input(&sub_tab_id, cx);
+        });
+        self.keep_last_subscriptions
+            .insert(tab_id.to_string(), subscription);
+    }
+
+    /// 提交「保留最后 N 条」输入框的值：解析 → 校验 → 立即裁剪。
+    ///
+    /// 非法输入（空 / 非数字 / 超 MAX_KEEP_LAST）回填当前值，不改动现有设置。
+    fn apply_keep_last_from_input(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        // 先取值，避免同时借用 connection_tabs 与输入框实体
+        let Some(input) = self
+            .connection_tabs
+            .get(tab_id)
+            .map(|t| t.keep_last_input.clone())
+        else {
+            return;
+        };
+        let raw = input.read(cx).value().trim().to_string();
+
+        let Some(tab_state) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        if !tab_state.auto_scroll_enabled {
+            return; // 禁用态不应有提交
+        }
+
+        let parsed = raw
+            .parse::<usize>()
+            .ok()
+            .filter(|n| *n <= MAX_KEEP_LAST);
+        let n = match parsed {
+            Some(n) => n,
+            None => {
+                // 非法输入：回填当前值。此处仍在订阅回调内，不能同步重入输入框实体，
+                // 故用 defer 推迟到本次更新结束后再回填。
+                let cur = tab_state.message_list.keep_last.to_string();
+                if let Some(window_handle) = cx.active_window() {
+                    cx.defer(move |cx: &mut App| {
+                        let _ = window_handle.update(cx, |_view, window, cx| {
+                            let _ = input.update(cx, |i, cx| i.set_value(cur, window, cx));
+                        });
+                    });
+                }
+                return;
+            }
+        };
+
+        if n == tab_state.message_list.keep_last {
+            return; // 值未变，不做任何事
+        }
+
+        let dropped = tab_state.message_list.set_keep_last(n);
+        if dropped > 0 {
+            tab_state.message_list_state.splice(0..dropped, 0);
+        }
+        cx.notify();
     }
 
     pub fn ensure_auto_reply_input_exists(
@@ -987,6 +1078,7 @@ impl NetAssistantApp {
             debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
         }
         self.message_input_enter_subscriptions.remove(&tab_id);
+        self.keep_last_subscriptions.remove(&tab_id);
         if self.server_auto_reply_states.remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
         }
@@ -2622,6 +2714,7 @@ impl Drop for NetAssistantApp {
                 debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
             }
             self.message_input_enter_subscriptions.remove(&tab_id);
+            self.keep_last_subscriptions.remove(&tab_id);
 
             if self.server_auto_reply_states.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
