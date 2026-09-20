@@ -123,7 +123,11 @@ jobs:
       - name: Prepare artifact (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          strip target/${{ matrix.target }}/release/netassistant || true
+          # macOS 跳过 strip：cargo release profile 已 strip，且再 strip 会破坏
+          # 链接器为 arm64 生成的 ad-hoc 签名（后续 macos-package 会统一重签）
+          if [ "${{ matrix.os }}" != "macos-latest" ]; then
+            strip target/${{ matrix.target }}/release/netassistant || true
+          fi
           tar -czf ${{ matrix.asset_name }}.tar.gz -C target/${{ matrix.target }}/release netassistant
 
       - name: Install AppImage tools
@@ -193,9 +197,183 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.os == 'windows-latest' && format('{0}.zip', matrix.asset_name) || format('{0}.tar.gz', matrix.asset_name) }}
 
+  macos-package:
+    name: Package macOS Universal App
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Intel binary
+        uses: actions/download-artifact@v4
+        with:
+          name: netassistant-macos-x86_64
+          path: artifacts/x86_64
+
+      - name: Download Apple Silicon binary
+        uses: actions/download-artifact@v4
+        with:
+          name: netassistant-macos-aarch64
+          path: artifacts/aarch64
+
+      - name: Extract binaries
+        run: |
+          mkdir -p x86_64 aarch64
+          tar -xzf artifacts/x86_64/netassistant-macos-x86_64.tar.gz -C x86_64
+          tar -xzf artifacts/aarch64/netassistant-macos-aarch64.tar.gz -C aarch64
+
+      - name: Merge universal binary
+        run: |
+          mkdir -p Universal
+          lipo -create x86_64/netassistant aarch64/netassistant -output Universal/netassistant
+          echo "Universal architectures: $(lipo -archs Universal/netassistant)"
+
+      - name: Generate AppIcon.icns
+        run: |
+          mkdir -p AppIcon.iconset
+          cp assets/icon/icon_16x16.png   AppIcon.iconset/icon_16x16.png
+          cp assets/icon/icon_32x32.png   AppIcon.iconset/icon_16x16@2x.png
+          cp assets/icon/icon_32x32.png   AppIcon.iconset/icon_32x32.png
+          cp assets/icon/icon_64x64.png   AppIcon.iconset/icon_32x32@2x.png
+          cp assets/icon/icon_128x128.png AppIcon.iconset/icon_128x128.png
+          cp assets/icon/icon_256x256.png AppIcon.iconset/icon_128x128@2x.png
+          cp assets/icon/icon_256x256.png AppIcon.iconset/icon_256x256.png
+          cp assets/icon/icon_512x512.png AppIcon.iconset/icon_256x256@2x.png
+          cp assets/icon/icon_512x512.png AppIcon.iconset/icon_512x512.png
+          sips -z 1024 1024 assets/icon/icon_512x512.png --out AppIcon.iconset/icon_512x512@2x.png
+          iconutil -c icns AppIcon.iconset -o AppIcon.icns
+
+      - name: Assemble .app bundle
+        run: |
+          VERSION="${{ inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          mkdir -p NetAssistant.app/Contents/MacOS NetAssistant.app/Contents/Resources
+          cp Universal/netassistant NetAssistant.app/Contents/MacOS/netassistant
+          cp AppIcon.icns NetAssistant.app/Contents/Resources/AppIcon.icns
+          chmod +x NetAssistant.app/Contents/MacOS/netassistant
+          cat > NetAssistant.app/Contents/Info.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>NetAssistant</string>
+              <key>CFBundleDisplayName</key>
+              <string>NetAssistant</string>
+              <key>CFBundleExecutable</key>
+              <string>netassistant</string>
+              <key>CFBundleIdentifier</key>
+              <string>top.trydo.netassistant</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
+              <key>CFBundleLocalizations</key>
+              <array>
+                  <string>en</string>
+                  <string>zh_CN</string>
+              </array>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>LSApplicationCategoryType</key>
+              <string>public.app-category.developer-tools</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>NSSupportsAutomaticGraphicsSwitching</key>
+              <true/>
+              <key>NSHumanReadableCopyright</key>
+              <string>Copyright © 2026 NetAssistant. All rights reserved.</string>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint NetAssistant.app/Contents/Info.plist
+
+      - name: Ad-hoc codesign
+        run: |
+          # 无开发者账号只能 ad-hoc 签名：
+          # - Apple Silicon 要求所有二进制必须带签名，ad-hoc 满足该要求
+          # - 无法消除 Gatekeeper 警告（消除需公证，公证需付费 Developer ID）
+          codesign --force --sign - NetAssistant.app
+          codesign --verify --deep --strict --verbose=2 NetAssistant.app
+
+      - name: Package DMG and ZIP
+        run: |
+          # DMG：标准"拖入 Applications"安装体验
+          mkdir -p dmg
+          cp -R NetAssistant.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "NetAssistant" -srcfolder dmg -ov -format UDZO -o netassistant-macos-universal.dmg
+          hdiutil verify netassistant-macos-universal.dmg
+          # ZIP：保留权限，解压即用
+          ditto -c -k --keepParent NetAssistant.app netassistant-macos-universal.zip
+
+      - name: Headless validation (hard gate)
+        run: |
+          # 无显示器环境下的可靠检查；任何一步失败即中断（默认 set -e）
+          echo "== 二进制格式（须为通用双架构） =="
+          file NetAssistant.app/Contents/MacOS/netassistant
+          echo "== 链接的系统框架（确认无缺失动态库） =="
+          otool -L NetAssistant.app/Contents/MacOS/netassistant | head -20
+          echo "== Info.plist 关键字段 =="
+          plutil -p NetAssistant.app/Contents/Info.plist | grep -E 'CFBundleShortVersionString|CFBundleIdentifier|CFBundleIconFile'
+          echo "== 代码签名 =="
+          codesign -dv --verbose=4 NetAssistant.app 2>&1 | grep -E 'Identifier=|Format=|Signature=' || true
+          echo "== LaunchServices 注册（验证 .app 结构合法） =="
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f NetAssistant.app
+          echo "lsregister OK"
+          echo "== 挂载 DMG 并核对内容 =="
+          hdiutil attach -nobrowse -readonly netassistant-macos-universal.dmg
+          ls /Volumes/NetAssistant/
+          test -d /Volumes/NetAssistant/NetAssistant.app && echo "DMG contains .app: OK"
+          hdiutil detach /Volumes/NetAssistant
+
+      - name: Launch smoke test (informational)
+        run: |
+          # 软检查：CI runner 无显示器/可能无 Metal GPU，启动失败属预期，不阻断发布。
+          # 若 M1 runner 支持 Metal，则能拿到真实启动结果 + 界面截图。
+          set +e
+          open NetAssistant.app
+          sleep 8
+          if pgrep -x netassistant > /dev/null; then
+            echo "SMOKE: 应用进程存活，启动成功"
+            screencapture -x smoke.png
+            echo "SMOKE: 已截取界面截图"
+            pkill -x netassistant || true
+          else
+            echo "SMOKE: 应用提前退出（CI 无 GPU/Metal 属预期，需真机确认）"
+            ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -3 || true
+          fi
+          exit 0
+
+      - name: Upload smoke screenshot
+        if: hashFiles('smoke.png') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-smoke-screenshot
+          path: smoke.png
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: netassistant-macos-universal-dmg
+          path: netassistant-macos-universal.dmg
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: netassistant-macos-universal-zip
+          path: netassistant-macos-universal.zip
+
   release:
     name: Create Release
-    needs: build
+    needs: [build, macos-package]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     
@@ -278,8 +456,8 @@ jobs:
             - **Windows**: 下载 `netassistant-windows-x86_64.zip`
             - **Linux (AppImage)**: 下载 `netassistant-linux-x86_64.AppImage`（推荐，开箱即用）
             - **Linux (tar.gz)**: 下载 `netassistant-linux-x86_64.tar.gz`（轻量，需自行安装依赖）
-            - **macOS (Intel)**: 下载 `netassistant-macos-x86_64.tar.gz`
-            - **macOS (Apple Silicon)**: 下载 `netassistant-macos-aarch64.tar.gz`
+            - **macOS (通用 Universal)**: 下载 `netassistant-macos-universal.dmg`（推荐，拖入 Applications 安装）或 `netassistant-macos-universal.zip`（解压即用）
+            - **macOS (裸二进制)**: `netassistant-macos-x86_64.tar.gz`（Intel）/ `netassistant-macos-aarch64.tar.gz`（Apple Silicon）
 
             ### 安装方法
 
@@ -304,16 +482,17 @@ jobs:
             4. 需自行安装依赖：`sudo apt install libgtk-3-0`
 
             #### macOS
-            1. 下载对应的 macOS 版本
-            2. 解压：`tar -xzf netassistant-macos-*.tar.gz`
-            3. 添加执行权限：`chmod +x netassistant`
-            4. 运行：`./netassistant`
+            1. 下载 `netassistant-macos-universal.dmg`，打开后把 NetAssistant 拖入 Applications（或下载 zip 解压后直接运行）
+            2. 首次打开若提示"无法验证开发者"（未公证应用的正常现象）：
+               - 右键点击 NetAssistant → 打开；或
+               - 系统设置 → 隐私与安全性 → 仍要打开
+            3. 若使用裸二进制，需先 `chmod +x netassistant` 再运行
 
             ### 系统要求
 
             - Windows 10 或更高版本
             - Linux (需要 Vulkan 兼容 GPU + mesa-vulkan-drivers；AppImage 需 libfuse2)
-            - macOS 10.15 或更高版本
+            - macOS 11 或更高版本
             
             ### 更新内容
             
