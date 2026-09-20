@@ -337,27 +337,18 @@ jobs:
       - name: Launch smoke test (informational)
         run: |
           # 软检查：CI runner 无显示器/可能无 Metal GPU，启动失败属预期，不阻断发布。
-          # 若 M1 runner 支持 Metal，则能拿到真实启动结果 + 界面截图。
+          # 若 M1 runner 支持 Metal，则能拿到真实启动结果。
           set +e
           open NetAssistant.app
           sleep 8
           if pgrep -x netassistant > /dev/null; then
             echo "SMOKE: 应用进程存活，启动成功"
-            screencapture -x smoke.png
-            echo "SMOKE: 已截取界面截图"
             pkill -x netassistant || true
           else
             echo "SMOKE: 应用提前退出（CI 无 GPU/Metal 属预期，需真机确认）"
             ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -3 || true
           fi
           exit 0
-
-      - name: Upload smoke screenshot
-        if: hashFiles('smoke.png') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-smoke-screenshot
-          path: smoke.png
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
@@ -487,6 +478,12 @@ jobs:
                - 右键点击 NetAssistant → 打开；或
                - 系统设置 → 隐私与安全性 → 仍要打开
             3. 若使用裸二进制，需先 `chmod +x netassistant` 再运行
+
+            > **给 Mac 用户的说明**
+            >
+            > 开发者目前没有 Mac 设备，macOS 版为跨平台自动构建产物，未经真机完整测试（打包过程中已通过签名校验与启动冒烟测试）。**欢迎 Mac 用户下载体验并反馈问题**（功能异常、界面显示、崩溃等，最好附上截图和系统版本）。
+            >
+            > **关于 Gatekeeper 提示**：本应用没有 Apple 开发者账号，未进行签名公证。首次打开出现"无法验证开发者"是 macOS 对未公证应用的正常拦截，**不是应用损坏**，按上面第 2 步操作即可打开，不影响使用。
 
             ### 系统要求
 
