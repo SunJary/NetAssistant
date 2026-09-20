@@ -97,6 +97,17 @@ impl AppStats {
         self.star_prompt_last_dismissed = Some(today.to_string());
         self.save();
     }
+
+    /// 更新磁盘上的 star 数缓存（读-改-写）
+    ///
+    /// 后台 fetch 完成时调用。不能直接 save() 内存快照：多实例并存时，
+    /// 陈旧快照会把其他实例刚写入的关闭记录（dismissal_count/last_dismissed）
+    /// 覆盖回旧值，导致「近期不再提示」失效、提示反复弹出。
+    pub fn update_cached_star_count(stars: u32) {
+        let mut stats = Self::load();
+        stats.cached_star_count = Some(stars);
+        stats.save();
+    }
 }
 
 /// 计算从 `from_date` 到 `today` 的天数差（均为 "YYYY-MM-DD" 格式）

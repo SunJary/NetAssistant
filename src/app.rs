@@ -421,7 +421,8 @@ impl NetAssistantApp {
                     if let Some(stars) = star_count {
                         app.star_count = Some(stars);
                         app.stats.cached_star_count = Some(stars);
-                        app.stats.save();
+                        // 读-改-写磁盘，避免陈旧内存快照覆盖其他实例刚写入的关闭记录
+                        AppStats::update_cached_star_count(stars);
                     }
 
                     // 版本检查（开发版日期号也检查，直接认为需要更新）
