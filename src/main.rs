@@ -59,7 +59,7 @@ impl Render for AppShell {
 
 fn main() {
     // 初始化日志
-    // - debug 构建: DEBUG 级别（cosmic_text 过滤到 Info 避免字体回退噪音）
+    // - debug 构建: DEBUG 级别（cosmic_text、gpui::window 过滤到 Info 避免噪音）
     // - release 构建: ERROR 级别（输出干净，只显示错误）
     // - 环境变量 NETASSISTANT_LOG 可覆盖（如 NETASSISTANT_LOG=debug 调试 release 版）
     let default_level = if cfg!(debug_assertions) {
@@ -75,6 +75,7 @@ fn main() {
     SimpleLogger::new()
         .with_level(level)
         .with_module_level("cosmic_text", log::LevelFilter::Info)
+        .with_module_level("gpui::window", log::LevelFilter::Info)
         .with_utc_timestamps()
         .init()
         .unwrap();

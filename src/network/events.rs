@@ -33,7 +33,8 @@ impl ReceivedBatch {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.count == 0 && self.sent_messages.is_empty()
+        // 明细非空即视为有内容: 极端情况下 count 与明细可能不同步, 以明细为准
+        self.count == 0 && self.messages.is_empty() && self.sent_messages.is_empty()
     }
 }
 
