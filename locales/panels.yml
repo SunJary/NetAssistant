@@ -193,6 +193,21 @@ connection_tab:
   keep_last_disabled_tooltip:
     zh-CN: 关闭自动滚动时不淘汰消息，因此固定为 0
     en: Auto scroll is off, so no messages are dropped (fixed at 0)
+  search_tooltip:
+    zh-CN: 搜索消息 (Ctrl+F)
+    en: Search messages (Ctrl+F)
+  search_placeholder:
+    zh-CN: 搜索消息内容...
+    en: Search messages...
+  search_prev:
+    zh-CN: 上一个 (Shift+Enter)
+    en: Previous (Shift+Enter)
+  search_next:
+    zh-CN: 下一个 (Enter)
+    en: Next (Enter)
+  search_close:
+    zh-CN: 关闭搜索 (Esc)
+    en: Close search (Esc)
   display_format:
     zh-CN: "格式:%{label}"
     en: "Format: %{label}"

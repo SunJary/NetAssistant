@@ -19,7 +19,7 @@ use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 use crate::utils::hex::convert_value;
 
 use crate::ui::components::hex_editor::HexEditorState;
-use crate::ui::connection_tab::ConnectionTabState;
+use crate::ui::connection_tab::{ConnectionTabState, SEARCH_RECALC_MIN_INTERVAL};
 use crate::ui::dialog::{
     DecoderSelectionDialogState, StressConfigDialogState, open_new_connection_dialog,
     open_stress_config_dialog,
@@ -167,6 +167,8 @@ pub struct NetAssistantApp {
     pub message_input_enter_subscriptions: HashMap<String, Subscription>,
     // 「保留最后 N 条」输入框的回车/失焦提交订阅(每个标签页一份, 随关闭清理)
     pub keep_last_subscriptions: HashMap<String, Subscription>,
+    // 搜索浮层输入框的输入/回车订阅(每个标签页一份, 随关闭清理)
+    pub search_subscriptions: HashMap<String, Subscription>,
 }
 
 impl NetAssistantApp {
@@ -290,6 +292,7 @@ impl NetAssistantApp {
             root_focus: cx.focus_handle(),
             message_input_enter_subscriptions: HashMap::new(),
             keep_last_subscriptions: HashMap::new(),
+            search_subscriptions: HashMap::new(),
         };
 
         // 启动时聚焦根元素, 保证未点击任何输入框时快捷键也全局生效
@@ -333,7 +336,11 @@ impl NetAssistantApp {
                     let counters_changed = app.sync_net_counters_to_ui();
                     if has_events {
                         app.handle_connection_events_batch(batch, cx);
-                    } else if counters_changed {
+                    }
+                    // 搜索匹配重算挂在同一节拍上并做下限流：消息洪泛时只置 search_dirty，
+                    // 由这里最多 4 次/秒地重算，避免每拍做一次 O(N) 全量扫描。
+                    let searches_changed = app.throttled_recalc_searches();
+                    if !has_events && (counters_changed || searches_changed) {
                         cx.notify();
                     }
                 });
@@ -599,6 +606,7 @@ impl NetAssistantApp {
         }
         self.ensure_message_input_enter_subscription(&tab_id, cx);
         self.ensure_keep_last_subscription(&tab_id, cx);
+        self.ensure_search_input_subscription(&tab_id, cx);
     }
 
     /// 订阅消息输入框的 Ctrl+Enter 事件, 复用发送逻辑完成发送。
@@ -761,6 +769,253 @@ impl NetAssistantApp {
         let dropped = tab_state.message_list.set_keep_last(n);
         if dropped > 0 {
             tab_state.message_list_state.splice(0..dropped, 0);
+            // 头部淘汰会让命中集合失效，置脏交给事件泵限流重算
+            tab_state.search_dirty = true;
+        }
+        cx.notify();
+    }
+
+    /// 订阅搜索浮层输入框：输入即重算（立即出计数），回车跳到下一个命中。
+    ///
+    /// Enter 会被 gpui-component Input 的 enter action 消费（不冒泡到根元素），
+    /// 故这里走 InputEvent 订阅；Esc 交给根元素（Input 的 escape 末尾会 propagate）。
+    fn ensure_search_input_subscription(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        if self.search_subscriptions.contains_key(tab_id) {
+            return;
+        }
+        let Some(input) = self
+            .connection_tabs
+            .get(tab_id)
+            .map(|t| t.search_input.clone())
+        else {
+            return;
+        };
+        let sub_tab_id = tab_id.to_string();
+        let app_handle = cx.entity().clone();
+        let subscription = cx.subscribe(&input, move |app, input, event, cx| {
+            match event {
+                InputEvent::Change => {
+                    // 输入即生效：用户主动输入的瞬间必须即时反馈，不受事件泵限流影响
+                    let value = input.read(cx).value().to_string();
+                    let Some(tab_state) = app.connection_tabs.get_mut(&sub_tab_id) else {
+                        return;
+                    };
+                    if tab_state.search_query == value {
+                        return;
+                    }
+                    tab_state.search_query = value;
+                    // 查询词变了，旧光标无意义，归零避免越界
+                    tab_state.search_cursor = 0;
+                    app.recalc_search_matches(&sub_tab_id);
+                    cx.notify();
+                }
+                // Enter 下一个 / Shift+Enter 上一个
+                InputEvent::PressEnter {
+                    secondary: false,
+                    shift,
+                } => {
+                    let delta: isize = if *shift { -1 } else { 1 };
+                    // 当前处于 app 实体更新(订阅回调)期间，不能同步重入 app 实体，用 cx.defer
+                    let Some(window_handle) = cx.active_window() else {
+                        return;
+                    };
+                    let app_handle = app_handle.clone();
+                    let sub_tab_id = sub_tab_id.clone();
+                    cx.defer(move |cx: &mut App| {
+                        let _ = window_handle.update(cx, |_view, window, cx| {
+                            let _ = app_handle.update(cx, |app, cx| {
+                                app.jump_to_match(&sub_tab_id, delta, window, cx);
+                            });
+                        });
+                    });
+                }
+                _ => {}
+            }
+        });
+        self.search_subscriptions
+            .insert(tab_id.to_string(), subscription);
+    }
+
+    /// 打开搜索浮层并聚焦输入框；已打开时仅重新聚焦（幂等）。
+    ///
+    /// Ctrl+F 只用于「打开并聚焦」，关闭交给 Esc / ✕ / 图标点击（对齐浏览器行为）。
+    pub fn open_search(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        // 空列表没有可搜索内容，不响应
+        let Some(tab_state) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        if tab_state.message_list.messages.is_empty() {
+            return;
+        }
+        tab_state.search_open = true;
+        let input = tab_state.search_input.clone();
+        // 浮层一出现就要有计数：立即重算一次（查询词为空时零开销直接返回）
+        self.recalc_search_matches(tab_id);
+        input.update(cx, |input, cx| input.focus(window, cx));
+        cx.notify();
+    }
+
+    /// 关闭搜索浮层并把焦点归还根元素。
+    ///
+    /// 焦点不归还的话会留在已卸载的输入框上，导致后续全局快捷键失灵。
+    pub fn close_search(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab_state) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        if !tab_state.search_open {
+            return;
+        }
+        tab_state.search_open = false;
+        // 命中集合只在浮层打开期间维持，关闭即释放（洪泛下可能上万条 id）
+        tab_state.search_match_ids.clear();
+        tab_state.search_cursor = 0;
+        tab_state.search_dirty = false;
+        self.root_focus.focus(window, cx);
+        cx.notify();
+    }
+
+    /// 工具栏图标点击：开合切换。
+    pub fn toggle_search(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let open = self
+            .connection_tabs
+            .get(tab_id)
+            .map(|t| t.search_open)
+            .unwrap_or(false);
+        if open {
+            self.close_search(tab_id, window, cx);
+        } else {
+            self.open_search(tab_id, window, cx);
+        }
+    }
+
+    /// 重算某个标签页的命中集合（按 `Message.id` 缓存，永不缓存下标）。
+    ///
+    /// 匹配目标为消息原始内容 `get_content_by_type()`（与显示格式解耦），
+    /// 范围限定为当前可见集合（已应用客户端过滤），保证计数与用户所见一致。
+    fn recalc_search_matches(&mut self, tab_id: &str) {
+        let Some(tab_state) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        tab_state.search_dirty = false;
+        tab_state.search_last_recalc = Instant::now();
+
+        // 查询词为空 → 零扫描（绝大多数时间处于此态）
+        if tab_state.search_query.is_empty() {
+            tab_state.search_match_ids.clear();
+            tab_state.search_cursor = 0;
+            return;
+        }
+
+        let needle = tab_state.search_query.to_lowercase();
+        // 可见性过滤与渲染处保持同一口径：未选中客户端时全部可见
+        let selected_source = tab_state
+            .selected_client
+            .as_ref()
+            .map(|addr| addr.to_string());
+        let mut ids: Vec<String> = Vec::new();
+        for message in tab_state.message_list.messages.iter() {
+            if let (Some(selected), Some(source)) =
+                (selected_source.as_ref(), message.source.as_ref())
+            {
+                if source != selected {
+                    continue;
+                }
+            }
+            if message.get_content_by_type().to_lowercase().contains(&needle) {
+                ids.push(message.id.clone());
+            }
+        }
+        tab_state.search_match_ids = ids;
+        // 重算后光标可能越界（消息被淘汰/过滤变化），归零
+        if tab_state.search_cursor >= tab_state.search_match_ids.len() {
+            tab_state.search_cursor = 0;
+        }
+    }
+
+    /// 事件泵节拍上的限流重算：只处理「浮层打开 + 查询词非空 + 已置脏」的标签页。
+    ///
+    /// 返回本次是否有标签页被重算（调用方据此决定是否重绘）。
+    fn throttled_recalc_searches(&mut self) -> bool {
+        let now = Instant::now();
+        let due: Vec<String> = self
+            .connection_tabs
+            .iter()
+            .filter(|(_, tab)| {
+                tab.search_open
+                    && tab.search_dirty
+                    && !tab.search_query.is_empty()
+                    && now.duration_since(tab.search_last_recalc) >= SEARCH_RECALC_MIN_INTERVAL
+            })
+            .map(|(tab_id, _)| tab_id.clone())
+            .collect();
+        for tab_id in &due {
+            self.recalc_search_matches(tab_id);
+        }
+        !due.is_empty()
+    }
+
+    /// 在命中集合内环形前进/后退，并滚动定位到目标消息。
+    ///
+    /// 跳转前必然关闭自动滚动（复用「开 → 关」分支语义）：否则跳过去会立刻被新消息
+    /// 拉回尾部，且淘汰持续发生会让下标漂移——关掉后 `keep_last` 置 0、不再淘汰，
+    /// 这是本功能依赖的既有不变式。
+    pub fn jump_to_match(
+        &mut self,
+        tab_id: &str,
+        delta: isize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab_state) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        let total = tab_state.search_match_ids.len();
+        if total == 0 {
+            return;
+        }
+
+        // 环形推进（delta 取 +1 / -1）
+        let current = tab_state.search_cursor as isize;
+        tab_state.search_cursor = (current + delta).rem_euclid(total as isize) as usize;
+
+        if tab_state.auto_scroll_enabled {
+            tab_state.auto_scroll_enabled = false;
+            tab_state.keep_last_backup = tab_state.message_list.keep_last;
+            // 0 不删任何消息，无需 splice
+            tab_state.message_list.set_keep_last(0);
+            let keep_last_input = tab_state.keep_last_input.clone();
+            keep_last_input.update(cx, |input, cx| {
+                input.set_value("0", window, cx);
+            });
+        }
+
+        // id → 下标反查：只在跳转这种低频动作上做 O(N)；已被淘汰的 id 惰性剔除
+        for _ in 0..total {
+            let Some(target_id) = tab_state.search_match_ids.get(tab_state.search_cursor) else {
+                break;
+            };
+            let Some(item_ix) = tab_state
+                .message_list
+                .messages
+                .iter()
+                .position(|m| &m.id == target_id)
+            else {
+                // 该消息已被淘汰：剔除后落在同一位置的下一条候选上继续找
+                tab_state.search_match_ids.remove(tab_state.search_cursor);
+                if tab_state.search_match_ids.is_empty() {
+                    tab_state.search_cursor = 0;
+                    break;
+                }
+                if tab_state.search_cursor >= tab_state.search_match_ids.len() {
+                    tab_state.search_cursor = 0;
+                }
+                continue;
+            };
+            tab_state.message_list_state.scroll_to(gpui::ListOffset {
+                item_ix,
+                offset_in_item: px(0.),
+            });
+            break;
         }
         cx.notify();
     }
@@ -1098,6 +1353,7 @@ impl NetAssistantApp {
         }
         self.message_input_enter_subscriptions.remove(&tab_id);
         self.keep_last_subscriptions.remove(&tab_id);
+        self.search_subscriptions.remove(&tab_id);
         if self.server_auto_reply_states.remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
         }
@@ -2308,12 +2564,49 @@ impl NetAssistantApp {
 
     /// 切换界面语言：设置运行时 locale、同步组件库内置文案，并持久化到配置
     /// 切换后 cx.notify() 触发整棵视图树重渲染，t! 宏取词即生效
-    pub fn set_language(&mut self, language: &str, cx: &mut Context<Self>) {
+    /// 注意: placeholder 在 InputState 创建时固化，不随重渲染更新，需在此逐个刷新
+    pub fn set_language(
+        &mut self,
+        language: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         rust_i18n::set_locale(language);
         gpui_component::set_locale(language);
         self.storage.save_language(language);
         self.show_language_menu = false;
         info!("界面语言已切换为: {}", language);
+
+        // 刷新各 tab 常驻输入框的 placeholder（搜索框 / 消息输入框）
+        for tab in self.connection_tabs.values_mut() {
+            tab.search_input.update(cx, |input, cx| {
+                input.set_placeholder(
+                    t!("connection_tab.search_placeholder").to_string(),
+                    window,
+                    cx,
+                )
+            });
+            if let Some(message_input) = &tab.message_input {
+                message_input.update(cx, |input, cx| {
+                    input.set_placeholder(
+                        t!("connection_tab.message_input_placeholder").to_string(),
+                        window,
+                        cx,
+                    )
+                });
+            }
+        }
+        // 刷新自动回复输入框的 placeholder
+        for input in self.auto_reply_inputs.values() {
+            input.update(cx, |input, cx| {
+                input.set_placeholder(
+                    t!("app_ui.auto_reply_placeholder").to_string(),
+                    window,
+                    cx,
+                )
+            });
+        }
+
         cx.notify();
     }
 
@@ -2734,6 +3027,7 @@ impl Drop for NetAssistantApp {
             }
             self.message_input_enter_subscriptions.remove(&tab_id);
             self.keep_last_subscriptions.remove(&tab_id);
+            self.search_subscriptions.remove(&tab_id);
 
             if self.server_auto_reply_states.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);

@@ -6,9 +6,9 @@ use crate::ui::dialog::{
 };
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::{ActiveTheme as _, StyledExt};
+use gpui_component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_component::{
-    Icon, IconName, Theme,
+    Icon, IconName, Size, Theme,
     clipboard::Clipboard,
     input::{Input, InputState},
     scroll::{Scrollbar, ScrollbarShow},
@@ -20,6 +20,7 @@ use rust_i18n::t;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 
 use crate::app::NetAssistantApp;
@@ -32,6 +33,12 @@ use crate::message::{
 use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
 use crate::ui::stress_panel::StressPanel;
+
+/// 消息搜索匹配重算的最小间隔。
+///
+/// 重算挂在事件泵 16ms 节拍上，再叠加这一层限流：压测洪泛下最多 4 次/秒，
+/// 避免每拍都做一次 O(N) 全量扫描。
+pub const SEARCH_RECALC_MIN_INTERVAL: Duration = Duration::from_millis(250);
 
 /// 连接标签页状态
 #[derive(Clone)]
@@ -71,6 +78,25 @@ pub struct ConnectionTabState {
     pub keep_last_input: Entity<InputState>,
     /// 关闭自动滚动前的保留条数，用于重新开启时恢复（含 0）。
     pub keep_last_backup: usize,
+
+    // ===== 消息搜索（每个标签页独立） =====
+    /// 搜索浮层是否展开
+    pub search_open: bool,
+    /// 搜索浮层输入框（每标签一个）
+    pub search_input: Entity<InputState>,
+    /// 当前生效的查询词（快照自 InputEvent::Change，避免渲染时读 Entity）
+    pub search_query: String,
+    /// 命中的 Message.id 列表（有序，与消息在列表中的先后一致）。
+    ///
+    /// 缓存 id 而非下标：淘汰走 drain(0..dropped) 从头部删，下标必然前移失效，
+    /// 而 id 是 UUID，跨淘汰稳定。
+    pub search_match_ids: Vec<String>,
+    /// 当前命中序号（0-based；展示为 cursor + 1）
+    pub search_cursor: usize,
+    /// 匹配集合需要重算（消息新增/淘汰/清空/过滤变化时置位，由事件泵节流消费）
+    pub search_dirty: bool,
+    /// 上次重算时刻，用于事件泵限流
+    pub search_last_recalc: Instant,
 
     // 服务端和客户端的控制句柄
     pub server_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
@@ -169,6 +195,18 @@ impl ConnectionTabState {
             },
             keep_last_backup: DEFAULT_KEEP_LAST,
 
+            // 消息搜索（默认收起，无查询词 → 零扫描）
+            search_open: false,
+            search_input: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(t!("connection_tab.search_placeholder").to_string())
+            }),
+            search_query: String::new(),
+            search_match_ids: Vec::new(),
+            search_cursor: 0,
+            search_dirty: false,
+            search_last_recalc: Instant::now(),
+
             // 初始化服务端和客户端的控制句柄
             server_handle: None,
             client_handle: None,
@@ -235,6 +273,8 @@ impl ConnectionTabState {
         let old_count = self.message_list.messages.len();
         let dropped = self.message_list.add_message(message);
         let new_count = self.message_list.messages.len();
+        // 命中集合可能变化：只置脏标记，重算交给事件泵限流消费（此处不做 O(N) 扫描）
+        self.search_dirty = true;
 
         // 先补尾部、再删头部：每一步都作用在当时的索引空间上
         self.message_list_state.splice(old_count..old_count, 1);
@@ -276,6 +316,8 @@ impl ConnectionTabState {
         let added = messages.len();
         let dropped = self.message_list.add_messages_batch(messages);
         let new_count = self.message_list.messages.len();
+        // 命中集合可能变化：只置脏标记，重算交给事件泵限流消费（此处不做 O(N) 扫描）
+        self.search_dirty = true;
 
         // 先补尾部、再删头部：尾部 splice 必须无条件执行，
         // 否则 GPUI 的 item_count 会与 Vec 长度错位
@@ -1309,6 +1351,8 @@ impl<'a> ConnectionTab<'a> {
                                                                                 } else {
                                                                                     Some(addr_for_click)
                                                                                 };
+                                                                                // 可见集合变了，命中集合需要重算（由事件泵限流消费）
+                                                                                tab_state.search_dirty = true;
                                                                                 cx.notify();
                                                                             }
                                                                         });
@@ -1450,6 +1494,8 @@ impl<'a> ConnectionTab<'a> {
                                                         let dropped = tab_state.message_list.set_keep_last(restore);
                                                         if dropped > 0 {
                                                             tab_state.message_list_state.splice(0..dropped, 0);
+                                                            // 头部淘汰会让命中集合失效，置脏交给事件泵限流重算
+                                                            tab_state.search_dirty = true;
                                                         }
                                                         tab_state.keep_last_input.update(cx, |input, cx| {
                                                             input.set_value(restore.to_string(), window, cx);
@@ -1523,6 +1569,52 @@ impl<'a> ConnectionTab<'a> {
                                         })
                                         .build(window, cx)
                                     })
+                            })
+                            // 搜索消息：点击开合浮层（Ctrl+F 亦可唤起）
+                            .child({
+                                let search_open = self.tab_state.search_open;
+                                let tab_id_search = tab_id.clone();
+                                div()
+                                    .id(format!("msg-search-{}", tab_id))
+                                    .w_6()
+                                    .h_6()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(2.0))
+                                    .bg(if search_open {
+                                        theme.primary
+                                    } else {
+                                        theme.secondary
+                                    })
+                                    .when(!is_empty, |el| {
+                                        el.cursor_pointer()
+                                            .hover(|style| style.bg(theme.secondary_hover))
+                                    })
+                                    .when(is_empty, |el| el.opacity(0.4))
+                                    .child(
+                                        Icon::new(IconName::Search).size(px(18.0)).text_color(
+                                            if search_open {
+                                                theme.primary_foreground
+                                            } else {
+                                                theme.secondary_foreground
+                                            },
+                                        ),
+                                    )
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new(
+                                            t!("connection_tab.search_tooltip").to_string(),
+                                        )
+                                        .build(window, cx)
+                                    })
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(
+                                            move |app, _event, window, cx| {
+                                                app.toggle_search(&tab_id_search, window, cx);
+                                            },
+                                        ),
+                                    )
                             })
                             // 消息显示模式切换按钮（原始/美化/压缩）
                             .child(
@@ -1608,6 +1700,11 @@ impl<'a> ConnectionTab<'a> {
                                                 app.connection_tabs.get_mut(&tab_id_clear).map(|tab_state| {
                                                     tab_state.message_list.clear_messages();
                                                     tab_state.message_list_state.reset(0);
+                                                    // 消息清空后命中集合必然失效：收起浮层并清空匹配
+                                                    tab_state.search_open = false;
+                                                    tab_state.search_match_ids.clear();
+                                                    tab_state.search_cursor = 0;
+                                                    tab_state.search_dirty = false;
                                                 });
                                                 // 网络层计数一并归零(否则下一拍同步会覆盖回原值)
                                                 app.reset_net_counters(&tab_id_clear);
@@ -1638,10 +1735,155 @@ impl<'a> ConnectionTab<'a> {
                     .relative()
                     .w_full()
                     .flex_1()
+                    // 搜索浮层：非模态，悬浮在消息区右上角（不加全屏遮罩，可边看消息边搜索）
+                    .when(self.tab_state.search_open, |this| {
+                        let total = self.tab_state.search_match_ids.len();
+                        // i 用 1-based 展示，无命中显示 0/0
+                        let current = if total == 0 {
+                            0
+                        } else {
+                            self.tab_state.search_cursor + 1
+                        };
+                        let has_match = total > 0;
+                        let tab_id_prev = tab_id.clone();
+                        let tab_id_next = tab_id.clone();
+                        let tab_id_close = tab_id.clone();
+                        this.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .right(px(14.0))
+                                .occlude()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .px_2()
+                                .py_1()
+                                .rounded_md()
+                                .shadow_lg()
+                                .bg(theme.background)
+                                .border_1()
+                                .border_color(theme.border)
+                                .child(
+                                    Icon::new(IconName::Search)
+                                        .size(px(12.0))
+                                        .text_color(theme.muted_foreground),
+                                )
+                                .child(
+                                    // Small 尺寸 = 24px 高，与浮层其余控件对齐
+                                    div().w_40().h_6().child(
+                                        Input::new(&self.tab_state.search_input)
+                                            .with_size(Size::Small),
+                                    ),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .when(!has_match, |el| el.opacity(0.5))
+                                        .child(format!("{}/{}", current, total)),
+                                )
+                                .child(
+                                    div()
+                                        .id(format!("search-prev-{}", tab_id))
+                                        .w_5()
+                                        .h_5()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(2.0))
+                                        .when(has_match, |el| {
+                                            el.cursor_pointer()
+                                                .hover(|style| style.bg(theme.secondary))
+                                        })
+                                        .when(!has_match, |el| el.opacity(0.4))
+                                        .tooltip(|window, cx| {
+                                            Tooltip::new(
+                                                t!("connection_tab.search_prev").to_string(),
+                                            )
+                                            .build(window, cx)
+                                        })
+                                        .child(
+                                            Icon::new(IconName::ChevronUp)
+                                                .size(px(14.0))
+                                                .text_color(theme.foreground),
+                                        )
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(move |app, _event, window, cx| {
+                                                app.jump_to_match(&tab_id_prev, -1, window, cx);
+                                            }),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .id(format!("search-next-{}", tab_id))
+                                        .w_5()
+                                        .h_5()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(2.0))
+                                        .when(has_match, |el| {
+                                            el.cursor_pointer()
+                                                .hover(|style| style.bg(theme.secondary))
+                                        })
+                                        .when(!has_match, |el| el.opacity(0.4))
+                                        .tooltip(|window, cx| {
+                                            Tooltip::new(
+                                                t!("connection_tab.search_next").to_string(),
+                                            )
+                                            .build(window, cx)
+                                        })
+                                        .child(
+                                            Icon::new(IconName::ChevronDown)
+                                                .size(px(14.0))
+                                                .text_color(theme.foreground),
+                                        )
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(move |app, _event, window, cx| {
+                                                app.jump_to_match(&tab_id_next, 1, window, cx);
+                                            }),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .id(format!("search-close-{}", tab_id))
+                                        .w_5()
+                                        .h_5()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(2.0))
+                                        .cursor_pointer()
+                                        .hover(|style| style.bg(theme.secondary))
+                                        .tooltip(|window, cx| {
+                                            Tooltip::new(
+                                                t!("connection_tab.search_close").to_string(),
+                                            )
+                                            .build(window, cx)
+                                        })
+                                        .child(
+                                            Icon::new(IconName::Close)
+                                                .size(px(12.0))
+                                                .text_color(theme.muted_foreground),
+                                        )
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(move |app, _event, window, cx| {
+                                                app.close_search(&tab_id_close, window, cx);
+                                            }),
+                                        ),
+                                ),
+                        )
+                    })
                     .child(
                         div()
                             .pr_8()
                             .size_full()
+                            // 浮层打开时列表整体下移 40px（浮层高约 34px），避免消息被悬浮的搜索框遮住
+                            .when(self.tab_state.search_open, |div| div.pt_10())
                             .child(
                                 list(
                                     self.tab_state.message_list_state.clone(),
@@ -1650,12 +1892,20 @@ impl<'a> ConnectionTab<'a> {
                                         // 一个额外引用计数,使事件泵侧 Arc::make_mut 退化为整体深拷贝。
                                         // 此处(列表 prepaint 阶段)App 实体未被借用,可安全 read。
                                         let app = app_entity.read(cx);
-                                        let message = app
-                                            .connection_tabs
-                                            .get(&tab_id_for_list)
-                                            .and_then(|tab| tab.message_list.messages.get(ix));
+                                        let tab = app.connection_tabs.get(&tab_id_for_list);
+                                        let message =
+                                            tab.and_then(|tab| tab.message_list.messages.get(ix));
+                                        // 当前命中项：浮层打开时才有意义（id 而非下标，淘汰不影响）
+                                        let current_match_id: Option<&str> = tab
+                                            .filter(|tab| tab.search_open)
+                                            .and_then(|tab| {
+                                                tab.search_match_ids.get(tab.search_cursor)
+                                            })
+                                            .map(|id| id.as_str());
                                         if let Some(message) = message {
                                             let is_sent = message.direction == MessageDirection::Sent;
+                                            let is_current_match =
+                                                current_match_id == Some(message.id.as_str());
                                             // 原始内容(未格式化),收藏 key 的基准
                                             let raw_text = message.get_content_by_type();
                                             // 展示/复制按当前显示模式(惰性计算并缓存,仅可见项产生开销)
@@ -1696,6 +1946,11 @@ impl<'a> ConnectionTab<'a> {
                                                 .w_full()
                                                 .when(is_sent, |div| div.items_end())
                                                 .when(!is_sent, |div| div.items_start())
+                                                // 当前命中项：整行浅灰底（只加 bg 不加内边距，
+                                                // 避免命中/未命中切换时行高变化导致列表跳动）
+                                                .when(is_current_match, |div| {
+                                                    div.bg(theme.muted)
+                                                })
                                                 .child(
                                                     div()
                                                         .flex()

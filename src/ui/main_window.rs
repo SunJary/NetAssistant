@@ -55,6 +55,17 @@ impl<'a> MainWindow<'a> {
                     if app.show_favorite_list {
                         app.show_favorite_list = false;
                         cx.notify();
+                        return;
+                    }
+                    // 搜索浮层打开时先关闭搜索, 并把焦点归还根元素
+                    let search_open = app
+                        .connection_tabs
+                        .get(&app.active_tab)
+                        .map(|tab| tab.search_open)
+                        .unwrap_or(false);
+                    if search_open {
+                        let active_tab = app.active_tab.clone();
+                        app.close_search(&active_tab, window, cx);
                     }
                     return;
                 }
@@ -67,11 +78,23 @@ impl<'a> MainWindow<'a> {
                     return;
                 }
 
+                // 说明: 搜索浮层的 Enter(下一个) / Shift+Enter(上一个) 由 search_input 的
+                // InputEvent 订阅处理(Enter 会被 Input 的 enter action 消费), 不在此分发。
+
                 // 以下快捷键均需 Ctrl/Cmd 组合
                 if !is_ctrl {
                     return;
                 }
 
+                // Ctrl+F 打开搜索浮层并聚焦（幂等：已打开则仅重新聚焦，不用于关闭）。
+                // 与 Ctrl+Tab 一致：任何焦点状态下都响应，不做输入框屏蔽。
+                if key == "f" && !ctrl_shift && !ctrl_alt {
+                    let active_tab = app.active_tab.clone();
+                    if !active_tab.is_empty() {
+                        app.open_search(&active_tab, window, cx);
+                    }
+                    return;
+                }
                 // Ctrl+Tab / Ctrl+Shift+Tab 循环切换标签页
                 if key == "tab" && !ctrl_alt {
                     let step = if ctrl_shift { -1 } else { 1 };
@@ -596,8 +619,8 @@ fn language_menu_item(
         .hover(|style| style.bg(theme.border))
         .on_mouse_down(
             MouseButton::Left,
-            cx.listener(move |app, _event, _window, cx| {
-                app.set_language(code, cx);
+            cx.listener(move |app, _event, window, cx| {
+                app.set_language(code, window, cx);
             }),
         )
         .child(
