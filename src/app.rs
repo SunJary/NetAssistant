@@ -606,6 +606,10 @@ impl NetAssistantApp {
     /// 说明: 焦点在消息输入框时, Ctrl+Enter 会被 gpui-component Input 内部的
     /// 多行换行绑定拦截, 不会冒泡到主窗口的 on_key_down。故在此订阅
     /// `InputEvent::PressEnter { secondary: true }`(即 Ctrl/Cmd+Enter)。
+    ///
+    /// Input 在 emit 该事件前已把 `"\n" + 缩进` 插到光标处, 这里按光标位置反推
+    /// 该片段并精准删除(而非整段回写), 以免 `set_value` 把光标重置到 0 位、
+    /// 把滚动归零、清空撤销栈。
     fn ensure_message_input_enter_subscription(&mut self, tab_id: &str, cx: &mut Context<Self>) {
         if self.message_input_enter_subscriptions.contains_key(tab_id) {
             return;
@@ -640,12 +644,21 @@ impl NetAssistantApp {
                 else {
                     return;
                 };
-                // 去掉 Input 多行模式按下 Ctrl+Enter 自动插入的换行符, 避免发送多余空行
-                let raw = input_entity.read(cx).text().to_string();
-                let cleaned = raw.trim_end_matches(&['\n', '\r'][..]).to_string();
-                if cleaned.trim().is_empty() {
-                    return;
-                }
+                // 多行 Input 按下 Ctrl+Enter 时已把 "\n" + 缩进 插到光标处, 这里反推
+                // 该片段并剔除, 使输入框内容与发送内容都回到用户输入的原样。
+                let (raw, caret) = {
+                    let state = input_entity.read(cx);
+                    (state.text().to_string(), state.selected_range().end)
+                };
+                let span = inserted_newline_span(&raw, caret);
+                let cleaned = match &span {
+                    Some(span) => format!("{}{}", &raw[..span.start], &raw[span.end..]),
+                    // 兜底(多行模式必插换行, 理论上不可达): 不改动输入框, 仅用于空内容判定
+                    None => raw.trim_end_matches(['\n', '\r']).to_string(),
+                };
+                // 内容为空时仍要删掉插入的换行, 只是不发送
+                let should_send = !cleaned.trim().is_empty();
+
                 // 当前处于 app 实体更新(订阅回调)期间, 不能同步重入 app 实体。
                 // 用 cx.defer 推迟到本次更新结束、实体解锁后再真正发送。
                 let app_handle = app_handle.clone();
@@ -653,12 +666,18 @@ impl NetAssistantApp {
                 let input_entity = input_entity.clone();
                 cx.defer(move |cx: &mut App| {
                     let _ = window_handle.update(cx, |_view, window, cx| {
-                        // 先回写清理后的内容, 再发送(发送内部按 auto_clear 决定是否清空)
-                        let _ = input_entity
-                            .update(cx, |input, cx| input.set_value(cleaned, window, cx));
-                        let _ = app_handle.update(cx, |app, cx| {
-                            app.send_message_from_tab(&sub_tab_id, window, cx);
+                        // 先删掉 Input 自动插入的换行, 再发送(发送内部按 auto_clear 决定是否清空)
+                        let _ = input_entity.update(cx, |input, cx| {
+                            if let Some(span) = span {
+                                input.set_selected_range(span, cx);
+                                input.replace("", window, cx);
+                            }
                         });
+                        if should_send {
+                            let _ = app_handle.update(cx, |app, cx| {
+                                app.send_message_from_tab(&sub_tab_id, window, cx);
+                            });
+                        }
                     });
                 });
             }
@@ -2746,5 +2765,76 @@ impl Render for NetAssistantApp {
         }
 
         MainWindow::new(self, cx).render(window, cx)
+    }
+}
+
+/// 计算多行 Input 按下 Ctrl+Enter 时自动插入的「换行 + 下一行缩进」片段
+/// 在文本中的字节范围。
+///
+/// gpui-component 的 `enter()` 对 `secondary-enter` 与普通回车走同一分支, 会先插入
+/// `"\n" + 缩进` 再 emit `InputEvent::PressEnter`, 故订阅回调里文本必然多出该片段。
+/// 片段以 `\n` 开头、其后只有缩进空白(不含换行)、且紧邻光标左侧, 因此从光标向前
+/// 跳过空白后遇到的第一个换行符即为它。
+///
+/// `caret` 为按键后的光标字节偏移; 定位失败返回 `None`。
+fn inserted_newline_span(raw: &str, caret: usize) -> Option<std::ops::Range<usize>> {
+    let caret = caret.min(raw.len());
+    if !raw.is_char_boundary(caret) {
+        return None;
+    }
+    let head = raw[..caret].trim_end_matches(|c: char| c.is_whitespace() && c != '\n' && c != '\r');
+    if head.ends_with('\n') {
+        Some(head.len() - 1..caret)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::inserted_newline_span;
+
+    /// 断言插入片段范围, 并顺带校验剔除后的文本与光标落点
+    fn assert_span(raw: &str, caret: usize, expect: Option<(usize, usize)>, cleaned: &str) {
+        let got = inserted_newline_span(raw, caret).map(|r| (r.start, r.end));
+        assert_eq!(got, expect, "raw={raw:?} caret={caret}");
+        if let Some((start, end)) = expect {
+            assert_eq!(format!("{}{}", &raw[..start], &raw[end..]), cleaned);
+        }
+    }
+
+    #[test]
+    fn span_at_end_of_text() {
+        assert_span("hello\n", 6, Some((5, 6)), "hello");
+    }
+
+    #[test]
+    fn span_at_start_of_text() {
+        assert_span("\nhello", 1, Some((0, 1)), "hello");
+    }
+
+    #[test]
+    fn span_in_middle_of_text() {
+        assert_span("ab\ncd", 3, Some((2, 3)), "abcd");
+    }
+
+    #[test]
+    fn span_with_indent() {
+        assert_span("{\n  \"a\": 1\n    ", 15, Some((10, 15)), "{\n  \"a\": 1");
+    }
+
+    #[test]
+    fn span_on_empty_input() {
+        assert_span("\n", 1, Some((0, 1)), "");
+    }
+
+    #[test]
+    fn span_keeps_user_trailing_spaces() {
+        assert_span("abc   \n", 7, Some((6, 7)), "abc   ");
+    }
+
+    #[test]
+    fn span_none_without_inserted_newline() {
+        assert_span("abc", 3, None, "abc");
     }
 }
