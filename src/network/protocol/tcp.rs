@@ -242,11 +242,10 @@ impl NetworkConnection for TcpClient {
                     &decoder_config,
                 );
 
-                // 半包 flush 截止时间: 收到数据后安排 FLUSH_DELAY 后强制 flush 一次。
-                // 关键: 截止时间是绝对时刻且不随后续收包顺延 —— 旧实现每轮循环重建
-                // sleep,持续有数据时 flush 分支被无限推迟(饥饿),半包永不落地。
-                // 截止时间到后该分支保持就绪,select 随机命中或在下一次收包路径内联触发,
-                // 保证最终执行;force_flush 无待处理数据时返回 None,空转无害。
+                // 半包 flush 截止时间: 出现残留后安排 FLUSH_DELAY 的静默计时。
+                // 关键: 每次收包都重新计时(顺延) —— 只要还有新数据进来就不强刷,
+                // 因为残留会被后续字节补齐成完整帧; 只有对端真的停发(静默)才需要兜底。
+                // 无残留时置 None, select! 该分支被禁用(不注册 timer), 热路径零开销。
                 let mut flush_deadline: Option<tokio::time::Instant> = None;
 
                 loop {
@@ -286,27 +285,12 @@ impl NetworkConnection for TcpClient {
                                     }
                                     flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
 
-                                    // 首次出现待 flush 的机会时安排截止时间(不随收包顺延)
-                                    if flush_deadline.is_none() {
-                                        flush_deadline = Some(tokio::time::Instant::now() + FLUSH_DELAY);
-                                    }
-                                    // 截止时间已过: 在收包路径内联触发,避免依赖 select 随机调度
-                                    if let Some(deadline) = flush_deadline {
-                                        if tokio::time::Instant::now() >= deadline {
-                                            flush_deadline = None;
-                                            if let Some(data) = decoder.force_flush() {
-                                                let data: BytesMut = data;
-                                                accumulate_decoded(
-                                                    data,
-                                                    &message_processor_clone,
-                                                    &mut batch,
-                                                    &net_counters_clone,
-                                                    MessageType::Text,
-                                                );
-                                                flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
-                                            }
-                                        }
-                                    }
+                                    // 静默计时: 有残留则顺延(每次收包重算), 无残留则关闭计时
+                                    flush_deadline = if decoder.has_pending() {
+                                        Some(tokio::time::Instant::now() + FLUSH_DELAY)
+                                    } else {
+                                        None
+                                    };
                                 },
                                 Err(e) => {
                                     error!("TCP读取错误: {:?}", e);
@@ -325,6 +309,7 @@ impl NetworkConnection for TcpClient {
                             }
                         }, if flush_deadline.is_some() => {
                             flush_deadline = None;
+                            // 静默到点: 残留被取走并清空缓冲区, 作为一条消息计入统计
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;
                                 accumulate_decoded(
@@ -355,6 +340,7 @@ impl NetworkConnection for TcpClient {
                         } => {
                             if let Ok(new_config) = new_config {
                                 debug!("[TCP客户端] 收到运行时解码器配置更新: {:?}", new_config);
+                                // 交换前把旧解码器残留取出吐出, 计入统计(残留不会重现)
                                 if let Some(data) = decoder.force_flush() {
                                     let data: BytesMut = data;
                                     accumulate_decoded(
@@ -379,6 +365,20 @@ impl NetworkConnection for TcpClient {
                             break;
                         }
                     }
+                }
+
+                // 连接结束: 消费式强刷下残留已被前一次静默取走, 这里补最后一次,
+                // 否则"对端发半条后立刻断开"的残留永远不会显示(计入统计)
+                if let Some(data) = decoder.force_flush() {
+                    let data: BytesMut = data;
+                    accumulate_decoded(
+                        data,
+                        &message_processor_clone,
+                        &mut batch,
+                        &net_counters_clone,
+                        MessageType::Text,
+                    );
+                    flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                 }
 
                 if let Some(sender) = &event_sender_clone {
@@ -691,7 +691,7 @@ impl NetworkServer for TcpServer {
                                         let mut decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&decoder_config);
 
                                         // 半包 flush 截止时间(与客户端读循环同一策略):
-                                        // 绝对时刻、不随收包顺延,截止后经内联或 select 分支保证执行
+                                        // 出现残留后安排静默计时, 每次收包顺延, 无残留则禁用该分支
                                         let mut flush_deadline: Option<tokio::time::Instant> = None;
 
                                         loop {
@@ -746,34 +746,12 @@ impl NetworkServer for TcpServer {
                                                             }
                                                             flush_batch(&client_event_sender, &client_id_clone, &mut batch);
 
-                                                            // 首次安排 flush 截止时间(不随收包顺延),截止后在收包路径内联触发
-                                                            if flush_deadline.is_none() {
-                                                                flush_deadline = Some(tokio::time::Instant::now() + FLUSH_DELAY);
-                                                            }
-                                                            if let Some(deadline) = flush_deadline {
-                                                                if tokio::time::Instant::now() >= deadline {
-                                                                    flush_deadline = None;
-                                                                    if let Some(data) = decoder.force_flush() {
-                                                                        let data: BytesMut = data;
-                                                                        accumulate_decoded(
-                                                                            data,
-                                                                            &client_message_processor,
-                                                                            &mut batch,
-                                                                            &client_net_counters,
-                                                                            MessageType::Text,
-                                                                        );
-                                                                        try_auto_reply(
-                                                                            &auto_reply_state,
-                                                                            &client_tx_auto_reply,
-                                                                            &mut batch,
-                                                                            &client_id_clone,
-                                                                            &addr,
-                                                                            &client_net_counters,
-                                                                        );
-                                                                        flush_batch(&client_event_sender, &client_id_clone, &mut batch);
-                                                                    }
-                                                                }
-                                                            }
+                                                            // 静默计时: 有残留则顺延(每次收包重算), 无残留则关闭计时
+                                                            flush_deadline = if decoder.has_pending() {
+                                                                Some(tokio::time::Instant::now() + FLUSH_DELAY)
+                                                            } else {
+                                                                None
+                                                            };
                                                         },
                                                         Err(e) => {
                                                             error!("TCP服务器读取来自 {} 的消息时发生错误: {:?}", addr, e);
@@ -789,7 +767,7 @@ impl NetworkServer for TcpServer {
                                                     }
                                                 }, if flush_deadline.is_some() => {
                                                     flush_deadline = None;
-                                                    // 强制刷新解码器缓冲区
+                                                    // 静默到点: 残留被取走并清空缓冲区, 作为一条消息计入统计
                                                     if let Some(data) = decoder.force_flush() {
                                                         let data: BytesMut = data;
                                                         accumulate_decoded(
@@ -798,14 +776,6 @@ impl NetworkServer for TcpServer {
                                                             &mut batch,
                                                             &client_net_counters,
                                                             MessageType::Text,
-                                                        );
-                                                        try_auto_reply(
-                                                            &auto_reply_state,
-                                                            &client_tx_auto_reply,
-                                                            &mut batch,
-                                                            &client_id_clone,
-                                                            &addr,
-                                                            &client_net_counters,
                                                         );
                                                         flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                     }
@@ -826,6 +796,7 @@ impl NetworkServer for TcpServer {
                                                 } => {
                                                     if let Ok(new_config) = new_config {
                                                         debug!("[TCP服务器] 客户端 {} 收到运行时解码器配置更新: {:?}", addr, new_config);
+                                                        // 交换前把旧解码器残留取出吐出, 计入统计(残留不会重现)
                                                         if let Some(data) = decoder.force_flush() {
                                                             let data: BytesMut = data;
                                                             accumulate_decoded(
@@ -834,14 +805,6 @@ impl NetworkServer for TcpServer {
                                                                 &mut batch,
                                                                 &client_net_counters,
                                                                 MessageType::Text,
-                                                            );
-                                                            try_auto_reply(
-                                                                &auto_reply_state,
-                                                                &client_tx_auto_reply,
-                                                                &mut batch,
-                                                                &client_id_clone,
-                                                                &addr,
-                                                                &client_net_counters,
                                                             );
                                                             flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                         }
@@ -853,6 +816,20 @@ impl NetworkServer for TcpServer {
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        // 连接结束: 消费式强刷下残留已被前一次静默取走, 这里补最后一次,
+                                        // 否则"对端发半条后立刻断开"的残留永远不会显示(计入统计)
+                                        if let Some(data) = decoder.force_flush() {
+                                            let data: BytesMut = data;
+                                            accumulate_decoded(
+                                                data,
+                                                &client_message_processor,
+                                                &mut batch,
+                                                &client_net_counters,
+                                                MessageType::Text,
+                                            );
+                                            flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                         }
                                     };
 
