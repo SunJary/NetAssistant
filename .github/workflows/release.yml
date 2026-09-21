@@ -21,7 +21,11 @@ jobs:
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # ARM64 为附加产物：构建失败不阻断其余平台，也不阻断发布流程
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
+      # 关闭 fail-fast：任一平台失败时不再取消其余进行中的构建
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -40,6 +44,16 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: netassistant
             asset_name: netassistant-macos-aarch64
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact_name: netassistant.exe
+            asset_name: netassistant-windows-aarch64
+            experimental: true
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_name: netassistant
+            asset_name: netassistant-linux-aarch64
+            experimental: true
 
     steps:
       - name: Checkout code
@@ -77,7 +91,7 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ matrix.target }}-${{ steps.rust-version.outputs.VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libxkbcommon-x11-dev
@@ -94,7 +108,7 @@ jobs:
           cargo build --release --target ${{ matrix.target }}
 
       - name: Prepare artifact (Windows)
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Copy-Item target\${{ matrix.target }}\release\netassistant.exe netassistant.exe
@@ -121,7 +135,7 @@ jobs:
           path: packaging/dist/netassistant-windows-x86_64-setup.exe
 
       - name: Prepare artifact (Unix)
-        if: matrix.os != 'windows-latest'
+        if: runner.os != 'Windows'
         run: |
           # macOS 跳过 strip：cargo release profile 已 strip，且再 strip 会破坏
           # 链接器为 arm64 生成的 ad-hoc 签名（后续 macos-package 会统一重签）
@@ -131,26 +145,27 @@ jobs:
           tar -czf ${{ matrix.asset_name }}.tar.gz -C target/${{ matrix.target }}/release netassistant
 
       - name: Install AppImage tools
-        if: matrix.os == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y squashfs-tools
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          ARCH=$(uname -m)
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$ARCH.AppImage
           wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
-          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-gtk.sh
+          chmod +x linuxdeploy-$ARCH.AppImage linuxdeploy-plugin-gtk.sh
 
       - name: Build AppImage
-        if: matrix.os == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
           NO_STRIP: '1'
           DEPLOY_GTK_VERSION: '3'
-          OUTPUT: netassistant-linux-x86_64.AppImage
+          OUTPUT: ${{ matrix.asset_name }}.AppImage
         run: |
           # Assemble AppDir with standard AppImage layout
           mkdir -p AppDir/usr/bin
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          cp target/x86_64-unknown-linux-gnu/release/netassistant AppDir/usr/bin/
+          cp target/${{ matrix.target }}/release/netassistant AppDir/usr/bin/
           cp assets/icon/icon_256x256.png AppDir/usr/share/icons/hicolor/256x256/apps/netassistant.png
 
           # Generate .desktop file from Cargo.toml [package.metadata.appimage]
@@ -177,7 +192,7 @@ jobs:
 
           # Put plugin in PATH so linuxdeploy can find it
           export PATH="$PWD:$PATH"
-          ./linuxdeploy-x86_64.AppImage \
+          ./linuxdeploy-$(uname -m).AppImage \
             --appdir AppDir \
             --desktop-file AppDir/usr/share/applications/netassistant.desktop \
             --executable AppDir/usr/bin/netassistant \
@@ -185,17 +200,17 @@ jobs:
             --output appimage
 
       - name: Upload AppImage artifact
-        if: matrix.os == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: netassistant-linux-x86_64-appimage
-          path: netassistant-linux-x86_64.AppImage
+          name: ${{ matrix.asset_name }}-appimage
+          path: ${{ matrix.asset_name }}.AppImage
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ matrix.os == 'windows-latest' && format('{0}.zip', matrix.asset_name) || format('{0}.tar.gz', matrix.asset_name) }}
+          path: ${{ runner.os == 'Windows' && format('{0}.zip', matrix.asset_name) || format('{0}.tar.gz', matrix.asset_name) }}
 
   macos-package:
     name: Package macOS Universal App
@@ -444,9 +459,11 @@ jobs:
             
             ### 下载说明
 
-            - **Windows**: 下载 `netassistant-windows-x86_64.zip`
-            - **Linux (AppImage)**: 下载 `netassistant-linux-x86_64.AppImage`（推荐，开箱即用）
-            - **Linux (tar.gz)**: 下载 `netassistant-linux-x86_64.tar.gz`（轻量，需自行安装依赖）
+            - **Windows (x64)**: 下载 `netassistant-windows-x86_64.zip`，或 `netassistant-windows-x86_64-setup.exe`（安装包，推荐）
+            - **Windows (ARM64)**: 下载 `netassistant-windows-aarch64.zip`（Surface Pro X / 骁龙笔记本等 ARM 设备，未经真机完整测试）
+            - **Linux (AppImage, x86_64)**: 下载 `netassistant-linux-x86_64.AppImage`（推荐，开箱即用）
+            - **Linux (AppImage, ARM64)**: 下载 `netassistant-linux-aarch64.AppImage`（树莓派 5 / ARM 服务器等 ARM 设备）
+            - **Linux (tar.gz)**: 下载 `netassistant-linux-x86_64.tar.gz` / `netassistant-linux-aarch64.tar.gz`（轻量，需自行安装依赖）
             - **macOS (通用 Universal)**: 下载 `netassistant-macos-universal.dmg`（推荐，拖入 Applications 安装）或 `netassistant-macos-universal.zip`（解压即用）
             - **macOS (裸二进制)**: `netassistant-macos-x86_64.tar.gz`（Intel）/ `netassistant-macos-aarch64.tar.gz`（Apple Silicon）
 
@@ -457,17 +474,17 @@ jobs:
                - 安装：`winget install SunJary.NetAssistant`
                - 升级：`winget upgrade SunJary.NetAssistant`
             2. **备选方法：手动安装**
-               - 下载并解压 `netassistant-windows-x86_64.zip`
+               - 下载并解压 `netassistant-windows-x86_64.zip`（或运行 setup.exe 安装包）
                - 运行 `netassistant.exe`
 
             #### Linux (AppImage - 推荐)
-            1. 下载 `netassistant-linux-x86_64.AppImage`
-            2. 添加执行权限：`chmod +x netassistant-linux-x86_64.AppImage`
+            1. 下载对应架构的 `netassistant-linux-x86_64.AppImage` 或 `netassistant-linux-aarch64.AppImage`
+            2. 添加执行权限：`chmod +x netassistant-linux-*.AppImage`
             3. 运行：`./netassistant-linux-x86_64.AppImage`
             4. 首次运行需安装 libfuse2：`sudo apt install libfuse2`
 
             #### Linux (tar.gz)
-            1. 下载并解压 `netassistant-linux-x86_64.tar.gz`
+            1. 下载并解压 `netassistant-linux-x86_64.tar.gz`（或 `netassistant-linux-aarch64.tar.gz`）
             2. 添加执行权限：`chmod +x netassistant`
             3. 运行：`./netassistant`
             4. 需自行安装依赖：`sudo apt install libgtk-3-0`
@@ -485,10 +502,14 @@ jobs:
             >
             > **关于 Gatekeeper 提示**：本应用没有 Apple 开发者账号，未进行签名公证。首次打开出现"无法验证开发者"是 macOS 对未公证应用的正常拦截，**不是应用损坏**，按上面第 2 步操作即可打开，不影响使用。
 
+            > **给 ARM 用户（Windows ARM64 / Linux ARM64）的说明**
+            >
+            > ARM64 版本为 CI 自动原生构建产物，未经真机完整测试，欢迎下载体验并反馈问题。
+
             ### 系统要求
 
-            - Windows 10 或更高版本
-            - Linux (需要 Vulkan 兼容 GPU + mesa-vulkan-drivers；AppImage 需 libfuse2)
+            - Windows 10 或更高版本（x64 / ARM64）
+            - Linux x86_64 / ARM64（需要 Vulkan 兼容 GPU + mesa-vulkan-drivers；AppImage 需 libfuse2）
             - macOS 11 或更高版本
             
             ### 更新内容
