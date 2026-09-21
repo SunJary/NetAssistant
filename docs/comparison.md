@@ -1,6 +1,6 @@
 ---
 title: 同类工具对比
-description: NetAssistant 与网络调试助手（NetAssist）、SocketTool、Packet Sender、Wireshark 等 TCP/UDP 网络调试工具对比：跨平台、开源免费、内置压力测试，为什么选择 NetAssistant。
+description: NetAssistant 与网络调试助手（NetAssist）、SocketTool、Packet Sender、Wireshark 等 TCP/UDP 网络调试工具对比：跨平台（Windows / Linux / macOS，x64 与 ARM64 原生构建）、开源免费、内置压力测试，为什么选择 NetAssistant。
 ---
 
 # 同类工具对比
@@ -18,7 +18,7 @@ NetAssistant 是开源的跨平台网络调试助手。很多开发者用过**�
 | 维度 | NetAssistant | 网络调试助手 (NetAssist) | SocketTool | Packet Sender | Wireshark |
 | ---- | ---- | ---- | ---- | ---- | ---- |
 | 开源 | ✅ Apache-2.0 | ❌ 闭源 | ❌ 闭源 | ✅ 开源 | ✅ GPL |
-| 跨平台 | ✅ Win / Linux / macOS | ❌ 仅 Windows | ❌ 仅 Windows | ✅ Win / Mac / Linux | ✅ Win / Mac / Linux |
+| 跨平台 | ✅ Win / Linux / macOS（x64 + ARM64） | ❌ 仅 Windows | ❌ 仅 Windows | ✅ Win / Mac / Linux | ✅ Win / Mac / Linux |
 | TCP 客户端/服务端 | ✅ | ✅ | ✅ | ✅ | ❌（抓包为主） |
 | UDP 客户端/服务端 | ✅ | ✅ | ✅ | ✅ | ❌ |
 | IPv6 | ✅ | ⚠️ 部分 | ⚠️ 部分 | ✅ | ✅ |
@@ -43,7 +43,7 @@ NetAssistant 是开源的跨平台网络调试助手。很多开发者用过**�
 - **硬件/嵌入式联调**：上位机通过 UDP 广播发现设备，NetAssistant 能展示所有设备回复并高亮非预期来源地址
 - **TCP 粘包调试**：四种解码器按协议格式自动分包，不用自己数长度
 - **服务端并发验证**：内置压测引擎直接打 QPS、p50/p95/p99 延迟，不用另装压测工具
-- **多平台切换**：Windows、Linux、macOS 同一套操作习惯，配置自动保存
+- **多平台切换**：Windows、Linux、macOS 同一套操作习惯，配置自动保存；x64 与 ARM64 均有原生构建
 
 ## 如何迁移
 

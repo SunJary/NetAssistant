@@ -19,11 +19,11 @@ export default defineConfig({
     ['meta', { property: 'og:site_name', content: 'NetAssistant' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'NetAssistant - 开源跨平台网络调试助手' }],
-    ['meta', { property: 'og:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
+    ['meta', { property: 'og:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 Windows、Linux、macOS（x64 / ARM64），涵盖 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
     ['meta', { property: 'og:image', content: `${siteUrl}/logo.png` }],
     ['meta', { name: 'twitter:card', content: 'summary' }],
     ['meta', { name: 'twitter:title', content: 'NetAssistant - 开源跨平台网络调试助手' }],
-    ['meta', { name: 'twitter:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
+    ['meta', { name: 'twitter:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 Windows、Linux、macOS（x64 / ARM64），涵盖 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
     ['meta', { name: 'twitter:image', content: `${siteUrl}/logo.png` }]
   ],
   // 为每个页面生成指向唯一规范域名的 canonical，避免 GitHub Pages 与正式域名重复内容
@@ -39,7 +39,7 @@ export default defineConfig({
       label: '简体中文',
       lang: 'zh-CN',
       description:
-        '基于 Rust 构建的高性能跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。',
+        '基于 Rust 构建的高性能跨平台网络调试工具，支持 Windows、Linux、macOS（x64 / ARM64），涵盖 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。',
       themeConfig: {
         logo: '/logo.png',
         nav: [
@@ -91,7 +91,7 @@ export default defineConfig({
       lang: 'en-US',
       link: '/en/',
       description:
-        'A high-performance cross-platform network debugging tool built with Rust, featuring TCP/UDP client & server, multiple decoders, message management and high-concurrency stress testing.',
+        'A high-performance cross-platform network debugging tool built with Rust, available for Windows, Linux and macOS on x64 and ARM64, featuring TCP/UDP client & server, multiple decoders, message management and high-concurrency stress testing.',
       themeConfig: {
         logo: '/logo.png',
         nav: [

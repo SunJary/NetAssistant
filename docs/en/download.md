@@ -1,11 +1,11 @@
 ---
 title: Download
-description: "Download NetAssistant cross-platform network debugging tool: available for Windows, Linux and macOS via winget, AppImage, tar.gz or building from source, with system requirements."
+description: "Download NetAssistant cross-platform network debugging tool: available for Windows, Linux and macOS on x64 and ARM64 via winget, AppImage, tar.gz or building from source, with system requirements."
 ---
 
 # Download
 
-NetAssistant is available for Windows, Linux and macOS. All releases can be downloaded from [GitHub Releases](https://github.com/sunjary/netassistant/releases).
+NetAssistant is available for Windows, Linux and macOS, with both x64 and ARM64 builds for each platform. All releases can be downloaded from [GitHub Releases](https://github.com/sunjary/netassistant/releases).
 
 ## Windows
 
@@ -24,6 +24,8 @@ winget upgrade SunJary.NetAssistant
 **Or use the installer**: download `netassistant-windows-x86_64-setup.exe` and follow the wizard (creates Start Menu and desktop shortcuts automatically).
 
 **Alternative**: download `netassistant-windows-x86_64.zip` from [GitHub Releases](https://github.com/sunjary/netassistant/releases), extract it and run `netassistant.exe`.
+
+**ARM64 devices** (Surface Pro X, Snapdragon laptops, etc.): winget and the installer currently ship x64 only. On ARM64, download `netassistant-windows-aarch64.zip`, extract it and run `netassistant.exe`. This build is produced automatically and has not been fully tested on real hardware.
 
 ## Linux
 
@@ -49,6 +51,8 @@ chmod +x netassistant
 
 GTK3 must be installed manually: `sudo apt install libgtk-3-0`
 
+**ARM64 devices** (Raspberry Pi 5, ARM servers, etc.): replace `x86_64` with `aarch64` in the filenames above, i.e. `netassistant-linux-aarch64.AppImage` or `netassistant-linux-aarch64.tar.gz`. This build is produced automatically and has not been fully tested on real hardware.
+
 ## macOS
 
 1. Download the archive for your architecture from [GitHub Releases](https://github.com/sunjary/netassistant/releases):
@@ -61,8 +65,8 @@ GTK3 must be installed manually: `sudo apt install libgtk-3-0`
 
 | Platform | Requirements |
 | -------- | ------------ |
-| Windows | Windows 10 or later |
-| Linux | GTK3 library (e.g. Ubuntu 22.04 or later), Vulkan-compatible GPU |
+| Windows | Windows 10 or later (x64 / ARM64) |
+| Linux | GTK3 library (e.g. Ubuntu 22.04 or later), Vulkan-compatible GPU (x86_64 / ARM64) |
 | macOS | macOS 10.15 or later |
 
 ## Building from Source

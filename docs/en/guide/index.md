@@ -1,14 +1,14 @@
 ---
 title: Getting Started
-description: "NetAssistant installation and getting-started guide: Windows (winget), Linux (AppImage) and macOS install options, plus a three-step first TCP/UDP debugging session."
+description: "NetAssistant installation and getting-started guide: Windows (winget), Linux (AppImage) and macOS install options, with native x64 and ARM64 builds, plus a three-step first TCP/UDP debugging session."
 ---
 
 # Getting Started
 
 ## System Requirements
 
-- **Windows**: 10 or later
-- **Linux**: GTK3 library required (e.g. Ubuntu 22.04 or later)
+- **Windows**: 10 or later, on x64 or ARM64
+- **Linux**: GTK3 library required (e.g. Ubuntu 22.04 or later), on x86_64 or ARM64
 - **macOS**: 10.15 or later
 
 ## Installation
@@ -27,7 +27,7 @@ To upgrade later, simply run:
 winget upgrade SunJary.NetAssistant
 ```
 
-**Alternative**: download the latest version from the [GitHub Release](https://github.com/sunjary/netassistant/releases) page.
+**Alternative**: download the latest version from the [GitHub Release](https://github.com/sunjary/netassistant/releases) page. On ARM64 devices (Surface Pro X, Snapdragon laptops, etc.) neither winget nor the installer is available — download `netassistant-windows-aarch64.zip` instead.
 
 ### Linux
 
@@ -35,7 +35,7 @@ winget upgrade SunJary.NetAssistant
 2. Extract the archive:
 
 ```bash
-tar -xzf netassistant-linux-x64.tar.gz
+tar -xzf netassistant-linux-x86_64.tar.gz
 ```
 
 3. Run the executable:
@@ -45,6 +45,8 @@ tar -xzf netassistant-linux-x64.tar.gz
 ```
 
 The AppImage requires libfuse2 on first run: `sudo apt install libfuse2`.
+
+On ARM64 devices (Raspberry Pi 5, ARM servers, etc.) replace `x86_64` with `aarch64` in the filename above.
 
 ### macOS
 

@@ -1,11 +1,11 @@
 ---
 title: 下载
-description: 下载 NetAssistant 跨平台网络调试工具：支持 Windows、Linux、macOS；winget 安装、AppImage、tar.gz 与源码编译方式，附系统要求。
+description: 下载 NetAssistant 跨平台网络调试工具：支持 Windows、Linux、macOS 的 x64 与 ARM64；winget 安装、AppImage、tar.gz 与源码编译方式，附系统要求。
 ---
 
 # 下载
 
-NetAssistant 支持 Windows、Linux 和 macOS。所有版本均可从 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 下载。
+NetAssistant 支持 Windows、Linux 和 macOS，各平台均提供 x64 与 ARM64 版本。所有版本均可从 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 下载。
 
 ## Windows
 
@@ -24,6 +24,8 @@ winget upgrade SunJary.NetAssistant
 **或使用安装程序**：下载 `netassistant-windows-x86_64-setup.exe`，按向导安装（自动创建开始菜单与桌面快捷方式）。
 
 **备选**：从 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 下载 `netassistant-windows-x86_64.zip`，解压后运行 `netassistant.exe`。
+
+**ARM64 设备**（Surface Pro X、骁龙笔记本等）：winget 与安装程序目前仅提供 x64 版本，ARM64 请下载 `netassistant-windows-aarch64.zip`，解压后运行 `netassistant.exe`。该版本为自动构建产物，未经真机完整测试。
 
 ## Linux
 
@@ -49,6 +51,8 @@ chmod +x netassistant
 
 需自行安装 GTK3 依赖：`sudo apt install libgtk-3-0`
 
+**ARM64 设备**（树莓派 5、ARM 服务器等）：将上述文件名中的 `x86_64` 替换为 `aarch64`，即 `netassistant-linux-aarch64.AppImage` 或 `netassistant-linux-aarch64.tar.gz`。该版本为自动构建产物，未经真机完整测试。
+
 ## macOS
 
 1. 从 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 下载对应架构的压缩包：
@@ -61,8 +65,8 @@ chmod +x netassistant
 
 | 平台 | 要求 |
 | ---- | ---- |
-| Windows | Windows 10 或更高版本 |
-| Linux | 需要 GTK3 库（如 Ubuntu 22.04 及以上）、Vulkan 兼容 GPU |
+| Windows | Windows 10 或更高版本（x64 / ARM64） |
+| Linux | 需要 GTK3 库（如 Ubuntu 22.04 及以上）、Vulkan 兼容 GPU（x86_64 / ARM64） |
 | macOS | macOS 10.15 或更高版本 |
 
 ## 从源代码编译

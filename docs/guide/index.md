@@ -1,14 +1,14 @@
 ---
 title: 快速上手
-description: NetAssistant 安装与快速上手教程：Windows（winget）、Linux（AppImage）、macOS 三种安装方式，三步完成第一次 TCP/UDP 调试。
+description: NetAssistant 安装与快速上手教程：Windows（winget）、Linux（AppImage）、macOS 三种安装方式，x64 与 ARM64 均有原生构建，三步完成第一次 TCP/UDP 调试。
 ---
 
 # 快速上手
 
 ## 系统要求
 
-- **Windows**：10 或更高版本
-- **Linux**：需要 GTK3 库（如 Ubuntu 22.04 及以上版本）
+- **Windows**：10 或更高版本，x64 与 ARM64 均可
+- **Linux**：需要 GTK3 库（如 Ubuntu 22.04 及以上版本），x86_64 与 ARM64 均可
 - **macOS**：10.15 或更高版本
 
 ## 安装
@@ -27,7 +27,7 @@ winget install SunJary.NetAssistant
 winget upgrade SunJary.NetAssistant
 ```
 
-**备选方法**：从 [GitHub Release](https://github.com/sunjary/netassistant/releases) 页面下载最新版本。
+**备选方法**：从 [GitHub Release](https://github.com/sunjary/netassistant/releases) 页面下载最新版本。ARM64 设备（Surface Pro X、骁龙笔记本等）winget 与安装程序均不支持，请下载 `netassistant-windows-aarch64.zip`。
 
 ### Linux
 
@@ -35,7 +35,7 @@ winget upgrade SunJary.NetAssistant
 2. 解压安装包：
 
 ```bash
-tar -xzf netassistant-linux-x64.tar.gz
+tar -xzf netassistant-linux-x86_64.tar.gz
 ```
 
 3. 运行可执行文件：
@@ -45,6 +45,8 @@ tar -xzf netassistant-linux-x64.tar.gz
 ```
 
 AppImage 方式首次运行需安装 libfuse2：`sudo apt install libfuse2`。
+
+ARM64 设备（树莓派 5、ARM 服务器等）请将上述文件名中的 `x86_64` 替换为 `aarch64`。
 
 ### macOS
 
