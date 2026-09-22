@@ -1,11 +1,11 @@
 ---
 title: 功能特性
-description: NetAssistant 网络调试助手功能特性一览：TCP/UDP 客户端与服务端、IPv4/IPv6 双栈、四种解码器解决 TCP 粘包、消息收藏与导出、自动回复、周期发送与高并发压力测试。
+description: NetAssistant 网络调试助手功能特性一览：TCP/UDP 客户端与服务端、IPv4/IPv6 双栈、四种解码器解决 TCP 粘包、消息收藏与导出、自动回复、周期发送与高并发压力测试；支持 Windows、Linux、macOS 的 x64 与 ARM64。
 ---
 
 # 功能特性
 
-NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**网络调试工具，专为开发者设计，支持 Windows、Linux 和 macOS 系统。
+NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**网络调试工具，专为开发者设计，支持 Windows、Linux 和 macOS 系统，x64 与 ARM64 均有原生构建。
 
 ## 核心功能
 

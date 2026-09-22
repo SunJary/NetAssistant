@@ -1,6 +1,6 @@
 ---
 title: 更新日志
-description: NetAssistant 网络调试助手版本更新记录与路线图：TCP 解码器、UDP 广播设备发现、高并发压力测试、多语言界面、十六进制编辑器等新功能。
+description: NetAssistant 网络调试助手版本更新记录与路线图：TCP 解码器、UDP 广播设备发现、高并发压力测试、多语言界面、十六进制编辑器等新功能；支持 Windows、Linux、macOS 的 x64 与 ARM64。
 ---
 
 # 更新日志

@@ -1,6 +1,6 @@
 ---
 title: Comparison with Similar Tools
-description: "NetAssistant vs NetAssist, SocketTool, Packet Sender and Wireshark — a comparison of TCP/UDP network debugging tools: cross-platform, open source, built-in stress testing, and why choose NetAssistant."
+description: "NetAssistant vs NetAssist, SocketTool, Packet Sender and Wireshark — a comparison of TCP/UDP network debugging tools: cross-platform (Windows / Linux / macOS, native x64 and ARM64 builds), open source, built-in stress testing, and why choose NetAssistant."
 ---
 
 # Comparison with Similar Tools
@@ -18,7 +18,7 @@ To be honest, after finishing the tool, the author discovered that there are alr
 | Dimension | NetAssistant | NetAssist | SocketTool | Packet Sender | Wireshark |
 | --------- | ---- | ---- | ---- | ---- | ---- |
 | Open source | ✅ Apache-2.0 | ❌ | ❌ | ✅ | ✅ GPL |
-| Cross-platform | ✅ Win / Linux / macOS | ❌ Windows only | ❌ Windows only | ✅ Win / Mac / Linux | ✅ Win / Mac / Linux |
+| Cross-platform | ✅ Win / Linux / macOS (x64 + ARM64) | ❌ Windows only | ❌ Windows only | ✅ Win / Mac / Linux | ✅ Win / Mac / Linux |
 | TCP client/server | ✅ | ✅ | ✅ | ✅ | ❌ (capture only) |
 | UDP client/server | ✅ | ✅ | ✅ | ✅ | ❌ |
 | IPv6 | ✅ | ⚠️ Partial | ⚠️ Partial | ✅ | ✅ |
@@ -43,7 +43,7 @@ To be honest, after finishing the tool, the author discovered that there are alr
 - **Hardware / embedded bring-up**: send a UDP broadcast discovery command and see replies from all devices, with unexpected source addresses highlighted
 - **TCP sticky packet debugging**: four decoders split frames by your protocol format automatically
 - **Server concurrency validation**: the built-in stress engine reports QPS and p50/p95/p99 latency without extra tooling
-- **Multi-platform workflow**: the same habits on Windows, Linux and macOS, with configs saved automatically
+- **Multi-platform workflow**: the same habits on Windows, Linux and macOS, with configs saved automatically; native builds for both x64 and ARM64
 
 ## How to Migrate
 

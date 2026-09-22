@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast device discovery, high-concurrency stress testing, multi-language UI and hex editor features."
+description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast device discovery, high-concurrency stress testing, multi-language UI and hex editor features; available on Windows, Linux and macOS for both x64 and ARM64."
 ---
 
 # Changelog
