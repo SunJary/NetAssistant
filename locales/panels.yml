@@ -96,6 +96,68 @@ hex_editor:
     zh-CN: 插入
     en: INS
 
+import_file:
+  title:
+    zh-CN: 从文件打开
+    en: Open from File
+  browse:
+    zh-CN: 选择文件…
+    en: Choose File…
+  reading:
+    zh-CN: 读取中…
+    en: Reading…
+  no_file:
+    zh-CN: 未选择文件
+    en: No file selected
+  encoding:
+    zh-CN: 文件编码
+    en: File Encoding
+  enc_utf8:
+    zh-CN: UTF-8
+    en: UTF-8
+  enc_gbk:
+    zh-CN: GBK
+    en: GBK
+  enc_ansi:
+    zh-CN: ANSI
+    en: ANSI
+  size:
+    zh-CN: 文件大小 %{size}
+    en: "Size %{size}"
+  empty:
+    zh-CN: 文件为空，没有可导入的内容
+    en: The file is empty; nothing to import
+  too_large:
+    zh-CN: 文件 %{size} 超过上限 %{limit}，已拒绝导入
+    en: "File %{size} exceeds the %{limit} limit; import refused"
+  invalid_utf8:
+    zh-CN: 不是有效的 UTF-8 文本，请改用 GBK/ANSI，或切到 Hex 模式
+    en: "Not valid UTF-8 text; choose GBK/ANSI, or switch to Hex mode"
+  unsupported_cp:
+    zh-CN: 无法识别当前系统代码页（%{cp}），请改用其它编码
+    en: "Unsupported system code page (%{cp}); choose another encoding"
+  read_failed:
+    zh-CN: "文件读取失败：%{msg}"
+    en: "Failed to read the file: %{msg}"
+  lossy:
+    zh-CN: 部分字节无法解码，已用替换字符
+    en: Some bytes could not be decoded and were replaced
+  hex_raw_hint:
+    zh-CN: Hex 模式：按原始字节导入，不涉及编码
+    en: "Hex mode: imported as raw bytes, no encoding involved"
+  hex_overflow_hint:
+    zh-CN: 内容超过 %{n} 字节，已切换为文本编辑；发送内容保持完整
+    en: "Content exceeds %{n} bytes; switched to text editing. Sent content stays complete"
+  preview:
+    zh-CN: 预览
+    en: Preview
+  confirm:
+    zh-CN: 确定
+    en: OK
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+
 connection_tab:
   message_input_placeholder:
     zh-CN: 输入消息内容...
@@ -253,3 +315,9 @@ connection_tab:
   send_shortcut_tooltip:
     zh-CN: "发送 (Ctrl+Enter)"
     en: "Send (Ctrl+Enter)"
+  open_file:
+    zh-CN: 打开文件
+    en: Open File
+  open_file_tooltip:
+    zh-CN: 从文件读取内容并填入发送框
+    en: Read a file and fill its content into the send box

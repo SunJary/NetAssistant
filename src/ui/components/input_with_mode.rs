@@ -44,10 +44,19 @@ impl InputWithMode {
         cx: &App,
     ) -> impl IntoElement {
         let is_hex_mode = mode == "hex";
-        // 内容解析成功才走网格分支（此时无文本框，右键菜单只放转换项）
+        // 内容解析成功且未被截断才走网格分支（网格是非虚拟化渲染，超容量会冻结 UI）；
+        // 超过 MAX_CELLS 时降级为文本框：输入框仍持完整 hex 文本，发送内容不受影响
         let is_grid = is_hex_mode
             && hex_editor
-                .map(|editor| editor.read(cx).core.doc.is_some())
+                .map(|editor| {
+                    editor
+                        .read(cx)
+                        .core
+                        .doc
+                        .as_ref()
+                        .map(|doc| !doc.truncated)
+                        .unwrap_or(false)
+                })
                 .unwrap_or(false);
 
         let body: Div = if is_grid {
@@ -65,16 +74,27 @@ impl InputWithMode {
                     cx,
                 ))
         } else if mode == "hex" {
-            // 网格不可用：回退文本框 + 错误提示（不丢用户内容）；
-            // 提供编辑器却走到这里说明解析失败，与旧行为一致地报错
-            let is_valid = hex_editor.is_none() && validate_hex_input(&input_state.read(cx).value());
+            // 网格不可用分两种情况，均不丢用户内容：
+            //   ① 内容超过网格容量被截断（doc Some 且 truncated）→ 中性提示，内容仍是合法 hex
+            //   ② 解析失败（doc None）→ 沿用「非法 hex」红字提示
+            // 顶部改由 mode == "hex" 且提供编辑器时区分；未提供编辑器时保持旧行为
+            let (is_valid, is_overflow) = match hex_editor {
+                Some(editor) => match editor.read(cx).core.doc.as_ref() {
+                    // 走到此分支且 doc 为 Some，只可能是被截断（内容合法）
+                    Some(_) => (true, true),
+                    None => (false, false),
+                },
+                None => (validate_hex_input(&input_state.read(cx).value()), false),
+            };
             let mut view = div()
                 .flex()
                 .flex_col()
                 .gap_1()
                 .w_full()
                 .child(text_input_container(input_state, theme, is_valid, cx));
-            if !is_valid {
+            if is_overflow {
+                view = view.child(overflow_line(theme));
+            } else if !is_valid {
                 view = view.child(error_line(theme));
             }
             view
@@ -380,6 +400,22 @@ fn error_line(theme: &Theme) -> Div {
         .font_medium()
         .text_color(theme.danger)
         .child(t!("input_mode.hex_invalid").to_string())
+}
+
+/// 超网格容量的中性提示：内容本身是合法 hex，仅渲染降级为文本框，发送内容完整。
+/// 与「非法 hex」红字区分，避免误导用户以为导入失败。
+fn overflow_line(theme: &Theme) -> Div {
+    div()
+        .text_xs()
+        .font_medium()
+        .text_color(theme.muted_foreground)
+        .child(
+            t!(
+                "import_file.hex_overflow_hint",
+                n = super::hex_editor::core::MAX_CELLS
+            )
+            .to_string(),
+        )
 }
 
 #[cfg(test)]

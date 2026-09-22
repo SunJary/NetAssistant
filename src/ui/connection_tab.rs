@@ -2205,6 +2205,35 @@ impl<'a> ConnectionTab<'a> {
                             .gap_2()
                             .child(
                                 div()
+                                    .id("open-file-btn")
+                                    .px_3()
+                                    .py_1()
+                                    .bg(theme.secondary)
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .hover(|style| {
+                                        style.bg(theme.secondary_hover)
+                                    })
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new(t!("connection_tab.open_file_tooltip").to_string()).build(window, cx)
+                                    })
+                                    .on_mouse_down(MouseButton::Left, cx.listener({
+                                        let tab_id = tab_id.clone();
+                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            // 打开「从文件导入」对话框：选文件 → 选编码 → 确定回填发送框
+                                            app.open_import_file_dialog_for_tab(tab_id.clone(), window, cx);
+                                        }
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_medium()
+                                            .text_color(theme.secondary_foreground)
+                                            .child(t!("connection_tab.open_file").to_string()),
+                                    ),
+                            )
+                            .child(
+                                div()
                                     .px_3()
                                     .py_1()
                                     .bg(theme.secondary)

@@ -615,6 +615,7 @@ fn char_to_hex_chars(c: char) -> [char; 2] {
 pub fn parse(value: &str) -> Result<HexDoc, usize> {
     let mut cells: Vec<Cell> = Vec::new();
     let mut pending: Option<char> = None;
+    let mut truncated = false;
     let mut chars = value.char_indices().peekable();
     while let Some((idx, ch)) = chars.next() {
         match ch {
@@ -633,25 +634,36 @@ pub fn parse(value: &str) -> Result<HexDoc, usize> {
                 }
                 // 奇数 hex 段在此收尾为半字节（如 `50494E4${seq}` 的 '4'）
                 if let Some(hi) = pending.take() {
-                    cells.push(Cell::Byte { hi, lo: HALF_EMPTY });
+                    push_capped(&mut cells, Cell::Byte { hi, lo: HALF_EMPTY }, &mut truncated);
                 }
-                cells.push(Cell::Token(token));
+                push_capped(&mut cells, Cell::Token(token), &mut truncated);
             }
             c if c.is_ascii_hexdigit() => match pending.take() {
                 None => pending = Some(c),
-                Some(hi) => cells.push(Cell::Byte { hi, lo: c }),
+                Some(hi) => push_capped(&mut cells, Cell::Byte { hi, lo: c }, &mut truncated),
             },
             _ => return Err(idx),
         }
     }
     if let Some(hi) = pending.take() {
-        cells.push(Cell::Byte { hi, lo: HALF_EMPTY });
-    }
-    let truncated = cells.len() > MAX_CELLS;
-    if truncated {
-        cells.truncate(MAX_CELLS);
+        push_capped(&mut cells, Cell::Byte { hi, lo: HALF_EMPTY }, &mut truncated);
     }
     Ok(HexDoc { cells, truncated })
+}
+
+/// 受上限约束地推入单元格：达到 `MAX_CELLS` 后停止分配并标记截断。
+///
+/// 短路的目的是避免为超长输入（如 1 MiB 文件对应的 ~3M 字符 hex 文本）
+/// 全量分配数十万个 cell；遍历仍继续，以保持与旧实现一致的非法字符 `Err` 语义。
+fn push_capped(cells: &mut Vec<Cell>, cell: Cell, truncated: &mut bool) {
+    if *truncated {
+        return;
+    }
+    cells.push(cell);
+    if cells.len() > MAX_CELLS {
+        cells.truncate(MAX_CELLS);
+        *truncated = true;
+    }
 }
 
 /// 序列化为两位一组、空格分隔的 hex 串（token 原样保留）。

@@ -16,13 +16,14 @@ use crate::network::events::{ConnectionEvent, NetCounters};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
+use crate::utils::file_source::{FileSourceError, validate_len};
 use crate::utils::hex::convert_value;
 
 use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::connection_tab::{ConnectionTabState, SEARCH_RECALC_MIN_INTERVAL};
 use crate::ui::dialog::{
-    DecoderSelectionDialogState, StressConfigDialogState, open_new_connection_dialog,
-    open_stress_config_dialog,
+    DecoderSelectionDialogState, ImportFileDialogState, StressConfigDialogState,
+    open_import_file_dialog, open_new_connection_dialog, open_stress_config_dialog,
 };
 use crate::ui::main_window::MainWindow;
 
@@ -86,6 +87,9 @@ pub struct NetAssistantApp {
 
     // 压测配置弹窗状态(打开时创建, 关闭时置 None)
     pub stress_config_dialog: Option<StressConfigDialogState>,
+
+    // 「从文件导入发送内容」弹窗状态(打开时创建, 关闭时置 None)
+    pub import_file_dialog: Option<ImportFileDialogState>,
 
     // 本机临时端口范围检测结果 (懒检测 + 手动重新检测, 全局共享)
     // None + !detecting: 尚未检测 或 检测失败 (UI 应提示用户手动获取而非回退默认值)
@@ -243,6 +247,7 @@ impl NetAssistantApp {
             stress_event_sender: Some(stress_event_sender),
             stress_event_receiver: Some(stress_event_receiver),
             stress_config_dialog: None,
+            import_file_dialog: None,
             detected_port_range: None,
             port_range_detected: false,
             port_range_detecting: false,
@@ -1553,6 +1558,125 @@ impl NetAssistantApp {
         // 用户也可在端口说明弹窗点"重新检测"手动触发。
         // 命令式打开对话框(由 Root 管理层叠)
         open_stress_config_dialog(cx.entity().downgrade(), window, cx);
+    }
+
+    /// 打开「从文件导入」对话框
+    ///
+    /// 读取该标签页当前的输入模式: hex 模式按原始字节导入(隐藏编码选择),
+    /// 文本模式提供 UTF-8/GBK/ANSI 三选。
+    pub fn open_import_file_dialog_for_tab(
+        &mut self,
+        tab_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let hex_mode = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|tab| tab.message_input_mode == "hex")
+            .unwrap_or(false);
+        self.import_file_dialog = Some(ImportFileDialogState::new(tab_id, hex_mode));
+        open_import_file_dialog(cx.entity().downgrade(), window, cx);
+    }
+
+    /// 弹出系统文件对话框并读入所选文件
+    ///
+    /// 读取前先用元数据判超限(避免读入超大文件), 读入后按当前编码生成预览。
+    /// 对话框可能在此期间被关闭, 故仅在 `import_file_dialog` 仍存在时回写。
+    pub fn pick_import_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(dialog) = self.import_file_dialog.as_mut() {
+            dialog.reading = true;
+            dialog.error = None;
+        }
+        cx.notify();
+
+        cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+            let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
+                // 用户取消选择: 复位读取中状态, 保留此前已选文件
+                let _ = this.update(async_cx, |app, cx| {
+                    if let Some(dialog) = app.import_file_dialog.as_mut() {
+                        dialog.reading = false;
+                    }
+                    cx.notify();
+                });
+                return;
+            };
+            let path = file.path().to_path_buf();
+
+            // 元数据判超限: 避免读入超大文件
+            let meta = {
+                let path = path.clone();
+                smol::unblock(move || std::fs::metadata(&path).map(|m| m.len())).await
+            };
+            let size = match &meta {
+                Ok(size) => *size,
+                Err(err) => {
+                    let message = err.to_string();
+                    let _ = this.update(async_cx, |app, cx| {
+                        if let Some(dialog) = app.import_file_dialog.as_mut() {
+                            dialog.set_error(&FileSourceError::ReadFailed(message));
+                        }
+                        cx.notify();
+                    });
+                    return;
+                }
+            };
+            if let Err(err) = validate_len(size) {
+                let _ = this.update(async_cx, |app, cx| {
+                    if let Some(dialog) = app.import_file_dialog.as_mut() {
+                        dialog.path = Some(path.clone());
+                        dialog.size = Some(size);
+                        dialog.bytes = None;
+                        dialog.set_error(&err);
+                    }
+                    cx.notify();
+                });
+                return;
+            }
+
+            let bytes = {
+                let path = path.clone();
+                smol::unblock(move || std::fs::read(&path)).await
+            };
+            let _ = this.update(async_cx, |app, cx| {
+                if let Some(dialog) = app.import_file_dialog.as_mut() {
+                    match bytes {
+                        Ok(bytes) => dialog.set_loaded(path.clone(), size, bytes),
+                        Err(err) => {
+                            dialog.path = Some(path.clone());
+                            dialog.size = Some(size);
+                            dialog.set_error(&FileSourceError::ReadFailed(err.to_string()));
+                        }
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// 确认导入: 把完整内容回填到发送输入框
+    ///
+    /// 用 `replace_all` 保留撤销历史(用户可 Ctrl+Z 恢复导入前的草稿);
+    /// 内容由缓存字节按当前编码重新生成, 与预览一致但为完整内容。
+    pub fn confirm_import_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(dialog) = self.import_file_dialog.as_ref() else {
+            return;
+        };
+        let Some(text) = dialog.full_text() else {
+            return;
+        };
+        let tab_id = dialog.tab_id.clone();
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            if let Some(input) = tab_state.message_input.as_ref() {
+                let input = input.clone();
+                input.update(cx, |input, cx| {
+                    input.replace_all(text, window, cx);
+                });
+            }
+        }
+        self.import_file_dialog = None;
+        cx.notify();
     }
 
     /// 启动压测
