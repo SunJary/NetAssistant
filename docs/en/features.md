@@ -15,8 +15,14 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **JSON formatting**: the send box offers "Prettify/Minify" buttons in text mode to format the outgoing payload; the receive area can switch between Raw/Prettified/Minified display formats globally, with non-JSON content shown as-is
 - **Chat-style message log**: intuitive display of packet exchanges for easier debugging and analysis
 - **Persistent configuration**: connection configs are saved automatically and restored on the next launch
+- **File data source**: read a local file into the send box as a payload, with UTF-8 / GBK / ANSI encoding selection and content preview, human-readable file size, and a 1 MiB limit
+- **ASCII ↔ Hex conversion**: switching between text and hex mode converts the content as UTF-8; the context menu's "Convert to Hex / Convert to Text" shows the result in a window you can copy from; non-printable bytes are escaped as `\xNN`, and round-tripping is byte-for-byte
 
 ![TCP decoder screenshot](../../assets/screenshots/en/screenshot_tcp_decoder.png)
+
+![File data source screenshot](../../assets/screenshots/en/screenshot_file_source.png)
+
+![ASCII to hex conversion screenshot](../../assets/screenshots/en/screenshot_text_hex_convert.png)
 
 ## Message Management
 
@@ -26,8 +32,12 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Manual export anytime**: export the current message history to TXT/JSON/CSV files at any time for archiving, sharing and further analysis
 - **Smart UDP broadcast reply display**: optimized for host workstation / IoT device discovery scenarios — send a command to a broadcast address and receive replies from all devices; replies from unexpected addresses are highlighted in red so no important response is lost
 - **Connection config editing**: saved connection configs can be edited directly, no need to delete and recreate
+- **Message search**: `Ctrl+F` or the toolbar magnifier opens a non-modal search overlay with a live `i/n` match counter; jump ring-wise with `Enter` / `Shift+Enter` or the up/down buttons, and the matching row is highlighted and scrolled into view
+- **Message count cap**: configure "Keep last N" messages (default 10000, `0` = unlimited); once exceeded the oldest messages are dropped to bound memory usage. It is linked to auto-scroll, so nothing is dropped while auto-scroll is off
 
 ![Favorite message screenshot](../../assets/screenshots/en/screenshot_favorite_message.png)
+
+![Message search screenshot](../../assets/screenshots/en/screenshot_search.png)
 
 ## Automated Testing
 
@@ -41,6 +51,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Multi-tab management**: manage multiple connections at once, easy to switch and compare
 - **Per-client message view**: in server mode, view messages of a specific client
 - **Manual client addition for UDP**: in UDP server mode, add client addresses manually to proactively send data to a specific address
+- **Keyboard shortcuts**: `Ctrl+Enter` to send, `Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` to manage tabs, `Ctrl+F` to search messages, `Ctrl+N` for a new connection and `Ctrl+K` to focus the message input — all working regardless of the current focus
 
 ![UDP manual client addition screenshot](../../assets/screenshots/en/screenshot_udp_add_client.png)
 

@@ -27,6 +27,31 @@ Choose the send mode above the input box at the bottom:
 
 The receive area can switch between Raw/Prettified/Minified display formats globally: prettified shows indented JSON, minified removes whitespace, and non-JSON content is displayed as-is.
 
+### ASCII ↔ Hex Conversion
+
+Switching between text mode and hex mode converts the input content as UTF-8, so there is no need to rewrite it by hand:
+
+- **Text → Hex**: every character is encoded as two uppercase hex digits per UTF-8 byte, e.g. `ok` → `6F 6B`
+- **Hex → Text**: bytes are decoded back to characters; non-printable bytes are escaped as `\n` `\r` `\t` `\\` and `\xNN`, e.g. `00 FF` → `\x00 \xFF`
+
+As a result, `Hex → Text → Hex` round-trips byte-for-byte, so binary data is never lost in conversion; `${...}` variable placeholders are preserved as-is.
+
+You can also **right-click** inside the input and pick "Convert to Hex / Convert to Text": the selected text (or the whole content when nothing is selected) is converted and the result is shown in a read-only window you can copy from — the input itself is **not** rewritten.
+
+![ASCII to hex conversion screenshot](../../../assets/screenshots/en/screenshot_text_hex_convert.png)
+
+### Importing Content from a File
+
+Click the "Open File" button in the toolbar to read a local file into the send box:
+
+1. Choose a file (1 MiB limit; the size is shown in a 1024-based human-readable form such as `256 KB`)
+2. Choose the file encoding: UTF-8 (strict decoding — invalid bytes prompt you to pick another encoding), GBK, or ANSI (system code page)
+3. Preview the result and click "OK" to fill the send box
+
+In hex mode the file is imported as **raw bytes** with no encoding involved; content over 4096 bytes falls back to text editing while the payload stays complete.
+
+![File data source screenshot](../../../assets/screenshots/en/screenshot_file_source.png)
+
 ## Periodic Send
 
 1. Enable periodic send on the connection tab
@@ -50,6 +75,29 @@ Suitable for simulating server or client responses and verifying the peer's hand
 - **Favorite messages**: click the favorite button to add a message to favorites, add a remark in the popup, and locate it quickly via keyword search
 - **Export message history**: click the export button and choose TXT / JSON / CSV to save locally
 - **Real-time logging**: toggle "Log Recording" on and all messages are written asynchronously to a log file in real time (each message is flushed to disk automatically). By default logs are saved to `Documents/NetAssistant/logs/`; click the pencil button to customize the path, click the log file name to open its directory, and the log is flushed and closed automatically on disconnect
+
+### Message Search
+
+Press `Ctrl+F` or click the magnifier icon in the toolbar to open the search overlay (non-modal, floating in the top-right corner of the message area):
+
+1. Type a keyword to see the match counter `i/n` live (`0/0` when nothing matches)
+2. `Enter` or `↓` jumps to the next match; `Shift+Enter` or `↑` jumps to the previous one, wrapping around at the ends
+3. The matching row is highlighted with a light grey background and scrolled into view
+4. `Esc` or `✕` closes the overlay
+
+Search matches the **raw content** of messages (independent of the Raw/Prettified/Minified display format) and only covers messages currently held in memory (after the per-client filter is applied). Jumping turns auto-scroll off so that eviction cannot make the position drift.
+
+![Message search screenshot](../../../assets/screenshots/en/screenshot_search.png)
+
+### Message Count Cap
+
+The "Keep last" input next to auto-scroll in the toolbar defaults to `10000`:
+
+- Once the cap is exceeded, the oldest messages are dropped so memory does not grow during long stress runs. Press Enter or click elsewhere (blur) to apply the value
+- `0` means unlimited (memory then keeps growing with the message volume)
+- Turning auto-scroll off sets the value to `0` and disables it: nothing is dropped and the list is fully frozen, which makes reading back through history comfortable
+- Turning auto-scroll back on restores the previous value, trims the list to it immediately and scrolls to the bottom
+- Note: with dropping disabled (`0` or auto-scroll off) messages keep accumulating, so memory grows noticeably under heavy or long-running traffic. To reclaim it, click "Clear" in the toolbar, or re-enable auto-scroll with a smaller cap — the excess is dropped immediately and memory usage goes down
 
 ## IPv6 Support
 
@@ -99,3 +147,19 @@ When you need to discover IoT/embedded devices on the local network:
 ## Hex Mode & HEX Editor
 
 ![Hex mode screenshot](../../../assets/screenshots/en/screenshot_hex.png)
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+| -------- | ------ |
+| `Ctrl+Enter` | Send the current tab's message |
+| `Ctrl+F` | Open the message search overlay (re-focuses it if already open; does not close it) |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle to the next / previous tab |
+| `Ctrl+PageDown` / `Ctrl+PageUp` | Switch to the next / previous tab |
+| `Ctrl+1` … `Ctrl+9` | Jump directly to the Nth tab |
+| `Ctrl+W` | Close the current tab |
+| `Ctrl+N` | New connection |
+| `Ctrl+K` | Focus the message input |
+| `Esc` | Close the search overlay or the favorites list |
+
+Use `Cmd` instead of `Ctrl` on macOS. The shortcuts work regardless of the current focus: they are available whether the focus is in an input, the HEX editor or empty space. One exception: inside a code editor (message input, auto-reply, stress payload), `Ctrl+F` opens the editor's own find panel instead of the message search overlay.

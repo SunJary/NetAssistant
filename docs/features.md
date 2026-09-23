@@ -15,8 +15,14 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **JSON 格式化**：发送框在文本模式提供「美化/压缩」按钮格式化待发送内容；接收区顶部可切换「原始/美化/压缩」全局显示格式，非 JSON 内容原样返回
 - **聊天式报文记录**：直观展示报文交互过程，便于调试和分析
 - **配置持久化**：自动保存连接配置，下次启动直接使用
+- **文件数据源**：从本地文件读取内容作为报文填入发送框，支持 UTF-8 / GBK / ANSI 编码选择与内容预览，文件大小以可读格式显示，上限 1 MiB
+- **ASCII ↔ Hex 双向互转**：文本/十六进制模式切换时按 UTF-8 整体互转，右键菜单可「转换为 Hex / 转换为文本」并在结果窗口中复制；不可打印字节以 `\xNN` 转义，往返转换字节级一致
 
 ![TCP 解码器截图](../assets/screenshots/zh/screenshot_tcp_decoder.png)
+
+![文件数据源截图](../assets/screenshots/zh/screenshot_file_source.png)
+
+![ASCII 与 Hex 互转截图](../assets/screenshots/zh/screenshot_text_hex_convert.png)
 
 ## 消息管理功能
 
@@ -26,8 +32,12 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **随时手动导出**：可随时导出当前消息记录为 TXT/JSON/CSV 格式文件，便于归档、分享和二次分析
 - **UDP 广播回复智能展示**：针对上位机/物联网设备发现场景优化，向广播地址发送指令后接收所有设备回复，非预期地址的回复用红色高亮标识，不丢失重要响应
 - **连接配置编辑**：已保存的连接配置支持直接编辑修改，无需删除重建
+- **消息搜索**：`Ctrl+F` 或点击工具栏放大镜唤起非模态搜索浮层，实时显示命中计数 `i/n`，`Enter` / `Shift+Enter` 或上/下按钮环形跳转，命中项整行高亮并滚动到视口
+- **消息条数上限**：可配置「保留最后 N 条」（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息以控制内存占用；与自动滚动联动，关闭自动滚动时不淘汰消息
 
 ![收藏消息截图](../assets/screenshots/zh/screenshot_favorite_message.png)
+
+![消息搜索截图](../assets/screenshots/zh/screenshot_search.png)
 
 ## 自动化测试功能
 
@@ -41,6 +51,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **多标签页管理**：同时管理多个连接，方便切换和对比
 - **客户端消息查看**：在服务端模式下，可选择特定客户端查看其消息
 - **UDP 手动添加客户端**：在 UDP 服务端模式下，可手动添加客户端地址，便于主动向指定地址发送数据
+- **键盘快捷键**：`Ctrl+Enter` 发送、`Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` 管理标签页、`Ctrl+F` 搜索消息、`Ctrl+N` 新建连接、`Ctrl+K` 聚焦消息输入框，任何焦点状态下均生效
 
 ![UDP 手动添加客户端截图](../assets/screenshots/zh/screenshot_udp_add_client.png)
 

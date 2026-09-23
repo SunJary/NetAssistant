@@ -7,6 +7,20 @@ description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast de
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## v1.2.0 <Badge type="tip" text="2026-09-23" />
+
+- **Keyboard shortcuts**: new application-level shortcuts — `Ctrl+Enter` to send, `Ctrl+Tab` / `Ctrl+Shift+Tab` and `Ctrl+PageDown/PageUp` to cycle tabs, `Ctrl+1..9` to jump to a tab, `Ctrl+W` to close a tab, `Ctrl+N` for a new connection, `Ctrl+K` to focus the message input, `Ctrl+F` for message search; they work whether the focus is in an input or on empty space
+- **Message search**: open a non-modal search overlay from the toolbar magnifier or `Ctrl+F`, with a live `i/n` match counter; jump ring-wise with `Enter` / `Shift+Enter` or the up/down buttons, with the matching row highlighted and scrolled into view; `Esc` closes it, and jumping turns auto-scroll off to keep the position stable
+- **ASCII ↔ Hex conversion**: switching between text and hex mode converts the content as UTF-8; the context menu's "Convert to Hex / Convert to Text" shows the result in a read-only window with a copy button without rewriting the input; non-printable bytes are escaped as `\n` `\r` `\t` `\\` and `\xNN`, so `Hex → Text → Hex` round-trips byte-for-byte; hex output is consistently uppercase
+- **File data source**: the toolbar's "Open File" button reads a local file into the send box, with UTF-8 / GBK / ANSI encoding selection and content preview, human-readable file size, and a 1 MiB limit; hex mode imports raw bytes, and oversized content falls back to text editing
+- **Message count cap (keep last N)**: a new count input next to auto-scroll (default 10000, `0` = unlimited) drops the oldest messages once exceeded to bound memory usage; it is linked to auto-scroll — turning auto-scroll off sets it to `0` and stops dropping, and turning it back on restores the previous value. With dropping disabled (`0` or auto-scroll off) messages keep accumulating, so memory grows under heavy or long-running traffic; clearing the messages or lowering the cap discards the excess immediately and brings memory down
+
+Fixes and improvements:
+
+- Network resources and subscriptions are now cleaned up when a tab is closed, avoiding leaks
+- Fixed the caret being reset and a stray newline left behind after sending with `Ctrl+Enter` in the multi-line input
+- Tabs are now ordered by open time; dependency upgrades (reqwest 0.13 and others, TLS root certificates now come from the system store)
+
 ## v1.1.2 <Badge type="tip" text="2026-09-17" />
 
 - **Windows installer**: new official Inno Setup installer (`netassistant-windows-x86_64-setup.exe`) that creates Start Menu and desktop shortcuts automatically, and supports winget install & auto-upgrade
@@ -143,7 +157,7 @@ Highlights within this release:
 ## Roadmap
 
 - [x] Multilingual interface (v1.1.0)
-- [ ] File data source
+- [x] File data source (v1.2.0)
 - [ ] SSE debugging
 - [ ] More data format codecs
 - [ ] WebSocket protocol
