@@ -27,6 +27,11 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Chat-style message logging**: Intuitive display of message interactions, facilitating debugging and analysis
 - **Configuration persistence**: Automatically saves connection configurations for direct use next time
 - **Connection editing**: Saved connection configurations can be directly edited and modified without deleting and recreating
+- **Multilingual interface**: Built-in Chinese and English interfaces, switchable from a main-window menu and remembered across launches
+- **Hex editor**: A HEX editor with dual hex/text views for editing payloads
+- **File data source**: Read a local file into the send box as a payload, with UTF-8 / GBK / ANSI encoding selection and content preview, up to 1 MiB
+- **ASCII ↔ Hex conversion**: Switching between text and hex mode converts the content as UTF-8; the context menu's "Convert to Hex / Convert to Text" shows the result in a read-only window you can copy from, with non-printable bytes escaped as `\xNN` so round-tripping is byte-for-byte
+- **Client local address binding**: Specify a local IP and local port under "More Settings" when creating/editing a connection — useful for multi-NIC hosts and peers that filter by source address; the info panel shows the effective local endpoints after connecting
 
 ### Message Management Features
 - **Copy message**: Quickly copy a single message to the clipboard, supporting both text and hexadecimal formats
@@ -34,6 +39,8 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Real-time log recording**: After manual enabling, all sent/received messages are asynchronously written to log file in real-time (flushed per message), supports custom save path, auto-flush and close on disconnection; log filename is clickable to open directory
 - **On-demand manual export**: Don't need continuous logging? You can export current message records anytime as TXT/JSON/CSV files for archiving, sharing, and secondary analysis
 - **UDP broadcast reply smart display**: Optimized for IoT/embedded device discovery scenarios. When sending commands to broadcast addresses, all device replies are received; replies from unexpected addresses are highlighted in red, ensuring no important responses are lost
+- **Message search**: `Ctrl+F` or the toolbar magnifier opens a non-modal search overlay with a live `i/n` match counter, ring-wise up/down jumping and row highlighting in the message list
+- **Message count cap**: Configure "Keep last N" messages (default 10000, `0` = unlimited); once exceeded the oldest messages are dropped to bound memory usage. It is linked to auto-scroll — with auto-scroll off nothing is dropped, so messages keep accumulating and memory grows until you clear them or set a cap again
 
 ### Automated Testing Features
 - **Auto-reply functionality**: Supports test auto-replies, simulating server or client responses
@@ -45,6 +52,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Multi-tab management**: Manage multiple connections simultaneously for easy switching and comparison
 - **Client message viewing**: Select specific clients to view their messages in server mode
 - **UDP manual add client**: In UDP server mode, you can manually add client addresses to actively send data to specified addresses (due to UDP's connectionless nature)
+- **Keyboard shortcuts**: `Ctrl+Enter` to send, `Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` to manage tabs, `Ctrl+F` to search messages, `Ctrl+N` for a new connection and `Ctrl+K` to focus the message input — all working regardless of the current focus
 
 ## 🎯 Use Cases
 
@@ -72,8 +80,17 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 ### Hex Mode
 ![Hex Mode Screenshot](assets/screenshots/en/screenshot_hex.png)
 
+### ASCII ↔ Hex Conversion
+![ASCII to Hex Conversion Screenshot](assets/screenshots/en/screenshot_text_hex_convert.png)
+
 ### Favorite Message
 ![Favorite Message Screenshot](assets/screenshots/en/screenshot_favorite_message.png)
+
+### Message Search
+![Message Search Screenshot](assets/screenshots/en/screenshot_search.png)
+
+### Import from File (File Data Source)
+![File Data Source Screenshot](assets/screenshots/en/screenshot_file_source.png)
 
 ### UDP Manual Add Client
 ![UDP Manual Add Client Screenshot](assets/screenshots/en/screenshot_udp_add_client.png)
@@ -118,7 +135,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
      ```
 
 **Alternative Method: Download from GitHub Release**
-Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version.
+Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version (Windows offers an installer `netassistant-windows-x86_64-setup.exe` as well as a portable zip).
 
 #### Linux
 **Recommended Method: Download from GitHub Release**
@@ -162,6 +179,7 @@ Run the corresponding executable file according to the installation method for d
    - Above the bottom input box, select the message sending mode: Text mode or Hex mode
    - Text mode: Directly enter string messages
    - Hex mode: Enter hexadecimal format data, such as "0A0B0C"
+   - Switching modes converts the input content as UTF-8 automatically (Text ⇄ Hex), no manual rewriting needed; you can also right-click inside the input and pick "Convert to Hex / Convert to Text" — the result is shown in a read-only window you can copy from, and the input itself is left untouched
 
 4. **Send Messages**
    - Enter message content in the bottom input box
@@ -186,6 +204,9 @@ Run the corresponding executable file according to the installation method for d
      - Receiver: Top toolbar has "Format: Raw/Beautify/Minify" button to switch display format for all messages; non-JSON content is displayed as-is
    - **Export message records**: Click the export button in the connection tab, select TXT / JSON / CSV format and save to a local file
    - **Real-time log recording**: Click the "Log" toggle to manually enable/disable recording; when enabled, all messages are asynchronously written to log file in real-time (flushed per message); default save path is `Documents/NetAssistant/logs/`, click the pencil button next to it to customize save path; log filename is clickable to open the directory; logs are automatically flushed and closed on disconnection
+
+   - **Message search**: press `Ctrl+F` or click the toolbar magnifier to open the search overlay; type a keyword to see the live `i/n` match counter, jump ring-wise with Enter / Shift+Enter (or the up/down buttons), and the matching row is highlighted and scrolled into view; press Esc to close
+   - **Message count cap**: set "Keep last N" next to auto-scroll in the toolbar (default 10000, `0` = unlimited) to drop the oldest messages once exceeded; turning auto-scroll off sets it to 0 and drops nothing, so messages keep accumulating and memory grows — clear them or set a cap again to reclaim it
 
 8. **Edit Connection Configuration**
    - For saved connection configurations, right-click the connection and select Edit, or click the edit button
@@ -223,6 +244,16 @@ Run the corresponding executable file according to the installation method for d
     - Click a single client address to select it, and the right message list will only show messages from that client
     - Click the selected client again to deselect and restore all messages
     - Server replies to the client will also be included in the viewing results
+
+14. **Import Content from a File (File Data Source)**
+    - Click the "Open File" button in the toolbar
+    - Choose a file (1 MiB limit) and its encoding (UTF-8 / GBK / ANSI), then confirm the content in the preview
+    - Click OK and the file content is filled into the send box as a single complete payload; in hex mode it is imported as raw bytes
+
+15. **Keyboard Shortcuts**
+    - `Ctrl+Enter` sends the current message, `Ctrl+F` opens message search, `Esc` closes the search overlay
+    - `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Ctrl+PageDown` / `Ctrl+PageUp` cycle through tabs, `Ctrl+1..9` jumps to the Nth tab, `Ctrl+W` closes the current tab
+    - `Ctrl+N` creates a new connection and `Ctrl+K` focuses the message input; use `Cmd` instead of `Ctrl` on macOS
 
 ## 🎯 Technical Highlights
 
@@ -363,7 +394,8 @@ netassistant/
 │   │   ├── stress_panel.rs    # Stress test panel: real-time display of stress metrics
 │   │   ├── tab_container.rs   # Tab container
 │   │   ├── components/        # Common UI components
-│   │   │   └── input_with_mode.rs # Input box with mode switching (text/hex)
+│   │   │   ├── input_with_mode.rs # Input box with mode switching (text/hex)
+│   │   │   └── hex_editor/        # HEX editor (dual hex/text views)
 │   │   └── dialog/            # Dialogs
 │   │       ├── new_connection.rs   # New/Edit connection dialog
 │   │       ├── add_client.rs       # UDP manual add client dialog
@@ -371,15 +403,20 @@ netassistant/
 │   │       ├── favorite_list.rs    # Favorite list dialog
 │   │       ├── favorite_remark.rs  # Favorite remark dialog
 │   │       ├── port_limit_help.rs  # Port limit help dialog
-│   │       └── stress_config.rs    # Stress test configuration dialog
+│   │       ├── stress_config.rs    # Stress test configuration dialog
+│   │       ├── import_file.rs      # File data source import dialog (encoding & preview)
+│   │       └── variable_picker.rs  # Stress variable picker dialog
 │   └── utils/                 # Utility functions: common tools and helper functions
 │       ├── hex.rs             # Hexadecimal data processing
+│       ├── file_source.rs     # File reading, encoding decode and file size formatting
 │       └── text_measurement.rs# Text measurement
 ├── assets/                    # Resource files: icons, fonts, and screenshots
 │   ├── icon/                  # Application icon files
 │   ├── icons/                 # SVG vector icons
 │   ├── fonts/                 # Embedded fonts (JetBrains Mono)
 │   └── screenshots/           # Application screenshots
+├── locales/                   # Localization resources: rust-i18n YAML (Chinese/English)
+├── docs/                      # Documentation site source (VitePress)
 ├── themes/                    # Theme configuration files
 ├── .cargo/                    # Cargo configuration: Rust build tool configuration
 ├── .github/                   # GitHub configuration: CI/CD workflows
@@ -392,9 +429,9 @@ netassistant/
 
 ## 🔮 Future Plans
 
-- [ ] File data source
-- [ ] Multi-language support
-- [ ] Hex editor
+- [x] File data source (v1.2.0)
+- [x] Multi-language support (v1.1.0)
+- [x] Hex editor (v1.1.0)
 - [ ] Support SSE debugging
 - [ ] Support more data format encoding and decoding
 - [ ] Support WebSocket protocol
@@ -433,6 +470,12 @@ A: Yes, NetAssistant automatically follows system theme to switch between light 
 
 **Q: Can saved connection configurations be modified?**  
 A: Yes, right-click the connection and select Edit, or click the edit button to modify address, port and other configurations without deleting and recreating.
+
+**Q: What keyboard shortcuts are available?**  
+A: `Ctrl+Enter` to send, `Ctrl+F` for message search, `Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` for tab management, `Ctrl+N` for a new connection and `Ctrl+K` to focus the message input; use `Cmd` instead of `Ctrl` on macOS.
+
+**Q: Can I control memory usage when there are too many messages?**  
+A: Yes. Set "Keep last N" next to auto-scroll in the toolbar (default 10000, `0` = unlimited) and the oldest messages are dropped once exceeded. With auto-scroll off nothing is dropped, so messages keep accumulating and memory grows — clear the messages or set a cap again to reclaim it.
 
 ## 📦 Compile from Source Code (Optional)
 
