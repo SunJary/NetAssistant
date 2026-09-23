@@ -11,6 +11,9 @@ export default defineConfig({
   base,
   // 基于 git 提交时间生成页面更新时间，供主题展示与 sitemap <lastmod> 使用
   lastUpdated: true,
+  // 正式域名（Cloudflare Pages）会把 *.html 308 重定向到无后缀地址，GitHub Pages 两种都可访问；
+  // 统一使用无后缀地址，避免站内链接、sitemap 与 canonical 出现「canonical 指向重定向」的冲突信号
+  cleanUrls: true,
   sitemap: {
     hostname: siteUrl
   },
@@ -30,7 +33,7 @@ export default defineConfig({
   transformPageData(pageData) {
     const canonicalUrl = `${siteUrl}/${pageData.relativePath}`
       .replace(/index\.md$/, '')
-      .replace(/\.md$/, '.html')
+      .replace(/\.md$/, '')
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(['link', { rel: 'canonical', href: canonicalUrl }])
   },
