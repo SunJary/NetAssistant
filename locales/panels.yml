@@ -95,6 +95,9 @@ hex_editor:
   ins:
     zh-CN: 插入
     en: INS
+  variable_tooltip:
+    zh-CN: "变量 %{var}，发送时替换为实际值"
+    en: "Variable %{var}; replaced with the actual value when sending"
 
 import_file:
   title:
@@ -321,3 +324,9 @@ connection_tab:
   open_file_tooltip:
     zh-CN: 从文件读取内容并填入发送框
     en: Read a file and fill its content into the send box
+  insert_variable:
+    zh-CN: 插入变量
+    en: Insert Variable
+  insert_variable_tooltip:
+    zh-CN: 插入时间、UUID、随机数等变量，发送时替换为实际值
+    en: Insert time, UUID, random and other variables; replaced with actual values when sending

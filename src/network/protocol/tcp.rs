@@ -70,8 +70,9 @@ fn flush_batch(
 
 /// 网络层自动回复: 每条解码出的完整消息触发一次回复。
 ///
-/// 回复内容为用户配置的原始字节(`AutoReplyConfig::content`), 通过该连接的发送通道
-/// 投递后由用户配置的 encoder 编码发送——不额外修改内容、不擅自添加换行符。
+/// 回复内容由 `AutoReplyConfig::render_content` 给出(无变量时为用户配置的原始字节,
+/// 含变量时逐条渲染), 通过该连接的发送通道投递后由用户配置的 encoder 编码发送
+/// ——不额外修改内容、不擅自添加换行符。
 /// 仅在启用且内容非空时发送; 未启用走 `is_enabled()` 无锁快速路径, 零开销。
 fn try_auto_reply(
     auto_reply_state: &Arc<AutoReplyConfig>,
@@ -84,7 +85,7 @@ fn try_auto_reply(
     if !auto_reply_state.is_enabled() {
         return;
     }
-    let content = auto_reply_state.content();
+    let content = auto_reply_state.render_content();
     if content.is_empty() {
         return;
     }

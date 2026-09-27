@@ -31,6 +31,7 @@ use indexmap::IndexMap;
 use smol::channel::{Receiver, Sender, unbounded as smol_unbounded};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -487,6 +488,7 @@ impl NetAssistantApp {
         interval_ms: u64,
         content: String,
         message_input_mode: String,
+        seq: Arc<AtomicU64>,
         _cx: &mut Context<Self>,
     ) {
         // 首先停止已有的周期发送任务
@@ -503,35 +505,65 @@ impl NetAssistantApp {
 
         let sender = self.connection_event_sender.clone();
         let tab_id_clone = tab_id.clone();
+        let is_hex_mode = message_input_mode == "hex";
         let content_clone = content.clone();
-        let message_input_mode_clone = message_input_mode.clone();
+        // 含变量时预编译一次, 循环内复用(每轮重新渲染, 变量随每包变化)
+        let compiled = if content.contains("${") {
+            Some(Arc::new(crate::utils::message_vars::CompiledTemplate::new(
+                &content,
+            )))
+        } else {
+            None
+        };
 
         // 创建周期发送任务
         let task = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await;
 
-                // 发送消息
-                if message_input_mode_clone == "text" {
-                    // 这里我们需要一种方式来访问应用实例
-                    // 由于我们不能直接访问，我们可以通过事件系统来处理
+                // 每轮重新渲染模板(无变量时直接复用原文)
+                let payload = match &compiled {
+                    Some(compiled) => {
+                        let seq_value = if compiled.needs_seq() {
+                            Some(seq.fetch_add(1, Ordering::Relaxed))
+                        } else {
+                            None
+                        };
+                        let ctx = crate::utils::message_vars::RenderContext::common(seq_value);
+                        let mut out = String::with_capacity(compiled.template_len() + 32);
+                        compiled.render(&ctx, is_hex_mode, &mut out);
+                        out
+                    }
+                    None => content_clone.clone(),
+                };
+
+                if !is_hex_mode {
                     if let Some(sender) = sender.clone() {
                         let _ = sender.try_send(ConnectionEvent::PeriodicSend(
                             tab_id_clone.clone(),
-                            content_clone.clone(),
+                            payload,
+                        ));
+                    }
+                } else if compiled.is_some() {
+                    // 含变量的 hex: 渲染结果已是合法十六进制文本, 直接按字节解析
+                    let bytes = crate::utils::hex::hex_to_bytes(&payload);
+                    if let Some(sender) = sender.clone() {
+                        let _ = sender.try_send(ConnectionEvent::PeriodicSendBytes(
+                            tab_id_clone.clone(),
+                            bytes,
+                            payload,
                         ));
                     }
                 } else {
-                    // 处理十六进制输入
-                    let hex_content = content_clone.clone();
-                    let cleaned_hex = hex_content.replace(|c: char| !c.is_ascii_hexdigit(), "");
+                    // 无变量 hex: 保持既有清洗 + 解析语义
+                    let cleaned_hex = payload.replace(|c: char| !c.is_ascii_hexdigit(), "");
                     if cleaned_hex.len() % 2 == 0 {
                         if let Ok(bytes) = hex::decode(&cleaned_hex) {
                             if let Some(sender) = sender.clone() {
                                 let _ = sender.try_send(ConnectionEvent::PeriodicSendBytes(
                                     tab_id_clone.clone(),
                                     bytes,
-                                    hex_content,
+                                    payload,
                                 ));
                             }
                         }
@@ -1946,6 +1978,7 @@ impl NetAssistantApp {
         let mut periodic_send_enabled = false;
         let mut connection_config = None;
         let mut interval_ms: u64 = 1000;
+        let mut message_seq: Option<Arc<AtomicU64>> = None;
 
         // 获取当前标签页的状态
         if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
@@ -1968,6 +2001,7 @@ impl NetAssistantApp {
                 auto_clear_input = tab_state.auto_clear_input;
                 periodic_send_enabled = tab_state.periodic_send_enabled;
                 connection_config = Some(tab_state.connection_config.clone());
+                message_seq = Some(tab_state.message_seq.clone());
 
                 // 在发送前再次验证十六进制输入是否有效
                 let is_hex_valid = if tab_message_input_mode == "hex" {
@@ -2010,12 +2044,30 @@ impl NetAssistantApp {
             };
 
             if can_send {
-                // 发送消息
-                if tab_message_input_mode == "hex" {
-                    let bytes = crate::utils::hex::hex_to_bytes(&content);
-                    self.send_message_bytes(tab_id.to_string(), bytes, content.clone());
+                // 发送时替换变量：输入框始终保留模板原文，替换只发生在本次发送的载荷上。
+                // 无 `${` 时全链路短路，行为与升级前完全一致。
+                let is_hex_mode = tab_message_input_mode == "hex";
+                let rendered = if content.contains("${") {
+                    let compiled = crate::utils::message_vars::CompiledTemplate::new(&content);
+                    let seq = if compiled.needs_seq() {
+                        message_seq.as_ref().map(|s| s.fetch_add(1, Ordering::Relaxed))
+                    } else {
+                        None
+                    };
+                    let ctx = crate::utils::message_vars::RenderContext::common(seq);
+                    let mut out = String::with_capacity(compiled.template_len() + 32);
+                    compiled.render(&ctx, is_hex_mode, &mut out);
+                    out
                 } else {
-                    self.send_message(tab_id.to_string(), content.clone());
+                    content.clone()
+                };
+
+                // 发送消息
+                if is_hex_mode {
+                    let bytes = crate::utils::hex::hex_to_bytes(&rendered);
+                    self.send_message_bytes(tab_id.to_string(), bytes, rendered.clone());
+                } else {
+                    self.send_message(tab_id.to_string(), rendered.clone());
                 }
 
                 // Clear input ONLY on successful send initiation and if auto_clear_input is true
@@ -2030,13 +2082,18 @@ impl NetAssistantApp {
                 // 启动周期发送（如果启用）
                 if periodic_send_enabled {
                     let tab_id_periodic = tab_id.to_string();
+                    // 传模板原文, tokio 循环内每轮重新渲染
                     let content_periodic = content.clone();
                     let message_input_mode_periodic = tab_message_input_mode.clone();
+                    let seq_periodic = message_seq
+                        .clone()
+                        .unwrap_or_else(|| Arc::new(AtomicU64::new(0)));
                     self.start_periodic_send(
                         tab_id_periodic,
                         interval_ms,
                         content_periodic,
                         message_input_mode_periodic,
+                        seq_periodic,
                         cx,
                     );
                 }
@@ -2059,6 +2116,47 @@ impl NetAssistantApp {
                 // DO NOT clear input on connection failure
             }
         }
+    }
+
+    /// 「插入变量」浮层点击某变量后，将其插入到当前目标输入框的光标处。
+    ///
+    /// 目标由 `ConnectionTabState::variable_picker_target` 决定（普通消息框 / 自动回复框）。
+    /// 插入的是变量占位符原文，输入框保留模板，替换只发生在发送瞬间。
+    pub fn insert_message_variable(
+        &mut self,
+        tab_id: &str,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let target = self
+            .connection_tabs
+            .get(tab_id)
+            .and_then(|s| s.variable_picker_target);
+
+        match target {
+            Some(crate::ui::dialog::variable_picker::VariablePickerTarget::Message) => {
+                if let Some(input) = self
+                    .connection_tabs
+                    .get(tab_id)
+                    .and_then(|s| s.message_input.clone())
+                {
+                    input.update(cx, |input, cx| input.insert(text.to_string(), window, cx));
+                }
+            }
+            Some(crate::ui::dialog::variable_picker::VariablePickerTarget::AutoReply) => {
+                if let Some(input) = self.auto_reply_inputs.get(tab_id).cloned() {
+                    input.update(cx, |input, cx| input.insert(text.to_string(), window, cx));
+                }
+            }
+            None => {}
+        }
+
+        // 插入后收起浮层
+        if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
+            tab_state.variable_picker_target = None;
+        }
+        cx.notify();
     }
 
     pub fn send_message(&mut self, tab_id: String, content: String) {
@@ -2874,9 +2972,10 @@ impl NetAssistantApp {
         }
     }
 
-    /// 将 UI 层自动回复配置(开关 + 内容)同步到网络层共享状态。
+    /// 将 UI 层自动回复配置(开关 + 内容原文 + 输入模式)同步到网络层共享状态。
     ///
-    /// 内容严格按用户输入转换: 文本模式 = UTF-8 字节; 十六进制模式 = 解析后的字节。
+    /// 下发原文而非已转换字节: 无变量的原文由网络层按模式转成等价字节;
+    /// 含 `${...}` 的原文由网络层保存为模板, 每条回复重新渲染。
     /// 不额外修改内容、不添加换行符; 编码由用户配置的 encoder 负责。
     /// 服务端未就绪(未启动)时无目标, 待 ServerAutoReplyStateReady 到达后再同步。
     pub fn sync_auto_reply_to_network(&mut self, tab_id: &str, cx: &mut Context<Self>) {
@@ -2887,18 +2986,12 @@ impl NetAssistantApp {
             return;
         };
         let enabled = tab_state.auto_reply_enabled;
-        let bytes = match self.auto_reply_inputs.get(tab_id) {
-            Some(input) => {
-                let text = input.read(cx).text().to_string();
-                if tab_state.message_input_mode == "hex" {
-                    crate::utils::hex::hex_to_bytes(&text)
-                } else {
-                    text.into_bytes()
-                }
-            }
-            None => Vec::new(),
+        let hex_mode = tab_state.message_input_mode == "hex";
+        let text = match self.auto_reply_inputs.get(tab_id) {
+            Some(input) => input.read(cx).text().to_string(),
+            None => String::new(),
         };
-        auto_reply_state.set(enabled, bytes);
+        auto_reply_state.set(enabled, &text, hex_mode);
     }
 
     /// 运行时下发解码器配置到在线连接(客户端或服务端所有已连接客户端)，无需重连。

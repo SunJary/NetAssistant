@@ -29,7 +29,7 @@ use crate::stress::port_range::{EphemeralPortRange, STATIC_THRESHOLD};
 use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::components::input_with_mode::InputWithMode;
 use crate::ui::dialog::open_port_limit_help_dialog;
-use crate::ui::dialog::variable_picker::render_variable_picker;
+use crate::ui::dialog::variable_picker::{VariableItem, render_variable_picker, stress_variable_items};
 
 use super::{dialog_content_max_height, dialog_height};
 
@@ -269,7 +269,37 @@ pub fn open_stress_config_dialog(
                         }
                     };
                     if show_picker {
-                        content.child(render_variable_picker(&entity, bounds, &theme, cx))
+                        let dismiss_entity = entity.clone();
+                        let pick_entity = entity.clone();
+                        content.child(render_variable_picker(
+                            stress_variable_items(),
+                            bounds,
+                            &theme,
+                            Box::new(
+                                move |_event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+                                    dismiss_entity.update(cx, |app, cx| {
+                                        if let Some(s) = &mut app.stress_config_dialog {
+                                            s.show_variable_picker = false;
+                                        }
+                                        cx.notify();
+                                    });
+                                },
+                            ),
+                            Box::new(
+                                move |item: &VariableItem, window: &mut Window, cx: &mut App| {
+                                    pick_entity.update(cx, |app, cx| {
+                                        if let Some(s) = &mut app.stress_config_dialog {
+                                            // 在输入框当前光标处插入变量
+                                            s.payload_input.update(cx, |input, cx| {
+                                                input.insert(item.insert_text.to_string(), window, cx);
+                                            });
+                                            s.show_variable_picker = false;
+                                        }
+                                        cx.notify();
+                                    });
+                                },
+                            ),
+                        ))
                     } else {
                         content
                     }

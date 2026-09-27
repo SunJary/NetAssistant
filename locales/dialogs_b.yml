@@ -91,6 +91,33 @@ variable_picker:
   desc_random:
     zh-CN: "区间随机整数, 如 ${random:1:100}"
     en: "Random integer within a range, e.g. ${random:1:100}"
+  desc_date:
+    zh-CN: "当前日期, 如 2026-09-26"
+    en: "Current date, e.g. 2026-09-26"
+  desc_time:
+    zh-CN: "当前时间, 如 14:30:05"
+    en: "Current time, e.g. 14:30:05"
+  desc_datetime:
+    zh-CN: "日期与时间, 如 2026-09-26 14:30:05"
+    en: "Date and time, e.g. 2026-09-26 14:30:05"
+  desc_datetime_ms:
+    zh-CN: "日期与时间(含毫秒)"
+    en: "Date and time with milliseconds"
+  desc_iso:
+    zh-CN: "ISO 8601 本地时间(带时区偏移)"
+    en: "ISO 8601 local time with timezone offset"
+  desc_utc:
+    zh-CN: "ISO 8601 UTC 时间(以 Z 结尾)"
+    en: "ISO 8601 UTC time (ends with Z)"
+  desc_timestamp_s:
+    zh-CN: 当前秒级时间戳
+    en: Current timestamp in seconds
+  desc_time_custom:
+    zh-CN: "自定义时间格式(可改成任意 strftime 格式)"
+    en: "Custom time format (any strftime format)"
+  desc_seq_common:
+    zh-CN: "递增序号, 每条消息 +1"
+    en: "Incrementing sequence number, +1 per message"
   hint:
     zh-CN: "提示: 点击输入框定位光标, 变量会插入到光标处; Hex 模式下数值变量自动转为十六进制"
     en: "Tip: Click in the input to place the cursor; variables are inserted at the cursor. In Hex mode, numeric variables are automatically converted to hexadecimal"

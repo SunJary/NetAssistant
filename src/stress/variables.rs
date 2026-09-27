@@ -1,6 +1,11 @@
-// 报文变量替换引擎
+// 压测报文变量替换引擎(薄适配层)
 //
-// 支持变量(在文本层替换，hex 模式下替换后再 hex_to_bytes):
+// 解析/渲染/时间格式/hex 编码规则统一由 `crate::utils::message_vars` 提供,
+// 本模块只负责压测语义的适配:
+//   - worker_id / counter / seq 全部 Some(填实值)
+//   - 序号无条件消费(与历史行为逐字一致: 每包都 fetch_add)
+//
+// 支持变量(在文本层替换, hex 模式下替换后再 hex_to_bytes):
 //   ${seq}            全局递增序号(所有 worker 共享)
 //   ${worker_id}      当前 worker 编号
 //   ${counter}        当前 worker 的本地计数(每包+1)
@@ -14,7 +19,22 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::Local;
-use uuid::Uuid;
+
+/// 压测侧渲染上下文: 无条件消费序号, worker_id / counter 填实值
+fn stress_context(
+    global_seq: &AtomicU64,
+    worker_id: usize,
+    worker_counter: &mut u64,
+) -> crate::utils::message_vars::RenderContext {
+    let seq = global_seq.fetch_add(1, Ordering::Relaxed);
+    *worker_counter += 1;
+    crate::utils::message_vars::RenderContext {
+        now: Local::now(),
+        worker_id: Some(worker_id),
+        counter: Some(*worker_counter),
+        seq: Some(seq),
+    }
+}
 
 /// 渲染单条报文。
 ///
@@ -36,135 +56,31 @@ pub fn render_payload(
         return template.to_string();
     }
 
-    let seq = global_seq.fetch_add(1, Ordering::Relaxed);
-    *worker_counter += 1;
-    let local_counter = *worker_counter;
-    let timestamp = Local::now().timestamp_millis();
-    let uuid = Uuid::new_v4();
-
-    let mut output = String::with_capacity(template.len() + 32);
-    // 用 char_indices 遍历以保证 UTF-8 安全(模板可能含中文等多字节字符)
-    let chars: Vec<(usize, char)> = template.char_indices().collect();
-
-    let mut ci = 0;
-    while ci < chars.len() {
-        let (_, ch) = chars[ci];
-        if ch == '$' && ci + 1 < chars.len() && chars[ci + 1].1 == '{' {
-            // 在剩余子串中查找匹配的 '}'
-            let after_brace_byte = chars[ci + 1].0 + chars[ci + 1].1.len_utf8();
-            if let Some(close_rel) = template[after_brace_byte..].find('}') {
-                let var_name = &template[after_brace_byte..after_brace_byte + close_rel];
-                let replacement = resolve_variable(
-                    var_name,
-                    seq,
-                    worker_id,
-                    local_counter,
-                    timestamp,
-                    &uuid,
-                    hex_mode,
-                );
-                output.push_str(&replacement);
-                // 推进 ci 到 '}' 之后
-                let close_byte = after_brace_byte + close_rel + 1;
-                ci = chars.partition_point(|(p, _)| *p < close_byte);
-                continue;
-            }
-        }
-        output.push(ch);
-        ci += 1;
-    }
-
-    output
+    let compiled = CompiledTemplate::new(template);
+    let mut out = String::with_capacity(template.len() + 32);
+    compiled.render(global_seq, worker_id, worker_counter, hex_mode, &mut out);
+    out
 }
 
-/// 预编译的报文模板段
-#[derive(Debug, Clone)]
-enum TemplateSegment {
-    /// 字面量文本
-    Literal(String),
-    /// ${seq}
-    Seq,
-    /// ${worker_id}
-    WorkerId,
-    /// ${counter}
-    Counter,
-    /// ${timestamp}
-    Timestamp,
-    /// ${uuid}
-    Uuid,
-    /// ${random:min:max} (预解析的 min/max)
-    Random(i64, i64),
-    /// 未知变量,原样保留
-    Unknown(String),
-}
-
-/// 预编译的报文模板
+/// 预编译的报文模板(压测调用点使用的薄包装)
 ///
-/// 在 worker 启动时解析一次模板,拆分为段(Literal / 变量),
-/// 避免每包重复执行 `char_indices().collect()` 和字符串搜索。
-pub struct CompiledTemplate {
-    segments: Vec<TemplateSegment>,
-    /// 原始模板长度(用于预分配输出缓冲)
-    template_len: usize,
-}
+/// 委托共享引擎; `render` 的签名与旧实现一致, 因此 `client_worker.rs` 调用点无需改动。
+pub struct CompiledTemplate(crate::utils::message_vars::CompiledTemplate);
 
 impl CompiledTemplate {
     /// 从模板字符串构造预编译模板
     pub fn new(template: &str) -> Self {
-        let template_len = template.len();
-        // 快速路径: 无变量
-        if !template.contains("${") {
-            return Self {
-                segments: vec![TemplateSegment::Literal(template.to_string())],
-                template_len,
-            };
-        }
-
-        let chars: Vec<(usize, char)> = template.char_indices().collect();
-        let mut segments = Vec::new();
-        let mut ci = 0;
-        let mut literal_start = 0;
-
-        while ci < chars.len() {
-            let (_, ch) = chars[ci];
-            if ch == '$' && ci + 1 < chars.len() && chars[ci + 1].1 == '{' {
-                let after_brace_byte = chars[ci + 1].0 + chars[ci + 1].1.len_utf8();
-                if let Some(close_rel) = template[after_brace_byte..].find('}') {
-                    // 先冲刷已积累的字面量
-                    if literal_start < chars[ci].0 {
-                        segments.push(TemplateSegment::Literal(
-                            template[literal_start..chars[ci].0].to_string(),
-                        ));
-                    }
-                    let var_name = &template[after_brace_byte..after_brace_byte + close_rel];
-                    segments.push(parse_segment(var_name));
-                    let close_byte = after_brace_byte + close_rel + 1;
-                    literal_start = close_byte;
-                    ci = chars.partition_point(|(p, _)| *p < close_byte);
-                    continue;
-                }
-            }
-            ci += 1;
-        }
-        // 冲刷尾部字面量
-        if literal_start < template.len() {
-            segments.push(TemplateSegment::Literal(
-                template[literal_start..].to_string(),
-            ));
-        }
-
-        Self {
-            segments,
-            template_len,
-        }
+        Self(crate::utils::message_vars::CompiledTemplate::new(template))
     }
 
     /// 原始模板长度(用于调用方预分配缓冲)
     pub fn template_len(&self) -> usize {
-        self.template_len
+        self.0.template_len()
     }
 
     /// 渲染到给定的 String 缓冲(调用方负责 clear + 预分配)
+    ///
+    /// 压测语义: 无条件消费一个全局序号, 本地计数每包 +1。
     pub fn render(
         &self,
         global_seq: &AtomicU64,
@@ -173,195 +89,9 @@ impl CompiledTemplate {
         hex_mode: bool,
         out: &mut String,
     ) {
-        let seq = global_seq.fetch_add(1, Ordering::Relaxed);
-        *worker_counter += 1;
-        let local_counter = *worker_counter;
-        let timestamp = Local::now().timestamp_millis();
-        let uuid = Uuid::new_v4();
-
-        for seg in &self.segments {
-            match seg {
-                TemplateSegment::Literal(s) => out.push_str(s),
-                TemplateSegment::Seq => {
-                    if hex_mode {
-                        out.push_str(&format_hex_u64(seq))
-                    } else {
-                        out.push_str(&seq.to_string())
-                    }
-                }
-                TemplateSegment::WorkerId => {
-                    if hex_mode {
-                        out.push_str(&format_hex_u64(worker_id as u64))
-                    } else {
-                        out.push_str(&worker_id.to_string())
-                    }
-                }
-                TemplateSegment::Counter => {
-                    if hex_mode {
-                        out.push_str(&format_hex_u64(local_counter))
-                    } else {
-                        out.push_str(&local_counter.to_string())
-                    }
-                }
-                TemplateSegment::Timestamp => {
-                    if hex_mode {
-                        out.push_str(&format_hex_i64(timestamp))
-                    } else {
-                        out.push_str(&timestamp.to_string())
-                    }
-                }
-                // hex 模式下输出纯 32 字符十六进制(去掉连字符), 否则连字符不是合法 hex 字符
-                TemplateSegment::Uuid => {
-                    if hex_mode {
-                        out.push_str(&uuid.simple().to_string().to_uppercase())
-                    } else {
-                        out.push_str(&uuid.to_string())
-                    }
-                }
-                TemplateSegment::Random(min, max) => {
-                    let span = (*max - *min) as u64 + 1;
-                    let val = *min + (random_u64() % span) as i64;
-                    if hex_mode {
-                        out.push_str(&format_hex_i64(val))
-                    } else {
-                        out.push_str(&val.to_string())
-                    }
-                }
-                TemplateSegment::Unknown(s) => out.push_str(s),
-            }
-        }
+        let ctx = stress_context(global_seq, worker_id, worker_counter);
+        self.0.render(&ctx, hex_mode, out);
     }
-}
-
-/// 将变量名解析为预编译段
-fn parse_segment(var_name: &str) -> TemplateSegment {
-    match var_name {
-        "seq" => TemplateSegment::Seq,
-        "worker_id" => TemplateSegment::WorkerId,
-        "counter" => TemplateSegment::Counter,
-        "timestamp" => TemplateSegment::Timestamp,
-        "uuid" => TemplateSegment::Uuid,
-        _ if var_name.starts_with("random:") => {
-            let params = &var_name["random:".len()..];
-            let parts: Vec<&str> = params.split(':').collect();
-            if parts.len() != 2 {
-                return TemplateSegment::Unknown(format!("${{{}}}", var_name));
-            }
-            match (
-                parts[0].trim().parse::<i64>(),
-                parts[1].trim().parse::<i64>(),
-            ) {
-                (Ok(min), Ok(max)) if min <= max => TemplateSegment::Random(min, max),
-                _ => TemplateSegment::Unknown(format!("${{{}}}", var_name)),
-            }
-        }
-        _ => TemplateSegment::Unknown(format!("${{{}}}", var_name)),
-    }
-}
-
-/// 解析单个变量名，返回替换文本。未知变量原样返回 `${name}`。
-#[allow(dead_code)]
-fn resolve_variable(
-    var_name: &str,
-    seq: u64,
-    worker_id: usize,
-    counter: u64,
-    timestamp: i64,
-    uuid: &Uuid,
-    hex_mode: bool,
-) -> String {
-    match var_name {
-        "seq" => {
-            if hex_mode {
-                format_hex_u64(seq)
-            } else {
-                seq.to_string()
-            }
-        }
-        "worker_id" => {
-            if hex_mode {
-                format_hex_u64(worker_id as u64)
-            } else {
-                worker_id.to_string()
-            }
-        }
-        "counter" => {
-            if hex_mode {
-                format_hex_u64(counter)
-            } else {
-                counter.to_string()
-            }
-        }
-        "timestamp" => {
-            if hex_mode {
-                format_hex_i64(timestamp)
-            } else {
-                timestamp.to_string()
-            }
-        }
-        "uuid" => {
-            if hex_mode {
-                uuid.simple().to_string().to_uppercase()
-            } else {
-                uuid.to_string()
-            }
-        }
-        _ if var_name.starts_with("random:") => resolve_random(var_name, hex_mode),
-        _ => format!("${{{}}}", var_name), // 未知变量原样保留
-    }
-}
-
-/// 将 u64 格式化为偶数长度大写十六进制字符串(如 0→"00", 10→"0A", 256→"0100")
-fn format_hex_u64(v: u64) -> String {
-    let hex = format!("{:X}", v);
-    if hex.len() % 2 != 0 {
-        format!("0{}", hex)
-    } else {
-        hex
-    }
-}
-
-/// 将 i64 格式化为偶数长度大写十六进制字符串
-fn format_hex_i64(v: i64) -> String {
-    format_hex_u64(v as u64)
-}
-
-/// 解析 ${random:min:max} → [min, max] 闭区间随机整数
-///
-/// 使用 std 的 RandomState 哈希作为熵源(非加密用途，仅为压测报文变化)，
-/// 避免引入 rand 依赖。
-#[allow(dead_code)]
-fn resolve_random(var_name: &str, hex_mode: bool) -> String {
-    let params = &var_name["random:".len()..];
-    let parts: Vec<&str> = params.split(':').collect();
-    if parts.len() != 2 {
-        return format!("${{{}}}", var_name);
-    }
-    let min = match parts[0].trim().parse::<i64>() {
-        Ok(v) => v,
-        Err(_) => return format!("${{{}}}", var_name),
-    };
-    let max = match parts[1].trim().parse::<i64>() {
-        Ok(v) => v,
-        Err(_) => return format!("${{{}}}", var_name),
-    };
-    if min > max {
-        return format!("${{{}}}", var_name);
-    }
-    let span = (max - min) as u64 + 1;
-    let val = min + (random_u64() % span) as i64;
-    if hex_mode {
-        format_hex_i64(val)
-    } else {
-        val.to_string()
-    }
-}
-
-/// 用 std RandomState 产生一个伪随机 u64
-fn random_u64() -> u64 {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
-    RandomState::new().build_hasher().finish()
 }
 
 #[cfg(test)]
@@ -433,7 +163,7 @@ mod tests {
         let mut c = 0u64;
         let out = render_payload("id=${uuid}", &s, 0, &mut c, false);
         let uuid_part = &out[3..];
-        assert!(Uuid::parse_str(uuid_part).is_ok(), "应生成合法 UUID");
+        assert!(uuid::Uuid::parse_str(uuid_part).is_ok(), "应生成合法 UUID");
     }
 
     #[test]

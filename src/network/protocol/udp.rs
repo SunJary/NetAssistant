@@ -23,7 +23,8 @@ const UDP_MAX_BATCH_PACKETS: u64 = 1024;
 
 /// UDP 网络层自动回复: 每个数据报触发一次回复, Sent 明细聚合入批随批 flush。
 ///
-/// 回复内容为用户配置的原始字节, 原样经主发送通道发回源地址, 不额外修改。
+/// 回复内容由 `AutoReplyConfig::render_content` 给出(无变量时为用户配置的原始字节,
+/// 含变量时逐条渲染), 原样经主发送通道发回源地址, 不额外修改。
 /// 发送计数在发送任务统一累加(手动发送与自动回复共用一个汇聚点), 这里只聚合明细, 不计数。
 fn try_udp_auto_reply(
     auto_reply_state: &Arc<AutoReplyConfig>,
@@ -34,7 +35,7 @@ fn try_udp_auto_reply(
     if !auto_reply_state.is_enabled() {
         return;
     }
-    let content = auto_reply_state.content();
+    let content = auto_reply_state.render_content();
     if content.is_empty() {
         return;
     }

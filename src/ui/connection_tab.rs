@@ -4,9 +4,13 @@ use crate::ui::dialog::{
     DecoderSelectionDialogState, open_add_client_dialog, open_decoder_selection_dialog,
     open_favorite_remark_dialog,
 };
+use crate::ui::dialog::variable_picker::{
+    VariableItem, VariablePickerTarget, message_variable_items, render_variable_picker,
+};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, Sizable, StyledExt};
+use gpui_component::ElementExt as _;
 use gpui_component::{
     Icon, IconName, Size, Theme,
     clipboard::Clipboard,
@@ -19,6 +23,7 @@ use log::{debug, info};
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
@@ -78,6 +83,16 @@ pub struct ConnectionTabState {
     pub keep_last_input: Entity<InputState>,
     /// 关闭自动滚动前的保留条数，用于重新开启时恢复（含 0）。
     pub keep_last_backup: usize,
+
+    // ===== 消息变量（${...}）插入 =====
+    /// 变量浮层当前目标（同一时刻只允许一个浮层）
+    pub variable_picker_target: Option<VariablePickerTarget>,
+    /// 普通消息区「插入变量」按钮的窗口坐标（on_prepaint 更新，供浮层锚定）
+    pub message_var_button_bounds: Option<Bounds<Pixels>>,
+    /// 自动回复区「插入变量」按钮的窗口坐标（on_prepaint 更新）
+    pub auto_reply_var_button_bounds: Option<Bounds<Pixels>>,
+    /// 手动发送与周期发送共享的递增序号（${seq}）
+    pub message_seq: Arc<AtomicU64>,
 
     // ===== 消息搜索（每个标签页独立） =====
     /// 搜索浮层是否展开
@@ -194,6 +209,12 @@ impl ConnectionTabState {
                 input
             },
             keep_last_backup: DEFAULT_KEEP_LAST,
+
+            // 消息变量插入（默认收起）
+            variable_picker_target: None,
+            message_var_button_bounds: None,
+            auto_reply_var_button_bounds: None,
+            message_seq: Arc::new(AtomicU64::new(0)),
 
             // 消息搜索（默认收起，无查询词 → 零扫描）
             search_open: false,
@@ -450,6 +471,8 @@ impl<'a> ConnectionTab<'a> {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
+        // 浮层先于根节点构建: 消费 self 前取好 target 与按钮坐标
+        let variable_picker = self.render_variable_picker_overlay(&theme, cx);
 
         div()
             .flex()
@@ -460,6 +483,61 @@ impl<'a> ConnectionTab<'a> {
             .bg(theme.background)
             .child(self.render_connection_info(window, cx))
             .child(self.render_right_panel(window, cx))
+            // 变量浮层: deferred 独立合成层, 挂在根节点避免被滚动区裁剪
+            .children(variable_picker)
+    }
+
+    /// 渲染「插入变量」浮层(消息区与自动回复区共用一个, 按 target 选择锚点与插入目标)
+    ///
+    /// 返回 None 表示当前无浮层(target 未开启, 或按钮尚未 on_prepaint 拿到坐标)。
+    fn render_variable_picker_overlay(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Option<AnyElement> {
+        // 浮层挂在 ConnectionTab 根节点, 不随调试内容卸载:
+        // 切到压测视图时消息区/自动回复区均不可见, 若继续渲染会残留一个锚在旧坐标的浮层
+        if self.tab_state.view_mode != TabViewMode::Debug {
+            return None;
+        }
+        let target = self.tab_state.variable_picker_target?;
+        let bounds = match target {
+            VariablePickerTarget::Message => self.tab_state.message_var_button_bounds?,
+            VariablePickerTarget::AutoReply => self.tab_state.auto_reply_var_button_bounds?,
+        };
+
+        let tab_id = self.tab_id.clone();
+        // 点击面板外: 仅收起浮层
+        let dismiss_entity = cx.entity().clone();
+        let dismiss_tab_id = tab_id.clone();
+        // 点击某行变量: 插入到对应输入框的光标处并收起
+        let pick_entity = cx.entity().clone();
+
+        Some(
+            render_variable_picker(
+                message_variable_items(),
+                bounds,
+                theme,
+                Box::new(
+                    move |_event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+                        dismiss_entity.update(cx, |app, cx| {
+                            if let Some(tab_state) = app.connection_tabs.get_mut(&dismiss_tab_id) {
+                                tab_state.variable_picker_target = None;
+                            }
+                            cx.notify();
+                        });
+                    },
+                ),
+                Box::new(
+                    move |item: &VariableItem, window: &mut Window, cx: &mut App| {
+                        pick_entity.update(cx, |app, cx| {
+                            app.insert_message_variable(&tab_id, item.insert_text, window, cx);
+                        });
+                    },
+                ),
+            )
+            .into_any_element(),
+        )
     }
 
     /// 右侧面板: 顶部 调试/压测 tab 切换 + 内容区
@@ -1192,7 +1270,66 @@ impl<'a> ConnectionTab<'a> {
                             .text_xs()
                             .text_color(theme.muted_foreground)
                             .child(t!("connection_tab.enable_auto_reply").to_string()),
-                    ),
+                    )
+                    // 「插入变量」按钮: 与消息区复用同一浮层组件, 目标为自动回复输入框
+                    .child({
+                        let prepaint_entity = cx.entity().clone();
+                        let prepaint_tab_id = tab_id.clone();
+                        let prepaint_handler: Box<
+                            dyn Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static,
+                        > = Box::new(move |bounds, _window, cx| {
+                            prepaint_entity.update(cx, |app, _| {
+                                if let Some(tab_state) =
+                                    app.connection_tabs.get_mut(&prepaint_tab_id)
+                                {
+                                    tab_state.auto_reply_var_button_bounds = Some(bounds);
+                                }
+                            });
+                        });
+                        let toggle_tab_id = tab_id.clone();
+                        let active = self.tab_state.variable_picker_target
+                            == Some(VariablePickerTarget::AutoReply);
+                        div()
+                            // on_prepaint 需挂在 Div 上(ElementExt 仅对 ParentElement 实现),
+                            // 必须在 .id()/.tooltip() 转为 Stateful 之前调用
+                            .on_prepaint(prepaint_handler)
+                            .id("insert-var-btn-auto-reply")
+                            .ml_auto()
+                            .px_1p5()
+                            .py_0p5()
+                            .rounded_md()
+                            .text_xs()
+                            .font_medium()
+                            .cursor_pointer()
+                            .when(active, |this| {
+                                this.text_color(gpui::white()).bg(theme.primary)
+                            })
+                            .when(!active, |this| {
+                                this.text_color(theme.primary).bg(theme.primary.opacity(0.06))
+                            })
+                            .hover(|this| this.text_color(gpui::white()).bg(theme.primary))
+                            .active(|this| this.text_color(gpui::white()).bg(theme.primary))
+                            .tooltip(|window, cx| {
+                                Tooltip::new(
+                                    t!("connection_tab.insert_variable_tooltip").to_string(),
+                                )
+                                .build(window, cx)
+                            })
+                            .on_mouse_down(MouseButton::Left, cx.listener(
+                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                    if let Some(tab_state) = app.connection_tabs.get_mut(&toggle_tab_id) {
+                                        tab_state.variable_picker_target =
+                                            if tab_state.variable_picker_target == Some(VariablePickerTarget::AutoReply) {
+                                                None
+                                            } else {
+                                                Some(VariablePickerTarget::AutoReply)
+                                            };
+                                    }
+                                    cx.notify();
+                                },
+                            ))
+                            .child(t!("connection_tab.insert_variable").to_string())
+                    }),
             )
             .when(auto_reply_enabled, |this| {
 
@@ -2263,6 +2400,60 @@ impl<'a> ConnectionTab<'a> {
                                         .child(t!("connection_tab.clear").to_string()),
                                 ),
                             )
+                            .child({
+                                // 「插入变量」按钮: 切换浮层显隐, on_prepaint 追踪位置供浮层锚定
+                                let prepaint_entity = cx.entity().clone();
+                                let prepaint_tab_id = tab_id.clone();
+                                let prepaint_handler: Box<
+                                    dyn Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static,
+                                > = Box::new(move |bounds, _window, cx| {
+                                    prepaint_entity.update(cx, |app, _| {
+                                        if let Some(tab_state) =
+                                            app.connection_tabs.get_mut(&prepaint_tab_id)
+                                        {
+                                            tab_state.message_var_button_bounds = Some(bounds);
+                                        }
+                                    });
+                                });
+                                let toggle_tab_id = tab_id.clone();
+                                div()
+                                    // on_prepaint 需挂在 Div 上(ElementExt 仅对 ParentElement 实现),
+                                    // 必须在 .id()/.tooltip() 转为 Stateful 之前调用
+                                    .on_prepaint(prepaint_handler)
+                                    .id("insert-var-btn")
+                                    .px_3()
+                                    .py_1()
+                                    .bg(theme.secondary)
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme.secondary_hover))
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new(
+                                            t!("connection_tab.insert_variable_tooltip").to_string(),
+                                        )
+                                        .build(window, cx)
+                                    })
+                                    .on_mouse_down(MouseButton::Left, cx.listener(
+                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            if let Some(tab_state) = app.connection_tabs.get_mut(&toggle_tab_id) {
+                                                tab_state.variable_picker_target =
+                                                    if tab_state.variable_picker_target == Some(VariablePickerTarget::Message) {
+                                                        None
+                                                    } else {
+                                                        Some(VariablePickerTarget::Message)
+                                                    };
+                                            }
+                                            cx.notify();
+                                        },
+                                    ))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_medium()
+                                            .text_color(theme.secondary_foreground)
+                                            .child(t!("connection_tab.insert_variable").to_string()),
+                                    )
+                            })
                             .child(
                                 div()
                                     .flex()

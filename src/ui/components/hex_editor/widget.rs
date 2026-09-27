@@ -1,12 +1,15 @@
 //! 十六进制编辑器 —— GPUI 渲染层
 //!
-//! 仅依赖 gpui 与 core；不 import gpui_component / 项目内类型，
-//! 主题色经 [`HexEditorStyle`] 注入。布局规格见 plans/plan-hex-editor.md。
+//! 仅依赖 gpui 与 core；不 import 项目内类型，主题色经 [`HexEditorStyle`] 注入。
+//! 唯一例外是 gpui_component 的 `Tooltip`（变量 token 的 hover 提示，无样式耦合）。
+//! 布局规格见 plans/plan-hex-editor.md。
 
 use std::sync::Arc;
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_component::tooltip::Tooltip;
+use rust_i18n::t;
 
 use super::core::{self, Action, Cell, MoveDir};
 
@@ -380,7 +383,12 @@ fn render_row(
             Cell::Token(text) => {
                 let selected = is_selected(selection, idx);
                 let on_token = cursor_cell == Some(idx);
-                let mut token = div()
+                // tooltip 属 StatefulInteractiveElement, 需先 .id() 转为 Stateful;
+                // id 带编辑器实体编号, 避免同一窗口内多个 hex 编辑器的 token 撞 id
+                let token = div()
+                    .id(ElementId::Name(
+                        format!("hex-token-{}-{}", editor.entity_id(), idx).into(),
+                    ))
                     .flex_none()
                     .mr(px(BYTE_GAP))
                     .px_1()
@@ -402,8 +410,7 @@ fn render_row(
                     } else {
                         style.token_bg
                     })
-                    .child(text.clone());
-                token = token
+                    .child(text.clone())
                     .on_mouse_down(MouseButton::Left, {
                         let editor = editor.clone();
                         let on_write = on_write.clone();
@@ -411,7 +418,14 @@ fn render_row(
                             click_cell(&editor, idx, 0, &on_write, window, cx);
                         }
                     })
-                    .on_mouse_move(drag_handler(editor, on_write, idx));
+                    .on_mouse_move(drag_handler(editor, on_write, idx))
+                    // 长变量名被 max_w(150px) 截断, hover 显示完整原文与替换说明
+                    .tooltip({
+                        let tip = t!("hex_editor.variable_tooltip", var = text.as_str()).to_string();
+                        move |window: &mut Window, cx: &mut App| {
+                            Tooltip::new(tip.clone()).build(window, cx)
+                        }
+                    });
                 hex_area = hex_area.child(token);
             }
         }

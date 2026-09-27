@@ -6,7 +6,7 @@ mod import_file;
 mod new_connection;
 mod port_limit_help;
 mod stress_config;
-mod variable_picker;
+pub mod variable_picker;
 
 pub use add_client::open_add_client_dialog;
 pub use decoder_selection::{DecoderSelectionDialogState, open_decoder_selection_dialog};
