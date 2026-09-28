@@ -10,7 +10,10 @@ pub mod model;
 pub mod parse;
 
 pub use engine::SendTaskEngine;
-pub use model::{SendTaskConfig, SendTaskState, TaskEndReason, TaskKind, TaskStatus, TaskTarget};
+pub use model::{
+    IntervalHandle, PeriodicSource, SendTaskConfig, SendTaskState, TaskEndReason, TaskKind,
+    TaskStatus, TaskTarget, TimedTaskProfile, build_periodic_config, build_timed_config,
+};
 pub use parse::{LineParseError, MAX_TASK_ITEMS, parse_lines};
 
 use std::sync::{Arc, Mutex as StdMutex};

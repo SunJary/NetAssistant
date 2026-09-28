@@ -26,7 +26,9 @@ use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::TrailerKind;
-use crate::send_task::{LineParseError, MAX_TASK_ITEMS, SendTaskConfig, TaskKind, parse_lines};
+use crate::send_task::{
+    IntervalHandle, LineParseError, MAX_TASK_ITEMS, SendTaskConfig, TaskKind, parse_lines,
+};
 use crate::utils::file_source::{FileEncoding, FileSourceError, bytes_to_hex_text, format_size};
 use crate::utils::hex::validate_hex_input;
 
@@ -272,11 +274,12 @@ impl ImportFileDialogState {
             id: uuid::Uuid::new_v4().to_string(),
             name,
             kind: TaskKind::SendByLines { items },
-            interval_ms,
+            interval: IntervalHandle::new(interval_ms),
             loop_enabled: self.loop_enabled,
             max_rounds: self.max_rounds(cx),
             hex_mode: self.hex_mode,
             start_immediately,
+            hidden: false,
         })
     }
 

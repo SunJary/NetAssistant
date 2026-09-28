@@ -1,5 +1,6 @@
 use crate::config::connection::ConnectionConfig;
 use crate::message::{FavoriteItem, FavoritesMap};
+use crate::send_task::model::TimedTaskProfile;
 use crate::stress::config::StressTestConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -34,6 +35,9 @@ pub struct AppConfig {
     /// 压测配置(按 connection_id 索引)
     #[serde(default)]
     pub stress_profiles: HashMap<String, StressTestConfig>,
+    /// 定时任务(心跳)配置(按 connection_id 索引)
+    #[serde(default)]
+    pub timed_tasks: HashMap<String, TimedTaskProfile>,
     /// 界面语言（如 "zh-CN" / "en"），None 表示用户未选择过
     #[serde(default)]
     pub language: Option<String>,
@@ -53,6 +57,7 @@ impl Default for AppConfig {
             sidebar_collapsed: None,
             favorites: HashMap::new(),
             stress_profiles: HashMap::new(),
+            timed_tasks: HashMap::new(),
             language: None,
         }
     }
@@ -226,6 +231,8 @@ impl ConfigStorage {
                 true
             }
         });
+        // 连带删除该连接的定时任务(心跳)配置
+        self.config.timed_tasks.remove(connection_id);
         if self.config.auto_save {
             let _ = self.save();
         }
@@ -240,6 +247,8 @@ impl ConfigStorage {
                 true
             }
         });
+        // 连带删除该连接的定时任务(心跳)配置
+        self.config.timed_tasks.remove(connection_id);
         if self.config.auto_save {
             let _ = self.save();
         }
@@ -321,6 +330,29 @@ impl ConfigStorage {
     #[allow(dead_code)]
     pub fn remove_stress_profile(&mut self, connection_id: &str) {
         self.config.stress_profiles.remove(connection_id);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 获取指定连接的定时任务(心跳)配置(回填用)
+    pub fn get_timed_profile(&self, connection_id: &str) -> Option<&TimedTaskProfile> {
+        self.config.timed_tasks.get(connection_id)
+    }
+
+    /// 保存(或更新)指定连接的定时任务配置
+    pub fn save_timed_profile(&mut self, connection_id: &str, profile: TimedTaskProfile) {
+        self.config
+            .timed_tasks
+            .insert(connection_id.to_string(), profile);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 删除指定连接的定时任务配置
+    pub fn remove_timed_profile(&mut self, connection_id: &str) {
+        self.config.timed_tasks.remove(connection_id);
         if self.config.auto_save {
             let _ = self.save();
         }

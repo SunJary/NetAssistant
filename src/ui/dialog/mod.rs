@@ -6,6 +6,7 @@ mod import_file;
 mod new_connection;
 mod port_limit_help;
 mod stress_config;
+mod timed_task;
 pub mod variable_picker;
 
 pub use add_client::open_add_client_dialog;
@@ -16,6 +17,7 @@ pub use import_file::{ImportFileDialogState, open_import_file_dialog};
 pub use new_connection::open_new_connection_dialog;
 pub use port_limit_help::open_port_limit_help_dialog;
 pub use stress_config::{StressConfigDialogState, open_stress_config_dialog};
+pub use timed_task::{TimedTaskDialogState, open_timed_task_dialog};
 
 use gpui::{Pixels, Window, px};
 

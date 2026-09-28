@@ -36,16 +36,18 @@ struct TaskButtonVisual {
 
 impl TaskButtonVisual {
     fn from_tasks(tasks: &IndexMap<String, SendTaskEntry>, theme: &Theme) -> Self {
-        let running = tasks
-            .values()
+        // 面板完整过滤 hidden(周期发送): 卡片 / 计数 / 着色 / 空态一概不含
+        let visible = tasks.values().filter(|e| !e.state.config.hidden);
+        let running = visible
+            .clone()
             .filter(|e| e.state.status == TaskStatus::Running)
             .count();
-        let paused = tasks
-            .values()
+        let paused = visible
+            .clone()
             .filter(|e| matches!(e.state.status, TaskStatus::Idle | TaskStatus::Paused))
             .count();
-        let failed = tasks
-            .values()
+        let failed = visible
+            .clone()
             .any(|e| matches!(e.state.status, TaskStatus::Failed(_)));
 
         let icon_color = if running > 0 {
@@ -189,7 +191,15 @@ impl<'a> SendTaskPanel<'a> {
                 });
             });
 
-        let body: AnyElement = if self.tab_state.send_tasks.is_empty() {
+        // 过滤 hidden(周期发送): 不进面板, 也不影响空态
+        let visible: Vec<(&String, &SendTaskEntry)> = self
+            .tab_state
+            .send_tasks
+            .iter()
+            .filter(|(_, e)| !e.state.config.hidden)
+            .collect();
+
+        let body: AnyElement = if visible.is_empty() {
             div()
                 .flex()
                 .flex_1()
@@ -201,11 +211,9 @@ impl<'a> SendTaskPanel<'a> {
                 .child(t!("send_task.empty").to_string())
                 .into_any_element()
         } else {
-            let cards: Vec<AnyElement> = self
-                .tab_state
-                .send_tasks
+            let cards: Vec<AnyElement> = visible
                 .iter()
-                .map(|(task_id, entry)| self.render_card(task_id, entry, theme, cx))
+                .map(|(task_id, entry)| self.render_card(task_id.as_str(), entry, theme, cx))
                 .collect();
             // 两层结构: 外层分配剩余高度, 内层滚动
             div()
@@ -214,6 +222,49 @@ impl<'a> SendTaskPanel<'a> {
                 .child(div().size_full().overflow_y_scrollbar().children(cards))
                 .into_any_element()
         };
+
+        // 标题栏「＋ 添加到定时任务」: 每连接仅 1 个, 已存在时置灰 + tooltip
+        let timed_exists = self
+            .tab_state
+            .send_tasks
+            .values()
+            .any(|e| e.state.config.is_timed());
+        let add_tab_id = self.tab_id.clone();
+        let add_label = t!("send_task.add_timed").to_string();
+        let add_tooltip = if timed_exists {
+            t!("send_task.add_timed_exists").to_string()
+        } else {
+            add_label.clone()
+        };
+        let hover_bg = theme.secondary_hover;
+        let add_button = div()
+            .id("add-timed-task")
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .text_xs()
+            .when(timed_exists, |d| d.text_color(theme.muted_foreground))
+            .when(!timed_exists, |d| {
+                d.cursor_pointer()
+                    .bg(theme.secondary)
+                    .text_color(theme.secondary_foreground)
+                    .hover(move |s| s.bg(hover_bg))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |app, _event, window, cx| {
+                            app.open_timed_task_dialog_for_tab(add_tab_id.clone(), window, cx);
+                        }),
+                    )
+            })
+            .child(
+                Icon::new(CustomIconName::IconName(gpui_component::IconName::Plus))
+                    .size(px(12.0)),
+            )
+            .child(add_label)
+            .tooltip(move |window, cx| Tooltip::new(add_tooltip.clone()).build(window, cx));
 
         let popup = anchored()
             .anchor(Anchor::TopRight)
@@ -234,17 +285,25 @@ impl<'a> SendTaskPanel<'a> {
                     .shadow_lg()
                     .overflow_hidden()
                     .on_mouse_down_out(dismiss_handler)
-                    // 标题(固定)
+                    // 标题(固定) + 「＋ 添加到定时任务」
                     .child(
                         div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
                             .px_3()
                             .py_2()
                             .border_b_1()
                             .border_color(theme.border)
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(theme.foreground)
-                            .child(t!("send_task.title").to_string()),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(theme.foreground)
+                                    .child(t!("send_task.title").to_string()),
+                            )
+                            .child(add_button),
                     )
                     .child(body),
             );
@@ -272,17 +331,20 @@ impl<'a> SendTaskPanel<'a> {
         );
 
         // 操作按钮: 暂停/继续、停止、删除、展开行清单
-        let pause_tab_id = self.tab_id.clone();
-        let pause_task_id = task_id.to_string();
+        // 定时任务(心跳): 暂停/继续映射持久化 enabled, ✎ 编辑, 无「停止」(与暂停语义重复), 无行清单
+        let is_timed = config.is_timed();
+        let toggle_tab_id = self.tab_id.clone();
+        let toggle_task_id = task_id.to_string();
         let stop_tab_id = self.tab_id.clone();
         let stop_task_id = task_id.to_string();
         let delete_tab_id = self.tab_id.clone();
         let delete_task_id = task_id.to_string();
+        let edit_tab_id = self.tab_id.clone();
         let expand_tab_id = self.tab_id.clone();
         let expand_task_id = task_id.to_string();
 
         let mut actions = div().flex().items_center().gap_1().flex_shrink_0();
-        if is_alive {
+        if is_timed {
             actions = actions
                 .child(icon_button(
                     format!("task-toggle-{task_id}"),
@@ -299,9 +361,41 @@ impl<'a> SendTaskPanel<'a> {
                     theme,
                     cx.listener(move |app, _event, _window, cx| {
                         if is_running {
-                            app.pause_send_task(&pause_tab_id, &pause_task_id, None, cx);
+                            app.pause_timed_task(&toggle_tab_id, cx);
                         } else {
-                            app.resume_send_task(&pause_tab_id, &pause_task_id, cx);
+                            app.resume_timed_task(&toggle_tab_id, cx);
+                        }
+                    }),
+                ))
+                .child(icon_button(
+                    format!("task-edit-{task_id}"),
+                    CustomIconName::Pencil,
+                    t!("send_task.edit").to_string(),
+                    theme,
+                    cx.listener(move |app, _event, window, cx| {
+                        app.open_timed_task_dialog_for_tab(edit_tab_id.clone(), window, cx);
+                    }),
+                ));
+        } else if is_alive {
+            actions = actions
+                .child(icon_button(
+                    format!("task-toggle-{task_id}"),
+                    if is_running {
+                        CustomIconName::CirclePause
+                    } else {
+                        CustomIconName::CirclePlay
+                    },
+                    if is_running {
+                        t!("send_task.pause").to_string()
+                    } else {
+                        t!("send_task.resume").to_string()
+                    },
+                    theme,
+                    cx.listener(move |app, _event, _window, cx| {
+                        if is_running {
+                            app.pause_send_task(&toggle_tab_id, &toggle_task_id, None, cx);
+                        } else {
+                            app.resume_send_task(&toggle_tab_id, &toggle_task_id, cx);
                         }
                     }),
                 ))
@@ -315,17 +409,21 @@ impl<'a> SendTaskPanel<'a> {
                     }),
                 ));
         }
-        let actions = actions
-            .child(icon_button(
-                format!("task-delete-{task_id}"),
-                CustomIconName::Trash2,
-                t!("send_task.delete").to_string(),
-                theme,
-                cx.listener(move |app, _event, _window, cx| {
+        let mut actions = actions.child(icon_button(
+            format!("task-delete-{task_id}"),
+            CustomIconName::Trash2,
+            t!("send_task.delete").to_string(),
+            theme,
+            cx.listener(move |app, _event, _window, cx| {
+                if is_timed {
+                    app.delete_timed_task(&delete_tab_id, cx);
+                } else {
                     app.delete_send_task(&delete_tab_id, &delete_task_id, cx);
-                }),
-            ))
-            .child(icon_button(
+                }
+            }),
+        ));
+        if !is_timed {
+            actions = actions.child(icon_button(
                 format!("task-expand-{task_id}"),
                 if expanded {
                     CustomIconName::IconName(gpui_component::IconName::ChevronUp)
@@ -350,6 +448,8 @@ impl<'a> SendTaskPanel<'a> {
                     cx.notify();
                 }),
             ));
+        }
+        let actions = actions;
 
         // 轮次: 无限循环 / 最多 n 轮 / 仅一轮
         let round_text = if config.loop_enabled {
@@ -407,19 +507,29 @@ impl<'a> SendTaskPanel<'a> {
                     .gap_3()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(format!("{} / {}", state.sent_items, state.total_items))
+                    .when(is_timed, |d| {
+                        // 心跳: 「自动启动」徽标 + 第 n 次 + 间隔
+                        d.child(auto_start_badge(theme))
+                            .child(t!("send_task.timed_round", n = state.round).to_string())
+                    })
+                    .when(!is_timed, |d| {
+                        // 逐行: i / N + 轮次
+                        d.child(format!("{} / {}", state.sent_items, state.total_items))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    // 循环发送标记
+                                    .when(config.loop_enabled, |d| {
+                                        d.child(Icon::new(CustomIconName::Repeat).size(px(10.0)))
+                                    })
+                                    .child(round_text),
+                            )
+                    })
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            // 循环发送标记
-                            .when(config.loop_enabled, |d| {
-                                d.child(Icon::new(CustomIconName::Repeat).size(px(10.0)))
-                            })
-                            .child(round_text),
-                    )
-                    .child(t!("send_task.interval", ms = config.interval_ms).to_string()),
+                        t!("send_task.interval", ms = config.interval.get()).to_string(),
+                    ),
             );
 
         // 暂停原因 / 失败原因
@@ -471,6 +581,19 @@ impl<'a> SendTaskPanel<'a> {
 
         card.into_any_element()
     }
+}
+
+/// 「自动启动」徽标(定时任务/心跳专属)
+fn auto_start_badge(theme: &Theme) -> Div {
+    div()
+        .flex_shrink_0()
+        .px_1p5()
+        .py_0p5()
+        .rounded(px(4.0))
+        .bg(theme.primary.opacity(0.12))
+        .text_xs()
+        .text_color(theme.primary)
+        .child(t!("send_task.auto_start").to_string())
 }
 
 /// 状态徽章(文字 + 半透明底色)

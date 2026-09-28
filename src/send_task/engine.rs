@@ -8,10 +8,9 @@
 //!   (消息列表 + 日志文件), 不新增事件类型。
 //! - 进度经 `TaskProgress` 节流上报, 结束经 `TaskFinished`。
 
-use super::model::{SendTaskConfig, TaskEndReason, TaskItem, TaskStatus, TaskTarget};
+use super::model::{SendTaskConfig, TaskEndReason, TaskStatus, TaskTarget};
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::ConnectionEvent;
-use crate::utils::message_vars::RenderContext;
 use log::warn;
 use rust_i18n::t;
 use smol::channel::Sender;
@@ -53,7 +52,6 @@ impl SendTaskEngine {
         let pause = Arc::new(AtomicBool::new(false));
         let pause_reason = Arc::new(StdMutex::new(None));
         let wake = Arc::new(Notify::new());
-        let message_type = config.message_type();
 
         let runner = Runner {
             config,
@@ -65,11 +63,11 @@ impl SendTaskEngine {
             pause: pause.clone(),
             pause_reason: pause_reason.clone(),
             wake: wake.clone(),
-            message_type,
             round: 1,
             sent_items: 0,
             last_report: Instant::now(),
             since_report: 0,
+            last_interval_ms: 0,
         };
 
         let handle = tokio::spawn(async move {
@@ -93,6 +91,11 @@ impl SendTaskEngine {
             *t = target;
         }
         // 立即唤醒: 目标刷新后不必等满一个间隔
+        self.wake.notify_one();
+    }
+
+    /// 唤醒引擎: 参数(间隔等)变更后立即生效, 不必等满一个旧间隔。
+    pub fn wake(&self) {
         self.wake.notify_one();
     }
 
@@ -144,26 +147,27 @@ struct Runner {
     pause: Arc<AtomicBool>,
     pause_reason: Arc<StdMutex<Option<String>>>,
     wake: Arc<Notify>,
-    message_type: MessageType,
     round: u32,
     sent_items: u64,
     last_report: Instant,
     since_report: u32,
+    /// 上次生效的间隔(ms), 用于检测热更新
+    last_interval_ms: u64,
 }
 
 impl Runner {
     async fn run(&mut self) {
         let config = self.config.clone();
-        let items = config.items();
-        if items.is_empty() {
+        let steps = config.step_count();
+        if steps == 0 {
             self.send_finished(TaskEndReason::Completed);
             return;
         }
-        let interval = Duration::from_millis(config.interval_ms);
+        self.last_interval_ms = config.interval.get();
 
         self.send_progress(TaskStatus::Running);
         // 绝对基准: 首条等待一个间隔, 之后每条 deadline 累加, 无漂移
-        let mut deadline = Instant::now() + interval;
+        let mut deadline = Instant::now() + Duration::from_millis(self.last_interval_ms);
 
         loop {
             if self.cancel.is_cancelled() {
@@ -173,14 +177,27 @@ impl Runner {
 
             // 用下标循环而非 for: 投递失败的条目在恢复后重试同一条, 不丢数据
             let mut idx = 0;
-            while idx < items.len() {
-                if !self.wait_turn(&mut deadline, interval).await {
+            while idx < steps {
+                if !self.wait_turn(&mut deadline).await {
                     self.send_finished(TaskEndReason::Stopped);
                     return;
                 }
 
-                let bytes = self.render_item(&items[idx]);
-                if self.dispatch(&bytes) {
+                let step = match config.render_step(idx, &self.seq) {
+                    Some(step) => step,
+                    // 空内容 / 非法 HEX: 跳过本轮(不发、不计入进度), 但节拍照常推进
+                    None => {
+                        deadline += Duration::from_millis(config.interval.get());
+                        idx += 1;
+                        continue;
+                    }
+                };
+                let message_type = if step.hex_mode {
+                    MessageType::Hex
+                } else {
+                    MessageType::Text
+                };
+                if self.dispatch(&step.bytes, message_type) {
                     // 客户端写通道断开: 暂停并保留任务(不推进 idx, 恢复后重试本条)
                     self.set_paused_disconnected();
                     continue;
@@ -188,7 +205,7 @@ impl Runner {
                 self.sent_items += 1;
                 self.since_report += 1;
                 self.maybe_report();
-                deadline += interval;
+                deadline += Duration::from_millis(config.interval.get());
                 idx += 1;
             }
 
@@ -211,15 +228,22 @@ impl Runner {
         }
     }
 
-    /// 等待到可以发送下一条: 处理暂停(上报状态)与取消。
+    /// 等待到可以发送下一条: 处理暂停(上报状态)、间隔热更新与取消。
     ///
     /// 返回 `false` 表示被取消, `true` 表示可以发送。
     /// 暂停期间不推进 deadline; 恢复时重置节拍基准, 避免暂停累积的欠账瞬间连发。
-    async fn wait_turn(&mut self, deadline: &mut Instant, interval: Duration) -> bool {
+    /// 间隔变更(唤醒后检测)时从当前时刻重新计时, 避免小间隔被旧间隔拖住。
+    async fn wait_turn(&mut self, deadline: &mut Instant) -> bool {
         let mut paused_reported = false;
         loop {
             if self.cancel.is_cancelled() {
                 return false;
+            }
+            // 实时读取最新间隔: 变更则从当前时刻重新计时
+            let interval_ms = self.config.interval.get();
+            if interval_ms != self.last_interval_ms {
+                self.last_interval_ms = interval_ms;
+                *deadline = Instant::now() + Duration::from_millis(interval_ms);
             }
             if self.pause.load(Ordering::Relaxed) {
                 if !paused_reported {
@@ -234,7 +258,7 @@ impl Runner {
             }
             if paused_reported {
                 paused_reported = false;
-                *deadline = Instant::now() + interval;
+                *deadline = Instant::now() + Duration::from_millis(interval_ms);
                 self.last_report = Instant::now();
                 self.since_report = 0;
                 self.send_progress(TaskStatus::Running);
@@ -250,23 +274,6 @@ impl Runner {
         }
     }
 
-    /// 渲染一条任务项为线上字节(hex 模式先渲染文本再解码)。
-    fn render_item(&self, item: &TaskItem) -> Vec<u8> {
-        let seq_value = if item.compiled.needs_seq() {
-            Some(self.seq.fetch_add(1, Ordering::Relaxed))
-        } else {
-            None
-        };
-        let ctx = RenderContext::common(seq_value);
-        let mut out = String::with_capacity(item.compiled.template_len() + 32);
-        item.compiled.render(&ctx, self.config.hex_mode, &mut out);
-        if self.config.hex_mode {
-            crate::utils::hex::hex_to_bytes(&out)
-        } else {
-            out.into_bytes()
-        }
-    }
-
     /// 投递一条消息: ① 直连写通道 ② 回传 Sent 簿记事件。
     ///
     /// 返回 `true` 表示目标已不可用(应暂停并保留任务):
@@ -275,7 +282,7 @@ impl Runner {
     ///
     /// 服务端非空列表中个别客户端发送失败只记警告, 不影响整批(由既有
     /// `ServerClientDisconnected` 事件在下一次快照刷新时剔除)。
-    fn dispatch(&self, bytes: &[u8]) -> bool {
+    fn dispatch(&self, bytes: &[u8], message_type: MessageType) -> bool {
         let (delivered, disconnected) = {
             let target = match self.target.read() {
                 Ok(t) => t,
@@ -306,7 +313,7 @@ impl Runner {
         };
 
         if delivered {
-            let message = Message::new(MessageDirection::Sent, bytes.to_vec(), self.message_type);
+            let message = Message::new(MessageDirection::Sent, bytes.to_vec(), message_type);
             let _ = self.events.try_send(ConnectionEvent::MessageReceived(
                 self.tab_id.clone(),
                 message,
@@ -334,6 +341,10 @@ impl Runner {
     }
 
     fn send_progress(&self, status: TaskStatus) {
+        // hidden 任务(周期发送)不上报进度: 省事件通道 + 免高频重绘
+        if self.config.hidden {
+            return;
+        }
         let reason = self.pause_reason.lock().ok().and_then(|r| r.clone());
         let _ = self.events.try_send(ConnectionEvent::TaskProgress {
             tab_id: self.tab_id.clone(),
@@ -347,6 +358,10 @@ impl Runner {
     }
 
     fn send_finished(&self, reason: TaskEndReason) {
+        // hidden 任务由 App 主动 stop + 移除, 无需结束事件
+        if self.config.hidden {
+            return;
+        }
         let _ = self.events.try_send(ConnectionEvent::TaskFinished {
             tab_id: self.tab_id.clone(),
             task_id: self.config.id.clone(),
@@ -358,7 +373,7 @@ impl Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::send_task::model::TaskKind;
+    use crate::send_task::model::{IntervalHandle, PeriodicSource, TaskKind};
     use crate::send_task::parse::parse_lines;
     use std::sync::atomic::AtomicU64;
     use tokio::time::timeout;
@@ -375,12 +390,37 @@ mod tests {
             kind: TaskKind::SendByLines {
                 items: parse_lines(text, false).unwrap(),
             },
-            interval_ms,
+            interval: IntervalHandle::new(interval_ms),
             loop_enabled,
             max_rounds,
             hex_mode: false,
             start_immediately: true,
+            hidden: false,
         })
+    }
+
+    /// 周期发送(hidden)配置: 载荷/间隔由外部句柄实时驱动
+    fn periodic_config(interval_ms: u64) -> (Arc<SendTaskConfig>, Arc<PeriodicSource>) {
+        let source = Arc::new(PeriodicSource::new(
+            Arc::new(AtomicU64::new(0)),
+            "a".to_string(),
+            false,
+        ));
+        let interval = IntervalHandle::new(interval_ms);
+        let config = Arc::new(SendTaskConfig {
+            id: "task-p".to_string(),
+            name: "周期发送".to_string(),
+            kind: TaskKind::SendPeriodic {
+                source: source.clone(),
+            },
+            interval,
+            loop_enabled: true,
+            max_rounds: None,
+            hex_mode: false,
+            start_immediately: true,
+            hidden: true,
+        });
+        (config, source)
     }
 
     /// 逐行发送: 三条消息按序发出, 结束后收到 TaskFinished(Completed)
@@ -585,7 +625,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_empty_server_target_pauses() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, mut write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
 
         let _engine = SendTaskEngine::start(
             config("a\nb\nc", 1, false, None),
@@ -618,5 +658,118 @@ mod tests {
         // 暂停期间不应有任何投递, 且 write_tx 仍可用(通道未被关闭)
         assert!(write_rx.try_recv().is_err(), "暂停后不应再投递");
         let _ = write_tx;
+    }
+
+    /// 周期发送: 发送框内容变化后, 下一轮即取到新内容(无需重建任务)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_periodic_realtime_content() {
+        let (event_tx, _event_rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (config, source) = periodic_config(10);
+
+        let _engine = SendTaskEngine::start(
+            config,
+            "tab".to_string(),
+            TaskTarget::Client(write_tx),
+            event_tx,
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let first = timeout(Duration::from_secs(2), write_rx.recv())
+            .await
+            .expect("应收到首条")
+            .unwrap();
+        assert_eq!(first, b"a".to_vec());
+
+        source.set_content("b".to_string());
+        let deadline = tokio::time::sleep(Duration::from_secs(2));
+        tokio::pin!(deadline);
+        let mut saw_new = false;
+        loop {
+            tokio::select! {
+                _ = &mut deadline => break,
+                r = write_rx.recv() => {
+                    if let Ok(b) = r {
+                        if b == b"b".to_vec() {
+                            saw_new = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(saw_new, "内容变化后下一轮应发送新内容");
+    }
+
+    /// 周期发送: 运行中把间隔改小并唤醒后, 不必等满旧的长间隔
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_periodic_interval_change_takes_effect() {
+        let (event_tx, _event_rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (config, _source) = periodic_config(60_000);
+
+        let engine = SendTaskEngine::start(
+            config.clone(),
+            "tab".to_string(),
+            TaskTarget::Client(write_tx),
+            event_tx,
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        // 60s 间隔: 短时间内不应有发送
+        assert!(
+            timeout(Duration::from_millis(80), write_rx.recv())
+                .await
+                .is_err(),
+            "长间隔下不应立即发送"
+        );
+
+        // 改小间隔 + 唤醒 → 从当前时刻重新计时, 立即发出
+        config.interval.set(1);
+        engine.wake();
+        let got = timeout(Duration::from_secs(2), write_rx.recv())
+            .await
+            .expect("改小间隔后应立即发送")
+            .unwrap();
+        assert_eq!(got, b"a".to_vec());
+    }
+
+    /// hidden 周期任务: 不上报进度/结束事件(省事件通道), 但消息照常发出
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_hidden_suppresses_progress() {
+        let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (config, _source) = periodic_config(5);
+
+        let _engine = SendTaskEngine::start(
+            config,
+            "tab".to_string(),
+            TaskTarget::Client(write_tx),
+            event_tx,
+            Arc::new(AtomicU64::new(0)),
+        );
+
+        let deadline = tokio::time::sleep(Duration::from_millis(200));
+        tokio::pin!(deadline);
+        let mut saw_progress = false;
+        let mut delivered = 0usize;
+        loop {
+            tokio::select! {
+                _ = &mut deadline => break,
+                r = write_rx.recv() => { if r.is_ok() { delivered += 1; } }
+                r = event_rx.recv() => {
+                    if let Ok(ev) = r {
+                        if matches!(
+                            &ev,
+                            ConnectionEvent::TaskProgress { .. } | ConnectionEvent::TaskFinished { .. }
+                        ) {
+                            saw_progress = true;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(delivered > 0, "hidden 任务仍应发出消息");
+        assert!(!saw_progress, "hidden 任务不应上报进度/结束事件");
     }
 }

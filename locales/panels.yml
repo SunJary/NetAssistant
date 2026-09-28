@@ -449,3 +449,56 @@ send_task:
   collapse_lines:
     zh-CN: 收起行清单
     en: Hide lines
+  periodic_name:
+    zh-CN: 周期发送
+    en: Periodic send
+  timed_name:
+    zh-CN: 定时任务
+    en: Timed task
+  add_timed:
+    zh-CN: 添加到定时任务
+    en: Add timed task
+  add_timed_exists:
+    zh-CN: 每个连接仅支持 1 个定时任务
+    en: Only one timed task per connection
+  auto_start:
+    zh-CN: 自动启动
+    en: Auto-start
+  timed_round:
+    zh-CN: 第 %{n} 次
+    en: "Sent %{n}×"
+  edit:
+    zh-CN: 编辑
+    en: Edit
+
+timed_task:
+  add_title:
+    zh-CN: 添加到定时任务
+    en: Add timed task
+  edit_title:
+    zh-CN: 编辑定时任务
+    en: Edit timed task
+  message:
+    zh-CN: 消息内容
+    en: Message
+  message_placeholder:
+    zh-CN: "要定时发送的内容（支持 ${...} 变量）"
+    en: "Content to send on a schedule (supports ${...} variables)"
+  mode:
+    zh-CN: 消息格式
+    en: Format
+  mode_text:
+    zh-CN: 文本
+    en: Text
+  mode_hex:
+    zh-CN: HEX
+    en: HEX
+  interval:
+    zh-CN: 发送间隔
+    en: Interval
+  save:
+    zh-CN: 保存
+    en: Save
+  cancel:
+    zh-CN: 取消
+    en: Cancel

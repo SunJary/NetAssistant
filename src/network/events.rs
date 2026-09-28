@@ -113,10 +113,6 @@ pub enum ConnectionEvent {
     ServerClientConnected(String, SocketAddr, Sender<Vec<u8>>),
     /// 服务端客户端断开
     ServerClientDisconnected(String, SocketAddr),
-    /// 周期发送文本消息
-    PeriodicSend(String, String),
-    /// 周期发送字节消息
-    PeriodicSendBytes(String, Vec<u8>, String),
     /// 客户端解码器控制发送器就绪(用于运行时下发解码器配置, 无需重连)
     DecoderControlSenderReady(String, Sender<DecoderConfig>),
     /// 服务端某客户端的解码器控制发送器就绪

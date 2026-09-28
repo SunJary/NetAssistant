@@ -37,7 +37,7 @@ use crate::log_writer::LogWriter;
 use crate::message::{
     DEFAULT_KEEP_LAST, Message, MessageDirection, MessageDisplayMode, MessageListState,
 };
-use crate::send_task::SendTaskEntry;
+use crate::send_task::{IntervalHandle, PeriodicSource, SendTaskEntry};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
 use crate::ui::send_task_panel::SendTaskPanel;
@@ -81,8 +81,10 @@ pub struct ConnectionTabState {
     pub auto_clear_input: bool,
     pub periodic_send_enabled: bool,
     pub periodic_interval_input: Option<Entity<InputState>>,
-    // 使用 Arc<Mutex> 包装以支持克隆
-    pub periodic_send_timer: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
+    /// 周期发送的实时载荷(主线程写, 引擎每轮读; 无需重建任务)
+    pub periodic_source: Arc<PeriodicSource>,
+    /// 周期发送间隔句柄(输入变化即写入并唤醒引擎, 立刻生效)
+    pub periodic_interval_handle: IntervalHandle,
 
     /// 「保留最后 N 条」输入框（0 = 不限制）。关闭自动滚动时禁用并强制为 0。
     pub keep_last_input: Entity<InputState>,
@@ -168,6 +170,14 @@ impl ConnectionTabState {
         let message_input_mode = connection_config.message_input_mode().to_string();
         // 运行期结尾追加设置的初始值取自持久化配置(下拉改动即时生效, 无需重连)
         let send_trailer = connection_config.send_trailer();
+        // 手动发送与周期发送共享的递增序号
+        let message_seq = Arc::new(AtomicU64::new(0));
+        // 周期发送的实时载荷: 初始为空, 内容/模式由发送框订阅实时写入
+        let periodic_source = Arc::new(PeriodicSource::new(
+            message_seq.clone(),
+            String::new(),
+            message_input_mode == "hex",
+        ));
         Self {
             connection_config,
             connection_status: ConnectionStatus::NotConnected,
@@ -219,7 +229,8 @@ impl ConnectionTabState {
                 });
                 Some(input)
             },
-            periodic_send_timer: None,
+            periodic_source,
+            periodic_interval_handle: IntervalHandle::new(1000),
 
             keep_last_input: {
                 let input = cx.new(|cx| InputState::new(window, cx));
@@ -234,7 +245,7 @@ impl ConnectionTabState {
             variable_picker_target: None,
             message_var_button_bounds: None,
             auto_reply_var_button_bounds: None,
-            message_seq: Arc::new(AtomicU64::new(0)),
+            message_seq,
 
             // 消息搜索（默认收起，无查询词 → 零扫描）
             search_open: false,
@@ -427,16 +438,6 @@ impl ConnectionTabState {
                     // 尝试取消客户端任务
                     join_handle.abort();
                     info!("[ConnectionTabState] 客户端任务已取消");
-                }
-            }
-        }
-
-        // 停止周期发送任务
-        if let Some(timer_arc) = &self.periodic_send_timer {
-            if let Ok(mut timer) = timer_arc.lock() {
-                if let Some(timer_handle) = timer.take() {
-                    timer_handle.abort();
-                    info!("[ConnectionTabState] 周期发送任务已取消");
                 }
             }
         }
@@ -2536,12 +2537,18 @@ impl<'a> ConnectionTab<'a> {
                                                 let tab_id_auto_clear = tab_id_auto_clear.clone();
                                                 move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
                                                     // 获取当前标签页的状态
+                                                    let mut turned_on = false;
                                                     if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_auto_clear) {
                                                         tab_state.auto_clear_input = !tab_state.auto_clear_input;
                                                         // 互斥逻辑：勾选自动清除时禁用周期发送
                                                         if tab_state.auto_clear_input {
                                                             tab_state.periodic_send_enabled = false;
+                                                            turned_on = true;
                                                         }
+                                                    }
+                                                    // 互斥关闭周期发送时, 同步停止并移除运行中的周期发送任务, 避免后台继续发送
+                                                    if turned_on {
+                                                        app.stop_periodic_task(&tab_id_auto_clear, cx);
                                                     }
                                                     cx.notify();
                                                 }
@@ -2589,16 +2596,16 @@ impl<'a> ConnectionTab<'a> {
                                                         // 互斥逻辑：勾选周期发送时禁用自动清除
                                                         if tab_state.periodic_send_enabled {
                                                             tab_state.auto_clear_input = false;
-                                                        } else {
-                                                            // 禁用周期发送时停止定时器
-                                                            if let Some(timer_arc) = tab_state.periodic_send_timer.take() {
-                                                                if let Ok(mut timer) = timer_arc.lock() {
-                                                                    if let Some(timer_handle) = timer.take() {
-                                                                        timer_handle.abort();
-                                                                    }
-                                                                }
-                                                            }
                                                         }
+                                                    }
+                                                    // 取消勾选: 停止并移除周期发送任务(若在跑)
+                                                    let still_enabled = app
+                                                        .connection_tabs
+                                                        .get(&tab_id_periodic)
+                                                        .map(|t| t.periodic_send_enabled)
+                                                        .unwrap_or(false);
+                                                    if !still_enabled {
+                                                        app.stop_periodic_task(&tab_id_periodic, cx);
                                                     }
                                                     cx.notify();
                                                 }

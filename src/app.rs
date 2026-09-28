@@ -14,8 +14,9 @@ use crate::log_writer::LogWriter;
 use crate::message::{MAX_KEEP_LAST, Message, MessageDirection, MessageType};
 use crate::network::events::{ConnectionEvent, NetCounters};
 use crate::send_task::{
-    SendTaskConfig, SendTaskEngine, SendTaskEntry, SendTaskState, TaskEndReason, TaskStatus,
-    TaskTarget,
+    IntervalHandle, PeriodicSource, SendTaskConfig, SendTaskEngine, SendTaskEntry, SendTaskState,
+    TaskEndReason, TaskStatus, TaskTarget, TimedTaskProfile, build_periodic_config,
+    build_timed_config,
 };
 use crate::stress::engine::StressTestEngine;
 use crate::stress::port_range::EphemeralPortRange;
@@ -27,7 +28,8 @@ use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::connection_tab::{ConnectionTabState, SEARCH_RECALC_MIN_INTERVAL};
 use crate::ui::dialog::{
     DecoderSelectionDialogState, ImportFileDialogState, StressConfigDialogState,
-    open_import_file_dialog, open_new_connection_dialog, open_stress_config_dialog,
+    TimedTaskDialogState, open_import_file_dialog, open_new_connection_dialog,
+    open_stress_config_dialog, open_timed_task_dialog,
 };
 use crate::ui::main_window::MainWindow;
 
@@ -107,6 +109,9 @@ pub struct NetAssistantApp {
 
     // 「从文件导入发送内容」弹窗状态(打开时创建, 关闭时置 None)
     pub import_file_dialog: Option<ImportFileDialogState>,
+
+    // 「添加到定时任务」(心跳)弹窗状态(打开时创建, 关闭时置 None)
+    pub timed_task_dialog: Option<TimedTaskDialogState>,
 
     // 本机临时端口范围检测结果 (懒检测 + 手动重新检测, 全局共享)
     // None + !detecting: 尚未检测 或 检测失败 (UI 应提示用户手动获取而非回退默认值)
@@ -190,6 +195,8 @@ pub struct NetAssistantApp {
     pub keep_last_subscriptions: HashMap<String, Subscription>,
     // 搜索浮层输入框的输入/回车订阅(每个标签页一份, 随关闭清理)
     pub search_subscriptions: HashMap<String, Subscription>,
+    // 周期发送实时同步订阅(发送框内容 / 间隔变化, 每个标签页一份, 随关闭清理)
+    pub periodic_sync_subscriptions: HashMap<String, Vec<Subscription>>,
 }
 
 impl NetAssistantApp {
@@ -265,6 +272,7 @@ impl NetAssistantApp {
             stress_event_receiver: Some(stress_event_receiver),
             stress_config_dialog: None,
             import_file_dialog: None,
+            timed_task_dialog: None,
             detected_port_range: None,
             port_range_detected: false,
             port_range_detecting: false,
@@ -315,6 +323,7 @@ impl NetAssistantApp {
             message_input_enter_subscriptions: HashMap::new(),
             keep_last_subscriptions: HashMap::new(),
             search_subscriptions: HashMap::new(),
+            periodic_sync_subscriptions: HashMap::new(),
         };
 
         // 启动时聚焦根元素, 保证未点击任何输入框时快捷键也全局生效
@@ -498,98 +507,208 @@ impl NetAssistantApp {
         cx.notify();
     }
 
-    pub fn start_periodic_send(
+    /// 启动周期发送(hidden)任务: 复用 send_task 引擎, 每轮实时读取发送框内容与间隔。
+    ///
+    /// 与现状一致的启动时机: 勾选周期发送 + 按发送 → 本次按发送即首次发送, 之后每轮 sleep-first。
+    /// 已在跑时先停止并移除旧任务(替换), 避免重复。
+    pub fn start_periodic_task(
         &mut self,
         tab_id: String,
-        interval_ms: u64,
-        content: String,
-        message_input_mode: String,
-        seq: Arc<AtomicU64>,
-        _cx: &mut Context<Self>,
+        interval: IntervalHandle,
+        source: Arc<PeriodicSource>,
+        cx: &mut Context<Self>,
     ) {
-        // 首先停止已有的周期发送任务
-        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-            if let Some(timer_arc) = &tab_state.periodic_send_timer {
-                if let Ok(mut timer) = timer_arc.lock() {
-                    if let Some(timer_handle) = timer.take() {
-                        timer_handle.abort();
-                        debug!("[周期发送] 已停止旧的周期发送任务");
-                    }
-                }
-            }
-        }
+        self.stop_periodic_task(&tab_id, cx);
+        let name = t!("send_task.periodic_name").to_string();
+        let config = build_periodic_config(source, interval, name);
+        self.create_send_task(tab_id, config, cx);
+    }
 
-        let sender = self.connection_event_sender.clone();
-        let tab_id_clone = tab_id.clone();
-        let is_hex_mode = message_input_mode == "hex";
-        let content_clone = content.clone();
-        // 含变量时预编译一次, 循环内复用(每轮重新渲染, 变量随每包变化)
-        let compiled = if content.contains("${") {
-            Some(Arc::new(crate::utils::message_vars::CompiledTemplate::new(
-                &content,
-            )))
-        } else {
-            None
+    /// 停止并移除该 tab 的周期发送(hidden)任务(取消勾选时调用)。
+    pub fn stop_periodic_task(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        let Some(tab_state) = self.connection_tabs.get_mut(tab_id) else {
+            return;
         };
-
-        // 创建周期发送任务
-        let task = tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await;
-
-                // 每轮重新渲染模板(无变量时直接复用原文)
-                let payload = match &compiled {
-                    Some(compiled) => {
-                        let seq_value = if compiled.needs_seq() {
-                            Some(seq.fetch_add(1, Ordering::Relaxed))
-                        } else {
-                            None
-                        };
-                        let ctx = crate::utils::message_vars::RenderContext::common(seq_value);
-                        let mut out = String::with_capacity(compiled.template_len() + 32);
-                        compiled.render(&ctx, is_hex_mode, &mut out);
-                        out
-                    }
-                    None => content_clone.clone(),
-                };
-
-                if !is_hex_mode {
-                    if let Some(sender) = sender.clone() {
-                        let _ = sender
-                            .try_send(ConnectionEvent::PeriodicSend(tab_id_clone.clone(), payload));
-                    }
-                } else if compiled.is_some() {
-                    // 含变量的 hex: 渲染结果已是合法十六进制文本, 直接按字节解析
-                    let bytes = crate::utils::hex::hex_to_bytes(&payload);
-                    if let Some(sender) = sender.clone() {
-                        let _ = sender.try_send(ConnectionEvent::PeriodicSendBytes(
-                            tab_id_clone.clone(),
-                            bytes,
-                            payload,
-                        ));
-                    }
-                } else {
-                    // 无变量 hex: 保持既有清洗 + 解析语义
-                    let cleaned_hex = payload.replace(|c: char| !c.is_ascii_hexdigit(), "");
-                    if cleaned_hex.len() % 2 == 0 {
-                        if let Ok(bytes) = hex::decode(&cleaned_hex) {
-                            if let Some(sender) = sender.clone() {
-                                let _ = sender.try_send(ConnectionEvent::PeriodicSendBytes(
-                                    tab_id_clone.clone(),
-                                    bytes,
-                                    payload,
-                                ));
-                            }
-                        }
+        let ids: Vec<String> = tab_state
+            .send_tasks
+            .iter()
+            .filter(|(_, e)| e.state.config.is_periodic())
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            if let Some(entry) = tab_state.send_tasks.shift_remove(&id) {
+                if let Ok(mut guard) = entry.engine.lock() {
+                    if let Some(engine) = guard.as_mut() {
+                        engine.stop();
                     }
                 }
             }
-        });
-
-        // 存储任务句柄到标签页状态中
-        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-            tab_state.periodic_send_timer = Some(Arc::new(Mutex::new(Some(task))));
         }
+        cx.notify();
+    }
+
+    // ===== 定时任务(心跳) =====
+
+    /// 该 tab 是否已有定时任务(心跳)运行期条目。
+    fn has_timed_task(&self, tab_id: &str) -> bool {
+        self.connection_tabs
+            .get(tab_id)
+            .map(|t| t.send_tasks.values().any(|e| e.state.config.is_timed()))
+            .unwrap_or(false)
+    }
+
+    /// 该 tab 的定时任务 id(每连接仅 1 个)。
+    fn timed_task_id(&self, tab_id: &str) -> Option<String> {
+        self.connection_tabs
+            .get(tab_id)?
+            .send_tasks
+            .iter()
+            .find(|(_, e)| e.state.config.is_timed())
+            .map(|(id, _)| id.clone())
+    }
+
+    /// 打开「定时任务」对话框(新建; 已存在则为编辑)。
+    pub fn open_timed_task_dialog_for_tab(
+        &mut self,
+        tab_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self.connection_tabs.get(&tab_id) else {
+            return;
+        };
+        let existing = self.storage.get_timed_profile(&tab_id).cloned();
+        // 模式以持久化 profile 为准(编辑时恢复上次保存的模式); 仅新建时沿用连接当前输入模式。
+        // 若编辑时改用连接模式, 已是 hex 的存量内容会以文本形态呈现, 再切 hex 会被二次编码。
+        let (editing, enabled, hex_mode, message, interval_ms) = match existing {
+            Some(p) => (true, p.enabled, p.hex_mode, p.message, p.interval_ms),
+            None => (
+                false,
+                true,
+                tab.message_input_mode == "hex",
+                String::new(),
+                30_000,
+            ),
+        };
+        self.timed_task_dialog = Some(TimedTaskDialogState::new(
+            tab_id, editing, enabled, hex_mode, message, interval_ms, window, cx,
+        ));
+        open_timed_task_dialog(cx.entity().downgrade(), window, cx);
+    }
+
+    /// 保存对话框内容: 持久化 profile + 重建运行期任务。返回 true 表示已保存。
+    pub fn save_timed_task(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(dialog) = self.timed_task_dialog.as_ref() else {
+            return false;
+        };
+        if !dialog.can_confirm(cx) {
+            return false;
+        }
+        let tab_id = dialog.tab_id.clone();
+        let profile = dialog.to_profile(cx);
+        self.timed_task_dialog = None;
+        self.storage.save_timed_profile(&tab_id, profile.clone());
+        // 消息/间隔变化需重建(间隔虽可热更新, 消息不可); enabled 保留
+        self.rebuild_timed_task(&tab_id, &profile, cx);
+        cx.notify();
+        true
+    }
+
+    /// 删除该 tab 的定时任务(profile + 运行期条目一起移除)。
+    pub fn delete_timed_task(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        self.storage.remove_timed_profile(tab_id);
+        if let Some(id) = self.timed_task_id(tab_id) {
+            self.delete_send_task(tab_id, &id, cx);
+        }
+        cx.notify();
+    }
+
+    /// 暂停定时任务: `enabled = false` 持久化 + 暂停引擎(卡片保留)。
+    pub fn pause_timed_task(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        self.set_timed_enabled(tab_id, false, cx);
+    }
+
+    /// 继续定时任务: `enabled = true` 持久化 + 恢复引擎。
+    pub fn resume_timed_task(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        self.set_timed_enabled(tab_id, true, cx);
+    }
+
+    /// 连接挂点: 有 profile 且无运行期条目 → 创建(启用态立即开始, 停用态先暂停)。
+    pub fn ensure_timed_task(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        let Some(profile) = self.storage.get_timed_profile(tab_id).cloned() else {
+            return;
+        };
+        if self.has_timed_task(tab_id) {
+            return;
+        }
+        let name = t!("send_task.timed_name").to_string();
+        let config = build_timed_config(&profile, profile.enabled, name);
+        self.create_send_task(tab_id.to_string(), config, cx);
+    }
+
+    /// 重连挂点: 恢复周期发送(hidden)与「已启用」的定时任务(逐行任务仍需手动继续)。
+    pub fn resume_auto_send_tasks(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        let timed_enabled = self
+            .storage
+            .get_timed_profile(tab_id)
+            .map(|p| p.enabled)
+            .unwrap_or(false);
+        let Some(tab_state) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        let ids: Vec<String> = tab_state
+            .send_tasks
+            .iter()
+            .filter(|(_, e)| {
+                let c = &e.state.config;
+                (c.is_periodic() || (c.is_timed() && timed_enabled))
+                    && e.state.status == TaskStatus::Paused
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            self.resume_send_task(tab_id, &id, cx);
+        }
+    }
+
+    /// 切换定时任务的持久化启用态并同步引擎暂停/恢复。
+    fn set_timed_enabled(&mut self, tab_id: &str, enabled: bool, cx: &mut Context<Self>) {
+        let Some(mut profile) = self.storage.get_timed_profile(tab_id).cloned() else {
+            return;
+        };
+        profile.enabled = enabled;
+        self.storage.save_timed_profile(tab_id, profile);
+        match self.timed_task_id(tab_id) {
+            Some(task_id) => {
+                if enabled {
+                    self.resume_send_task(tab_id, &task_id, cx);
+                } else {
+                    self.pause_send_task(tab_id, &task_id, None, cx);
+                }
+            }
+            // 尚无运行期条目(理论上连接后 ensure 已创建): 启用时补建
+            None => {
+                if enabled {
+                    self.ensure_timed_task(tab_id, cx);
+                }
+                cx.notify();
+            }
+        }
+    }
+
+    /// 依 profile 重建定时任务: 先停旧, 再按 `enabled` 创建(停用态创建即暂停)。
+    fn rebuild_timed_task(
+        &mut self,
+        tab_id: &str,
+        profile: &TimedTaskProfile,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(id) = self.timed_task_id(tab_id) {
+            self.delete_send_task(tab_id, &id, cx);
+        }
+        let name = t!("send_task.timed_name").to_string();
+        let config = build_timed_config(profile, profile.enabled, name);
+        self.create_send_task(tab_id.to_string(), config, cx);
     }
 
     /// 模式切换时转换输入框内容（转换型语义：文本 ↔ Hex 双向互转）。
@@ -633,6 +752,10 @@ impl NetAssistantApp {
                 input.update(cx, |input, cx| input.replace_all(next, window, cx));
             }
         }
+        // 同步周期发送的实时模式: 正在跑的 hidden 任务下一轮即按新模式渲染
+        if let Some(tab) = self.connection_tabs.get(tab_id) {
+            tab.periodic_source.set_hex_mode(to_mode == "hex");
+        }
     }
 
     pub fn ensure_tab_exists(
@@ -659,6 +782,7 @@ impl NetAssistantApp {
         self.ensure_message_input_enter_subscription(&tab_id, cx);
         self.ensure_keep_last_subscription(&tab_id, cx);
         self.ensure_search_input_subscription(&tab_id, cx);
+        self.ensure_periodic_sync_subscription(&tab_id, cx);
     }
 
     /// 订阅消息输入框的 Ctrl+Enter 事件, 复用发送逻辑完成发送。
@@ -744,6 +868,66 @@ impl NetAssistantApp {
         });
         self.message_input_enter_subscriptions
             .insert(tab_id.to_string(), subscription);
+    }
+
+    /// 订阅周期发送的实时同步源: 发送框内容变化 → `PeriodicSource.content`;
+    /// 间隔框提交(回车/失焦) → `IntervalHandle.set` + 唤醒引擎(从当前时刻重新计时)。
+    ///
+    /// 内容变化**只写不唤醒**(载荷在下一 tick 自然读到), 间隔变化**写 + 唤醒**,
+    /// 避免「改了 1ms 还要等旧的 60s」。间隔取提交时机(回车/失焦)而非逐字符,
+    /// 防止输入 "5000" 过程中临时值("5"/"50")导致高频突发发送。
+    fn ensure_periodic_sync_subscription(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        if self.periodic_sync_subscriptions.contains_key(tab_id) {
+            return;
+        }
+        let Some(tab_state) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        let message_input = tab_state.message_input.clone();
+        let interval_input = tab_state.periodic_interval_input.clone();
+        let source = tab_state.periodic_source.clone();
+        let interval_handle = tab_state.periodic_interval_handle.clone();
+        let sub_tab_id = tab_id.to_string();
+        let mut subs: Vec<Subscription> = Vec::new();
+
+        if let Some(message_input) = message_input {
+            subs.push(cx.subscribe(&message_input, move |_app, input, event, cx| {
+                if !matches!(event, InputEvent::Change) {
+                    return;
+                }
+                source.set_content(input.read(cx).text().to_string());
+            }));
+        }
+
+        if let Some(interval_input) = interval_input {
+            let sub_tab_id_for_interval = sub_tab_id.clone();
+            subs.push(cx.subscribe(&interval_input, move |app, input, event, cx| {
+                if !matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                    return;
+                }
+                let Ok(ms) = input.read(cx).value().trim().parse::<u64>() else {
+                    return;
+                };
+                if ms == interval_handle.get() {
+                    return;
+                }
+                interval_handle.set(ms);
+                // 唤醒正在跑的周期发送任务: 立即按新间隔重算 deadline
+                if let Some(tab_state) = app.connection_tabs.get(&sub_tab_id_for_interval) {
+                    for entry in tab_state.send_tasks.values() {
+                        if entry.state.config.is_periodic() {
+                            if let Ok(guard) = entry.engine.lock() {
+                                if let Some(engine) = guard.as_ref() {
+                                    engine.wake();
+                                }
+                            }
+                        }
+                    }
+                }
+            }));
+        }
+
+        self.periodic_sync_subscriptions.insert(sub_tab_id, subs);
     }
 
     /// 订阅「保留最后 N 条」输入框：回车 / 失焦时提交。
@@ -1419,6 +1603,7 @@ impl NetAssistantApp {
         self.message_input_enter_subscriptions.remove(&tab_id);
         self.keep_last_subscriptions.remove(&tab_id);
         self.search_subscriptions.remove(&tab_id);
+        self.periodic_sync_subscriptions.remove(&tab_id);
         if self.server_auto_reply_states.remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
         }
@@ -2150,23 +2335,25 @@ impl NetAssistantApp {
                     }
                 }
 
-                // 启动周期发送（如果启用）
+                // 启动周期发送（如果启用）: 迁移到 send_task 引擎(hidden), 实时读取发送框内容/间隔
                 if periodic_send_enabled {
                     let tab_id_periodic = tab_id.to_string();
-                    // 传模板原文, tokio 循环内每轮重新渲染
-                    let content_periodic = content.clone();
-                    let message_input_mode_periodic = tab_message_input_mode.clone();
-                    let seq_periodic = message_seq
-                        .clone()
-                        .unwrap_or_else(|| Arc::new(AtomicU64::new(0)));
-                    self.start_periodic_send(
-                        tab_id_periodic,
-                        interval_ms,
-                        content_periodic,
-                        message_input_mode_periodic,
-                        seq_periodic,
-                        cx,
-                    );
+                    let (interval, source) = {
+                        let Some(tab_state) = self.connection_tabs.get(&tab_id_periodic) else {
+                            return;
+                        };
+                        // 间隔句柄写入当前输入值; 载荷兜底写入当前内容(订阅已在 Change 时同步)
+                        tab_state.periodic_interval_handle.set(interval_ms);
+                        tab_state.periodic_source.set_content(content.clone());
+                        tab_state
+                            .periodic_source
+                            .set_hex_mode(tab_message_input_mode == "hex");
+                        (
+                            tab_state.periodic_interval_handle.clone(),
+                            tab_state.periodic_source.clone(),
+                        )
+                    };
+                    self.start_periodic_task(tab_id_periodic, interval, source, cx);
                 }
 
                 // 清除错误消息
@@ -3172,6 +3359,8 @@ impl NetAssistantApp {
                     tab_state.error_message = None;
                     cx.notify();
                 }
+                // 连接建立: 若有持久化的定时任务(心跳)则创建(启用态立即开始)
+                self.ensure_timed_task(&tab_id, cx);
             }
             ConnectionEvent::Disconnected(tab_id) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -3197,6 +3386,8 @@ impl NetAssistantApp {
                     tab_state.error_message = None;
                     cx.notify();
                 }
+                // 开始监听: 若有持久化的定时任务(心跳)则创建
+                self.ensure_timed_task(&tab_id, cx);
             }
             ConnectionEvent::Error(tab_id, error) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -3231,6 +3422,8 @@ impl NetAssistantApp {
                     .insert(tab_id.clone(), write_sender);
                 // 写通道因重连而更新: 刷新该 tab 全部发送任务的目标
                 self.refresh_send_task_targets(&tab_id);
+                // 重连恢复: 周期发送(hidden)与「已启用」的定时任务
+                self.resume_auto_send_tasks(&tab_id, cx);
             }
             ConnectionEvent::DecoderControlSenderReady(tab_id, control_sender) => {
                 // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满
@@ -3298,6 +3491,8 @@ impl NetAssistantApp {
                 }
                 // 服务端目标集合变化: 刷新该 tab 全部发送任务的目标
                 self.refresh_send_task_targets(&tab_id);
+                // 重连恢复: 周期发送(hidden)与「已启用」的定时任务
+                self.resume_auto_send_tasks(&tab_id, cx);
             }
             ConnectionEvent::ServerClientDisconnected(tab_id, addr) => {
                 debug!(
@@ -3346,14 +3541,6 @@ impl NetAssistantApp {
                     // 消息接收是关键事件，立即触发UI更新
                     cx.notify();
                 }
-            }
-            ConnectionEvent::PeriodicSend(tab_id, content) => {
-                // 处理周期发送文本消息
-                self.send_message(tab_id, content);
-            }
-            ConnectionEvent::PeriodicSendBytes(tab_id, bytes, hex_input) => {
-                // 处理周期发送十六进制消息
-                self.send_message_bytes(tab_id, bytes, hex_input);
             }
             ConnectionEvent::TaskProgress {
                 tab_id,
@@ -3428,6 +3615,7 @@ impl Drop for NetAssistantApp {
             self.message_input_enter_subscriptions.remove(&tab_id);
             self.keep_last_subscriptions.remove(&tab_id);
             self.search_subscriptions.remove(&tab_id);
+            self.periodic_sync_subscriptions.remove(&tab_id);
 
             if self.server_auto_reply_states.remove(&tab_id).is_some() {
                 debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
