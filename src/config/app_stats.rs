@@ -65,13 +65,23 @@ impl AppStats {
         }
     }
 
-    /// 记录打开天数（若 last_open_date != today 则递增）
+    /// 记录打开天数（若 last_open_date != today 则递增），并落盘
     pub fn record_open_day(&mut self, today: &str) {
-        if self.last_open_date.as_deref() != Some(today) {
-            self.open_day_count += 1;
-            self.last_open_date = Some(today.to_string());
+        if self.apply_open_day(today) {
             self.save();
         }
+    }
+
+    /// 纯逻辑：计算打开天数变化，返回是否发生变化（不落盘）
+    ///
+    /// 落盘已分离到这里，测试只调本方法即可，不会写真实统计文件
+    pub fn apply_open_day(&mut self, today: &str) -> bool {
+        if self.last_open_date.as_deref() == Some(today) {
+            return false;
+        }
+        self.open_day_count += 1;
+        self.last_open_date = Some(today.to_string());
+        true
     }
 
     /// 判断是否应该显示 Star 提示
@@ -91,11 +101,22 @@ impl AppStats {
         }
     }
 
-    /// 关闭 Star 提示（递增关闭次数 + 记录日期）
+    /// 关闭 Star 提示（递增关闭次数 + 记录日期），并落盘
     pub fn dismiss_star_prompt(&mut self, today: &str) {
-        self.star_prompt_dismissal_count += 1;
-        self.star_prompt_last_dismissed = Some(today.to_string());
+        self.apply_dismiss(today);
         self.save();
+    }
+
+    /// 纯逻辑：递增关闭次数并记录日期，日期只前进不后退（不落盘）
+    ///
+    /// 落盘已分离到这里，测试只调本方法即可，不会写真实统计文件
+    pub fn apply_dismiss(&mut self, today: &str) {
+        self.star_prompt_dismissal_count += 1;
+        // "YYYY-MM-DD" 定长格式下字典序即时间序；磁盘上已有更晚的记录时保留原值
+        match self.star_prompt_last_dismissed.as_deref() {
+            Some(last) if last >= today => {}
+            _ => self.star_prompt_last_dismissed = Some(today.to_string()),
+        }
     }
 
     /// 更新磁盘上的 star 数缓存（读-改-写）
@@ -137,7 +158,7 @@ mod tests {
             last_open_date: Some("2026-08-08".to_string()),
             ..Default::default()
         };
-        stats.record_open_day("2026-08-08");
+        stats.apply_open_day("2026-08-08");
         assert_eq!(stats.open_day_count, 5);
     }
 
@@ -148,7 +169,7 @@ mod tests {
             last_open_date: Some("2026-08-07".to_string()),
             ..Default::default()
         };
-        stats.record_open_day("2026-08-08");
+        stats.apply_open_day("2026-08-08");
         assert_eq!(stats.open_day_count, 6);
         assert_eq!(stats.last_open_date, Some("2026-08-08".to_string()));
     }
@@ -228,11 +249,34 @@ mod tests {
             star_prompt_dismissal_count: 0,
             ..Default::default()
         };
-        stats.dismiss_star_prompt("2026-08-08");
+        stats.apply_dismiss("2026-08-08");
         assert_eq!(stats.star_prompt_dismissal_count, 1);
         assert_eq!(
             stats.star_prompt_last_dismissed,
             Some("2026-08-08".to_string())
+        );
+    }
+
+    #[test]
+    fn test_apply_dismiss_keeps_later_date() {
+        let mut stats = AppStats {
+            star_prompt_dismissal_count: 1,
+            star_prompt_last_dismissed: Some("2026-09-28".to_string()),
+            ..Default::default()
+        };
+        // 更早的日期不得覆盖已有记录
+        stats.apply_dismiss("2026-08-08");
+        assert_eq!(stats.star_prompt_dismissal_count, 2);
+        assert_eq!(
+            stats.star_prompt_last_dismissed,
+            Some("2026-09-28".to_string())
+        );
+        // 更晚的日期正常推进
+        stats.apply_dismiss("2026-10-01");
+        assert_eq!(stats.star_prompt_dismissal_count, 3);
+        assert_eq!(
+            stats.star_prompt_last_dismissed,
+            Some("2026-10-01".to_string())
         );
     }
 }
