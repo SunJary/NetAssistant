@@ -13,6 +13,10 @@ use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
 use crate::message::{MAX_KEEP_LAST, Message, MessageDirection, MessageType};
 use crate::network::events::{ConnectionEvent, NetCounters};
+use crate::send_task::{
+    SendTaskConfig, SendTaskEngine, SendTaskEntry, SendTaskState, TaskEndReason, TaskStatus,
+    TaskTarget,
+};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
@@ -34,6 +38,18 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// 发送投递失败原因(由 `send_dispatch_with_errors` 映射为既有错误文案)
+enum SendDispatchError {
+    /// 标签页不存在
+    NoTab,
+    /// 连接未建立
+    NotConnected,
+    /// 客户端写通道不可用
+    ClientWriteUnavailable,
+    /// 投递到写通道失败
+    SendFailed,
+}
 
 pub struct NetAssistantApp {
     // 配置存储
@@ -539,10 +555,8 @@ impl NetAssistantApp {
 
                 if !is_hex_mode {
                     if let Some(sender) = sender.clone() {
-                        let _ = sender.try_send(ConnectionEvent::PeriodicSend(
-                            tab_id_clone.clone(),
-                            payload,
-                        ));
+                        let _ = sender
+                            .try_send(ConnectionEvent::PeriodicSend(tab_id_clone.clone(), payload));
                     }
                 } else if compiled.is_some() {
                     // 含变量的 hex: 渲染结果已是合法十六进制文本, 直接按字节解析
@@ -779,10 +793,7 @@ impl NetAssistantApp {
             return; // 禁用态不应有提交
         }
 
-        let parsed = raw
-            .parse::<usize>()
-            .ok()
-            .filter(|n| *n <= MAX_KEEP_LAST);
+        let parsed = raw.parse::<usize>().ok().filter(|n| *n <= MAX_KEEP_LAST);
         let n = match parsed {
             Some(n) => n,
             None => {
@@ -959,7 +970,11 @@ impl NetAssistantApp {
                     continue;
                 }
             }
-            if message.get_content_by_type().to_lowercase().contains(&needle) {
+            if message
+                .get_content_by_type()
+                .to_lowercase()
+                .contains(&needle)
+            {
                 ids.push(message.id.clone());
             }
         }
@@ -1374,6 +1389,18 @@ impl NetAssistantApp {
             tab_state.disconnect();
         }
 
+        // 显式停止发送任务引擎(协作取消), 避免引擎句柄被 UI 克隆持有时 runner 泄漏;
+        // 其后 shift_remove 丢弃 tab 状态时会再走一遍 Drop 兜底。
+        if let Some(tab_state) = self.connection_tabs.get(&tab_id) {
+            for entry in tab_state.send_tasks.values() {
+                if let Ok(mut guard) = entry.engine.lock() {
+                    if let Some(engine) = guard.as_mut() {
+                        engine.stop();
+                    }
+                }
+            }
+        }
+
         if self.connection_tabs.shift_remove(&tab_id).is_some() {
             debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
         }
@@ -1607,7 +1634,7 @@ impl NetAssistantApp {
             .get(&tab_id)
             .map(|tab| tab.message_input_mode == "hex")
             .unwrap_or(false);
-        self.import_file_dialog = Some(ImportFileDialogState::new(tab_id, hex_mode));
+        self.import_file_dialog = Some(ImportFileDialogState::new(tab_id, hex_mode, window, cx));
         open_import_file_dialog(cx.entity().downgrade(), window, cx);
     }
 
@@ -1622,68 +1649,70 @@ impl NetAssistantApp {
         }
         cx.notify();
 
-        cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
-            let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
-                // 用户取消选择: 复位读取中状态, 保留此前已选文件
-                let _ = this.update(async_cx, |app, cx| {
-                    if let Some(dialog) = app.import_file_dialog.as_mut() {
-                        dialog.reading = false;
-                    }
-                    cx.notify();
-                });
-                return;
-            };
-            let path = file.path().to_path_buf();
-
-            // 元数据判超限: 避免读入超大文件
-            let meta = {
-                let path = path.clone();
-                smol::unblock(move || std::fs::metadata(&path).map(|m| m.len())).await
-            };
-            let size = match &meta {
-                Ok(size) => *size,
-                Err(err) => {
-                    let message = err.to_string();
+        cx.spawn(
+            async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
+                    // 用户取消选择: 复位读取中状态, 保留此前已选文件
                     let _ = this.update(async_cx, |app, cx| {
                         if let Some(dialog) = app.import_file_dialog.as_mut() {
-                            dialog.set_error(&FileSourceError::ReadFailed(message));
+                            dialog.reading = false;
+                        }
+                        cx.notify();
+                    });
+                    return;
+                };
+                let path = file.path().to_path_buf();
+
+                // 元数据判超限: 避免读入超大文件
+                let meta = {
+                    let path = path.clone();
+                    smol::unblock(move || std::fs::metadata(&path).map(|m| m.len())).await
+                };
+                let size = match &meta {
+                    Ok(size) => *size,
+                    Err(err) => {
+                        let message = err.to_string();
+                        let _ = this.update(async_cx, |app, cx| {
+                            if let Some(dialog) = app.import_file_dialog.as_mut() {
+                                dialog.set_error(&FileSourceError::ReadFailed(message));
+                            }
+                            cx.notify();
+                        });
+                        return;
+                    }
+                };
+                if let Err(err) = validate_len(size) {
+                    let _ = this.update(async_cx, |app, cx| {
+                        if let Some(dialog) = app.import_file_dialog.as_mut() {
+                            dialog.path = Some(path.clone());
+                            dialog.size = Some(size);
+                            dialog.bytes = None;
+                            dialog.set_error(&err);
                         }
                         cx.notify();
                     });
                     return;
                 }
-            };
-            if let Err(err) = validate_len(size) {
+
+                let bytes = {
+                    let path = path.clone();
+                    smol::unblock(move || std::fs::read(&path)).await
+                };
                 let _ = this.update(async_cx, |app, cx| {
                     if let Some(dialog) = app.import_file_dialog.as_mut() {
-                        dialog.path = Some(path.clone());
-                        dialog.size = Some(size);
-                        dialog.bytes = None;
-                        dialog.set_error(&err);
+                        match bytes {
+                            Ok(bytes) => dialog.set_loaded(path.clone(), size, bytes),
+                            Err(err) => {
+                                dialog.path = Some(path.clone());
+                                dialog.size = Some(size);
+                                dialog.set_error(&FileSourceError::ReadFailed(err.to_string()));
+                            }
+                        }
                     }
                     cx.notify();
                 });
-                return;
-            }
-
-            let bytes = {
-                let path = path.clone();
-                smol::unblock(move || std::fs::read(&path)).await
-            };
-            let _ = this.update(async_cx, |app, cx| {
-                if let Some(dialog) = app.import_file_dialog.as_mut() {
-                    match bytes {
-                        Ok(bytes) => dialog.set_loaded(path.clone(), size, bytes),
-                        Err(err) => {
-                            dialog.path = Some(path.clone());
-                            dialog.size = Some(size);
-                            dialog.set_error(&FileSourceError::ReadFailed(err.to_string()));
-                        }
-                    }
-                }
-                cx.notify();
-            });
-        })
+            },
+        )
         .detach();
     }
 
@@ -1709,6 +1738,40 @@ impl NetAssistantApp {
         }
         self.import_file_dialog = None;
         cx.notify();
+    }
+
+    /// 确认导入为「逐行发送」任务: 解析行 → 构建任务配置 → 创建后台任务。
+    ///
+    /// `start_immediately = false` 时创建即暂停(可稍后点继续);
+    /// 解析失败(全空行 / 超上限 / hex 非法行)时把错误回填到对话框, 不创建半成品任务。
+    ///
+    /// 返回 `true` 表示已创建任务(对话框可关闭); `false` 表示失败, 对话框需保持打开以展示错误。
+    pub fn confirm_import_file_as_task(
+        &mut self,
+        start_immediately: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(dialog) = self.import_file_dialog.as_ref() else {
+            return false;
+        };
+        let (tab_id, build_result) = (
+            dialog.tab_id.clone(),
+            dialog.build_send_config(cx, start_immediately),
+        );
+        match build_result {
+            Ok(config) => {
+                self.import_file_dialog = None;
+                self.create_send_task(tab_id, config, cx);
+                true
+            }
+            Err(message) => {
+                if let Some(dialog) = self.import_file_dialog.as_mut() {
+                    dialog.error = Some(message);
+                }
+                cx.notify();
+                false
+            }
+        }
     }
 
     /// 启动压测
@@ -1898,6 +1961,8 @@ impl NetAssistantApp {
             let tab_id_for_error = tab_id.clone();
             // 每 tab 一份网络层精确计数器: 重复连接时复用(计数在断开后仍累计需由 UI 层在断开时置零处理)
             let counters = self.net_counters.entry(tab_id.clone()).or_default().clone();
+            // 运行期结尾追加设置: clone 共享同一 Arc, 下拉改动对已建立连接即时生效
+            let trailer = tab_state.send_trailer_setting.clone();
 
             tokio::spawn(async move {
                 let mut network_manager = network_manager_arc.lock().await;
@@ -1906,6 +1971,7 @@ impl NetAssistantApp {
                         &client_config_clone,
                         connection_event_sender_clone.clone(),
                         Some(counters),
+                        trailer,
                     )
                     .await
                 {
@@ -1936,6 +2002,8 @@ impl NetAssistantApp {
                 let tab_id_for_error = tab_id.clone();
                 // 每 tab 一份网络层精确计数器
                 let counters = self.net_counters.entry(tab_id.clone()).or_default().clone();
+                // 运行期结尾追加设置: clone 共享同一 Arc, 下拉改动对已建立连接即时生效
+                let trailer = tab_state.send_trailer_setting.clone();
 
                 tokio::spawn(async move {
                     let mut network_manager = network_manager_arc.lock().await;
@@ -1944,6 +2012,7 @@ impl NetAssistantApp {
                             &server_config_clone,
                             connection_event_sender_clone.clone(),
                             Some(counters),
+                            trailer,
                         )
                         .await
                     {
@@ -2050,7 +2119,9 @@ impl NetAssistantApp {
                 let rendered = if content.contains("${") {
                     let compiled = crate::utils::message_vars::CompiledTemplate::new(&content);
                     let seq = if compiled.needs_seq() {
-                        message_seq.as_ref().map(|s| s.fetch_add(1, Ordering::Relaxed))
+                        message_seq
+                            .as_ref()
+                            .map(|s| s.fetch_add(1, Ordering::Relaxed))
                     } else {
                         None
                     };
@@ -2164,147 +2235,7 @@ impl NetAssistantApp {
             "[send_message] 开始，tab_id: {}, content: '{}'",
             tab_id, content
         );
-        let sender = self.connection_event_sender.clone();
-        let tab_id_clone = tab_id.clone();
-        let content_clone = content.clone();
-
-        // 保存message_type用于后续事件发送
-        let tab_info = self.connection_tabs.get(&tab_id).map(|tab_state| {
-            let message_type = if tab_state.message_input_mode == "text" {
-                MessageType::Text
-            } else {
-                MessageType::Hex
-            };
-            let is_client = tab_state.connection_config.is_client();
-            let selected_client = tab_state.selected_client;
-            (message_type, is_client, selected_client)
-        });
-
-        if tab_info.is_none() {
-            error!("[send_message] 未找到标签页: {}", tab_id);
-            return;
-        }
-
-        let (message_type, is_client, selected_client) = tab_info.unwrap();
-
-        // 在闭包外部获取必要的信息
-        let is_connected_result = self
-            .connection_tabs
-            .get(&tab_id)
-            .map(|tab| tab.is_connected);
-
-        if is_connected_result.is_none() {
-            error!("[send_message] 未找到标签页: {}", tab_id);
-            return;
-        }
-
-        let is_connected = is_connected_result.unwrap();
-
-        if !is_connected {
-            if let Some(sender) = sender {
-                let _ = sender.try_send(ConnectionEvent::Error(
-                    tab_id_clone,
-                    t!("app_ui.send_not_connected").to_string(),
-                ));
-            }
-            return;
-        }
-
-        // 直接使用client_write_senders和server_clients来发送消息
-        let bytes = content_clone.into_bytes();
-
-        if is_client {
-            // 客户端模式：发送给服务器
-            debug!("[send_message] 客户端模式，发送给服务器");
-
-            if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
-                if write_sender.try_send(bytes.clone()).is_err() {
-                    error!("[send_message] 无法发送消息到服务器");
-                    if let Some(sender) = sender {
-                        let _ = sender.try_send(ConnectionEvent::Error(
-                            tab_id_clone,
-                            t!("app_ui.send_failed").to_string(),
-                        ));
-                    }
-                } else {
-                    debug!("[send_message] 发送成功");
-                    if let Some(sender) = sender {
-                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender
-                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
-                    }
-                }
-            } else {
-                error!("[send_message] 客户端写入发送器不可用");
-                if let Some(sender) = sender {
-                    let _ = sender.try_send(ConnectionEvent::Error(
-                        tab_id_clone,
-                        t!("app_ui.send_client_write_unavailable").to_string(),
-                    ));
-                }
-            }
-        } else {
-            // 服务器模式：根据selected_client决定定向发送还是广播
-            if let Some(clients) = self.server_clients.get(&tab_id) {
-                if clients.is_empty() {
-                    // 服务端没有客户端连接，不应标记整个服务端为错误
-                    warn!("[send_message] 没有可用的客户端连接");
-                } else if let Some(target_addr) = selected_client {
-                    // 定向发送给选中的客户端
-                    debug!("[send_message] 服务端模式，定向发送给: {}", target_addr);
-                    if let Some(write_sender) = clients.get(&target_addr) {
-                        if write_sender.try_send(bytes.clone()).is_err() {
-                            // 单个客户端发送失败不应影响整个服务端，仅记录日志
-                            // TCP/UDP 层会通过 ServerClientDisconnected 事件清理该客户端
-                            warn!(
-                                "[send_message] 发送给客户端 {} 失败（客户端可能已断开）",
-                                target_addr
-                            );
-                        } else {
-                            debug!("[send_message] 定向发送成功");
-                            if let Some(sender) = sender {
-                                let message =
-                                    Message::new(MessageDirection::Sent, bytes, message_type)
-                                        .with_source(target_addr.to_string());
-                                let _ = sender.try_send(ConnectionEvent::MessageReceived(
-                                    tab_id_clone,
-                                    message,
-                                ));
-                            }
-                        }
-                    } else {
-                        warn!("[send_message] 客户端 {} 不存在或已断开", target_addr);
-                    }
-                } else {
-                    // 广播给所有客户端（并行发送）
-                    debug!(
-                        "[send_message] 服务端模式，广播给所有客户端，共 {} 个",
-                        clients.len()
-                    );
-                    let bytes_arc = std::sync::Arc::new(bytes.clone());
-
-                    for (addr, write_sender) in clients.iter() {
-                        let sender_clone = write_sender.clone();
-                        let bytes_clone = bytes_arc.clone();
-                        let addr_str = addr.to_string();
-                        tokio::spawn(async move {
-                            if sender_clone.send((*bytes_clone).clone()).await.is_err() {
-                                error!("[send_message] 广播发送给客户端 {} 失败", addr_str);
-                            }
-                        });
-                    }
-
-                    debug!("[send_message] 广播发送成功");
-                    if let Some(sender) = sender {
-                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender
-                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
-                    }
-                }
-            } else {
-                warn!("[send_message] 服务器客户端映射不可用");
-            }
-        }
+        self.send_dispatch_with_errors(tab_id, content.into_bytes());
     }
 
     pub fn send_message_bytes(&mut self, tab_id: String, bytes: Vec<u8>, hex_input: String) {
@@ -2312,145 +2243,355 @@ impl NetAssistantApp {
             "[send_message_bytes] 开始，tab_id: {}, bytes: {:?}, hex_input: '{}'",
             tab_id, bytes, hex_input
         );
-        let sender = self.connection_event_sender.clone();
-        let tab_id_clone = tab_id.clone();
+        self.send_dispatch_with_errors(tab_id, bytes);
+    }
 
-        // 保存message_type和selected_client用于后续事件发送
-        let tab_info = self.connection_tabs.get(&tab_id).map(|tab_state| {
-            let message_type = if tab_state.message_input_mode == "text" {
-                MessageType::Text
-            } else {
-                MessageType::Hex
-            };
-            let is_client = tab_state.connection_config.is_client();
-            let selected_client = tab_state.selected_client;
-            (message_type, is_client, selected_client)
-        });
-
-        if tab_info.is_none() {
-            error!("[send_message_bytes] 未找到标签页: {}", tab_id);
-            return;
-        }
-
-        let (message_type, is_client, selected_client) = tab_info.unwrap();
-
-        // 在闭包外部获取必要的信息
-        let is_connected_result = self
+    /// 发送一条消息到 tab 的目标(客户端 / 服务端定向 / 服务端广播), 并回传 Sent 簿记事件。
+    ///
+    /// 抽取自原 `send_message` / `send_message_bytes` 的重复逻辑:
+    /// 「目标解析 + try_send 投递 + 造 Sent 消息回传」三步。
+    /// 「投递到写通道」与「Sent 消息簿记」必须分两步: 前者是唯一数据通道(网络层负责
+    /// 编码 + 结尾追加 + write_all + 计数), 后者走既有 16ms 事件泵(消息列表 + 日志)。
+    fn dispatch_send(&self, tab_id: &str, bytes: Vec<u8>) -> Result<(), SendDispatchError> {
+        let tab_state = self
             .connection_tabs
-            .get(&tab_id)
-            .map(|tab| tab.is_connected);
-
-        if is_connected_result.is_none() {
-            error!("[send_message_bytes] 未找到标签页: {}", tab_id);
-            return;
+            .get(tab_id)
+            .ok_or(SendDispatchError::NoTab)?;
+        if !tab_state.is_connected {
+            return Err(SendDispatchError::NotConnected);
         }
+        let message_type = if tab_state.message_input_mode == "text" {
+            MessageType::Text
+        } else {
+            MessageType::Hex
+        };
+        let is_client = tab_state.connection_config.is_client();
+        let selected_client = tab_state.selected_client;
+        let sender = self.connection_event_sender.clone();
 
-        let is_connected = is_connected_result.unwrap();
-
-        if !is_connected {
+        if is_client {
+            let write_sender = self
+                .client_write_senders
+                .get(tab_id)
+                .ok_or(SendDispatchError::ClientWriteUnavailable)?;
+            if write_sender.try_send(bytes.clone()).is_err() {
+                return Err(SendDispatchError::SendFailed);
+            }
             if let Some(sender) = sender {
-                let _ = sender.try_send(ConnectionEvent::Error(
-                    tab_id_clone,
-                    t!("app_ui.send_not_connected").to_string(),
+                let message = Message::new(MessageDirection::Sent, bytes, message_type);
+                let _ = sender.try_send(ConnectionEvent::MessageReceived(
+                    tab_id.to_string(),
+                    message,
                 ));
             }
-            return;
+            return Ok(());
         }
 
-        // 直接使用client_write_senders和server_clients来发送消息
-        if is_client {
-            // 客户端模式：发送给服务器
-            debug!("[send_message_bytes] 客户端模式，发送给服务器");
+        // 服务端模式: 根据 selected_client 决定定向发送还是广播
+        let Some(clients) = self.server_clients.get(tab_id) else {
+            warn!("[发送] 服务器客户端映射不可用");
+            return Ok(());
+        };
+        if clients.is_empty() {
+            // 服务端没有客户端连接，不应标记整个服务端为错误
+            warn!("[发送] 没有可用的客户端连接");
+            return Ok(());
+        }
+        if let Some(target_addr) = selected_client {
+            let Some(write_sender) = clients.get(&target_addr) else {
+                warn!("[发送] 客户端 {} 不存在或已断开", target_addr);
+                return Ok(());
+            };
+            if write_sender.try_send(bytes.clone()).is_err() {
+                // 单个客户端发送失败不应影响整个服务端，仅记录日志
+                // TCP/UDP 层会通过 ServerClientDisconnected 事件清理该客户端
+                warn!(
+                    "[发送] 发送给客户端 {} 失败（客户端可能已断开）",
+                    target_addr
+                );
+                return Ok(());
+            }
+            if let Some(sender) = sender {
+                let message = Message::new(MessageDirection::Sent, bytes, message_type)
+                    .with_source(target_addr.to_string());
+                let _ = sender.try_send(ConnectionEvent::MessageReceived(
+                    tab_id.to_string(),
+                    message,
+                ));
+            }
+            return Ok(());
+        }
 
-            if let Some(write_sender) = self.client_write_senders.get(&tab_id) {
-                if write_sender.try_send(bytes.clone()).is_err() {
-                    error!("[send_message_bytes] 无法发送消息到服务器");
-                    if let Some(sender) = sender {
-                        let _ = sender.try_send(ConnectionEvent::Error(
-                            tab_id_clone,
-                            t!("app_ui.send_failed").to_string(),
-                        ));
-                    }
-                } else {
-                    debug!("[send_message_bytes] 发送成功");
-                    if let Some(sender) = sender {
-                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender
-                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
-                    }
+        // 广播给所有客户端（并行发送）
+        let bytes_arc = Arc::new(bytes.clone());
+        for (addr, write_sender) in clients.iter() {
+            let sender_clone = write_sender.clone();
+            let bytes_clone = bytes_arc.clone();
+            let addr_str = addr.to_string();
+            tokio::spawn(async move {
+                if sender_clone.send((*bytes_clone).clone()).await.is_err() {
+                    error!("[发送] 广播发送给客户端 {} 失败", addr_str);
                 }
-            } else {
-                error!("[send_message_bytes] 客户端写入发送器不可用");
-                if let Some(sender) = sender {
+            });
+        }
+        if let Some(sender) = sender {
+            let message = Message::new(MessageDirection::Sent, bytes, message_type);
+            let _ = sender.try_send(ConnectionEvent::MessageReceived(
+                tab_id.to_string(),
+                message,
+            ));
+        }
+        Ok(())
+    }
+
+    /// 发送入口: 投递失败时回传既有错误事件(手动发送 / 周期发送共用)。
+    fn send_dispatch_with_errors(&self, tab_id: String, bytes: Vec<u8>) {
+        match self.dispatch_send(&tab_id, bytes) {
+            Ok(()) => {}
+            Err(SendDispatchError::NoTab) => {
+                error!("[发送] 未找到标签页: {}", tab_id);
+            }
+            Err(SendDispatchError::NotConnected) => {
+                if let Some(sender) = self.connection_event_sender.clone() {
                     let _ = sender.try_send(ConnectionEvent::Error(
-                        tab_id_clone,
+                        tab_id,
+                        t!("app_ui.send_not_connected").to_string(),
+                    ));
+                }
+            }
+            Err(SendDispatchError::ClientWriteUnavailable) => {
+                error!("[发送] 客户端写入发送器不可用");
+                if let Some(sender) = self.connection_event_sender.clone() {
+                    let _ = sender.try_send(ConnectionEvent::Error(
+                        tab_id,
                         t!("app_ui.send_client_write_unavailable").to_string(),
                     ));
                 }
             }
-        } else {
-            // 服务器模式：根据selected_client决定定向发送还是广播
-            if let Some(clients) = self.server_clients.get(&tab_id) {
-                if clients.is_empty() {
-                    warn!("[send_message_bytes] 没有可用的客户端连接");
-                } else if let Some(target_addr) = selected_client {
-                    // 定向发送给选中的客户端
-                    debug!(
-                        "[send_message_bytes] 服务端模式，定向发送给: {}",
-                        target_addr
-                    );
-                    if let Some(write_sender) = clients.get(&target_addr) {
-                        if write_sender.try_send(bytes.clone()).is_err() {
-                            // 单个客户端发送失败不应影响整个服务端，仅记录日志
-                            warn!(
-                                "[send_message_bytes] 发送给客户端 {} 失败（客户端可能已断开）",
-                                target_addr
-                            );
-                        } else {
-                            debug!("[send_message_bytes] 定向发送成功");
-                            if let Some(sender) = sender {
-                                let message =
-                                    Message::new(MessageDirection::Sent, bytes, message_type)
-                                        .with_source(target_addr.to_string());
-                                let _ = sender.try_send(ConnectionEvent::MessageReceived(
-                                    tab_id_clone,
-                                    message,
-                                ));
-                            }
-                        }
-                    } else {
-                        warn!("[send_message_bytes] 客户端 {} 不存在或已断开", target_addr);
-                    }
-                } else {
-                    // 广播给所有客户端（并行发送）
-                    debug!(
-                        "[send_message_bytes] 服务端模式，广播给所有客户端，共 {} 个",
-                        clients.len()
-                    );
-                    let bytes_arc = std::sync::Arc::new(bytes.clone());
-
-                    for (addr, write_sender) in clients.iter() {
-                        let sender_clone = write_sender.clone();
-                        let bytes_clone = bytes_arc.clone();
-                        let addr_str = addr.to_string();
-                        tokio::spawn(async move {
-                            if sender_clone.send((*bytes_clone).clone()).await.is_err() {
-                                error!("[send_message_bytes] 广播发送给客户端 {} 失败", addr_str);
-                            }
-                        });
-                    }
-
-                    debug!("[send_message_bytes] 广播发送成功");
-                    if let Some(sender) = sender {
-                        let message = Message::new(MessageDirection::Sent, bytes, message_type);
-                        let _ = sender
-                            .try_send(ConnectionEvent::MessageReceived(tab_id_clone, message));
-                    }
+            Err(SendDispatchError::SendFailed) => {
+                error!("[发送] 无法发送消息到服务器");
+                if let Some(sender) = self.connection_event_sender.clone() {
+                    let _ = sender.try_send(ConnectionEvent::Error(
+                        tab_id,
+                        t!("app_ui.send_failed").to_string(),
+                    ));
                 }
-            } else {
-                warn!("[send_message_bytes] 服务器客户端映射不可用");
             }
         }
+    }
+
+    // ===== 发送任务(逐行发送) =====
+
+    /// 该 tab 当前的发送任务目标快照(无可用目标时返回 None)。
+    ///
+    /// - 客户端: 连接写通道(就绪即视为可用)
+    /// - 服务端: `selected_client` 定向 = 单元素; 否则 = 全部客户端; 无客户端 → None
+    fn task_target_snapshot(&self, tab_id: &str) -> Option<TaskTarget> {
+        let tab_state = self.connection_tabs.get(tab_id)?;
+        if tab_state.connection_config.is_client() {
+            let sender = self.client_write_senders.get(tab_id)?.clone();
+            return Some(TaskTarget::Client(sender));
+        }
+        let clients = self.server_clients.get(tab_id)?;
+        let list: Vec<(SocketAddr, Sender<Vec<u8>>)> = match tab_state.selected_client {
+            Some(addr) => clients
+                .get(&addr)
+                .map(|s| vec![(addr, s.clone())])
+                .unwrap_or_default(),
+            None => clients.iter().map(|(a, s)| (*a, s.clone())).collect(),
+        };
+        if list.is_empty() {
+            return None;
+        }
+        Some(TaskTarget::ServerClients(list))
+    }
+
+    /// 把该 tab 的目标快照推送给其全部发送任务。
+    ///
+    /// 写通道会因重连而失效: 必须在 `ClientWriteSenderReady` / `ServerClientConnected` /
+    /// `ServerClientDisconnected` 等挂点刷新, 否则重连后任务静默失败。
+    fn refresh_send_task_targets(&self, tab_id: &str) {
+        let snapshot = match self.task_target_snapshot(tab_id) {
+            Some(snapshot) => snapshot,
+            // 目标彻底不可用(未连接 / 服务端已无客户端): 推一个「空目标」而不是直接返回。
+            // 否则引擎会保留已失效的旧目标: 服务端模式下每条 try_send 都失败却仍推进进度,
+            // 任务「静默空转」跑到结束, 用户误以为已发送成功。
+            None => {
+                let is_client = self
+                    .connection_tabs
+                    .get(tab_id)
+                    .map(|s| s.connection_config.is_client())
+                    .unwrap_or(true);
+                if is_client {
+                    let (tx, rx) = smol_unbounded::<Vec<u8>>();
+                    drop(rx);
+                    TaskTarget::Client(tx)
+                } else {
+                    TaskTarget::ServerClients(Vec::new())
+                }
+            }
+        };
+        let Some(tab_state) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        for entry in tab_state.send_tasks.values() {
+            if let Ok(guard) = entry.engine.lock() {
+                if let Some(engine) = guard.as_ref() {
+                    engine.set_target(snapshot.clone());
+                }
+            }
+        }
+    }
+
+    /// 暂停该 tab 的全部发送任务(附原因), 保留任务以便重连后继续。
+    fn pause_tab_send_tasks(&self, tab_id: &str, reason: Option<String>) {
+        let Some(tab_state) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        for entry in tab_state.send_tasks.values() {
+            if let Ok(guard) = entry.engine.lock() {
+                if let Some(engine) = guard.as_ref() {
+                    engine.pause(reason.clone());
+                }
+            }
+        }
+    }
+
+    /// 创建一个逐行发送任务(任务项由导入对话框解析好并放进 `SendTaskConfig`)。
+    ///
+    /// 无可用目标(未连接 / 服务端暂无客户端)时创建即暂停, 待连接挂点刷新目标后由用户「继续」。
+    pub fn create_send_task(
+        &mut self,
+        tab_id: String,
+        config: SendTaskConfig,
+        cx: &mut Context<Self>,
+    ) {
+        let task_id = config.id.clone();
+        let start_immediately = config.start_immediately;
+        let config = Arc::new(config);
+
+        let Some(events) = self.connection_event_sender.clone() else {
+            warn!("[发送任务] 事件通道不可用, 无法创建任务");
+            return;
+        };
+
+        let snapshot = self.task_target_snapshot(&tab_id);
+        let has_target = snapshot.is_some();
+        // 占位目标: 无可用的写通道时给一个已关闭的通道, 引擎不会误发
+        let target = snapshot.unwrap_or_else(|| {
+            let (tx, rx) = smol_unbounded::<Vec<u8>>();
+            drop(rx);
+            TaskTarget::Client(tx)
+        });
+
+        let seq = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|s| s.message_seq.clone())
+            .unwrap_or_else(|| Arc::new(AtomicU64::new(0)));
+
+        let mut state = SendTaskState::new(config.clone());
+        let pause_reason = if has_target {
+            None
+        } else {
+            Some(t!("send_task.reason_not_connected").to_string())
+        };
+        if pause_reason.is_some() || !start_immediately {
+            state.status = TaskStatus::Paused;
+            state.pause_reason = pause_reason.clone();
+        }
+
+        let engine = SendTaskEngine::start(config, tab_id.clone(), target, events, seq);
+        if state.status == TaskStatus::Paused {
+            engine.pause(pause_reason);
+        }
+
+        if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+            tab_state.send_tasks.insert(
+                task_id,
+                SendTaskEntry {
+                    engine: Arc::new(Mutex::new(Some(engine))),
+                    state,
+                },
+            );
+        }
+        cx.notify();
+    }
+
+    /// 暂停单个发送任务(不影响该 tab 的其他任务)。
+    pub fn pause_send_task(
+        &mut self,
+        tab_id: &str,
+        task_id: &str,
+        reason: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(tab_state) = self.connection_tabs.get(tab_id) {
+            if let Some(entry) = tab_state.send_tasks.get(task_id) {
+                if let Ok(guard) = entry.engine.lock() {
+                    if let Some(engine) = guard.as_ref() {
+                        engine.pause(reason);
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// 继续单个发送任务; 无可用目标时保持暂停并附「未连接」原因。
+    pub fn resume_send_task(&mut self, tab_id: &str, task_id: &str, cx: &mut Context<Self>) {
+        self.refresh_send_task_targets(tab_id);
+        let has_target = self.task_target_snapshot(tab_id).is_some();
+        let reason = if has_target {
+            None
+        } else {
+            Some(t!("send_task.reason_not_connected").to_string())
+        };
+        if let Some(tab_state) = self.connection_tabs.get(tab_id) {
+            if let Some(entry) = tab_state.send_tasks.get(task_id) {
+                if let Ok(guard) = entry.engine.lock() {
+                    if let Some(engine) = guard.as_ref() {
+                        if has_target {
+                            engine.resume();
+                        } else {
+                            engine.pause(reason);
+                        }
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// 停止单个发送任务(引擎协作取消, 结束后上报 `TaskFinished(Stopped)`).
+    pub fn stop_send_task(&mut self, tab_id: &str, task_id: &str, cx: &mut Context<Self>) {
+        if let Some(tab_state) = self.connection_tabs.get(tab_id) {
+            if let Some(entry) = tab_state.send_tasks.get(task_id) {
+                if let Ok(mut guard) = entry.engine.lock() {
+                    if let Some(engine) = guard.as_mut() {
+                        engine.stop();
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// 删除单个发送任务(先停止再移除; 同时收起其行清单展开态)。
+    pub fn delete_send_task(&mut self, tab_id: &str, task_id: &str, cx: &mut Context<Self>) {
+        if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
+            if let Some(entry) = tab_state.send_tasks.shift_remove(task_id) {
+                if let Ok(mut guard) = entry.engine.lock() {
+                    if let Some(engine) = guard.as_mut() {
+                        engine.stop();
+                    }
+                }
+            }
+            if tab_state.send_task_expanded.as_deref() == Some(task_id) {
+                tab_state.send_task_expanded = None;
+            }
+        }
+        cx.notify();
     }
 
     /// 向UDP服务端手动添加客户端地址
@@ -2788,12 +2929,7 @@ impl NetAssistantApp {
     /// 切换界面语言：设置运行时 locale、同步组件库内置文案，并持久化到配置
     /// 切换后 cx.notify() 触发整棵视图树重渲染，t! 宏取词即生效
     /// 注意: placeholder 在 InputState 创建时固化，不随重渲染更新，需在此逐个刷新
-    pub fn set_language(
-        &mut self,
-        language: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn set_language(&mut self, language: &str, window: &mut Window, cx: &mut Context<Self>) {
         rust_i18n::set_locale(language);
         gpui_component::set_locale(language);
         self.storage.save_language(language);
@@ -2822,11 +2958,7 @@ impl NetAssistantApp {
         // 刷新自动回复输入框的 placeholder
         for input in self.auto_reply_inputs.values() {
             input.update(cx, |input, cx| {
-                input.set_placeholder(
-                    t!("app_ui.auto_reply_placeholder").to_string(),
-                    window,
-                    cx,
-                )
+                input.set_placeholder(t!("app_ui.auto_reply_placeholder").to_string(), window, cx)
             });
         }
 
@@ -3052,6 +3184,11 @@ impl NetAssistantApp {
                 self.server_clients.remove(&tab_id);
                 self.decoder_control_senders.remove(&tab_id);
                 self.server_decoder_controls.remove(&tab_id);
+                // 断开时暂停该 tab 的全部发送任务(保留任务, 重连后刷新目标再继续)
+                self.pause_tab_send_tasks(
+                    &tab_id,
+                    Some(t!("send_task.reason_disconnected").to_string()),
+                );
             }
             ConnectionEvent::Listening(tab_id) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -3090,7 +3227,10 @@ impl NetAssistantApp {
                     "[handle_connection_events] 客户端写入发送器就绪: {}",
                     tab_id
                 );
-                self.client_write_senders.insert(tab_id, write_sender);
+                self.client_write_senders
+                    .insert(tab_id.clone(), write_sender);
+                // 写通道因重连而更新: 刷新该 tab 全部发送任务的目标
+                self.refresh_send_task_targets(&tab_id);
             }
             ConnectionEvent::DecoderControlSenderReady(tab_id, control_sender) => {
                 // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满
@@ -3156,6 +3296,8 @@ impl NetAssistantApp {
                         cx.notify();
                     }
                 }
+                // 服务端目标集合变化: 刷新该 tab 全部发送任务的目标
+                self.refresh_send_task_targets(&tab_id);
             }
             ConnectionEvent::ServerClientDisconnected(tab_id, addr) => {
                 debug!(
@@ -3180,6 +3322,8 @@ impl NetAssistantApp {
                     }
                     cx.notify();
                 }
+                // 服务端目标集合变化: 刷新该 tab 全部发送任务的目标
+                self.refresh_send_task_targets(&tab_id);
             }
             ConnectionEvent::ServerAutoReplyStateReady(tab_id, auto_reply_state) => {
                 // 服务端共享状态就绪: 保存句柄, 并将 UI 当前配置推送到网络层
@@ -3210,6 +3354,44 @@ impl NetAssistantApp {
             ConnectionEvent::PeriodicSendBytes(tab_id, bytes, hex_input) => {
                 // 处理周期发送十六进制消息
                 self.send_message_bytes(tab_id, bytes, hex_input);
+            }
+            ConnectionEvent::TaskProgress {
+                tab_id,
+                task_id,
+                sent_items,
+                total_items,
+                round,
+                status,
+                pause_reason,
+            } => {
+                // 进度为节流上报, 只刷新展示, 不触碰消息列表
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    if let Some(entry) = tab_state.send_tasks.get_mut(&task_id) {
+                        entry.state.sent_items = sent_items;
+                        entry.state.total_items = total_items;
+                        entry.state.round = round;
+                        entry.state.status = status;
+                        entry.state.pause_reason = pause_reason;
+                        cx.notify();
+                    }
+                }
+            }
+            ConnectionEvent::TaskFinished {
+                tab_id,
+                task_id,
+                reason,
+            } => {
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    if let Some(entry) = tab_state.send_tasks.get_mut(&task_id) {
+                        entry.state.status = match reason {
+                            TaskEndReason::Completed => TaskStatus::Finished,
+                            TaskEndReason::Stopped => TaskStatus::Stopped,
+                            TaskEndReason::Failed(msg) => TaskStatus::Failed(msg),
+                        };
+                        entry.state.pause_reason = None;
+                        cx.notify();
+                    }
+                }
             }
         }
     }

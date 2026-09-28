@@ -12,6 +12,13 @@ pub enum CustomIconName {
     Braces,
     Minimize2,
     Languages,
+    /// 发送任务面板(list-checks)
+    ListChecks,
+    CirclePlay,
+    CirclePause,
+    CircleStop,
+    Repeat,
+    Trash2,
 }
 
 impl From<IconName> for CustomIconName {
@@ -31,6 +38,12 @@ impl IconNamed for CustomIconName {
             CustomIconName::Braces => "icons/braces.svg".into(),
             CustomIconName::Minimize2 => "icons/minimize-2.svg".into(),
             CustomIconName::Languages => "icons/languages.svg".into(),
+            CustomIconName::ListChecks => "icons/list-checks.svg".into(),
+            CustomIconName::CirclePlay => "icons/circle-play.svg".into(),
+            CustomIconName::CirclePause => "icons/circle-pause.svg".into(),
+            CustomIconName::CircleStop => "icons/circle-stop.svg".into(),
+            CustomIconName::Repeat => "icons/repeat.svg".into(),
+            CustomIconName::Trash2 => "icons/trash-2.svg".into(),
         }
     }
 }

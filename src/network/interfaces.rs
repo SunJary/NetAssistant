@@ -40,6 +40,7 @@ pub trait NetworkFactory {
         config: &crate::config::connection::ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<crate::network::events::NetCounters>,
+        trailer: crate::config::connection::TrailerSetting,
     ) -> Box<dyn NetworkConnection>
     where
         Self: Sized;
@@ -49,6 +50,7 @@ pub trait NetworkFactory {
         config: &crate::config::connection::ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<crate::network::events::NetCounters>,
+        trailer: crate::config::connection::TrailerSetting,
     ) -> Box<dyn NetworkServer>
     where
         Self: Sized;

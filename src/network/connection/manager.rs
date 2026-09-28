@@ -1,4 +1,4 @@
-use crate::config::connection::{ClientConfig, ConnectionType, ServerConfig};
+use crate::config::connection::{ClientConfig, ConnectionType, ServerConfig, TrailerSetting};
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkFactory, NetworkServer};
 use crate::network::protocol::tcp::{TcpClient, TcpServer};
@@ -14,14 +14,21 @@ impl NetworkFactory for DefaultNetworkFactory {
         config: &ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<crate::network::events::NetCounters>,
+        trailer: TrailerSetting,
     ) -> Box<dyn NetworkConnection> {
         match config.protocol {
-            ConnectionType::Tcp => {
-                Box::new(TcpClient::new(config.clone(), event_sender, net_counters))
-            }
-            ConnectionType::Udp => {
-                Box::new(UdpClient::new(config.clone(), event_sender, net_counters))
-            }
+            ConnectionType::Tcp => Box::new(TcpClient::new(
+                config.clone(),
+                event_sender,
+                net_counters,
+                trailer,
+            )),
+            ConnectionType::Udp => Box::new(UdpClient::new(
+                config.clone(),
+                event_sender,
+                net_counters,
+                trailer,
+            )),
         }
     }
 
@@ -29,14 +36,21 @@ impl NetworkFactory for DefaultNetworkFactory {
         config: &ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<crate::network::events::NetCounters>,
+        trailer: TrailerSetting,
     ) -> Box<dyn NetworkServer> {
         match config.protocol {
-            ConnectionType::Tcp => {
-                Box::new(TcpServer::new(config.clone(), event_sender, net_counters))
-            }
-            ConnectionType::Udp => {
-                Box::new(UdpServer::new(config.clone(), event_sender, net_counters))
-            }
+            ConnectionType::Tcp => Box::new(TcpServer::new(
+                config.clone(),
+                event_sender,
+                net_counters,
+                trailer,
+            )),
+            ConnectionType::Udp => Box::new(UdpServer::new(
+                config.clone(),
+                event_sender,
+                net_counters,
+                trailer,
+            )),
         }
     }
 }
@@ -62,8 +76,13 @@ impl NetworkConnectionManager {
         config: &ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.create_and_connect_client_with_counters(config, event_sender, None)
-            .await
+        self.create_and_connect_client_with_counters(
+            config,
+            event_sender,
+            None,
+            TrailerSetting::default(),
+        )
+        .await
     }
 
     /// 创建并启动客户端连接(携带网络层精确计数器)
@@ -72,6 +91,7 @@ impl NetworkConnectionManager {
         config: &ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<crate::network::events::NetCounters>,
+        trailer: TrailerSetting,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果连接已存在，则先断开
         if self.clients.contains_key(&config.id) {
@@ -79,7 +99,8 @@ impl NetworkConnectionManager {
         }
 
         // 创建客户端连接
-        let mut client = DefaultNetworkFactory::create_client(config, event_sender, net_counters);
+        let mut client =
+            DefaultNetworkFactory::create_client(config, event_sender, net_counters, trailer);
 
         // 连接到服务器(失败直接返回错误,由 UI 层提示;吞掉会导致 tab 永远停在"连接中")
         client.connect().await?;
@@ -97,8 +118,13 @@ impl NetworkConnectionManager {
         config: &ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.create_and_start_server_with_counters(config, event_sender, None)
-            .await
+        self.create_and_start_server_with_counters(
+            config,
+            event_sender,
+            None,
+            TrailerSetting::default(),
+        )
+        .await
     }
 
     /// 创建并启动服务器(携带网络层精确计数器)
@@ -107,6 +133,7 @@ impl NetworkConnectionManager {
         config: &ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<crate::network::events::NetCounters>,
+        trailer: TrailerSetting,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // 如果服务器已存在，则先停止
         if self.servers.contains_key(&config.id) {
@@ -114,7 +141,8 @@ impl NetworkConnectionManager {
         }
 
         // 创建服务器
-        let server = DefaultNetworkFactory::create_server(config, event_sender, net_counters);
+        let server =
+            DefaultNetworkFactory::create_server(config, event_sender, net_counters, trailer);
 
         // 保存服务器到映射中
         self.servers.insert(config.id.clone(), server);
@@ -470,8 +498,14 @@ mod tests {
             if let ConnectionEvent::MessagesReceived(tab_id, batch) = event {
                 assert_eq!(tab_id, client_config.id, "消息应路由到客户端 tab");
                 let message = batch.messages.first().expect("应保留消息明细");
-                assert_eq!(message.raw_data, b"ee", "客户端收到的字节应与服务端发送一致");
-                assert_eq!(message.direction, crate::message::MessageDirection::Received);
+                assert_eq!(
+                    message.raw_data, b"ee",
+                    "客户端收到的字节应与服务端发送一致"
+                );
+                assert_eq!(
+                    message.direction,
+                    crate::message::MessageDirection::Received
+                );
                 return;
             }
         }

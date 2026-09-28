@@ -29,7 +29,9 @@ use crate::stress::port_range::{EphemeralPortRange, STATIC_THRESHOLD};
 use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::components::input_with_mode::InputWithMode;
 use crate::ui::dialog::open_port_limit_help_dialog;
-use crate::ui::dialog::variable_picker::{VariableItem, render_variable_picker, stress_variable_items};
+use crate::ui::dialog::variable_picker::{
+    VariableItem, render_variable_picker, stress_variable_items,
+};
 
 use super::{dialog_content_max_height, dialog_height};
 
@@ -276,7 +278,9 @@ pub fn open_stress_config_dialog(
                             bounds,
                             &theme,
                             Box::new(
-                                move |_event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+                                move |_event: &MouseDownEvent,
+                                      _window: &mut Window,
+                                      cx: &mut App| {
                                     dismiss_entity.update(cx, |app, cx| {
                                         if let Some(s) = &mut app.stress_config_dialog {
                                             s.show_variable_picker = false;
@@ -291,7 +295,11 @@ pub fn open_stress_config_dialog(
                                         if let Some(s) = &mut app.stress_config_dialog {
                                             // 在输入框当前光标处插入变量
                                             s.payload_input.update(cx, |input, cx| {
-                                                input.insert(item.insert_text.to_string(), window, cx);
+                                                input.insert(
+                                                    item.insert_text.to_string(),
+                                                    window,
+                                                    cx,
+                                                );
                                             });
                                             s.show_variable_picker = false;
                                         }
@@ -835,9 +843,9 @@ fn convert_payload_on_mode_switch(
     let value = state.payload_input.read(cx).value().to_string();
     if let Some(converted) = crate::utils::hex::convert_value(&value, &from_mode, to_mode) {
         if converted != value {
-            state.payload_input.update(cx, |input, cx| {
-                input.replace_all(converted, window, cx)
-            });
+            state
+                .payload_input
+                .update(cx, |input, cx| input.replace_all(converted, window, cx));
         }
     }
     state.message_input_mode = to_mode.to_string();

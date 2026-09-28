@@ -3,5 +3,6 @@ pub mod connection_panel;
 pub mod connection_tab;
 pub mod dialog;
 pub mod main_window;
+pub mod send_task_panel;
 pub mod stress_panel;
 pub mod tab_container;

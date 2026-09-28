@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 use crate::utils::message_vars::{CompiledTemplate, RenderContext};
 
@@ -114,6 +114,94 @@ impl fmt::Display for DecoderConfig {
     }
 }
 
+/// 发送结尾追加字符（连接级配置，默认 None 保证既有行为不变）。
+///
+/// 应用点在网络层写路径: 手动发送、周期发送、逐行发送任务、自动回复
+/// 最终都经 `write_sender` → 网络层写任务, 在这一层追加可一处实现全覆盖,
+/// 且计数(`add_sent_bytes`)自动包含追加字节。消息列表与日志仍展示原文。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[repr(u8)]
+pub enum TrailerKind {
+    /// 不追加(默认)
+    #[default]
+    None = 0,
+    /// 追加 \n
+    Lf = 1,
+    /// 追加 \r\n
+    CrLf = 2,
+}
+
+impl TrailerKind {
+    /// 转成可原子存储的 u8
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+
+    /// 从原子存储还原; 未知值退回 None(默认), 保证既有行为
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            1 => TrailerKind::Lf,
+            2 => TrailerKind::CrLf,
+            _ => TrailerKind::None,
+        }
+    }
+
+    /// 界面上循环切换的顺序: 无 → LF → CRLF → 无
+    pub fn next_cycle(self) -> Self {
+        match self {
+            TrailerKind::None => TrailerKind::Lf,
+            TrailerKind::Lf => TrailerKind::CrLf,
+            TrailerKind::CrLf => TrailerKind::None,
+        }
+    }
+}
+
+/// 运行期「结尾追加字符」设置(连接级, 可原子读写)。
+///
+/// 与 `ConnectionConfig::send_trailer`(持久化真源)配合: 持久化字段决定下次
+/// 连接的初始值, 本结构承载运行期即时生效 —— 下拉改动立即影响已建立的连接,
+/// 无需重连。Clone 共享同一 `Arc`, 由 `ConnectionTabState` 持有并 clone 给网络层。
+#[derive(Debug, Clone, Default)]
+pub struct TrailerSetting(Arc<AtomicU8>);
+
+impl TrailerSetting {
+    pub fn new(kind: TrailerKind) -> Self {
+        Self(Arc::new(AtomicU8::new(kind.to_u8())))
+    }
+
+    pub fn get(&self) -> TrailerKind {
+        TrailerKind::from_u8(self.0.load(Ordering::Relaxed))
+    }
+
+    pub fn set(&self, kind: TrailerKind) {
+        self.0.store(kind.to_u8(), Ordering::Relaxed);
+    }
+}
+
+/// 按配置给线上字节追加结尾字符(纯函数, encoder 与 UDP 发送点共用)。
+///
+/// `None` 时借用原字节(零拷贝), 其余返回新分配的 `Cow::Owned`。
+pub fn apply_trailer(bytes: &[u8], kind: TrailerKind) -> std::borrow::Cow<'_, [u8]> {
+    use std::borrow::Cow;
+    match kind {
+        TrailerKind::None => Cow::Borrowed(bytes),
+        TrailerKind::Lf => {
+            let mut out = Vec::with_capacity(bytes.len() + 1);
+            out.extend_from_slice(bytes);
+            out.push(b'\n');
+            Cow::Owned(out)
+        }
+        TrailerKind::CrLf => {
+            let mut out = Vec::with_capacity(bytes.len() + 2);
+            out.extend_from_slice(bytes);
+            out.push(b'\r');
+            out.push(b'\n');
+            Cow::Owned(out)
+        }
+    }
+}
+
 /// 默认发送消息输入模式
 fn default_message_input_mode() -> String {
     "text".to_string()
@@ -138,6 +226,9 @@ pub struct ClientConfig {
     /// 本地绑定端口(None=系统自动分配临时端口)
     #[serde(default)]
     pub local_port: Option<u16>,
+    /// 发送结尾追加字符(默认不追加)
+    #[serde(default)]
+    pub send_trailer: TrailerKind,
 }
 
 impl Default for ClientConfig {
@@ -151,6 +242,7 @@ impl Default for ClientConfig {
             message_input_mode: default_message_input_mode(),
             local_address: None,
             local_port: None,
+            send_trailer: TrailerKind::None,
         }
     }
 }
@@ -168,6 +260,9 @@ pub struct ServerConfig {
     /// 发送消息输入模式：text / hex
     #[serde(default = "default_message_input_mode")]
     pub message_input_mode: String,
+    /// 发送结尾追加字符(默认不追加)
+    #[serde(default)]
+    pub send_trailer: TrailerKind,
 }
 
 impl Default for ServerConfig {
@@ -179,6 +274,7 @@ impl Default for ServerConfig {
             listen_port: 8080,
             decoder_config: DecoderConfig::default(),
             message_input_mode: default_message_input_mode(),
+            send_trailer: TrailerKind::None,
         }
     }
 }
@@ -228,6 +324,22 @@ impl ConnectionConfig {
         }
     }
 
+    /// 获取连接级发送结尾追加字符配置
+    pub fn send_trailer(&self) -> TrailerKind {
+        match self {
+            ConnectionConfig::Client(config) => config.send_trailer,
+            ConnectionConfig::Server(config) => config.send_trailer,
+        }
+    }
+
+    /// 设置连接级发送结尾追加字符配置
+    pub fn set_send_trailer(&mut self, kind: TrailerKind) {
+        match self {
+            ConnectionConfig::Client(config) => config.send_trailer = kind,
+            ConnectionConfig::Server(config) => config.send_trailer = kind,
+        }
+    }
+
     /// 获取包含地址端口的标识字符串，格式如 TCP_127.0.0.1_8080
     pub fn address_label(&self) -> String {
         match self {
@@ -257,6 +369,7 @@ impl ConnectionConfig {
             message_input_mode: default_message_input_mode(),
             local_address: None,
             local_port: None,
+            send_trailer: TrailerKind::None,
         })
     }
 
@@ -269,6 +382,7 @@ impl ConnectionConfig {
             listen_port,
             decoder_config: DecoderConfig::default(),
             message_input_mode: default_message_input_mode(),
+            send_trailer: TrailerKind::None,
         })
     }
 }
@@ -373,7 +487,10 @@ impl AutoReplyConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{AutoReplyConfig, ClientConfig, ConnectionConfig, ConnectionType, ServerConfig};
+    use super::{
+        AutoReplyConfig, ClientConfig, ConnectionConfig, ConnectionType, ServerConfig, TrailerKind,
+        apply_trailer,
+    };
 
     #[test]
     /// 测试旧版配置 JSON(无 local_address/local_port 字段)反序列化后为 None,
@@ -514,5 +631,35 @@ mod tests {
         let cfg = AutoReplyConfig::new();
         cfg.set(true, "4142${random:1:1}", true);
         assert_eq!(cfg.render_content(), vec![0x41, 0x42, 0x01]);
+    }
+
+    #[test]
+    /// 结尾追加字符: None 原样借用, Lf / CrLf 追加对应字节
+    fn test_apply_trailer() {
+        assert_eq!(&*apply_trailer(b"AT", TrailerKind::None), b"AT");
+        assert_eq!(&*apply_trailer(b"AT", TrailerKind::Lf), b"AT\n");
+        assert_eq!(&*apply_trailer(b"AT", TrailerKind::CrLf), b"AT\r\n");
+        // 空消息也能追加(仅结尾)
+        assert_eq!(&*apply_trailer(b"", TrailerKind::Lf), b"\n");
+    }
+
+    #[test]
+    /// 旧版配置(无 send_trailer 字段)反序列化后默认为 None, 保持既有行为
+    fn test_send_trailer_serde_default() {
+        let json = r#"{
+            "id": "test-id",
+            "protocol": "tcp",
+            "server_address": "192.168.1.1",
+            "server_port": 8080
+        }"#;
+        let config: ClientConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.send_trailer, TrailerKind::None);
+
+        // 序列化往返保持取值
+        let mut config = ClientConfig::default();
+        config.send_trailer = TrailerKind::CrLf;
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: ClientConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.send_trailer, TrailerKind::CrLf);
     }
 }

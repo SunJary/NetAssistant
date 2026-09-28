@@ -154,6 +154,48 @@ import_file:
   preview:
     zh-CN: 预览
     en: Preview
+  send_mode:
+    zh-CN: 发送方式
+    en: Send Mode
+  mode_whole:
+    zh-CN: 整个文件发送
+    en: Send Whole File
+  mode_by_lines:
+    zh-CN: 逐行发送
+    en: Send Line by Line
+  line_interval:
+    zh-CN: 每条间隔
+    en: Interval
+  loop_send:
+    zh-CN: 循环发送
+    en: Loop
+  max_rounds:
+    zh-CN: 最多轮次（留空=无限）
+    en: Max rounds (empty = unlimited)
+  lines_summary:
+    zh-CN: 共 %{n} 行可发送（已跳过 %{skipped} 个空行）
+    en: "%{n} lines to send (%{skipped} blank lines skipped)"
+  invalid_lines_title:
+    zh-CN: 以下行不是合法的 Hex，无法逐行发送：
+    en: "These lines are not valid Hex and cannot be sent line by line:"
+  err_empty:
+    zh-CN: 没有可发送的非空行
+    en: No non-empty lines to send
+  err_too_many:
+    zh-CN: 行数超过上限 %{max}
+    en: "Too many lines (max %{max})"
+  err_invalid_hex:
+    zh-CN: 存在非法的 Hex 行，无法逐行发送
+    en: Some lines are not valid Hex; cannot send line by line
+  trailer_hint:
+    zh-CN: 结尾追加：%{label}（在发送区设置）
+    en: "Trailing: %{label} (set in the send area)"
+  create_task:
+    zh-CN: 创建任务
+    en: Create Task
+  create_and_start:
+    zh-CN: 创建并立即开始
+    en: Create & Start
   confirm:
     zh-CN: 确定
     en: OK
@@ -330,3 +372,80 @@ connection_tab:
   insert_variable_tooltip:
     zh-CN: 插入时间、UUID、随机数等变量，发送时替换为实际值
     en: Insert time, UUID, random and other variables; replaced with actual values when sending
+  trailer_label:
+    zh-CN: 结尾
+    en: Suffix
+  trailer_none:
+    zh-CN: 无
+    en: None
+  trailer_tooltip:
+    zh-CN: 发送时在每条消息末尾追加结尾字符（无 / LF / CRLF），点击切换；立即生效，同时对逐行发送任务与自动回复生效
+    en: Append a trailing character (None / LF / CRLF) to every outgoing message; click to cycle. Takes effect immediately, also applies to line-send tasks and auto reply
+
+send_task:
+  reason_not_connected:
+    zh-CN: 未连接
+    en: Not connected
+  reason_disconnected:
+    zh-CN: 连接已断开
+    en: Connection lost
+  title:
+    zh-CN: 发送任务
+    en: Send Tasks
+  tooltip:
+    zh-CN: 查看逐行发送任务
+    en: View line-send tasks
+  empty:
+    zh-CN: 暂无发送任务
+    en: No send tasks
+  status_idle:
+    zh-CN: 待开始
+    en: Idle
+  status_running:
+    zh-CN: 运行中
+    en: Running
+  status_paused:
+    zh-CN: 已暂停
+    en: Paused
+  status_finished:
+    zh-CN: 已完成
+    en: Finished
+  status_stopped:
+    zh-CN: 已停止
+    en: Stopped
+  status_failed:
+    zh-CN: 失败
+    en: Failed
+  round:
+    zh-CN: 第 %{n} 轮
+    en: "Round %{n}"
+  round_infinite:
+    zh-CN: 无限循环
+    en: Infinite loop
+  interval:
+    zh-CN: 间隔 %{ms} ms
+    en: "Interval %{ms} ms"
+  items:
+    zh-CN: 共 %{n} 条
+    en: "%{n} items"
+  lines_preview_title:
+    zh-CN: 行清单（前 %{n} 条）
+    en: "Lines (first %{n})"
+  pause:
+    zh-CN: 暂停
+    en: Pause
+  resume:
+    zh-CN: 继续
+    en: Resume
+  stop:
+    zh-CN: 停止
+    en: Stop
+  delete:
+    zh-CN: 删除
+    en: Delete
+  expand_lines:
+    zh-CN: 展开行清单
+    en: Show lines
+  collapse_lines:
+    zh-CN: 收起行清单
+    en: Hide lines

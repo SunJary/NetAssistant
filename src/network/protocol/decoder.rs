@@ -1,4 +1,4 @@
-use crate::config::connection::DecoderConfig;
+use crate::config::connection::{DecoderConfig, TrailerKind, TrailerSetting, apply_trailer};
 use bytes::BytesMut;
 use log::debug;
 use tokio_util::codec::{BytesCodec, Decoder, Encoder, LengthDelimitedCodec};
@@ -110,10 +110,15 @@ impl CodecFactory {
     }
 
     /// 根据配置创建相应的encoder，返回Box<dyn Encoder<BytesMut, Error = std::io::Error>>
+    ///
+    /// `trailer` 为连接级「结尾追加字符」设置(默认 None)。每次都包一层适配器,
+    /// 由 `encode()` 时读取当前值 —— 下拉改动即时生效, 无需重连; `None` 时
+    /// 纯函数零拷贝借用原字节, 行为与既有完全一致。
     pub fn create_encoder(
         config: &DecoderConfig,
+        trailer: TrailerSetting,
     ) -> Box<dyn Encoder<BytesMut, Error = std::io::Error> + Send + Sync> {
-        match config {
+        let inner: Box<dyn Encoder<BytesMut, Error = std::io::Error> + Send + Sync> = match config {
             DecoderConfig::Bytes => Box::new(BytesDecoder::new()),
             DecoderConfig::LineBased => {
                 // 将LinesCodec包装成输入BytesMut的Encoder
@@ -130,6 +135,31 @@ impl CodecFactory {
             DecoderConfig::Json => {
                 // 对于JSON，我们直接使用BytesCodec
                 Box::new(BytesDecoder::new())
+            }
+        };
+        Box::new(TrailerEncoder { inner, trailer })
+    }
+}
+
+/// 结尾追加字符编码器适配器: 每次 `encode()` 读取当前设置, 按配置追加 LF/CRLF
+/// 后交给内层编码器 —— 运行期改动即时生效。
+struct TrailerEncoder {
+    inner: Box<dyn Encoder<BytesMut, Error = std::io::Error> + Send + Sync>,
+    trailer: TrailerSetting,
+}
+
+impl Encoder<BytesMut> for TrailerEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: BytesMut, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        match self.trailer.get() {
+            // None: 零拷贝直传, 行为与既有完全一致
+            TrailerKind::None => self.inner.encode(item, dst),
+            kind => {
+                let with_trailer = apply_trailer(&item, kind);
+                let mut owned = BytesMut::with_capacity(with_trailer.len());
+                owned.extend_from_slice(&with_trailer);
+                self.inner.encode(owned, dst)
             }
         }
     }
@@ -459,7 +489,8 @@ impl Decoder for JsonDecoder {
                     // 跳到下一个可能的 JSON 起点重新同步: 否则一次坏数据会让后续每次
                     // decode 都立刻报错, 残留永远吐不出去, 整条连接永久失能。
                     // 跳过的字节先攒起来(而不是 split_to 丢弃), 稍后作为一条消息吐出。
-                    let skip = next_value_start(&self.pending_data).unwrap_or(self.pending_data.len());
+                    let skip =
+                        next_value_start(&self.pending_data).unwrap_or(self.pending_data.len());
                     debug!("JsonDecoder: 跳过 {} 字节以重新同步: {}", skip, e);
                     let skipped = self.pending_data.split_to(skip);
                     self.skipped.extend_from_slice(&skipped);
@@ -531,7 +562,10 @@ mod tests {
     fn json_splits_multiple_values_in_one_read() {
         let mut d = json_decoder();
         let frames = decode_all(&mut d, br#"{"n":0}{"n":1}{"n":2}"#);
-        assert_eq!(frames, vec![v(r#"{"n":0}"#), v(r#"{"n":1}"#), v(r#"{"n":2}"#)]);
+        assert_eq!(
+            frames,
+            vec![v(r#"{"n":0}"#), v(r#"{"n":1}"#), v(r#"{"n":2}"#)]
+        );
         assert!(!d.has_pending());
     }
 
@@ -659,7 +693,10 @@ mod tests {
     #[test]
     fn fixed_length_consume_flush_shifts_alignment() {
         let mut d = CodecFactory::create_decoder(&DecoderConfig::FixedLength(4));
-        assert_eq!(decode_all(&mut d, b"AAAABBBBCC"), vec![v("AAAA"), v("BBBB")]);
+        assert_eq!(
+            decode_all(&mut d, b"AAAABBBBCC"),
+            vec![v("AAAA"), v("BBBB")]
+        );
         assert_eq!(d.force_flush().as_deref(), Some(&b"CC"[..]));
         assert!(!d.has_pending(), "消费式强刷后缓冲区必须为空");
 
@@ -693,5 +730,35 @@ mod tests {
         let mut d = CodecFactory::create_decoder(&DecoderConfig::Bytes);
         assert!(!d.has_pending());
         assert!(d.force_flush().is_none());
+    }
+
+    /// 结尾追加字符: None 保持原字节, Lf / CrLf 在编码时追加
+    #[test]
+    fn encoder_applies_trailer() {
+        let encode = |kind: TrailerKind| {
+            let mut enc =
+                CodecFactory::create_encoder(&DecoderConfig::Bytes, TrailerSetting::new(kind));
+            let mut dst = BytesMut::new();
+            enc.encode(BytesMut::from(&b"AT"[..]), &mut dst).unwrap();
+            dst.to_vec()
+        };
+        assert_eq!(encode(TrailerKind::None), b"AT".to_vec());
+        assert_eq!(encode(TrailerKind::Lf), b"AT\n".to_vec());
+        assert_eq!(encode(TrailerKind::CrLf), b"AT\r\n".to_vec());
+    }
+
+    /// 运行期改动即时生效: 同一 encoder 实例, 改设置后下一次编码即按新值追加
+    #[test]
+    fn encoder_reads_trailer_at_encode_time() {
+        let setting = TrailerSetting::new(TrailerKind::None);
+        let mut enc = CodecFactory::create_encoder(&DecoderConfig::Bytes, setting.clone());
+        let mut dst = BytesMut::new();
+        enc.encode(BytesMut::from(&b"AT"[..]), &mut dst).unwrap();
+        assert_eq!(dst.to_vec(), b"AT".to_vec());
+
+        setting.set(TrailerKind::CrLf);
+        let mut dst2 = BytesMut::new();
+        enc.encode(BytesMut::from(&b"AT"[..]), &mut dst2).unwrap();
+        assert_eq!(dst2.to_vec(), b"AT\r\n".to_vec());
     }
 }

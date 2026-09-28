@@ -1,4 +1,6 @@
-use crate::config::connection::{AutoReplyConfig, ClientConfig, DecoderConfig, ServerConfig};
+use crate::config::connection::{
+    AutoReplyConfig, ClientConfig, DecoderConfig, ServerConfig, TrailerSetting,
+};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch};
@@ -109,6 +111,8 @@ pub struct TcpClient {
     net_counters: Option<NetCounters>,
     is_connected: bool,
     cancel_token: CancellationToken,
+    /// 运行期「结尾追加字符」设置(下拉改动即时生效)
+    trailer: TrailerSetting,
 }
 
 impl TcpClient {
@@ -116,6 +120,7 @@ impl TcpClient {
         config: ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<NetCounters>,
+        trailer: TrailerSetting,
     ) -> Self {
         TcpClient {
             config,
@@ -124,6 +129,7 @@ impl TcpClient {
             net_counters,
             is_connected: false,
             cancel_token: CancellationToken::new(),
+            trailer,
         }
     }
 }
@@ -138,6 +144,7 @@ impl NetworkConnection for TcpClient {
         let message_processor = self.message_processor.clone();
         let net_counters = self.net_counters.clone();
         let cancel_token = self.cancel_token.clone();
+        let trailer = self.trailer.clone();
 
         Pin::from(Box::new(async move {
             // 解析地址，支持IPv4和IPv6
@@ -393,7 +400,7 @@ impl NetworkConnection for TcpClient {
             });
 
             // 启动发送消息任务
-            let encoder_for_write = CodecFactory::create_encoder(&config.decoder_config);
+            let encoder_for_write = CodecFactory::create_encoder(&config.decoder_config, trailer);
             let write_cancel_token = cancel_token.clone();
             let net_counters_clone_write = net_counters.clone();
             tokio::spawn(async move {
@@ -465,6 +472,8 @@ pub struct TcpServer {
     listener: Option<Arc<TcpListener>>,
     /// 自动回复共享状态(UI 下发 → 网络层每条消息读取)
     auto_reply_state: Arc<AutoReplyConfig>,
+    /// 运行期「结尾追加字符」设置(下拉改动即时生效)
+    trailer: TrailerSetting,
 }
 
 /// 实现Drop trait，确保资源被正确释放
@@ -494,6 +503,7 @@ impl TcpServer {
         config: ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<NetCounters>,
+        trailer: TrailerSetting,
     ) -> Self {
         TcpServer {
             config,
@@ -506,6 +516,7 @@ impl TcpServer {
             client_handles: Arc::new(Mutex::new(HashMap::new())),
             listener: None,
             auto_reply_state: Arc::new(AutoReplyConfig::new()),
+            trailer,
         }
     }
 }
@@ -554,6 +565,7 @@ impl NetworkServer for TcpServer {
         let clients = self.clients.clone();
         let client_handles = self.client_handles.clone();
         let auto_reply_state = self.auto_reply_state.clone();
+        let trailer = self.trailer.clone();
 
         // bind 直接在返回的 future 内执行: 失败带上下文返回 Err(对齐 UDP 模式),
         // 不再静默回退绑定随机端口,也不再留 panic 兜底
@@ -665,6 +677,7 @@ impl NetworkServer for TcpServer {
                                 let config_clone_for_client = config.clone();
                                 let client_handles_clone_for_client = client_handles.clone();
                                 let auto_reply_state_for_client = auto_reply_state.clone();
+                                let trailer_for_client = trailer.clone();
 
                                 // 创建客户端连接的任务句柄
                                 let client_task = tokio::spawn(async move {
@@ -677,6 +690,7 @@ impl NetworkServer for TcpServer {
                                         config_clone_for_client.decoder_config.clone();
                                     let encoder = CodecFactory::create_encoder(
                                         &config_clone_for_client.decoder_config,
+                                        trailer_for_client,
                                     );
                                     // 用 Option 包装: 控制通道关闭后置 None, 让 select! 中该分支退化为 pending
                                     let mut decoder_control_rx = Some(decoder_control_rx);
@@ -830,7 +844,11 @@ impl NetworkServer for TcpServer {
                                                 &client_net_counters,
                                                 MessageType::Text,
                                             );
-                                            flush_batch(&client_event_sender, &client_id_clone, &mut batch);
+                                            flush_batch(
+                                                &client_event_sender,
+                                                &client_id_clone,
+                                                &mut batch,
+                                            );
                                         }
                                     };
 

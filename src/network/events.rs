@@ -1,5 +1,6 @@
 use crate::config::connection::{AutoReplyConfig, DecoderConfig};
 use crate::message::Message;
+use crate::send_task::model::{TaskEndReason, TaskStatus};
 use smol::channel::Sender;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -122,4 +123,20 @@ pub enum ConnectionEvent {
     ServerDecoderControlSenderReady(String, SocketAddr, Sender<DecoderConfig>),
     /// 服务端自动回复共享状态就绪(UI 运行时下发启用开关与回复内容)
     ServerAutoReplyStateReady(String, Arc<AutoReplyConfig>),
+    /// 发送任务进度(节流上报; UI 只刷新展示)
+    TaskProgress {
+        tab_id: String,
+        task_id: String,
+        sent_items: u64,
+        total_items: u64,
+        round: u32,
+        status: TaskStatus,
+        pause_reason: Option<String>,
+    },
+    /// 发送任务结束(正常完成 / 被停止 / 失败原因)
+    TaskFinished {
+        tab_id: String,
+        task_id: String,
+        reason: TaskEndReason,
+    },
 }

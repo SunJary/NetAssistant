@@ -19,6 +19,7 @@ mod export;
 mod log_writer;
 mod message;
 mod network;
+mod send_task;
 mod stress;
 mod theme_event_handler;
 mod theme_manager;

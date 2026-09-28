@@ -19,12 +19,16 @@ use gpui_component::Theme;
 use gpui_component::WindowExt as _;
 use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::dialog::DialogFooter;
+use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement;
 
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
+use crate::config::connection::TrailerKind;
+use crate::send_task::{LineParseError, MAX_TASK_ITEMS, SendTaskConfig, TaskKind, parse_lines};
 use crate::utils::file_source::{FileEncoding, FileSourceError, bytes_to_hex_text, format_size};
+use crate::utils::hex::validate_hex_input;
 
 use super::dialog_height;
 
@@ -34,6 +38,26 @@ use super::dialog_height;
 /// 且 hex 模式下完整文本可达 ~512K 字符，直接渲染会拖垮 UI，故在此截断。
 const PREVIEW_MAX_LINES: usize = 8;
 const PREVIEW_MAX_CHARS: usize = 2000;
+
+/// 「发送方式」二选一: 整个文件发送(现状) / 逐行发送(新建后台任务)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportSendMode {
+    WholeFile,
+    ByLines,
+}
+
+/// 逐行模式的行统计预览(仅展示; 创建任务时由 `parse_lines` 重新解析)
+#[derive(Debug, Clone, Default)]
+pub struct LinePreview {
+    /// 有效行数(空行与非法行不计)
+    pub valid: usize,
+    /// 跳过的空行数
+    pub skipped_blank: usize,
+    /// hex 模式非法行(前 5 条; 1-based 行号, 原文)
+    pub invalid: Vec<(usize, String)>,
+    /// 整批级错误(无可发送行 / 超上限)
+    pub parse_error: Option<String>,
+}
 
 /// 「从文件打开」对话框状态（打开时创建，取消/确定后由 app 置 None）
 pub struct ImportFileDialogState {
@@ -52,10 +76,31 @@ pub struct ImportFileDialogState {
     /// 当前错误提示（过大/空文件/UTF-8 非法/代码页不支持/读失败），Some 时禁止确定
     pub error: Option<String>,
     pub reading: bool,
+
+    // ===== 发送方式（整个文件 / 逐行发送）=====
+    pub send_mode: ImportSendMode,
+    /// 逐行: 每条之间的间隔(ms)
+    pub interval_input: Entity<InputState>,
+    /// 逐行: 是否循环整批
+    pub loop_enabled: bool,
+    /// 逐行: 最多轮次(留空 = 无限)
+    pub max_rounds_input: Entity<InputState>,
+    /// 逐行: 行统计预览(切换模式/编码/文件时刷新)
+    pub line_preview: Option<LinePreview>,
 }
 
 impl ImportFileDialogState {
-    pub fn new(tab_id: String, hex_mode: bool) -> Self {
+    pub fn new(
+        tab_id: String,
+        hex_mode: bool,
+        window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Self {
+        let interval_input = cx.new(|cx| InputState::new(window, cx));
+        interval_input.update(cx, |input, cx| {
+            input.set_value("1000".to_string(), window, cx);
+        });
+        let max_rounds_input = cx.new(|cx| InputState::new(window, cx));
         Self {
             tab_id,
             hex_mode,
@@ -67,12 +112,56 @@ impl ImportFileDialogState {
             lossy: false,
             error: None,
             reading: false,
+            send_mode: ImportSendMode::WholeFile,
+            interval_input,
+            loop_enabled: false,
+            max_rounds_input,
+            line_preview: None,
         }
     }
 
-    /// 是否可确认（已成功生成预览且不在读取中）
-    pub fn can_confirm(&self) -> bool {
-        self.bytes.is_some() && self.preview.is_some() && self.error.is_none() && !self.reading
+    /// 是否可确认（已成功生成预览且不在读取中；逐行模式还需行参数合法）
+    pub fn can_confirm(&self, cx: &App) -> bool {
+        let base =
+            self.bytes.is_some() && self.preview.is_some() && self.error.is_none() && !self.reading;
+        if !base {
+            return false;
+        }
+        match self.send_mode {
+            ImportSendMode::WholeFile => true,
+            // 逐行: 间隔必须能解析为数值; 行统计存在且无整批错误/非法行, 且有可发送行
+            ImportSendMode::ByLines => {
+                self.interval_ms(cx).is_some()
+                    && self
+                        .line_preview
+                        .as_ref()
+                        .map(|p| p.parse_error.is_none() && p.invalid.is_empty() && p.valid > 0)
+                        .unwrap_or(false)
+            }
+        }
+    }
+
+    /// 逐行间隔(ms); 输入为空/非法时返回 None
+    pub fn interval_ms(&self, cx: &App) -> Option<u64> {
+        self.interval_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u64>()
+            .ok()
+    }
+
+    /// 最多轮次; 留空/非法 → None(无限); 仅循环开启时有意义
+    pub fn max_rounds(&self, cx: &App) -> Option<u32> {
+        if !self.loop_enabled {
+            return None;
+        }
+        self.max_rounds_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u32>()
+            .ok()
     }
 
     /// 记录读取结果并生成预览
@@ -92,6 +181,7 @@ impl ImportFileDialogState {
         self.lossy = false;
         self.reading = false;
         self.error = Some(error_text(err));
+        self.line_preview = None;
     }
 
     /// 依当前 hex_mode / encoding 从缓存字节重新生成预览（切换编码时复用，不重复 IO）
@@ -104,18 +194,90 @@ impl ImportFileDialogState {
         if self.hex_mode {
             // hex 模式按原始字节导入，不涉及编码
             self.preview = Some(SharedString::from(preview_head(&bytes_to_hex_text(bytes))));
+        } else {
+            match self.encoding.decode(bytes) {
+                Ok(decoded) => {
+                    self.lossy = decoded.lossy;
+                    self.preview = Some(SharedString::from(preview_head(&decoded.text)));
+                }
+                Err(err) => {
+                    self.preview = None;
+                    self.error = Some(error_text(&err));
+                }
+            }
+        }
+        // 编码/文件变化会改变行内容, 同步刷新逐行统计
+        self.refresh_line_preview();
+    }
+
+    /// 刷新逐行模式的行统计（切换发送方式 / 编码 / 文件时调用）。
+    ///
+    /// 统计口径与 `parse_lines` 一致: 按 `\n` 切分、剥离行尾 `\r`、空行跳过、
+    /// hex 模式逐行校验。此处仅作展示与可确认性判断, 创建任务时仍由 `parse_lines` 重新解析。
+    pub fn refresh_line_preview(&mut self) {
+        self.line_preview = None;
+        if self.send_mode != ImportSendMode::ByLines {
             return;
         }
-        match self.encoding.decode(bytes) {
-            Ok(decoded) => {
-                self.lossy = decoded.lossy;
-                self.preview = Some(SharedString::from(preview_head(&decoded.text)));
+        let Some(text) = self.full_text() else {
+            return;
+        };
+        let mut stats = LinePreview::default();
+        let mut too_many = false;
+        for (idx, raw_line) in text.split('\n').enumerate() {
+            let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+            if line.is_empty() {
+                stats.skipped_blank += 1;
+                continue;
             }
-            Err(err) => {
-                self.preview = None;
-                self.error = Some(error_text(&err));
+            if self.hex_mode && !validate_hex_input(line) {
+                if stats.invalid.len() < 5 {
+                    stats.invalid.push((idx + 1, line.to_string()));
+                }
+                continue;
+            }
+            stats.valid += 1;
+            if stats.valid > MAX_TASK_ITEMS {
+                too_many = true;
+                break;
             }
         }
+        if too_many {
+            stats.parse_error =
+                Some(t!("import_file.err_too_many", max = MAX_TASK_ITEMS).to_string());
+        } else if stats.valid == 0 && stats.invalid.is_empty() {
+            stats.parse_error = Some(t!("import_file.err_empty").to_string());
+        }
+        self.line_preview = Some(stats);
+    }
+
+    /// 逐行模式确认时构建任务配置; 解析失败返回 UI 文案。
+    pub fn build_send_config(
+        &self,
+        cx: &App,
+        start_immediately: bool,
+    ) -> Result<SendTaskConfig, String> {
+        let text = self
+            .full_text()
+            .ok_or_else(|| t!("import_file.empty").to_string())?;
+        let items = parse_lines(&text, self.hex_mode).map_err(|e| line_parse_error_text(&e))?;
+        let interval_ms = self.interval_ms(cx).unwrap_or(1000);
+        let name = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| t!("import_file.no_file").to_string());
+        Ok(SendTaskConfig {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            kind: TaskKind::SendByLines { items },
+            interval_ms,
+            loop_enabled: self.loop_enabled,
+            max_rounds: self.max_rounds(cx),
+            hex_mode: self.hex_mode,
+            start_immediately,
+        })
     }
 
     /// 生成要回填到发送输入框的完整内容（确认时调用）
@@ -125,6 +287,31 @@ impl ImportFileDialogState {
             return Some(bytes_to_hex_text(bytes));
         }
         self.encoding.decode(bytes).ok().map(|decoded| decoded.text)
+    }
+}
+
+/// 结尾追加字符的展示标签（无 / LF / CRLF）
+pub fn trailer_label(kind: TrailerKind) -> String {
+    match kind {
+        TrailerKind::None => t!("connection_tab.trailer_none").to_string(),
+        TrailerKind::Lf => "LF".to_string(),
+        TrailerKind::CrLf => "CRLF".to_string(),
+    }
+}
+
+/// 逐行模式只读提示行: 结尾追加跟随发送区(连接级)配置
+pub fn trailer_hint_text(kind: TrailerKind) -> String {
+    t!("import_file.trailer_hint", label = trailer_label(kind)).to_string()
+}
+
+/// `parse_lines` 错误 → 本地化文案
+pub fn line_parse_error_text(err: &LineParseError) -> String {
+    match err {
+        LineParseError::Empty => t!("import_file.err_empty").to_string(),
+        LineParseError::TooMany { max, .. } => {
+            t!("import_file.err_too_many", max = max).to_string()
+        }
+        LineParseError::InvalidHexLines(_) => t!("import_file.err_invalid_hex").to_string(),
     }
 }
 
@@ -219,16 +406,12 @@ fn render_body(app: &Entity<NetAssistantApp>, _window: &Window, cx: &App) -> Div
         .size
         .map(|n| t!("import_file.size", size = format_size(n)).to_string());
 
-    let mut file_row = div()
-        .flex()
-        .flex_col()
-        .min_w_0()
-        .child(
-            div()
-                .text_sm()
-                .text_color(theme.foreground)
-                .child(file_label),
-        );
+    let mut file_row = div().flex().flex_col().min_w_0().child(
+        div()
+            .text_sm()
+            .text_color(theme.foreground)
+            .child(file_label),
+    );
     if let Some(size_label) = size_label {
         file_row = file_row.child(
             div()
@@ -307,24 +490,9 @@ fn render_body(app: &Entity<NetAssistantApp>, _window: &Window, cx: &App) -> Div
                     div()
                         .flex()
                         .gap_2()
-                        .child(encoding_chip(
-                            app,
-                            s.encoding,
-                            FileEncoding::Utf8,
-                            &theme,
-                        ))
-                        .child(encoding_chip(
-                            app,
-                            s.encoding,
-                            FileEncoding::Gbk,
-                            &theme,
-                        ))
-                        .child(encoding_chip(
-                            app,
-                            s.encoding,
-                            FileEncoding::Ansi,
-                            &theme,
-                        )),
+                        .child(encoding_chip(app, s.encoding, FileEncoding::Utf8, &theme))
+                        .child(encoding_chip(app, s.encoding, FileEncoding::Gbk, &theme))
+                        .child(encoding_chip(app, s.encoding, FileEncoding::Ansi, &theme)),
                 ),
         );
     }
@@ -344,20 +512,18 @@ fn render_body(app: &Entity<NetAssistantApp>, _window: &Window, cx: &App) -> Div
                         .child(t!("import_file.preview").to_string()),
                 )
                 .child(
-                    div()
-                        .max_h(px(160.0))
-                        .child(
-                            div()
-                                .id("import-file-preview")
-                                .overflow_y_scrollbar()
-                                .p_2()
-                                .bg(theme.border)
-                                .rounded_md()
-                                .font_family("JetBrains Mono")
-                                .text_xs()
-                                .text_color(theme.foreground)
-                                .child(preview),
-                        ),
+                    div().max_h(px(160.0)).child(
+                        div()
+                            .id("import-file-preview")
+                            .overflow_y_scrollbar()
+                            .p_2()
+                            .bg(theme.border)
+                            .rounded_md()
+                            .font_family("JetBrains Mono")
+                            .text_xs()
+                            .text_color(theme.foreground)
+                            .child(preview),
+                    ),
                 ),
         );
     }
@@ -371,6 +537,212 @@ fn render_body(app: &Entity<NetAssistantApp>, _window: &Window, cx: &App) -> Div
                 .text_color(theme.warning)
                 .child(t!("import_file.lossy").to_string()),
         );
+    }
+
+    // 发送方式：整个文件发送（现状）/ 逐行发送（新建后台任务）
+    body = body.child(
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .text_sm()
+                    .font_semibold()
+                    .text_color(theme.foreground)
+                    .child(t!("import_file.send_mode").to_string()),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(mode_chip(
+                        app,
+                        s.send_mode,
+                        ImportSendMode::WholeFile,
+                        &theme,
+                    ))
+                    .child(mode_chip(app, s.send_mode, ImportSendMode::ByLines, &theme)),
+            ),
+    );
+
+    // 逐行参数区：间隔 / 循环 / 最多轮次 + 行统计 + 结尾提示
+    if s.send_mode == ImportSendMode::ByLines {
+        let mut params = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_3()
+            .bg(theme.secondary)
+            .rounded_md()
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    // 间隔(ms)
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(t!("import_file.line_interval").to_string()),
+                    )
+                    .child(
+                        div()
+                            .w_20()
+                            .h_7()
+                            .bg(theme.background)
+                            .rounded_md()
+                            .border_1()
+                            .border_color(theme.border)
+                            .child(
+                                Input::new(&s.interval_input)
+                                    .w_full()
+                                    .h_full()
+                                    .bg(theme.background)
+                                    .rounded_md()
+                                    .border_0()
+                                    .text_center(),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child("ms".to_string()),
+                    )
+                    // 循环发送
+                    .child({
+                        let entity = app.clone();
+                        div()
+                            .ml_2()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .cursor_pointer()
+                            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                                entity.update(cx, |app, cx| {
+                                    if let Some(d) = app.import_file_dialog.as_mut() {
+                                        d.loop_enabled = !d.loop_enabled;
+                                    }
+                                    cx.notify();
+                                });
+                            })
+                            .child(
+                                div()
+                                    .w_4()
+                                    .h_4()
+                                    .border_1()
+                                    .border_color(theme.border)
+                                    .rounded(px(4.))
+                                    .when(s.loop_enabled, |this| {
+                                        this.bg(theme.primary)
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(theme.primary_foreground)
+                                                    .font_bold()
+                                                    .child("✓"),
+                                            )
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(t!("import_file.loop_send").to_string()),
+                            )
+                    }),
+            );
+
+        // 最多轮次（仅循环开启时可编辑；留空 = 无限）
+        if s.loop_enabled {
+            params = params.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(t!("import_file.max_rounds").to_string()),
+                    )
+                    .child(
+                        div()
+                            .w_20()
+                            .h_7()
+                            .bg(theme.background)
+                            .rounded_md()
+                            .border_1()
+                            .border_color(theme.border)
+                            .child(
+                                Input::new(&s.max_rounds_input)
+                                    .w_full()
+                                    .h_full()
+                                    .bg(theme.background)
+                                    .rounded_md()
+                                    .border_0()
+                                    .text_center(),
+                            ),
+                    ),
+            );
+        }
+
+        // 行统计预览
+        if let Some(p) = s.line_preview.as_ref() {
+            if let Some(err) = p.parse_error.clone() {
+                params = params.child(div().text_xs().text_color(theme.danger).child(err));
+            } else {
+                params = params.child(
+                    div().text_xs().text_color(theme.foreground).child(
+                        t!(
+                            "import_file.lines_summary",
+                            n = p.valid,
+                            skipped = p.skipped_blank
+                        )
+                        .to_string(),
+                    ),
+                );
+            }
+            if !p.invalid.is_empty() {
+                let mut list = div().flex().flex_col().gap_1().child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.warning)
+                        .child(t!("import_file.invalid_lines_title").to_string()),
+                );
+                for (line_no, raw) in p.invalid.iter() {
+                    list = list.child(
+                        div()
+                            .font_family("JetBrains Mono")
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(format!("{}: {}", line_no, raw)),
+                    );
+                }
+                params = params.child(list);
+            }
+        }
+
+        // 结尾追加（只读，跟随发送区连接级配置）
+        let trailer_kind = state
+            .connection_tabs
+            .get(&s.tab_id)
+            .map(|t| t.send_trailer_setting.get())
+            .unwrap_or(TrailerKind::None);
+        params = params.child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(trailer_hint_text(trailer_kind)),
+        );
+
+        body = body.child(params);
     }
 
     // 错误行
@@ -444,22 +816,64 @@ fn encoding_label(encoding: FileEncoding) -> String {
     }
 }
 
+/// 渲染「发送方式」分段按钮
+fn mode_chip(
+    app: &Entity<NetAssistantApp>,
+    current: ImportSendMode,
+    mode: ImportSendMode,
+    theme: &Theme,
+) -> Div {
+    let selected = current == mode;
+    let entity = app.clone();
+    div()
+        .px_3()
+        .py_1()
+        .rounded_md()
+        .cursor_pointer()
+        .when(selected, |d| {
+            d.bg(theme.primary).text_color(theme.primary_foreground)
+        })
+        .when(!selected, |d| {
+            d.bg(theme.border).text_color(theme.foreground)
+        })
+        .child(div().text_sm().font_medium().child(mode_label(mode)))
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                if let Some(d) = app.import_file_dialog.as_mut() {
+                    if d.send_mode != mode {
+                        d.send_mode = mode;
+                        // 切换发送方式后重算逐行统计
+                        d.refresh_line_preview();
+                    }
+                }
+                cx.notify();
+            });
+        })
+}
+
+/// 发送方式的本地化标签
+fn mode_label(mode: ImportSendMode) -> String {
+    match mode {
+        ImportSendMode::WholeFile => t!("import_file.mode_whole").to_string(),
+        ImportSendMode::ByLines => t!("import_file.mode_by_lines").to_string(),
+    }
+}
+
 /// 渲染底部操作按钮
 fn render_footer(app: &WeakEntity<NetAssistantApp>, cx: &App) -> DialogFooter {
-    // 确定按钮可用态随状态实时刷新（对话框 builder 每帧重建）
-    let can_confirm = app
+    // 可用态随状态实时刷新（对话框 builder 每帧重建）
+    let (can_confirm, mode) = app
         .upgrade()
         .and_then(|entity| {
             entity
                 .read(cx)
                 .import_file_dialog
                 .as_ref()
-                .map(|s| s.can_confirm())
+                .map(|s| (s.can_confirm(cx), s.send_mode))
         })
-        .unwrap_or(false);
+        .unwrap_or((false, ImportSendMode::WholeFile));
 
     let app_cancel = app.clone();
-    let app_ok = app.clone();
     let mut footer = DialogFooter::new().child(
         Button::new("import-file-cancel")
             .outline()
@@ -473,18 +887,62 @@ fn render_footer(app: &WeakEntity<NetAssistantApp>, cx: &App) -> DialogFooter {
             }),
     );
 
-    let ok = Button::new("import-file-ok")
-        .primary()
-        .label(t!("import_file.confirm").to_string());
-    // 无有效预览（未选文件 / 解码失败 / 读取中）时禁用确定
-    let ok = if can_confirm {
-        ok.on_click(move |_, window, cx| {
-            let _ = app_ok.update(cx, |app, cx| app.confirm_import_file(window, cx));
-            window.close_dialog(cx);
-        })
-    } else {
-        ok.disabled(true)
-    };
-    footer = footer.child(ok);
+    match mode {
+        // 整个文件发送: 沿用现状（确定 → 回填发送框）
+        ImportSendMode::WholeFile => {
+            let app_ok = app.clone();
+            let ok = Button::new("import-file-ok")
+                .primary()
+                .label(t!("import_file.confirm").to_string());
+            let ok = if can_confirm {
+                ok.on_click(move |_, window, cx| {
+                    let _ = app_ok.update(cx, |app, cx| app.confirm_import_file(window, cx));
+                    window.close_dialog(cx);
+                })
+            } else {
+                ok.disabled(true)
+            };
+            footer = footer.child(ok);
+        }
+        // 逐行发送: 创建任务（暂停待启动）/ 创建并立即开始
+        ImportSendMode::ByLines => {
+            let app_create = app.clone();
+            let create = Button::new("import-file-create-task")
+                .outline()
+                .label(t!("import_file.create_task").to_string());
+            let create = if can_confirm {
+                create.on_click(move |_, window, cx| {
+                    // 失败时保持对话框打开以展示错误(不创建半成品任务)
+                    if app_create
+                        .update(cx, |app, cx| app.confirm_import_file_as_task(false, cx))
+                        .unwrap_or(false)
+                    {
+                        window.close_dialog(cx);
+                    }
+                })
+            } else {
+                create.disabled(true)
+            };
+
+            let app_start = app.clone();
+            let start = Button::new("import-file-create-start")
+                .primary()
+                .label(t!("import_file.create_and_start").to_string());
+            let start = if can_confirm {
+                start.on_click(move |_, window, cx| {
+                    // 失败时保持对话框打开以展示错误(不创建半成品任务)
+                    if app_start
+                        .update(cx, |app, cx| app.confirm_import_file_as_task(true, cx))
+                        .unwrap_or(false)
+                    {
+                        window.close_dialog(cx);
+                    }
+                })
+            } else {
+                start.disabled(true)
+            };
+            footer = footer.child(create).child(start);
+        }
+    }
     footer
 }

@@ -612,7 +612,10 @@ mod tests {
 
     #[test]
     fn test_default_keep_last() {
-        assert_eq!(MessageListState::default().keep_last, super::DEFAULT_KEEP_LAST);
+        assert_eq!(
+            MessageListState::default().keep_last,
+            super::DEFAULT_KEEP_LAST
+        );
         assert_eq!(super::DEFAULT_KEEP_LAST, 10_000);
     }
 

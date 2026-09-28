@@ -182,11 +182,17 @@ impl CompiledTemplate {
                 VarSegment::Literal(s) => out.push_str(s),
                 VarSegment::Timestamp => push_i64(out, ctx.now.timestamp_millis(), hex_mode),
                 VarSegment::TimestampSecs => push_i64(out, ctx.now.timestamp(), hex_mode),
-                VarSegment::Date => push_text(out, &ctx.now.format("%Y-%m-%d").to_string(), hex_mode),
-                VarSegment::Time => push_text(out, &ctx.now.format("%H:%M:%S").to_string(), hex_mode),
-                VarSegment::DateTime => {
-                    push_text(out, &ctx.now.format("%Y-%m-%d %H:%M:%S").to_string(), hex_mode)
+                VarSegment::Date => {
+                    push_text(out, &ctx.now.format("%Y-%m-%d").to_string(), hex_mode)
                 }
+                VarSegment::Time => {
+                    push_text(out, &ctx.now.format("%H:%M:%S").to_string(), hex_mode)
+                }
+                VarSegment::DateTime => push_text(
+                    out,
+                    &ctx.now.format("%Y-%m-%d %H:%M:%S").to_string(),
+                    hex_mode,
+                ),
                 VarSegment::DateTimeMs => push_text(
                     out,
                     &ctx.now.format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
@@ -199,8 +205,7 @@ impl CompiledTemplate {
                 ),
                 VarSegment::Utc => push_text(
                     out,
-                    &ctx
-                        .now
+                    &ctx.now
                         .with_timezone(&Utc)
                         .to_rfc3339_opts(SecondsFormat::Secs, true),
                     hex_mode,
@@ -373,8 +378,14 @@ mod tests {
     fn test_seq_needs_seq_and_render() {
         let compiled = CompiledTemplate::new("req-${seq}");
         assert!(compiled.needs_seq());
-        assert_eq!(render_text("req-${seq}", &RenderContext::common(Some(0))), "req-0");
-        assert_eq!(render_text("req-${seq}", &RenderContext::common(Some(1))), "req-1");
+        assert_eq!(
+            render_text("req-${seq}", &RenderContext::common(Some(0))),
+            "req-0"
+        );
+        assert_eq!(
+            render_text("req-${seq}", &RenderContext::common(Some(1))),
+            "req-1"
+        );
         // 不含 ${seq} 的模板不消费序号
         assert!(!CompiledTemplate::new("id=${uuid}").needs_seq());
     }
@@ -382,7 +393,10 @@ mod tests {
     #[test]
     fn test_seq_none_preserved() {
         // 传 None 时 ${seq} 原样保留(不静默渲染成 0)
-        assert_eq!(render_text("${seq}", &RenderContext::common(None)), "${seq}");
+        assert_eq!(
+            render_text("${seq}", &RenderContext::common(None)),
+            "${seq}"
+        );
     }
 
     #[test]
@@ -423,7 +437,10 @@ mod tests {
         assert_eq!(render_text("${time}", &ctx).len(), 8);
         assert_eq!(render_text("${datetime}", &ctx).len(), 19);
         assert!(render_text("${datetime_ms}", &ctx).len() >= 23);
-        assert!(render_text("${iso}", &ctx).ends_with("+08:00") || render_text("${iso}", &ctx).contains('T'));
+        assert!(
+            render_text("${iso}", &ctx).ends_with("+08:00")
+                || render_text("${iso}", &ctx).contains('T')
+        );
         assert!(render_text("${utc}", &ctx).ends_with('Z'));
     }
 
@@ -501,7 +518,10 @@ mod tests {
 
     #[test]
     fn test_unknown_variable_preserved() {
-        assert_eq!(render_text("v=${unknown_var}", &common_ctx()), "v=${unknown_var}");
+        assert_eq!(
+            render_text("v=${unknown_var}", &common_ctx()),
+            "v=${unknown_var}"
+        );
     }
 
     #[test]

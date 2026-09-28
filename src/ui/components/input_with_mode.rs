@@ -129,10 +129,8 @@ impl InputWithMode {
                                       window: &mut Window,
                                       cx: &mut App| {
                                     let content = pretty_entity.read(cx).value().to_string();
-                                    let formatted = format_json_text(
-                                        &content,
-                                        MessageDisplayMode::JsonPretty,
-                                    );
+                                    let formatted =
+                                        format_json_text(&content, MessageDisplayMode::JsonPretty);
                                     pretty_entity.update(cx, |input, cx| {
                                         input.set_value(formatted, window, cx);
                                     });

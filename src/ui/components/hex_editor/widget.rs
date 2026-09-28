@@ -421,7 +421,8 @@ fn render_row(
                     .on_mouse_move(drag_handler(editor, on_write, idx))
                     // 长变量名被 max_w(150px) 截断, hover 显示完整原文与替换说明
                     .tooltip({
-                        let tip = t!("hex_editor.variable_tooltip", var = text.as_str()).to_string();
+                        let tip =
+                            t!("hex_editor.variable_tooltip", var = text.as_str()).to_string();
                         move |window: &mut Window, cx: &mut App| {
                             Tooltip::new(tip.clone()).build(window, cx)
                         }

@@ -154,10 +154,11 @@ pub fn render_variable_picker(
     let on_pick: Arc<dyn Fn(&VariableItem, &mut Window, &mut App)> = Arc::new(on_pick);
 
     // 点击面板外任意区域关闭浮层
-    let dismiss_handler: Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static> =
-        Box::new(move |event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
+    let dismiss_handler: Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static> = Box::new(
+        move |event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
             on_dismiss(event, window, cx);
-        });
+        },
+    );
 
     let popup = anchored()
         .anchor(Anchor::TopRight)

@@ -1,4 +1,4 @@
-use crate::config::connection::{AutoReplyConfig, ClientConfig, ServerConfig};
+use crate::config::connection::{AutoReplyConfig, ClientConfig, ServerConfig, TrailerSetting};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch};
@@ -59,6 +59,8 @@ pub struct UdpClient {
     net_counters: Option<NetCounters>,
     is_connected: bool,
     cancel_token: CancellationToken,
+    /// 运行期「结尾追加字符」设置(下拉改动即时生效)
+    trailer: TrailerSetting,
 }
 
 impl UdpClient {
@@ -66,6 +68,7 @@ impl UdpClient {
         config: ClientConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<NetCounters>,
+        trailer: TrailerSetting,
     ) -> Self {
         // 解析地址，支持IPv4和IPv6
         let address = if config.server_address.contains(':') && !config.server_address.contains('[')
@@ -87,6 +90,7 @@ impl UdpClient {
             net_counters,
             is_connected: false,
             cancel_token: CancellationToken::new(),
+            trailer,
         }
     }
 }
@@ -106,6 +110,7 @@ impl NetworkConnection for UdpClient {
         let message_processor = self.message_processor.clone();
         let net_counters = self.net_counters.clone();
         let cancel_token = self.cancel_token.clone();
+        let trailer = self.trailer.clone();
 
         self.is_connected = true;
 
@@ -242,6 +247,8 @@ impl NetworkConnection for UdpClient {
             let event_sender_clone_write = event_sender.clone();
             let id_clone_write = config.id.clone();
             let net_counters_clone_write = net_counters.clone();
+            // 运行期结尾追加字符设置: 每包读取当前值, 下拉改动即时生效
+            let trailer_write = trailer.clone();
             let write_cancel_token = cancel_token.clone();
 
             tokio::spawn(async move {
@@ -250,7 +257,9 @@ impl NetworkConnection for UdpClient {
                         data = rx.recv() => {
                             match data {
                                 Ok(data) => {
-                                    if let Err(e) = socket_write.send_to(&data, &server_addr).await {
+                                    // UDP 无 encoder, 发送点直接调用同一纯函数追加结尾
+                                    let payload = crate::config::connection::apply_trailer(&data, trailer_write.get());
+                                    if let Err(e) = socket_write.send_to(&payload, &server_addr).await {
                                         error!("UDP发送错误: {:?}", e);
                                         if let Some(sender) = &event_sender_clone_write {
                                             if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone_write.clone())).await {
@@ -261,7 +270,7 @@ impl NetworkConnection for UdpClient {
                                     }
                                     if let Some(c) = &net_counters_clone_write {
                                         c.add_sent(1);
-                                        c.add_sent_bytes(data.len() as u64);
+                                        c.add_sent_bytes(payload.len() as u64);
                                     }
                                 },
                                 Err(_) => {
@@ -312,6 +321,8 @@ pub struct UdpServer {
     main_send_tx: Arc<Mutex<Option<Sender<(SocketAddr, Vec<u8>)>>>>,
     /// 自动回复共享状态(UI 下发 → 网络层每个数据报读取)
     auto_reply_state: Arc<AutoReplyConfig>,
+    /// 运行期「结尾追加字符」设置(下拉改动即时生效)
+    trailer: TrailerSetting,
 }
 
 impl UdpServer {
@@ -319,6 +330,7 @@ impl UdpServer {
         config: ServerConfig,
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<NetCounters>,
+        trailer: TrailerSetting,
     ) -> Self {
         UdpServer {
             config,
@@ -330,6 +342,7 @@ impl UdpServer {
             stop_token: CancellationToken::new(),
             main_send_tx: Arc::new(Mutex::new(None)),
             auto_reply_state: Arc::new(AutoReplyConfig::new()),
+            trailer,
         }
     }
 
@@ -402,6 +415,7 @@ impl NetworkServer for UdpServer {
         let message_processor = self.message_processor.clone();
         let net_counters = self.net_counters.clone();
         let auto_reply_state = self.auto_reply_state.clone();
+        let trailer = self.trailer.clone();
 
         // 使用现有的clients字段
         let clients = self.clients.clone();
@@ -657,6 +671,8 @@ impl NetworkServer for UdpServer {
             // 创建消息发送任务
             let socket_write = socket_arc;
             let net_counters_clone_write = net_counters.clone();
+            // 运行期结尾追加字符设置: 每包读取当前值, 下拉改动即时生效; 广播与定向均经此任务回发
+            let trailer_write = trailer.clone();
             let write_stop_token = stop_token;
             tokio::spawn(async move {
                 loop {
@@ -664,12 +680,13 @@ impl NetworkServer for UdpServer {
                         data = rx.recv() => {
                             match data {
                                 Ok((addr, message)) => {
-                                    if let Err(e) = socket_write.send_to(&message, addr).await {
+                                    let payload = crate::config::connection::apply_trailer(&message, trailer_write.get());
+                                    if let Err(e) = socket_write.send_to(&payload, addr).await {
                                         error!("UDP服务器发送消息时发生错误: {:?}", e);
                                     } else if let Some(c) = &net_counters_clone_write {
                                         // 洪泛下逐包日志会疯狂写文件且格式化字节开销大, 发送路径不再逐包记录
                                         c.add_sent(1);
-                                        c.add_sent_bytes(message.len() as u64);
+                                        c.add_sent_bytes(payload.len() as u64);
                                     }
                                 }
                                 Err(_) => {

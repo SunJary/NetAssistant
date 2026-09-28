@@ -1,16 +1,16 @@
 use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
 use crate::ui::components::input_with_mode::InputWithMode;
+use crate::ui::dialog::variable_picker::{
+    VariableItem, VariablePickerTarget, message_variable_items, render_variable_picker,
+};
 use crate::ui::dialog::{
     DecoderSelectionDialogState, open_add_client_dialog, open_decoder_selection_dialog,
     open_favorite_remark_dialog,
 };
-use crate::ui::dialog::variable_picker::{
-    VariableItem, VariablePickerTarget, message_variable_items, render_variable_picker,
-};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_component::ElementExt as _;
+use gpui_component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_component::{
     Icon, IconName, Size, Theme,
     clipboard::Clipboard,
@@ -29,15 +29,20 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 
 use crate::app::NetAssistantApp;
-use crate::config::connection::{ConnectionConfig, ConnectionStatus, ConnectionType};
+use crate::config::connection::{
+    ConnectionConfig, ConnectionStatus, ConnectionType, TrailerKind, TrailerSetting,
+};
 use crate::custom_icons::CustomIconName;
 use crate::log_writer::LogWriter;
 use crate::message::{
     DEFAULT_KEEP_LAST, Message, MessageDirection, MessageDisplayMode, MessageListState,
 };
+use crate::send_task::SendTaskEntry;
 use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
+use crate::ui::send_task_panel::SendTaskPanel;
 use crate::ui::stress_panel::StressPanel;
+use indexmap::IndexMap;
 
 /// 消息搜索匹配重算的最小间隔。
 ///
@@ -138,6 +143,19 @@ pub struct ConnectionTabState {
     pub stress_report: Option<StressReport>,
     /// 当前运行的压测配置快照
     pub stress_config_snapshot: Option<StressTestConfig>,
+
+    // ===== 发送任务(逐行发送) =====
+    /// 该 tab 的发送任务列表(引擎句柄 + 运行期状态); 事件泵写入进度
+    pub send_tasks: IndexMap<String, SendTaskEntry>,
+    /// 发送任务面板(Popover)是否展开
+    pub send_task_panel_open: bool,
+    /// 展开行清单的任务 id(同一时刻最多一个)
+    pub send_task_expanded: Option<String>,
+    /// 发送任务图标按钮的窗口坐标(on_prepaint 更新, 供面板锚定)
+    pub send_task_button_bounds: Option<Bounds<Pixels>>,
+
+    /// 运行期「结尾追加字符」设置: 下拉改动即时生效(持久化真源为 connection_config.send_trailer)
+    pub send_trailer_setting: TrailerSetting,
 }
 
 impl ConnectionTabState {
@@ -148,6 +166,8 @@ impl ConnectionTabState {
     ) -> Self {
         // 从连接配置中恢复发送消息输入模式
         let message_input_mode = connection_config.message_input_mode().to_string();
+        // 运行期结尾追加设置的初始值取自持久化配置(下拉改动即时生效, 无需重连)
+        let send_trailer = connection_config.send_trailer();
         Self {
             connection_config,
             connection_status: ConnectionStatus::NotConnected,
@@ -246,6 +266,13 @@ impl ConnectionTabState {
             stress_stats: StressStats::default(),
             stress_report: None,
             stress_config_snapshot: None,
+
+            // 发送任务(初始为空)
+            send_tasks: IndexMap::new(),
+            send_task_panel_open: false,
+            send_task_expanded: None,
+            send_task_button_bounds: None,
+            send_trailer_setting: TrailerSetting::new(send_trailer),
         }
     }
 
@@ -343,8 +370,7 @@ impl ConnectionTabState {
         // 先补尾部、再删头部：尾部 splice 必须无条件执行，
         // 否则 GPUI 的 item_count 会与 Vec 长度错位
         if added > 0 {
-            self.message_list_state
-                .splice(old_count..old_count, added);
+            self.message_list_state.splice(old_count..old_count, added);
         }
         if dropped > 0 {
             // 不变式：淘汰只发生在自动滚动开启时，随后的 scroll_to 会覆盖锚点
@@ -425,6 +451,16 @@ impl ConnectionTabState {
             }
         }
         self.stress_engine = None;
+
+        // 断开连接时暂停发送任务(保留, 可重连后继续), 不删除。
+        // 引擎对外部断开无感(它只感知写通道失败), 这里主动暂停并附原因。
+        for entry in self.send_tasks.values() {
+            if let Ok(guard) = entry.engine.lock() {
+                if let Some(engine) = guard.as_ref() {
+                    engine.pause(Some(t!("send_task.reason_disconnected").to_string()));
+                }
+            }
+        }
     }
 }
 
@@ -473,6 +509,7 @@ impl<'a> ConnectionTab<'a> {
         let theme = cx.theme().clone();
         // 浮层先于根节点构建: 消费 self 前取好 target 与按钮坐标
         let variable_picker = self.render_variable_picker_overlay(&theme, cx);
+        let send_task_overlay = self.render_send_task_overlay(&theme, cx);
 
         div()
             .flex()
@@ -485,6 +522,21 @@ impl<'a> ConnectionTab<'a> {
             .child(self.render_right_panel(window, cx))
             // 变量浮层: deferred 独立合成层, 挂在根节点避免被滚动区裁剪
             .children(variable_picker)
+            // 发送任务面板: 同样挂在根节点, 锚定任务图标按钮
+            .children(send_task_overlay)
+    }
+
+    /// 渲染发送任务面板浮层(展开时才返回 Some)
+    fn render_send_task_overlay(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Option<AnyElement> {
+        // 与变量浮层同理: 切到压测视图时发送区不可见, 不渲染锚在旧坐标的浮层
+        if self.tab_state.view_mode != TabViewMode::Debug {
+            return None;
+        }
+        SendTaskPanel::new(self.tab_id.clone(), self.tab_state).render_overlay(theme, cx)
     }
 
     /// 渲染「插入变量」浮层(消息区与自动回复区共用一个, 按 target 选择锚点与插入目标)
@@ -2580,6 +2632,62 @@ impl<'a> ConnectionTab<'a> {
                                                 ),
                                         )
                                     }),
+                            )
+                            // 「结尾」下拉: 无 / LF / CRLF 三态循环, 改动即时生效并持久化
+                            .child({
+                                let tab_id_trailer = tab_id.clone();
+                                let label = match self.tab_state.send_trailer_setting.get() {
+                                    TrailerKind::None => {
+                                        t!("connection_tab.trailer_none").to_string()
+                                    }
+                                    TrailerKind::Lf => "LF".to_string(),
+                                    TrailerKind::CrLf => "CRLF".to_string(),
+                                };
+                                div()
+                                    .id("send-trailer-btn")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .px_3()
+                                    .py_1()
+                                    .bg(theme.secondary)
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme.secondary_hover))
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new(
+                                            t!("connection_tab.trailer_tooltip").to_string(),
+                                        )
+                                        .build(window, cx)
+                                    })
+                                    .on_mouse_down(MouseButton::Left, cx.listener(
+                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_trailer) {
+                                                let next = tab_state.send_trailer_setting.get().next_cycle();
+                                                // 即时生效(已建立连接无需重连) + 持久化
+                                                tab_state.send_trailer_setting.set(next);
+                                                tab_state.connection_config.set_send_trailer(next);
+                                                app.storage.update_connection(tab_state.connection_config.clone());
+                                            }
+                                            cx.notify();
+                                        }
+                                    ))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme.secondary_foreground)
+                                            .child(format!(
+                                                "{}: {}",
+                                                t!("connection_tab.trailer_label"),
+                                                label
+                                            )),
+                                    )
+                                    .child(Icon::new(IconName::ChevronDown).size(px(10.0)))
+                            })
+                            // 发送任务: 图标按钮(状态色 + 角标) + 逐行发送任务面板
+                            .child(
+                                SendTaskPanel::new(tab_id.clone(), self.tab_state)
+                                    .render_button(&theme, cx),
                             ),
                     )
                     .child(

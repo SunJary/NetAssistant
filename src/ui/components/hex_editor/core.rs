@@ -634,7 +634,11 @@ pub fn parse(value: &str) -> Result<HexDoc, usize> {
                 }
                 // 奇数 hex 段在此收尾为半字节（如 `50494E4${seq}` 的 '4'）
                 if let Some(hi) = pending.take() {
-                    push_capped(&mut cells, Cell::Byte { hi, lo: HALF_EMPTY }, &mut truncated);
+                    push_capped(
+                        &mut cells,
+                        Cell::Byte { hi, lo: HALF_EMPTY },
+                        &mut truncated,
+                    );
                 }
                 push_capped(&mut cells, Cell::Token(token), &mut truncated);
             }
@@ -646,7 +650,11 @@ pub fn parse(value: &str) -> Result<HexDoc, usize> {
         }
     }
     if let Some(hi) = pending.take() {
-        push_capped(&mut cells, Cell::Byte { hi, lo: HALF_EMPTY }, &mut truncated);
+        push_capped(
+            &mut cells,
+            Cell::Byte { hi, lo: HALF_EMPTY },
+            &mut truncated,
+        );
     }
     Ok(HexDoc { cells, truncated })
 }
