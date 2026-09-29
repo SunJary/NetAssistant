@@ -20,6 +20,7 @@ use rust_i18n::t;
 
 use super::hex_editor::HexEditorState;
 use super::hex_editor::adapter as hex_adapter;
+use super::hex_editor::{core, widget::apply_action};
 
 /// 通用输入框组件（支持文本/十六进制模式）
 pub struct InputWithMode;
@@ -221,8 +222,8 @@ fn selection_source(
 /// 构建输入框右键菜单。
 ///
 /// - 文本框分支：剪切/复制/粘贴/全选（gpui_component 标准编辑动作，靠 `action_context`
-///   在确认时先聚焦输入框再派发）+ 分隔线
-/// - hex 网格分支：不放标准编辑动作（网格编辑走自身按键）
+///   在确认时先聚焦输入框再派发）+ 分隔线；粘贴在剪贴板无文本时置灰
+/// - hex 网格分支：复制/粘贴/全选（自绘，与文本框同组同序；粘贴要求剪贴板为合法 hex）+ 分隔线
 /// - 工具项由 `core::toolbox` 注册表提供：Convert（按模式单方向）+ Checksum（hex 模式的「校验」子菜单）
 ///
 /// 「转换为 Hex」恒可用（任何内容都能编码），「转换为文本」要求源内容为合法 hex。
@@ -238,18 +239,41 @@ fn build_context_menu(
 ) -> PopupMenu {
     let mode = if is_hex_mode { "hex" } else { "text" };
     let source = selection_source(&input, hex_editor.as_ref(), is_grid, cx);
+    // 构建期读取一次剪贴板：菜单打开那一刻的状态，用于「粘贴」置灰判定
+    let clipboard_text: Option<String> = cx.read_from_clipboard().and_then(|item| item.text());
+    let clipboard_has_text = clipboard_text.as_deref().is_some_and(|t| !t.is_empty());
 
     if !is_grid {
         menu = menu
             .action_context(input.read(cx).focus_handle(cx))
             .menu(t!("input_mode.cut").to_string(), Box::new(CutAction))
             .menu(t!("input_mode.copy").to_string(), Box::new(CopyAction))
-            .menu(t!("input_mode.paste").to_string(), Box::new(PasteAction))
+            .menu_with_disabled(
+                t!("input_mode.paste").to_string(),
+                Box::new(PasteAction),
+                !clipboard_has_text,
+            )
             .separator()
             .menu(
                 t!("input_mode.select_all").to_string(),
                 Box::new(SelectAllAction),
             )
+            .separator();
+    } else if let Some(editor) = hex_editor.as_ref() {
+        // 网格粘贴只接受 hex：剪贴板无文本或无法解析为 hex 时置灰，
+        // 避免点击后是个静默失败的空动作
+        let clipboard_is_hex = clipboard_text
+            .as_deref()
+            .map(|t| {
+                core::parse_tolerant(t)
+                    .map(|cells| !cells.is_empty())
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        menu = menu
+            .item(hex_copy_item(editor))
+            .item(hex_paste_item(&input, editor, clipboard_is_hex))
+            .item(hex_select_all_item(&input, editor))
             .separator();
     }
 
@@ -307,6 +331,70 @@ fn build_context_menu(
     }
 
     menu
+}
+
+/// hex 网格「复制」：优先选区，无选区复制全文（与同菜单「转换」取源规则一致）。
+fn hex_copy_item(editor: &Entity<HexEditorState>) -> PopupMenuItem {
+    let editor = editor.clone();
+    PopupMenuItem::new(t!("input_mode.copy").to_string()).on_click(move |_, _, cx| {
+        let text = {
+            let state = editor.read(cx);
+            state
+                .core
+                .selection_value()
+                .unwrap_or_else(|| state.core.full_value())
+        };
+        if !text.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+        }
+    })
+}
+
+/// hex 网格「粘贴」：剪贴板无合法 hex 时置灰；点击时解析并写回输入框
+/// （与 widget 的 Ctrl+V 同一路径：parse_tolerant → Action::Paste → apply_action）。
+fn hex_paste_item(
+    input: &Entity<EditorState>,
+    editor: &Entity<HexEditorState>,
+    enabled: bool,
+) -> PopupMenuItem {
+    let input = input.clone();
+    let editor = editor.clone();
+    PopupMenuItem::new(t!("input_mode.paste").to_string())
+        .disabled(!enabled)
+        .on_click(move |_, window, cx| {
+            let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+                return;
+            };
+            if let Ok(cells) = core::parse_tolerant(&text) {
+                if !cells.is_empty() {
+                    apply_action(
+                        &editor,
+                        core::Action::Paste(cells),
+                        &hex_adapter::write_back(&input),
+                        window,
+                        cx,
+                    );
+                }
+            }
+        })
+}
+
+/// hex 网格「全选」：复用 `Action::SelectAll`（与 widget 的 Ctrl+A 同一路径）。
+fn hex_select_all_item(
+    input: &Entity<EditorState>,
+    editor: &Entity<HexEditorState>,
+) -> PopupMenuItem {
+    let input = input.clone();
+    let editor = editor.clone();
+    PopupMenuItem::new(t!("input_mode.select_all").to_string()).on_click(move |_, window, cx| {
+        apply_action(
+            &editor,
+            core::Action::SelectAll,
+            &hex_adapter::write_back(&input),
+            window,
+            cx,
+        );
+    })
 }
 
 /// 构造工具箱菜单项：点击后对选中源执行计算，结果送只读弹窗（不改动输入框）。
@@ -695,8 +783,9 @@ mod repro_tests {
 
     /// 回归：hex 模式右键菜单有「校验」子菜单，且子菜单项能通过键盘触发并打开结果弹窗。
     ///
-    /// hex 网格分支菜单项为 [转换为文本, 校验▸]，用方向键导航：
-    /// down → down 选中「校验」，right 展开子菜单聚焦首个算法，enter 确认弹结果弹窗。
+    /// hex 网格分支菜单末项为 [校验▸]（其前是剪贴板动作与「转换为文本」），
+    /// up 会从末尾回绕选中最后一项，故不受剪贴板动作项数量影响：
+    /// up 选中「校验」，right 展开子菜单聚焦首个算法，enter 确认弹结果弹窗。
     #[gpui_kit::test]
     fn checksum_submenu_opens_result_dialog(cx: &mut TestAppContext) {
         use gpui_kit::{MouseButton, MouseDownEvent, point};
@@ -743,8 +832,8 @@ mod repro_tests {
             draw(&mut cx);
         }
 
-        // down → down 选中「校验」子菜单，right 展开，给子菜单一帧渲染时间
-        cx.simulate_keystrokes("down down right");
+        // up 回绕选中末项「校验」子菜单，right 展开，给子菜单一帧渲染时间
+        cx.simulate_keystrokes("up right");
         for _ in 0..4 {
             draw(&mut cx);
         }
@@ -757,6 +846,79 @@ mod repro_tests {
         assert!(
             dialog_open(&mut cx),
             "右键菜单的「校验」子菜单项应能通过键盘触发并打开结果弹窗"
+        );
+    }
+
+    /// 回归：hex 网格右键菜单含「复制 / 粘贴 / 全选」，剪贴板为合法 hex 时
+    /// 「粘贴」可用并能经键盘触发、把字节写回输入框。
+    ///
+    /// 菜单顺序：复制 / 粘贴 / 全选 / ─── / 转换为文本 / 校验▸。
+    /// 粘贴可用时 down 两次即选中它，enter 触发（与 widget 的 Ctrl+V 同一路径）。
+    #[gpui_kit::test]
+    fn hex_grid_context_menu_paste_writes_back(cx: &mut TestAppContext) {
+        use gpui_kit::{ClipboardItem, MouseButton, MouseDownEvent, point};
+
+        cx.update(gpui_kit::component::init);
+        let (_, mut cx) = cx.add_window_view(|window, cx| {
+            let host = cx.new(|cx| Host::new(window, cx));
+            Root::new(host, window, cx)
+        });
+        let mut draw = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        };
+        draw(&mut cx);
+        draw(&mut cx);
+
+        // 切 hex：message 内容 "11 22 ..." 本身合法，直接走网格分支
+        cx.update(|window, cx| {
+            let root = window.root::<Root>().unwrap().unwrap();
+            let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
+            host.update(cx, |host, _cx| host.mode = "hex");
+        });
+        for _ in 0..4 {
+            draw(&mut cx);
+        }
+
+        // 剪贴板写入合法 hex → 「粘贴」应可用（否则该测试的前提不成立）
+        cx.update(|_window, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string("DE AD".to_string()));
+        });
+
+        // 右键打开菜单
+        let at = point(px(100.0), px(40.0));
+        cx.simulate_event(MouseDownEvent {
+            button: MouseButton::Right,
+            position: at,
+            modifiers: Default::default(),
+            click_count: 1,
+            first_mouse: false,
+        });
+        for _ in 0..3 {
+            draw(&mut cx);
+        }
+        // down → 复制，down → 粘贴，enter 触发
+        cx.simulate_keystrokes("down down enter");
+        for _ in 0..4 {
+            draw(&mut cx);
+        }
+
+        let value = cx.update(|window, cx| {
+            let root = window.root::<Root>().unwrap().unwrap();
+            let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
+            host.read(cx)
+                .message_input
+                .as_ref()
+                .expect("message 输入框应存在")
+                .read(cx)
+                .value()
+                .to_string()
+        });
+        assert!(
+            value.contains("DE AD"),
+            "hex 网格右键「粘贴」应把剪贴板 hex 写回输入框，实际: {value}"
         );
     }
 }

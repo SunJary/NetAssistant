@@ -53,7 +53,7 @@ pub fn sync(editor: &Entity<HexEditorState>, input: &Entity<EditorState>, cx: &m
 /// 内容写回回调：core 的编辑结果写回 InputState。
 /// 使用 replace_all（而非 set_value）：保留撤销历史，且会发出 InputEvent::Change，
 /// 自动回复等既有订阅链路无需改动。
-fn write_back(input: &Entity<EditorState>) -> WriteBack {
+pub(crate) fn write_back(input: &Entity<EditorState>) -> WriteBack {
     let input = input.clone();
     Arc::new(move |value, window, cx| {
         input.update(cx, |input, cx| {
