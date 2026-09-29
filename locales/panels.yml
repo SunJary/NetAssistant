@@ -30,6 +30,33 @@ input_mode:
   to_text:
     zh-CN: 转换为文本
     en: Convert to Text
+  checksum:
+    zh-CN: 校验
+    en: Checksum
+  checksum_xor:
+    zh-CN: 异或 XOR
+    en: XOR
+  checksum_sum8:
+    zh-CN: 累加和 Sum8
+    en: Sum8
+  checksum_lrc:
+    zh-CN: LRC
+    en: LRC
+  checksum_crc16_modbus:
+    zh-CN: CRC16-Modbus
+    en: CRC16-Modbus
+  checksum_crc16_ccitt:
+    zh-CN: CRC16-CCITT-FALSE
+    en: CRC16-CCITT-FALSE
+  checksum_crc32:
+    zh-CN: CRC32
+    en: CRC32
+  checksum_var:
+    zh-CN: 含变量占位符，校验值运行时才有效
+    en: Contains variables; only meaningful at send time
+  checksum_empty:
+    zh-CN: 无内容可校验
+    en: Nothing to verify
   cut:
     zh-CN: 剪切
     en: Cut

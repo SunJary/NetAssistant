@@ -1,7 +1,8 @@
+use crate::core::toolbox::{compute_tool, resolve_tools, SelectionTool, ToolCategory};
 use crate::custom_icons::CustomIconName;
 use crate::message::{MessageDisplayMode, format_json_text};
 use crate::ui::dialog::{dialog_content_max_height, dialog_height};
-use crate::utils::hex::{hex_to_text, text_to_hex, validate_hex_input};
+use crate::utils::hex::validate_hex_input;
 use gpui_kit::*;
 use gpui_kit::component::{
     ActiveTheme as _, Icon, StyledExt, Theme, WindowExt as _,
@@ -176,30 +177,25 @@ impl InputWithMode {
         let menu_input = input_state.clone();
         let menu_editor = hex_editor.cloned();
         body.id(("input-with-mode", input_state.entity_id()))
-            .context_menu(move |menu, _window, cx| {
+            .context_menu(move |menu, window, cx| {
                 build_context_menu(
                     menu,
                     menu_input.clone(),
                     menu_editor.clone(),
                     is_grid,
                     is_hex_mode,
+                    window,
                     cx,
                 )
             })
     }
 }
 
-/// 转换方向
-#[derive(Clone, Copy)]
-enum Direction {
-    ToHex,
-    ToText,
-}
-
-/// 右键菜单的转换源：优先选区（hex 网格选区 / 文本框选区），无选区取全文。
+/// 工具箱的取源函数：优先选区（hex 网格选区 / 文本框选区），无选区取全文。
 ///
 /// 菜单打开时才求值，取到的是用户当下的选区，不随渲染帧缓存。
-fn convert_source(
+/// 供「转换」与「校验」两类工具共用。
+fn selection_source(
     input: &Entity<EditorState>,
     hex_editor: Option<&Entity<HexEditorState>>,
     is_grid: bool,
@@ -227,23 +223,22 @@ fn convert_source(
 /// - 文本框分支：剪切/复制/粘贴/全选（gpui_component 标准编辑动作，靠 `action_context`
 ///   在确认时先聚焦输入框再派发）+ 分隔线
 /// - hex 网格分支：不放标准编辑动作（网格编辑走自身按键）
-/// - 转换项按当前模式二选一：文本模式只给「转换为 Hex」，hex 模式只给「转换为文本」
-///（当前模式对应的方向在切换时已自动完成，放上去只会是无意义项）
+/// - 工具项由 `core::toolbox` 注册表提供：Convert（按模式单方向）+ Checksum（hex 模式的「校验」子菜单）
 ///
 /// 「转换为 Hex」恒可用（任何内容都能编码），「转换为文本」要求源内容为合法 hex。
+/// 校验子菜单仅 hex 模式下出现；无内容、含 `${...}` 或非合法 hex 时对应算法项置灰并置顶灰标说明。
 fn build_context_menu(
-    menu: PopupMenu,
+    mut menu: PopupMenu,
     input: Entity<EditorState>,
     hex_editor: Option<Entity<HexEditorState>>,
     is_grid: bool,
     is_hex_mode: bool,
-    cx: &App,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let source = convert_source(&input, hex_editor.as_ref(), is_grid, cx);
-    let has_source = !source.is_empty();
-    let is_hex_source = validate_hex_input(&source);
+    let mode = if is_hex_mode { "hex" } else { "text" };
+    let source = selection_source(&input, hex_editor.as_ref(), is_grid, cx);
 
-    let mut menu = menu;
     if !is_grid {
         menu = menu
             .action_context(input.read(cx).focus_handle(cx))
@@ -258,50 +253,83 @@ fn build_context_menu(
             .separator();
     }
 
-    if is_hex_mode {
-        menu.item(convert_menu_item(
-            t!("input_mode.to_text").to_string(),
-            Direction::ToText,
-            !is_hex_source,
+    // 转换项（按当前模式单方向），从工具箱注册表取
+    let converts = resolve_tools(mode, &source, ToolCategory::Convert);
+    if let Some(state) = converts.first() {
+        let label = t!(state.tool.label_key).to_string();
+        // to_hex 空源禁用（与旧行为一致）；to_text 空源合法空转换，保持可用
+        let disabled = !state.enabled || (state.tool.id == "to_hex" && source.is_empty());
+        menu = menu.item(tool_menu_item(
+            label,
+            disabled,
+            state.tool,
             &input,
-            hex_editor,
+            hex_editor.as_ref(),
             is_grid,
-        ))
-    } else {
-        menu.item(convert_menu_item(
-            t!("input_mode.to_hex").to_string(),
-            Direction::ToHex,
-            !has_source,
-            &input,
-            hex_editor,
-            is_grid,
-        ))
+        ));
     }
+
+    // 校验子菜单（仅 hex 模式）
+    if is_hex_mode {
+        let checks = resolve_tools(mode, &source, ToolCategory::Checksum);
+        if !checks.is_empty() {
+            let shared_reason = checks
+                .iter()
+                .filter(|c| !c.enabled)
+                .find_map(|c| c.disabled_reason);
+            menu = menu.submenu(t!("input_mode.checksum").to_string(), window, cx, {
+                let input = input.clone();
+                let hex_editor = hex_editor.clone();
+                move |sub: PopupMenu, _window: &mut Window, _cx: &mut Context<PopupMenu>| {
+                    // 置顶一条灰标说明禁用原因（含变量 / 非合法 hex）；
+                    // PopupMenuItem 不支持 tooltip，故用置顶灰标代替逐项 hover
+                    let sub = if let Some(reason) = shared_reason {
+                        sub.label(t!(reason).to_string())
+                    } else {
+                        sub
+                    };
+                    checks.iter().fold(sub, |sub, state| {
+                        let label = t!(state.tool.label_key).to_string();
+                        let input = input.clone();
+                        let hex_editor = hex_editor.clone();
+                        sub.item(tool_menu_item(
+                            label,
+                            !state.enabled,
+                            state.tool,
+                            &input,
+                            hex_editor.as_ref(),
+                            is_grid,
+                        ))
+                    })
+                }
+            });
+        }
+    }
+
+    menu
 }
 
-/// 构造「转换」菜单项：点击后把转换结果送进只读结果弹窗（不改动输入框）
-fn convert_menu_item(
+/// 构造工具箱菜单项：点击后对选中源执行计算，结果送只读弹窗（不改动输入框）。
+fn tool_menu_item(
     label: String,
-    direction: Direction,
     disabled: bool,
+    tool: &'static SelectionTool,
     input: &Entity<EditorState>,
-    hex_editor: Option<Entity<HexEditorState>>,
+    hex_editor: Option<&Entity<HexEditorState>>,
     is_grid: bool,
 ) -> PopupMenuItem {
     let input = input.clone();
+    let hex_editor = hex_editor.cloned();
     let title = label.clone();
     PopupMenuItem::new(label)
         .disabled(disabled)
         .on_click(move |_, window, cx| {
-            let source = convert_source(&input, hex_editor.as_ref(), is_grid, cx);
-            let converted = match direction {
-                Direction::ToHex => text_to_hex(&source),
-                Direction::ToText => hex_to_text(&source),
-            };
+            let source = selection_source(&input, hex_editor.as_ref(), is_grid, cx);
+            let result = compute_tool(tool, &source);
             let title = title.clone();
             // 菜单确认后本帧还要关菜单、归还焦点，弹窗延后一帧打开避免同期打架
             window.defer(cx, move |window, cx| {
-                open_convert_result_dialog(title, converted, window, cx);
+                open_convert_result_dialog(title, result, window, cx);
             });
         })
 }
@@ -662,6 +690,73 @@ mod repro_tests {
         assert!(
             hit_offset.is_some(),
             "右键菜单没能打开转换结果弹窗（菜单未渲染或菜单项点不中）"
+        );
+    }
+
+    /// 回归：hex 模式右键菜单有「校验」子菜单，且子菜单项能通过键盘触发并打开结果弹窗。
+    ///
+    /// hex 网格分支菜单项为 [转换为文本, 校验▸]，用方向键导航：
+    /// down → down 选中「校验」，right 展开子菜单聚焦首个算法，enter 确认弹结果弹窗。
+    #[gpui_kit::test]
+    fn checksum_submenu_opens_result_dialog(cx: &mut TestAppContext) {
+        use gpui_kit::{MouseButton, MouseDownEvent, point};
+
+        cx.update(gpui_kit::component::init);
+        let (_, mut cx) = cx.add_window_view(|window, cx| {
+            let host = cx.new(|cx| Host::new(window, cx));
+            Root::new(host, window, cx)
+        });
+        let mut draw = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        };
+        draw(&mut cx);
+        draw(&mut cx);
+
+        // 切 hex：message 输入内容 "11 22 22 33 44 55 11 22" 本身是合法 hex，
+        // 直接设模式即可走 hex 网格（无需 convert）
+        cx.update(|window, cx| {
+            let root = window.root::<Root>().unwrap().unwrap();
+            let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
+            host.update(cx, |host, _cx| host.mode = "hex");
+        });
+        for _ in 0..4 {
+            draw(&mut cx);
+        }
+
+        let dialog_open = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.update(|window, cx| window.has_active_dialog(cx))
+        };
+
+        // 右键打开菜单
+        let at = point(px(100.0), px(40.0));
+        cx.simulate_event(MouseDownEvent {
+            button: MouseButton::Right,
+            position: at,
+            modifiers: Default::default(),
+            click_count: 1,
+            first_mouse: false,
+        });
+        for _ in 0..3 {
+            draw(&mut cx);
+        }
+
+        // down → down 选中「校验」子菜单，right 展开，给子菜单一帧渲染时间
+        cx.simulate_keystrokes("down down right");
+        for _ in 0..4 {
+            draw(&mut cx);
+        }
+        // enter 触发子菜单首个算法（异或 XOR）→ 弹出结果弹窗
+        cx.simulate_keystrokes("enter");
+        for _ in 0..4 {
+            draw(&mut cx);
+        }
+
+        assert!(
+            dialog_open(&mut cx),
+            "右键菜单的「校验」子菜单项应能通过键盘触发并打开结果弹窗"
         );
     }
 }
