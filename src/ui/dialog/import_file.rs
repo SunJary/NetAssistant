@@ -10,17 +10,17 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use gpui_component::ActiveTheme as _;
-use gpui_component::Disableable as _;
-use gpui_component::StyledExt;
-use gpui_component::Theme;
-use gpui_component::WindowExt as _;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::input::{Input, InputState};
-use gpui_component::scroll::ScrollableElement;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::Disableable as _;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::Theme;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dialog::DialogFooter;
+use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::scroll::ScrollableElement;
 
 use rust_i18n::t;
 

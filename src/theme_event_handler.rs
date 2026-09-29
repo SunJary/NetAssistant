@@ -1,5 +1,5 @@
-use gpui::*;
-use gpui_component::theme::{Theme, ThemeRegistry};
+use gpui_kit::*;
+use gpui_kit::component::theme::{Theme, ThemeRegistry};
 use log::info;
 
 impl Global for ThemeEventHandler {}

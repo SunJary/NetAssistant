@@ -1,20 +1,20 @@
 // 新建/编辑连接对话框
 //
-// 基于 gpui_component::Dialog 实现:
+// 基于 gpui_kit::component::Dialog 实现:
 // 通过 window.open_dialog 命令式打开(Root 管理对话框栈), 内容区用动态 content 模式
 // 每帧从 NetAssistantApp 读取最新状态(编辑态标题、协议/消息模式/解码器 chips、
 // 「更多设置」折叠区随状态刷新), 内容过高时中间滚动, 标题与底部按钮固定。
 
-use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use gpui_component::ActiveTheme as _;
-use gpui_component::StyledExt;
-use gpui_component::Theme;
-use gpui_component::WindowExt as _;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::input::Input;
-use gpui_component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::Theme;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dialog::DialogFooter;
+use gpui_kit::component::input::Input;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
@@ -130,7 +130,7 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
                         div()
                             .text_xs()
                             // TODO: 等待主题增加 disabled.foreground 键后迁移
-                            .text_color(gpui::rgb(0x9ca3af))
+                            .text_color(gpui_kit::rgb(0x9ca3af))
                             .child(t!("new_connection.host_hint").to_string()),
                     )
                 }),
@@ -241,7 +241,7 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
                                             div()
                                                 .text_xs()
                                                 // TODO: 等待主题增加 disabled.foreground 键后迁移
-                                                .text_color(gpui::rgb(0x9ca3af))
+                                                .text_color(gpui_kit::rgb(0x9ca3af))
                                                 .child(
                                                     t!("new_connection.local_bind_hint")
                                                         .to_string(),

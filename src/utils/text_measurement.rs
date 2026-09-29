@@ -1,7 +1,7 @@
 use log::{debug, info};
 
-use gpui::{Pixels, SharedString, TextStyle, Window, px};
-use gpui_component::PixelsExt;
+use gpui_kit::{Pixels, SharedString, TextStyle, Window, px};
+use gpui_kit::component::PixelsExt;
 
 /// 文本测量工具类，提供基于GPUI TextSystem的精确文本尺寸计算功能
 pub struct TextMeasurement {
@@ -58,7 +58,7 @@ impl TextMeasurement {
         let mut text_style = TextStyle::default();
         text_style.font_family = "JetBrains Mono".into();
         text_style.font_size = actual_font_size.into();
-        text_style.white_space = gpui::WhiteSpace::Normal;
+        text_style.white_space = gpui_kit::WhiteSpace::Normal;
         
         let text = SharedString::new(content);
         let run = text_style.to_run(text.len());

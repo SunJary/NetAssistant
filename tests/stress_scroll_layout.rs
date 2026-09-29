@@ -4,11 +4,11 @@
 //! 嵌套链, 用 debug_bounds 逐层测量高度, 并模拟滚轮验证滚动是否生效。
 //! 目的: 定位高度约束链断点 (滚动失效 = 某层被内容撑开, scroll_max 恒为 0)。
 
-use gpui::{
+use gpui_kit::{
     Context, InteractiveElement, IntoElement, ParentElement, Render, ScrollDelta, ScrollWheelEvent,
     Size, Styled, TestAppContext, VisualTestContext, Window, div, point, px,
 };
-use gpui_component::scroll::ScrollableElement;
+use gpui_kit::component::scroll::ScrollableElement;
 
 const WINDOW_SIZE: (f32, f32) = (1000., 500.);
 
@@ -145,7 +145,7 @@ impl Render for StressChainTest {
     }
 }
 
-use gpui::prelude::FluentBuilder as _;
+use gpui_kit::prelude::FluentBuilder as _;
 
 fn draw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
@@ -154,7 +154,7 @@ fn draw(cx: &mut VisualTestContext) {
     });
 }
 
-fn scroll(cx: &mut VisualTestContext, x: gpui::Pixels, y: gpui::Pixels, dx: f32, dy: f32) {
+fn scroll(cx: &mut VisualTestContext, x: gpui_kit::Pixels, y: gpui_kit::Pixels, dx: f32, dy: f32) {
     cx.simulate_event(ScrollWheelEvent {
         position: point(x, y),
         delta: ScrollDelta::Pixels(point(px(dx), px(dy))),
@@ -163,9 +163,9 @@ fn scroll(cx: &mut VisualTestContext, x: gpui::Pixels, y: gpui::Pixels, dx: f32,
     draw(cx);
 }
 
-#[gpui::test]
+#[gpui_kit::test]
 fn stress_chain_layout_and_scroll(cx: &mut TestAppContext) {
-    cx.update(gpui_component::init);
+    cx.update(gpui_kit::component::init);
     let (_, cx) = cx.add_window_view(|_, _| StressChainTest);
     let cx: &mut VisualTestContext = cx;
     cx.simulate_resize(Size::new(px(WINDOW_SIZE.0), px(WINDOW_SIZE.1)));

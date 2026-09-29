@@ -6,9 +6,9 @@
 
 use std::sync::Arc;
 
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::tooltip::Tooltip;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
+use gpui_kit::component::tooltip::Tooltip;
 use rust_i18n::t;
 
 use super::core::{self, Action, Cell, MoveDir};
@@ -406,7 +406,7 @@ fn render_row(
                         style.token_text
                     })
                     .bg(if (on_token && !focused) || selected {
-                        gpui::transparent_black()
+                        gpui_kit::transparent_black()
                     } else {
                         style.token_bg
                     })
@@ -710,12 +710,12 @@ mod visual_tests {
     //! 无头可视化测试：网格布局/滚动/点击定位/键入改写
     use std::sync::Arc;
 
-    use gpui::{
+    use gpui_kit::{
         AppContext as _, Context, Entity, IntoElement, MouseButton, MouseDownEvent,
         ParentElement as _, Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext,
         VisualTestContext, Window, div, point, px, white,
     };
-    use gpui_component::Root;
+    use gpui_kit::component::Root;
 
     use super::{HexEditorState, HexEditorStyle, HexViewConfig, render_grid};
     use crate::ui::components::hex_editor::core::{self, Cursor};
@@ -792,9 +792,9 @@ mod visual_tests {
         editor
     }
 
-    #[gpui::test]
+    #[gpui_kit::test]
     fn grid_rows_layout_and_scroll(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 64); // 8 行
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -803,7 +803,7 @@ mod visual_tests {
                 show_grid: true,
                 height: 100.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
         draw(&mut cx);
@@ -831,9 +831,9 @@ mod visual_tests {
         );
     }
 
-    #[gpui::test]
+    #[gpui_kit::test]
     fn click_cell_positions_cursor_with_nibble_precision(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 16);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -842,7 +842,7 @@ mod visual_tests {
                 show_grid: true,
                 height: 100.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
         draw(&mut cx);
@@ -888,9 +888,9 @@ mod visual_tests {
 
     /// 模拟真实切换流程: chip 处理器直接 focus(元素未点击) → 立即键入数字。
     /// 回归: 自动聚焦后键入必须生效(用户反馈"输入没反应"的路径)。
-    #[gpui::test]
+    #[gpui_kit::test]
     fn auto_focus_then_typing_without_click(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 4);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -899,7 +899,7 @@ mod visual_tests {
                 show_grid: true,
                 height: 100.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
         draw(&mut cx);
@@ -940,9 +940,9 @@ mod visual_tests {
 
     /// 真实切换顺序: 网格尚未挂载(text 模式) → focus → 网格挂载(hex 模式) → 键入。
     /// 回归: "切换后未点击就输入"的完整链路。
-    #[gpui::test]
+    #[gpui_kit::test]
     fn focus_before_mount_then_type(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 4);
         let (host, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -951,7 +951,7 @@ mod visual_tests {
                 show_grid: false,
                 height: 100.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
 
@@ -995,9 +995,9 @@ mod visual_tests {
 
     /// 空内容必须渲染「幻影光标格」: 光标可见可点, 键入从 (0,0) 追加。
     /// 回归: 空状态下"没有光标"的用户反馈。
-    #[gpui::test]
+    #[gpui_kit::test]
     fn empty_doc_shows_phantom_cursor_and_typing_lands(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 0); // 空内容
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -1006,7 +1006,7 @@ mod visual_tests {
                 show_grid: true,
                 height: 100.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
         draw(&mut cx);
@@ -1037,9 +1037,9 @@ mod visual_tests {
 
     /// 导航到内容末尾(虚拟末尾)时光标格必须可见, 点击末尾空位后键入追加。
     /// 回归: "字节之间的白色空格处不显示光标"。
-    #[gpui::test]
+    #[gpui_kit::test]
     fn virtual_end_cursor_visible_and_typing_appends(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 3); // 3 字节, 每行 8: 末尾空位在首行 slot 3
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -1048,7 +1048,7 @@ mod visual_tests {
                 show_grid: true,
                 height: 100.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
         draw(&mut cx);
@@ -1094,9 +1094,9 @@ mod visual_tests {
     }
 
     /// 内容恰好填满整行时, 虚拟末尾光标属于新的一行: 补渲染一行保证光标可见。
-    #[gpui::test]
+    #[gpui_kit::test]
     fn virtual_end_cursor_renders_extra_row_at_row_boundary(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 8); // 恰好填满一行(8 字节/行)
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -1105,7 +1105,7 @@ mod visual_tests {
                 show_grid: true,
                 height: 400.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
         draw(&mut cx);
@@ -1128,9 +1128,9 @@ mod visual_tests {
             .expect("end cursor slot on the extra row should render");
     }
 
-    #[gpui::test]
+    #[gpui_kit::test]
     fn typing_hex_digit_overwrites_and_advances(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let editor = seed(cx, 4);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
@@ -1139,7 +1139,7 @@ mod visual_tests {
                 show_grid: true,
                 height: 100.0,
             });
-            gpui_component::Root::new(host, window, cx)
+            gpui_kit::component::Root::new(host, window, cx)
         });
         draw(&mut cx);
         draw(&mut cx);

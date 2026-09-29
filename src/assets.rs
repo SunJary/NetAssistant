@@ -1,5 +1,5 @@
-use gpui::AssetSource;
-use gpui_component_assets::Assets as DefaultAssets;
+use gpui_kit::AssetSource;
+use gpui_kit::assets::Assets as DefaultAssets;
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -43,12 +43,12 @@ impl AssetSource for CustomAssets {
         self.default_assets.load(path)
     }
 
-    fn list(&self, path: &str) -> anyhow::Result<Vec<gpui::SharedString>> {
+    fn list(&self, path: &str) -> anyhow::Result<Vec<gpui_kit::SharedString>> {
         // 合并自定义图标和默认图标的列表
         let mut default_list = self.default_assets.list(path)?;
         let custom_list = CustomIcons::iter()
             .filter(|p: &Cow<'static, str>| p.starts_with(path))
-            .map(|p| gpui::SharedString::from(p.clone()))
+            .map(|p| gpui_kit::SharedString::from(p.clone()))
             .collect::<Vec<_>>();
 
         default_list.extend(custom_list);

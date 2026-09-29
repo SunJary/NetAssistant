@@ -1,5 +1,5 @@
-use gpui::App;
-use gpui_component::{Theme, ThemeRegistry, ThemeSet};
+use gpui_kit::App;
+use gpui_kit::component::{Theme, ThemeRegistry, ThemeSet};
 use log::info;
 use std::rc::Rc;
 

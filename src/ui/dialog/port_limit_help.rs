@@ -8,16 +8,16 @@
 
 use std::borrow::Cow;
 
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::ActiveTheme as _;
-use gpui_component::StyledExt;
-use gpui_component::Theme;
-use gpui_component::WindowExt as _;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::clipboard::Clipboard;
-use gpui_component::dialog::DialogFooter;
-use gpui_component::scroll::ScrollableElement;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::Theme;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::clipboard::Clipboard;
+use gpui_kit::component::dialog::DialogFooter;
+use gpui_kit::component::scroll::ScrollableElement;
 
 use rust_i18n::t;
 
@@ -246,7 +246,7 @@ fn section_title(text: &str) -> Div {
     div()
         .text_sm()
         .font_semibold()
-        .text_color(gpui::rgba(0xef4444))
+        .text_color(gpui_kit::rgba(0xef4444))
         .child(text.to_string())
 }
 

@@ -1,22 +1,22 @@
 // 压测配置弹窗
 //
-// 基于 gpui_component::Dialog 实现:
+// 基于 gpui_kit::component::Dialog 实现:
 // 通过 window.open_dialog 命令式打开(Root 管理对话框栈), 内容区用动态 content 模式
 // 每帧从 NetAssistantApp 读取最新状态(chip 选择、折叠区、端口警告、插入变量浮层随状态刷新),
 // 滚动结构为「外层 max_h 钳制可视区 + 内层 overflow_y_scrollbar」
 // (见 dialog_content_max_height 文档, max_h 不能直接放滚动容器上, 否则滚轮不响应)。
 
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::ActiveTheme as _;
-use gpui_component::ElementExt as _;
-use gpui_component::StyledExt;
-use gpui_component::Theme;
-use gpui_component::WindowExt as _;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::input::{Input, InputState};
-use gpui_component::scroll::ScrollableElement;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::ElementExt as _;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::Theme;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dialog::DialogFooter;
+use gpui_kit::component::input::{EditorState, Input, InputState};
+use gpui_kit::component::scroll::ScrollableElement;
 
 use rust_i18n::t;
 
@@ -56,7 +56,7 @@ pub struct StressConfigDialogState {
     pub send_interval_input: Entity<InputState>,
     pub qps_limit_input: Entity<InputState>,
     pub timeout_input: Entity<InputState>,
-    pub payload_input: Entity<InputState>,
+    pub payload_input: Entity<EditorState>,
     /// 报文输入框（hex 模式）的十六进制编辑器状态，与 payload_input 同步创建
     pub payload_hex_editor: Entity<HexEditorState>,
     pub duration_input: Entity<InputState>,
@@ -119,11 +119,10 @@ impl StressConfigDialogState {
             timeout_input: make_input(&config.timeout_ms.to_string(), window, cx),
             payload_input: {
                 let input = cx.new(|cx| {
-                    InputState::new(window, cx)
-                        .code_editor("json")
+                    EditorState::new(window, cx)
+                        .language("json")
                         .line_number(false)
                         .folding(false)
-                        .multi_line(true)
                         // 关闭 Input 内置的原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」绘制菜单
                         .context_menu(false)
                         .placeholder(t!("stress_config.payload_placeholder").to_string())
@@ -350,7 +349,7 @@ impl StressConfigDialog {
 
         // 超过静态阈值且尚未检测: 兜底 spawn (trigger_port_range_detect 会置 detected=true)
         let weak_app = cx.entity().downgrade();
-        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+        cx.spawn(async move |_, async_app: &mut gpui_kit::AsyncApp| {
             let detected = smol::unblock(|| EphemeralPortRange::detect()).await;
             if let Some(app) = weak_app.upgrade() {
                 let _ = app.update(async_app, |app: &mut NetAssistantApp, cx| {
@@ -742,14 +741,14 @@ fn render_insert_var_button(
         .font_medium()
         .cursor_pointer()
         .when(filled, |this| {
-            this.text_color(gpui::white()).bg(theme.primary)
+            this.text_color(gpui_kit::white()).bg(theme.primary)
         })
         .when(!filled, |this| {
             this.text_color(theme.primary)
                 .bg(theme.primary.opacity(0.06))
         })
-        .hover(|this| this.text_color(gpui::white()).bg(theme.primary))
-        .active(|this| this.text_color(gpui::white()).bg(theme.primary))
+        .hover(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
+        .active(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
         .child(t!("stress_config.insert_variable").to_string())
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             entity.update(cx, |app, cx| {

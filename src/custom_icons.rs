@@ -1,5 +1,5 @@
-use gpui::SharedString;
-use gpui_component::{IconName, IconNamed};
+use gpui_kit::SharedString;
+use gpui_kit::component::{IconName, IconNamed};
 
 /// 自定义图标名称枚举，扩展了 gpui-component 的 IconName
 #[derive(Clone)]

@@ -1,14 +1,14 @@
 // 收藏备注对话框
 //
-// 基于 gpui_component::Dialog 实现:
+// 基于 gpui_kit::component::Dialog 实现:
 // 通过 window.open_dialog 命令式打开(Root 管理对话框栈), 键盘 Enter 确认 / ESC 取消
 // 由 Dialog 的 on_ok/on_cancel 处理。
 
-use gpui::*;
-use gpui_component::WindowExt as _;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::{DialogAction, DialogClose, DialogFooter};
-use gpui_component::input::{Input, InputState};
+use gpui_kit::*;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dialog::{DialogAction, DialogClose, DialogFooter};
+use gpui_kit::component::input::{Input, InputState};
 use rust_i18n::t;
 use std::sync::Arc;
 

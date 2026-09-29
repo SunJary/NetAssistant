@@ -2,13 +2,13 @@ use crate::custom_icons::CustomIconName;
 use crate::message::{MessageDisplayMode, format_json_text};
 use crate::ui::dialog::{dialog_content_max_height, dialog_height};
 use crate::utils::hex::{hex_to_text, text_to_hex, validate_hex_input};
-use gpui::*;
-use gpui_component::{
+use gpui_kit::*;
+use gpui_kit::component::{
     ActiveTheme as _, Icon, StyledExt, Theme, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogFooter,
     input::{
-        Copy as CopyAction, Cut as CutAction, Input, InputState, Paste as PasteAction,
+        Copy as CopyAction, Cut as CutAction, Editor, EditorState, Paste as PasteAction,
         SelectAll as SelectAllAction,
     },
     menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
@@ -36,7 +36,7 @@ impl InputWithMode {
     ///
     /// 注意：调用方需先完成 `hex_adapter::sync`（本函数只读渲染，不更新实体）。
     pub fn render(
-        input_state: &Entity<InputState>,
+        input_state: &Entity<EditorState>,
         hex_editor: Option<&Entity<HexEditorState>>,
         mode: &str,
         theme: &Theme,
@@ -200,7 +200,7 @@ enum Direction {
 ///
 /// 菜单打开时才求值，取到的是用户当下的选区，不随渲染帧缓存。
 fn convert_source(
-    input: &Entity<InputState>,
+    input: &Entity<EditorState>,
     hex_editor: Option<&Entity<HexEditorState>>,
     is_grid: bool,
     cx: &App,
@@ -233,7 +233,7 @@ fn convert_source(
 /// 「转换为 Hex」恒可用（任何内容都能编码），「转换为文本」要求源内容为合法 hex。
 fn build_context_menu(
     menu: PopupMenu,
-    input: Entity<InputState>,
+    input: Entity<EditorState>,
     hex_editor: Option<Entity<HexEditorState>>,
     is_grid: bool,
     is_hex_mode: bool,
@@ -284,7 +284,7 @@ fn convert_menu_item(
     label: String,
     direction: Direction,
     disabled: bool,
-    input: &Entity<InputState>,
+    input: &Entity<EditorState>,
     hex_editor: Option<Entity<HexEditorState>>,
     is_grid: bool,
 ) -> PopupMenuItem {
@@ -362,7 +362,7 @@ fn open_convert_result_dialog(title: String, text: String, window: &mut Window, 
 
 /// 构建文本输入框容器（hex 校验失败时 danger 边框；valid_only 表示仅 valid 时边框着色）
 fn text_input_container(
-    input_state: &Entity<InputState>,
+    input_state: &Entity<EditorState>,
     theme: &Theme,
     is_valid: bool,
     _cx: &App,
@@ -381,7 +381,7 @@ fn text_input_container(
             theme.border
         })
         .child(
-            Input::new(input_state)
+            Editor::new(input_state)
                 .w_full()
                 .h_full()
                 .p_2()
@@ -420,11 +420,11 @@ fn overflow_line(theme: &Theme) -> Div {
 mod repro_tests {
     //! 复现：自动回复输入框默认值 "ok" 切到 hex 模式后的完整真实序列
     //! （渲染中创建实体/订阅 → text 模式渲染 → 切 hex + 内容转换 → 继续渲染）
-    use gpui::{
+    use gpui_kit::{
         AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
         TestAppContext, Window, div, px,
     };
-    use gpui_component::{ActiveTheme as _, Root, WindowExt as _, input::InputState};
+    use gpui_kit::component::{ActiveTheme as _, Root, WindowExt as _, input::EditorState};
     use rust_i18n::t;
 
     use super::InputWithMode;
@@ -433,12 +433,12 @@ mod repro_tests {
     struct Host {
         tab_id: String,
         is_server: bool,
-        message_input: Option<Entity<InputState>>,
+        message_input: Option<Entity<EditorState>>,
         message_editor: Option<Entity<HexEditorState>>,
-        auto_reply_input: Option<Entity<InputState>>,
+        auto_reply_input: Option<Entity<EditorState>>,
         auto_reply_editor: Option<Entity<HexEditorState>>,
         #[allow(dead_code)]
-        subscription: Option<gpui::Subscription>,
+        subscription: Option<gpui_kit::Subscription>,
         mode: &'static str,
     }
 
@@ -463,11 +463,10 @@ mod repro_tests {
                 return;
             }
             let input = cx.new(|cx| {
-                InputState::new(window, cx)
-                    .code_editor("json")
+                EditorState::new(window, cx)
+                    .language("json")
                     .line_number(false)
                     .folding(false)
-                    .multi_line(true)
             });
             input.update(cx, |input, cx| {
                 input.set_value("ok".to_string(), window, cx);
@@ -476,7 +475,7 @@ mod repro_tests {
             let subscription = cx.subscribe(&input, {
                 let tab_id = self.tab_id.clone();
                 move |_host, _input, event, _cx| {
-                    if matches!(event, gpui_component::input::InputEvent::Change) {
+                    if matches!(event, gpui_kit::component::input::InputEvent::Change) {
                         log::debug!("[repro] auto reply change {tab_id}");
                     }
                 }
@@ -486,11 +485,10 @@ mod repro_tests {
             self.subscription = Some(subscription);
             // 消息输入框（含合法 hex 内容, 模拟用户已在文本模式输入）
             let message = cx.new(|cx| {
-                InputState::new(window, cx)
-                    .code_editor("json")
+                EditorState::new(window, cx)
+                    .language("json")
                     .line_number(false)
                     .folding(false)
-                    .multi_line(true)
             });
             message.update(cx, |input, cx| {
                 input.set_value("11 22 22 33 44 55 11 22".to_string(), window, cx);
@@ -507,7 +505,7 @@ mod repro_tests {
             window: &mut Window,
             cx: &mut Context<Self>,
         ) {
-            let inputs: Vec<Entity<InputState>> = self
+            let inputs: Vec<Entity<EditorState>> = self
                 .message_input
                 .clone()
                 .into_iter()
@@ -563,14 +561,14 @@ mod repro_tests {
         }
     }
 
-    #[gpui::test]
+    #[gpui_kit::test]
     fn hex_mode_with_invalid_default_value_ok(cx: &mut TestAppContext) {
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let host = cx.new(|cx| Host::new(window, cx));
             Root::new(host, window, cx)
         });
-        let draw = |cx: &mut gpui::VisualTestContext| {
+        let draw = |cx: &mut gpui_kit::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| {
                 _ = window.draw(cx);
@@ -616,16 +614,16 @@ mod repro_tests {
     ///
     /// 菜单锚在右键点、项高固定 26px，故按下落偏移逐个试探命中位置，
     /// 避免把菜单项序号写死（项顺序/分隔线变化时用例不该失效）。
-    #[gpui::test]
+    #[gpui_kit::test]
     fn convert_context_menu_click_opens_result_dialog(cx: &mut TestAppContext) {
-        use gpui::{MouseButton, MouseDownEvent, point};
+        use gpui_kit::{MouseButton, MouseDownEvent, point};
 
-        cx.update(gpui_component::init);
+        cx.update(gpui_kit::component::init);
         let (_, mut cx) = cx.add_window_view(|window, cx| {
             let host = cx.new(|cx| Host::new(window, cx));
             Root::new(host, window, cx)
         });
-        let mut draw = |cx: &mut gpui::VisualTestContext| {
+        let mut draw = |cx: &mut gpui_kit::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| {
                 _ = window.draw(cx);
@@ -636,7 +634,7 @@ mod repro_tests {
 
         let at = point(px(100.0), px(40.0));
         let dialog_open =
-            |cx: &mut gpui::VisualTestContext| cx.update(|window, cx| window.has_active_dialog(cx));
+            |cx: &mut gpui_kit::VisualTestContext| cx.update(|window, cx| window.has_active_dialog(cx));
 
         let mut hit_offset = None;
         for offset in (30..210).step_by(6) {

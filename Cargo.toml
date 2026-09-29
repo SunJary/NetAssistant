@@ -4,10 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gpui = { git = "https://github.com/zed-industries/zed" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component", features = ["tree-sitter"] }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
+gpui-kit = { version = "0.7", features = ["tree-sitter"] }
+# 平台 feature 透传（对应原 gpui_platform 的 features，触发底层 gpui-pre-platform 启用）
+gpui-pre-platform = { version = "0.3.7", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
 anyhow = "1.0"
 indexmap = "2"
 serde = { version = "1.0", features = ["derive"] }
@@ -55,4 +54,4 @@ terminal = false
 
 
 [dev-dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", features = ["test-support"] }
+gpui-kit = { version = "0.7", features = ["test-support"] }

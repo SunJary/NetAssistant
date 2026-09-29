@@ -1,13 +1,13 @@
 /// 对话框滚动布局的无头测试：复现 Dialog 组件内「auto 高度面板 + max_h 封顶 + 滚动容器」
 /// 的精确结构，验证内容超高时滚动容器被 clamp 且可滚动。
-use gpui::{
+use gpui_kit::{
     AppContext as _, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext, VisualTestContext, Window,
     div, point, px,
 };
-use gpui_component::dialog::Dialog;
-use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{Root, WindowExt, v_flex};
+use gpui_kit::component::dialog::Dialog;
+use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::{Root, WindowExt, v_flex};
 
 fn draw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
@@ -47,7 +47,7 @@ impl DialogHost {
                 .max_h(px(480.))
                 // 与生产配置一致: 点击蒙层关闭弹窗
                 .footer(
-                    gpui_component::dialog::DialogFooter::new().child(
+                    gpui_kit::component::dialog::DialogFooter::new().child(
                         div()
                             .h(px(28.))
                             .w(px(60.))
@@ -84,15 +84,15 @@ impl Render for DialogHost {
             self.opened = true;
             self.open(window, cx);
         }
-        // 与真实应用的 AppShell 一致: 挂载 Root 的 Dialog 层
-        let dialog_layer = Root::render_dialog_layer(window, cx);
-        div().size_full().children(dialog_layer)
+        // gpui-base::Root 在 0.7.0 中自动挂载 Dialog/Sheet/Tooltip 等浮层,
+        // 内部视图无需手动渲染 dialog_layer
+        div().size_full()
     }
 }
 
-#[gpui::test]
+#[gpui_kit::test]
 fn dialog_content_with_max_h_clamps_and_scrolls(cx: &mut TestAppContext) {
-    cx.update(gpui_component::init);
+    cx.update(gpui_kit::component::init);
     let (_, cx) = cx.add_window_view(|window, cx| {
         let host = cx.new(|cx| DialogHost { opened: false });
         Root::new(host, window, cx)
@@ -144,11 +144,11 @@ fn dialog_content_with_max_h_clamps_and_scrolls(cx: &mut TestAppContext) {
 }
 
 /// ESC 关闭 / 点击蒙层关闭的交互行为测试
-#[gpui::test]
+#[gpui_kit::test]
 fn dialog_esc_and_overlay_click_both_close(cx: &mut TestAppContext) {
-    use gpui::{MouseButton, MouseDownEvent};
+    use gpui_kit::{MouseButton, MouseDownEvent};
 
-    cx.update(gpui_component::init);
+    cx.update(gpui_kit::component::init);
     let (_, mut cx) = cx.add_window_view(|window, cx| {
         let host = cx.new(|cx| DialogHost { opened: false });
         Root::new(host, window, cx)

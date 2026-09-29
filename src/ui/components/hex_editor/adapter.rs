@@ -6,12 +6,12 @@
 
 use std::sync::Arc;
 
-use gpui::*;
-use gpui_component::{
+use gpui_kit::*;
+use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogFooter,
-    input::InputState,
+    input::EditorState,
     tooltip::Tooltip,
 };
 use rust_i18n::t;
@@ -39,7 +39,7 @@ const EXPANDED_BYTES_PER_ROW: usize = 16;
 /// 值 → 编辑器状态同步（渲染前调用）。
 /// 仅当输入框值与上次同步值不同（文本模式编辑过、模式切换、外部 set_value）
 /// 才重新解析；编辑器自身写回的值已标记 parsed_from，不会触发重解析。
-pub fn sync(editor: &Entity<HexEditorState>, input: &Entity<InputState>, cx: &mut App) {
+pub fn sync(editor: &Entity<HexEditorState>, input: &Entity<EditorState>, cx: &mut App) {
     let value = input.read(cx).value().to_string();
     if editor.read(cx).parsed_from.as_deref() != Some(value.as_str()) {
         editor.update(cx, |state, cx| {
@@ -53,7 +53,7 @@ pub fn sync(editor: &Entity<HexEditorState>, input: &Entity<InputState>, cx: &mu
 /// 内容写回回调：core 的编辑结果写回 InputState。
 /// 使用 replace_all（而非 set_value）：保留撤销历史，且会发出 InputEvent::Change，
 /// 自动回复等既有订阅链路无需改动。
-fn write_back(input: &Entity<InputState>) -> WriteBack {
+fn write_back(input: &Entity<EditorState>) -> WriteBack {
     let input = input.clone();
     Arc::new(move |value, window, cx| {
         input.update(cx, |input, cx| {
@@ -62,7 +62,7 @@ fn write_back(input: &Entity<InputState>) -> WriteBack {
     })
 }
 
-fn style_from_theme(theme: &gpui_component::Theme) -> HexEditorStyle {
+fn style_from_theme(theme: &gpui_kit::component::Theme) -> HexEditorStyle {
     // 未聚焦光标: 中性灰(HxD/VSCode 惯例)——主色高亮易与"聚焦/选中"状态混淆,
     // 半透明灰在浅色/深色主题下都可辨识且不抢视觉焦点
     let mut unfocused_cursor = theme.muted_foreground;
@@ -84,8 +84,8 @@ fn style_from_theme(theme: &gpui_component::Theme) -> HexEditorStyle {
 /// 调用前保证已 `sync`（由调用方完成）且输入值可解析（解析失败走回退文本框路径）。
 pub fn render_inline(
     editor: &Entity<HexEditorState>,
-    input: &Entity<InputState>,
-    theme: &gpui_component::Theme,
+    input: &Entity<EditorState>,
+    theme: &gpui_kit::component::Theme,
     window: &Window,
     cx: &App,
 ) -> Div {
@@ -210,7 +210,7 @@ fn bytes_label(full: usize, tokens: usize) -> String {
 }
 
 /// 格式化重排：按 core 序列化规范统一空格分组（不动字节内容）
-fn format_value(input: &Entity<InputState>, window: &mut Window, cx: &mut App) {
+fn format_value(input: &Entity<EditorState>, window: &mut Window, cx: &mut App) {
     let value = input.read(cx).value().to_string();
     if let Some(normalized) = normalize_hex_value(&value) {
         input.update(cx, |input, cx| {
@@ -234,7 +234,7 @@ pub fn normalize_hex_value(value: &str) -> Option<String> {
 /// 自包含：直接持有 input/editor 实体，不占用 App 状态；
 /// 编辑实时写回（与内联同一实例），取消时恢复快照。
 pub fn open_expand_dialog(
-    input: Entity<InputState>,
+    input: Entity<EditorState>,
     editor: Entity<HexEditorState>,
     window: &mut Window,
     cx: &mut App,
@@ -415,7 +415,7 @@ pub fn open_expand_dialog(
     });
 }
 
-fn expand_footer(input: Entity<InputState>, snapshot: String) -> DialogFooter {
+fn expand_footer(input: Entity<EditorState>, snapshot: String) -> DialogFooter {
     DialogFooter::new()
         .child(
             Button::new("hex-expand-cancel")
@@ -459,7 +459,7 @@ fn dialog_tool_button(id: &'static str, icon: CustomIconName, label: String) -> 
 /// 从文件导入：优先按 hex 文本容错解析；无法解析则按二进制逐字节编码。
 /// 文件对话框异步弹出，读完后经 update_window 写回（GPUI 实体不可跨线程）。
 fn start_import(
-    input: &Entity<InputState>,
+    input: &Entity<EditorState>,
     editor: &Entity<HexEditorState>,
     window_handle: AnyWindowHandle,
     cx: &mut App,

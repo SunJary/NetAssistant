@@ -7,15 +7,15 @@ use crate::ui::dialog::{
     DecoderSelectionDialogState, open_add_client_dialog, open_decoder_selection_dialog,
     open_favorite_remark_dialog,
 };
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::ElementExt as _;
-use gpui_component::{ActiveTheme as _, Sizable, StyledExt};
-use gpui_component::{
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
+use gpui_kit::component::ElementExt as _;
+use gpui_kit::component::{ActiveTheme as _, Sizable, StyledExt};
+use gpui_kit::component::{
     Icon, IconName, Size, Theme,
     clipboard::Clipboard,
-    input::{Input, InputState},
-    scroll::{Scrollbar, ScrollbarShow},
+    input::{EditorState, Input, InputState},
+    scroll::{Scrollbar, ScrollbarMode},
     tooltip::Tooltip,
 };
 
@@ -74,7 +74,7 @@ pub struct ConnectionTabState {
     pub message_display_mode: MessageDisplayMode,
 
     // 每个标签页独立的功能
-    pub message_input: Option<Entity<InputState>>,
+    pub message_input: Option<Entity<EditorState>>,
     /// 发送输入框（hex 模式）的十六进制编辑器状态，与 message_input 同步创建
     pub message_hex_editor: Option<Entity<HexEditorState>>,
     pub message_input_mode: String,
@@ -202,11 +202,10 @@ impl ConnectionTabState {
 
             // 初始化每个标签页独立的功能
             message_input: Some(cx.new(|cx| {
-                InputState::new(window, cx)
-                    .code_editor("json")
+                EditorState::new(window, cx)
+                    .language("json")
                     .line_number(false)
                     .folding(false)
-                    .multi_line(true)
                     // 关闭 Input 内置的原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」绘制菜单
                     .context_menu(false)
                     .placeholder(t!("connection_tab.message_input_placeholder"))
@@ -343,7 +342,7 @@ impl ConnectionTabState {
         }
 
         if self.auto_scroll_enabled && new_count > 0 {
-            self.message_list_state.scroll_to(gpui::ListOffset {
+            self.message_list_state.scroll_to(gpui_kit::ListOffset {
                 item_ix: new_count,
                 offset_in_item: px(0.),
             });
@@ -390,7 +389,7 @@ impl ConnectionTabState {
 
         // 批末单次滚动
         if self.auto_scroll_enabled && new_count > 0 {
-            self.message_list_state.scroll_to(gpui::ListOffset {
+            self.message_list_state.scroll_to(gpui_kit::ListOffset {
                 item_ix: new_count,
                 offset_in_item: px(0.),
             });
@@ -488,7 +487,7 @@ impl<'a> ConnectionTab<'a> {
     /// 渲染通用输入框组件（支持文本/十六进制模式）
     fn render_input_with_mode(
         &self,
-        input_state: &Entity<InputState>,
+        input_state: &Entity<EditorState>,
         hex_editor: Option<&Entity<HexEditorState>>,
         mode: &str,
         theme: &Theme,
@@ -899,7 +898,7 @@ impl<'a> ConnectionTab<'a> {
                                     })
                                     .when(!self.tab_state.is_connected, |div| {
                                         // TODO: 等待主题增加 disabled.foreground 键后迁移
-                                        div.text_color(gpui::rgb(0x9ca3af))
+                                        div.text_color(gpui_kit::rgb(0x9ca3af))
                                     })
                                     .child(format!("{}", self.tab_state.connection_status)),
                             ),
@@ -1023,7 +1022,7 @@ impl<'a> ConnectionTab<'a> {
                                     .w_2()
                                     .h_2()
                                     .rounded_full()
-                                    .bg(gpui::rgb(0x9ca3af)),
+                                    .bg(gpui_kit::rgb(0x9ca3af)),
                             )
                             .child(
                                 div()
@@ -1082,7 +1081,7 @@ impl<'a> ConnectionTab<'a> {
                                     .child(
                                         div()
                                             .cursor_pointer()
-                                            .text_color(gpui::rgb(0x9ca3af))
+                                            .text_color(gpui_kit::rgb(0x9ca3af))
                                             .hover(|style| style.text_color(theme.muted_foreground))
                                             .child(Icon::new(CustomIconName::Pencil).size(px(12.0)))
                                             .on_mouse_down(MouseButton::Left, cx.listener({
@@ -1355,13 +1354,13 @@ impl<'a> ConnectionTab<'a> {
                             .font_medium()
                             .cursor_pointer()
                             .when(active, |this| {
-                                this.text_color(gpui::white()).bg(theme.primary)
+                                this.text_color(gpui_kit::white()).bg(theme.primary)
                             })
                             .when(!active, |this| {
                                 this.text_color(theme.primary).bg(theme.primary.opacity(0.06))
                             })
-                            .hover(|this| this.text_color(gpui::white()).bg(theme.primary))
-                            .active(|this| this.text_color(gpui::white()).bg(theme.primary))
+                            .hover(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
+                            .active(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
                             .tooltip(|window, cx| {
                                 Tooltip::new(
                                     t!("connection_tab.insert_variable_tooltip").to_string(),
@@ -1593,7 +1592,7 @@ impl<'a> ConnectionTab<'a> {
                                                 .w(px(12.0))
                                                 .child(
                                                     Scrollbar::vertical(&scrollbar_state)
-                                                        .scrollbar_show(ScrollbarShow::Always),
+                                                        .mode(ScrollbarMode::Always),
                                                 ),
                                         )
                                         .into_any()
@@ -1692,7 +1691,7 @@ impl<'a> ConnectionTab<'a> {
                                                         });
                                                         let new_count = tab_state.message_list.messages.len();
                                                         if new_count > 0 {
-                                                            tab_state.message_list_state.scroll_to(gpui::ListOffset {
+                                                            tab_state.message_list_state.scroll_to(gpui_kit::ListOffset {
                                                                 item_ix: new_count,
                                                                 offset_in_item: px(0.),
                                                             });
@@ -1909,7 +1908,7 @@ impl<'a> ConnectionTab<'a> {
                 div().flex().items_center().justify_center().flex_1().child(
                     div()
                         .text_sm()
-                        .text_color(gpui::rgb(0x9ca3af))
+                        .text_color(gpui_kit::rgb(0x9ca3af))
                         .child(t!("connection_tab.no_messages").to_string()),
                 )
                 .into_any()
@@ -2165,7 +2164,7 @@ impl<'a> ConnectionTab<'a> {
                                                         .child(
                                                             div()
                                                                 .text_xs()
-                                                                .text_color(gpui::rgb(0x9ca3af))
+                                                                .text_color(gpui_kit::rgb(0x9ca3af))
                                                                 .child(message.timestamp.clone()),
                                                         )
                                                         .when(
@@ -2320,7 +2319,7 @@ impl<'a> ConnectionTab<'a> {
                             .w(px(12.0))
                             .child(
                                 Scrollbar::vertical(&scrollbar_state)
-                                    .scrollbar_show(ScrollbarShow::Always),
+                                    .mode(ScrollbarMode::Always),
                             ),
                     )
                     .into_any()
@@ -2438,7 +2437,7 @@ impl<'a> ConnectionTab<'a> {
                                             // 清空输入框内容
                                             if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) {
                                                 if let Some(message_input) = &tab_state.message_input {
-                                                    message_input.update(cx, |input: &mut InputState, cx| {
+                                                    message_input.update(cx, |input: &mut EditorState, cx| {
                                                         input.set_value("", window, cx);
                                                     });
                                                 }

@@ -8,11 +8,11 @@
 // 面板内容需要按每帧最新状态渲染, 且操作要直接落到 app 的发送任务方法上,
 // 受控 Popover 的内容闭包拿不到 `Context<NetAssistantApp>`, 故不适用。
 
-use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::tooltip::Tooltip;
-use gpui_component::{ElementExt as _, Icon, StyledExt as _, Theme};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::component::{ElementExt as _, Icon, StyledExt as _, Theme};
 use indexmap::IndexMap;
 use rust_i18n::t;
 
@@ -260,7 +260,7 @@ impl<'a> SendTaskPanel<'a> {
                     )
             })
             .child(
-                Icon::new(CustomIconName::IconName(gpui_component::IconName::Plus))
+                Icon::new(CustomIconName::IconName(gpui_kit::component::IconName::Plus))
                     .size(px(12.0)),
             )
             .child(add_label)
@@ -426,9 +426,9 @@ impl<'a> SendTaskPanel<'a> {
             actions = actions.child(icon_button(
                 format!("task-expand-{task_id}"),
                 if expanded {
-                    CustomIconName::IconName(gpui_component::IconName::ChevronUp)
+                    CustomIconName::IconName(gpui_kit::component::IconName::ChevronUp)
                 } else {
-                    CustomIconName::IconName(gpui_component::IconName::ChevronDown)
+                    CustomIconName::IconName(gpui_kit::component::IconName::ChevronDown)
                 },
                 if expanded {
                     t!("send_task.collapse_lines").to_string()

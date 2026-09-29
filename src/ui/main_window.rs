@@ -4,15 +4,15 @@ use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
 use crate::ui::dialog::{FavoriteListPanel, open_new_connection_dialog};
 use crate::ui::tab_container::TabContainer;
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::ActiveTheme;
-use gpui_component::Icon;
-use gpui_component::IconName;
-use gpui_component::StyledExt;
-use gpui_component::TitleBar;
-use gpui_component::scroll::ScrollableElement;
-use gpui_component::tooltip::Tooltip;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::component::Icon;
+use gpui_kit::component::IconName;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::TitleBar;
+use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::tooltip::Tooltip;
 use rust_i18n::t;
 
 pub struct MainWindow<'a> {
@@ -206,7 +206,7 @@ impl<'a> MainWindow<'a> {
                                                 .w_2()
                                                 .h_2()
                                                 .rounded_full()
-                                                .bg(gpui::rgb(0xE5484D)),
+                                                .bg(gpui_kit::rgb(0xE5484D)),
                                         )
                                     })
                                     .on_mouse_down(
@@ -404,8 +404,8 @@ impl<'a> MainWindow<'a> {
                                         .py_2()
                                         .text_center()
                                         .text_xs()
-                                        .text_color(gpui::white())
-                                        .bg(gpui::rgb(0x238636))
+                                        .text_color(gpui_kit::white())
+                                        .bg(gpui_kit::rgb(0x238636))
                                         .rounded_md()
                                         .cursor_pointer()
                                         .child(t!("star_prompt.action").to_string())
@@ -449,7 +449,7 @@ impl<'a> MainWindow<'a> {
                         .flex()
                         .items_start()
                         .justify_start()
-                        .bg(gpui::rgba(0x80000000))
+                        .bg(gpui_kit::rgba(0x80000000))
                         .occlude()
                         .child(
                             div()

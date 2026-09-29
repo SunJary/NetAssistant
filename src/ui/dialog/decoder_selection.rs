@@ -1,22 +1,22 @@
 // 解码器选择弹窗
 //
-// 基于 gpui_component::Dialog 实现:
+// 基于 gpui_kit::component::Dialog 实现:
 // 通过 window.open_dialog 命令式打开(Root 管理对话框栈), 内容区用动态 content 模式
 // 每帧从 NetAssistantApp 读取最新状态(chip 切换、参数表单随状态刷新),
 // 内部使用 overflow_y_scrollbar 让内容过高时中间滚动, 标题与底部按钮固定。
 
 use std::borrow::Cow;
 
-use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use gpui_component::ActiveTheme as _;
-use gpui_component::StyledExt;
-use gpui_component::Theme;
-use gpui_component::WindowExt as _;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::input::{Input, InputState};
-use gpui_component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::Theme;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dialog::DialogFooter;
+use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::scroll::ScrollableElement as _;
 
 use rust_i18n::t;
 

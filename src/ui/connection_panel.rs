@@ -1,9 +1,9 @@
 use crate::custom_icons::CustomIconName;
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::ActiveTheme as _;
-use gpui_component::StyledExt;
-use gpui_component::{Icon, IconName};
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::{Icon, IconName};
 
 use rust_i18n::t;
 

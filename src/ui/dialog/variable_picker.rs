@@ -12,10 +12,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use gpui::*;
-use gpui_component::StyledExt as _;
-use gpui_component::Theme;
-use gpui_component::scroll::ScrollableElement;
+use gpui_kit::*;
+use gpui_kit::component::StyledExt as _;
+use gpui_kit::component::Theme;
+use gpui_kit::component::scroll::ScrollableElement;
 use rust_i18n::t;
 
 /// 变量浮层的当前目标(同一时刻只允许一个浮层)

@@ -1,5 +1,5 @@
-use gpui::*;
-use gpui_component::TitleBar;
+use gpui_kit::*;
+use gpui_kit::component::TitleBar;
 use log::{error, info};
 use simple_logger::SimpleLogger;
 use std::borrow::Cow;
@@ -50,11 +50,10 @@ struct AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let dialog_layer = gpui_component::Root::render_dialog_layer(window, cx);
-        div()
-            .size_full()
-            .child(self.view.clone())
-            .children(dialog_layer)
+        // gpui-base::Root 在 0.7.0 中会自动挂载 Dialog/Sheet/Tooltip 等浮层（以插件方式），
+        // 不再需要手动渲染 dialog_layer。
+        let _ = (window, cx);
+        div().size_full().child(self.view.clone())
     }
 }
 
@@ -127,14 +126,14 @@ fn main() {
 
 /// 运行 GPUI 应用
 fn run_app() {
-    let app = gpui_platform::application().with_assets(CustomAssets::new());
+    let app = gpui_kit::platform::application().with_assets(CustomAssets::new());
     info!("=== Application::new() 创建成功 ===");
 
     app.run(move |cx| {
         info!("=== 进入 app.run 回调 ===");
         // 必须在使用任何 GPUI Component 功能之前调用
-        gpui_component::init(cx);
-        info!("=== gpui_component::init() 完成 ===");
+        gpui_kit::component::init(cx);
+        info!("=== gpui_kit::component::init() 完成 ===");
 
         // 加载嵌入的 JetBrains Mono 等宽字体
         // 非英文字符（如中文）由系统字体自动回退渲染
@@ -158,7 +157,7 @@ fn run_app() {
             .and_then(|storage| storage.load_language())
             .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
         rust_i18n::set_locale(&locale);
-        gpui_component::set_locale(&locale);
+        gpui_kit::component::set_locale(&locale);
         info!("=== 多语言初始化完成，当前语言: {} ===", locale);
 
         // 加载窗口配置
@@ -185,7 +184,7 @@ fn run_app() {
                             x: px(visible_x as f32),
                             y: px(visible_y as f32),
                         },
-                        size: gpui::Size {
+                        size: gpui_kit::Size {
                             width: px(width as f32),
                             height: px(height as f32),
                         },
@@ -198,7 +197,7 @@ fn run_app() {
                             x: px(100.0),
                             y: px(100.0),
                         },
-                        size: gpui::Size {
+                        size: gpui_kit::Size {
                             width: px(900.0),
                             height: px(600.0),
                         },
@@ -213,7 +212,7 @@ fn run_app() {
                         x: px(100.0),
                         y: px(100.0),
                     },
-                    size: gpui::Size {
+                    size: gpui_kit::Size {
                         width: px(900.0),
                         height: px(600.0),
                     },
@@ -224,7 +223,7 @@ fn run_app() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-                window_min_size: Some(gpui::Size {
+                window_min_size: Some(gpui_kit::Size {
                     width: px(600.0),
                     height: px(300.0),
                 }),
@@ -244,7 +243,7 @@ fn run_app() {
                 window
                     .observe_window_appearance(move |window, cx| {
                         info!("=== 应用级别主题变化回调被调用 ===");
-                        let is_dark = window.appearance() == gpui::WindowAppearance::Dark;
+                        let is_dark = window.appearance() == gpui_kit::WindowAppearance::Dark;
                         info!("检测到主题变化: is_dark = {}", is_dark);
                         apply_theme(is_dark, cx);
                         cx.global_mut::<ThemeEventHandler>()
@@ -254,7 +253,7 @@ fn run_app() {
                     .detach();
 
                 // 初始化主题状态（根据当前窗口主题）
-                let is_dark = window.appearance() == gpui::WindowAppearance::Dark;
+                let is_dark = window.appearance() == gpui_kit::WindowAppearance::Dark;
                 cx.global_mut::<ThemeEventHandler>()
                     .set_is_dark_mode(is_dark);
                 apply_theme(is_dark, cx);
@@ -267,7 +266,7 @@ fn run_app() {
                     }
                 });
 
-                // 使用 gpui_component::Root 包装应用
+                // 使用 gpui_kit::component::Root 包装应用
                 cx.new(|cx| {
                     // 监听窗口大小变化，实现响应式布局和窗口配置保存
                     let app_clone = app.clone();
@@ -320,10 +319,10 @@ fn run_app() {
 
                         // 保存窗口配置
                         if let Ok(mut storage) = ConfigStorage::new() {
-                            let x = (origin.x / gpui::px(1.0)) as f64;
-                            let y = (origin.y / gpui::px(1.0)) as f64;
-                            let width = (content_size.width / gpui::px(1.0)) as f64;
-                            let height = (content_size.height / gpui::px(1.0)) as f64;
+                            let x = (origin.x / gpui_kit::px(1.0)) as f64;
+                            let y = (origin.y / gpui_kit::px(1.0)) as f64;
+                            let width = (content_size.width / gpui_kit::px(1.0)) as f64;
+                            let height = (content_size.height / gpui_kit::px(1.0)) as f64;
 
                             // 检查窗口位置是否有效（防止窗口被关闭时保存无效位置）
                             if x > -1000.0 && y > -1000.0 && x < 32768.0 && y < 32768.0 {
@@ -336,7 +335,7 @@ fn run_app() {
                     })
                     .detach();
 
-                    gpui_component::Root::new(shell, window, cx)
+                    gpui_kit::component::Root::new(shell, window, cx)
                 })
             },
         )

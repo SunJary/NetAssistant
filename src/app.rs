@@ -1,5 +1,5 @@
-use gpui::*;
-use gpui_component::input::{InputEvent, InputState};
+use gpui_kit::*;
+use gpui_kit::component::input::{EditorState, InputEvent, InputState};
 use log::{debug, error, info, warn};
 use rust_i18n::t;
 
@@ -87,7 +87,7 @@ pub struct NetAssistantApp {
     pub tab_multiline: bool,
 
     // 自动回复输入框状态（每个标签页一个）
-    pub auto_reply_inputs: HashMap<String, Entity<InputState>>,
+    pub auto_reply_inputs: HashMap<String, Entity<EditorState>>,
     // 自动回复输入框（hex 模式）的十六进制编辑器状态（与 auto_reply_inputs 同生命周期）
     pub auto_reply_hex_editors: HashMap<String, Entity<HexEditorState>>,
     // 自动回复输入框变更订阅(保持订阅存活; 内容变化时同步到网络层)
@@ -239,7 +239,7 @@ impl NetAssistantApp {
         let server_decoder_controls = HashMap::new();
 
         // 从配置加载侧边栏宽度和折叠状态
-        let sidebar_width = storage.load_sidebar_width().map(|w| gpui::px(w as f32));
+        let sidebar_width = storage.load_sidebar_width().map(|w| gpui_kit::px(w as f32));
         let sidebar_collapsed = storage.load_sidebar_collapsed().unwrap_or(false);
 
         let mut app = Self {
@@ -339,7 +339,7 @@ impl NetAssistantApp {
         let weak_app = cx.entity().clone().downgrade();
         let event_receiver = app.connection_event_receiver.take();
 
-        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+        cx.spawn(async move |_, async_app: &mut gpui_kit::AsyncApp| {
             let receiver = match event_receiver {
                 Some(receiver) => receiver,
                 None => return,
@@ -385,7 +385,7 @@ impl NetAssistantApp {
         // 关键: timer 不依赖 vsync/窗口可见, 最小化/遮挡时仍能唤醒主循环 poll future。
         let weak_app_stress = cx.entity().clone().downgrade();
         let stress_receiver = app.stress_event_receiver.take();
-        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+        cx.spawn(async move |_, async_app: &mut gpui_kit::AsyncApp| {
             let receiver = match stress_receiver {
                 Some(receiver) => receiver,
                 None => return,
@@ -433,7 +433,7 @@ impl NetAssistantApp {
         let current_version = env!("APP_VERSION").to_string();
         let tokio_handle = tokio::runtime::Handle::current();
 
-        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+        cx.spawn(async move |_, async_app: &mut gpui_kit::AsyncApp| {
             // 在 tokio 运行时上并行发起两个 HTTP 请求
             let version_handle = tokio_handle
                 .spawn(async move { crate::update_checker::check_latest_version().await });
@@ -730,7 +730,7 @@ impl NetAssistantApp {
         if from_mode == to_mode {
             return;
         }
-        let inputs: Vec<Entity<InputState>> = self
+        let inputs: Vec<Entity<EditorState>> = self
             .connection_tabs
             .get(tab_id)
             .and_then(|tab| tab.message_input.clone())
@@ -1248,7 +1248,7 @@ impl NetAssistantApp {
                 }
                 continue;
             };
-            tab_state.message_list_state.scroll_to(gpui::ListOffset {
+            tab_state.message_list_state.scroll_to(gpui_kit::ListOffset {
                 item_ix,
                 offset_in_item: px(0.),
             });
@@ -1277,12 +1277,10 @@ impl NetAssistantApp {
                 "ok"
             };
             let auto_reply_input = cx.new(|cx| {
-                InputState::new(window, cx)
-                    .code_editor("json")
+                EditorState::new(window, cx)
+                    .language("json")
                     .line_number(false)
                     .folding(false)
-                    // .rows(5)
-                    .multi_line(true)
                     // 关闭 Input 内置的原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」绘制菜单
                     .context_menu(false)
                     .placeholder(t!("app_ui.auto_reply_placeholder").to_string())
@@ -1769,7 +1767,7 @@ impl NetAssistantApp {
         self.port_range_detected = true;
         self.port_range_detecting = true;
         let weak_app = cx.entity().downgrade();
-        cx.spawn(async move |_, async_app: &mut gpui::AsyncApp| {
+        cx.spawn(async move |_, async_app: &mut gpui_kit::AsyncApp| {
             let detected = smol::unblock(|| EphemeralPortRange::detect()).await;
             if let Some(app) = weak_app.upgrade() {
                 let _ = app.update(async_app, |app: &mut NetAssistantApp, cx| {
@@ -2329,7 +2327,7 @@ impl NetAssistantApp {
                 // Clear input ONLY on successful send initiation and if auto_clear_input is true
                 if auto_clear_input {
                     if let Some(message_input) = message_input_clone {
-                        message_input.update(cx, |input: &mut InputState, cx| {
+                        message_input.update(cx, |input: &mut EditorState, cx| {
                             input.set_value("", window, cx);
                         });
                     }
@@ -3082,7 +3080,7 @@ impl NetAssistantApp {
         self.sidebar_resizing = false;
         // 保存当前侧边栏宽度和折叠状态到配置
         if let Some(width) = self.sidebar_width {
-            let width_f32 = width / gpui::px(1.0);
+            let width_f32 = width / gpui_kit::px(1.0);
             self.storage.save_sidebar_width(width_f32 as f64);
         }
         self.storage.save_sidebar_collapsed(self.sidebar_collapsed);
@@ -3118,7 +3116,7 @@ impl NetAssistantApp {
     /// 注意: placeholder 在 InputState 创建时固化，不随重渲染更新，需在此逐个刷新
     pub fn set_language(&mut self, language: &str, window: &mut Window, cx: &mut Context<Self>) {
         rust_i18n::set_locale(language);
-        gpui_component::set_locale(language);
+        gpui_kit::component::set_locale(language);
         self.storage.save_language(language);
         self.show_language_menu = false;
         info!("界面语言已切换为: {}", language);

@@ -8,17 +8,17 @@
 // 打开/关闭沿用 gpui_component 命令式对话框惯例(见 import_file.rs / stress_config.rs)。
 // 状态挂在 `app.timed_task_dialog`, 内容闭包每帧从 app 读取最新状态。
 
-use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use gpui_component::ActiveTheme as _;
-use gpui_component::Disableable as _;
-use gpui_component::StyledExt;
-use gpui_component::Theme;
-use gpui_component::WindowExt as _;
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::dialog::DialogFooter;
-use gpui_component::input::{Input, InputState};
-use gpui_component::scroll::ScrollableElement;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::Disableable as _;
+use gpui_kit::component::StyledExt;
+use gpui_kit::component::Theme;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dialog::DialogFooter;
+use gpui_kit::component::input::{EditorState, Input, InputState};
+use gpui_kit::component::scroll::ScrollableElement;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
@@ -40,7 +40,7 @@ pub struct TimedTaskDialogState {
     pub enabled: bool,
     /// 跟随连接 message_input_mode(创建时), 可在对话框内切换
     pub hex_mode: bool,
-    pub message_input: Entity<InputState>,
+    pub message_input: Entity<EditorState>,
     /// HEX 模式的网格编辑器视图状态(仅视图; 真源是 `message_input` 的 hex 文本)
     pub message_hex_editor: Entity<HexEditorState>,
     pub interval_input: Entity<InputState>,
@@ -61,8 +61,11 @@ impl TimedTaskDialogState {
         cx: &mut Context<NetAssistantApp>,
     ) -> Self {
         let message_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .multi_line(true)
+            EditorState::new(window, cx)
+                // 多行 JSON 高亮编辑器(EditorMode 默认多行, 与其他多行输入框一致)
+                .language("json")
+                .line_number(false)
+                .folding(false)
                 // 关闭 Input 内置原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」
                 .context_menu(false)
                 .placeholder(t!("timed_task.message_placeholder"))
