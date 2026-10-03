@@ -2,10 +2,7 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
-use std::sync::Mutex as StdMutex;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
-
-use crate::utils::message_vars::{CompiledTemplate, RenderContext};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 /// 连接类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -387,109 +384,10 @@ impl ConnectionConfig {
     }
 }
 
-/// 自动回复载荷
-#[derive(Debug)]
-enum AutoReplyPayload {
-    /// 无变量: UI 已按 `message_input_mode` 转好的字节, 保持既有性能与语义
-    Fixed(Vec<u8>),
-    /// 含变量: 模板 + 模式, 每条回复重新渲染
-    Template {
-        compiled: Arc<CompiledTemplate>,
-        hex_mode: bool,
-    },
-}
-
-/// 自动回复配置（运行时共享状态，UI 下发 → 网络层读取）
-///
-/// UI 下发回复**原文**与输入模式，网络层在每次回复时按需转换：
-/// - 原文不含 `${` → 存为已转换字节（文本模式 = UTF-8 字节；十六进制模式 = 解析后的字节），
-///   与升级前逐字节一致，不引入每条回复的渲染开销
-/// - 原文含 `${` → 存为模板，每条回复重新渲染（时间/UUID 等逐条不同）
-///
-/// 回复内容经用户配置的 encoder 编码后发送，不额外修改内容、不擅自添加换行符。
-#[derive(Debug)]
-pub struct AutoReplyConfig {
-    enabled: AtomicBool,
-    payload: StdMutex<AutoReplyPayload>,
-    /// 自动回复独立递增序号（网络层线程，不回 UI 线程取数）
-    seq: AtomicU64,
-}
-
-impl Default for AutoReplyConfig {
-    fn default() -> Self {
-        Self {
-            enabled: AtomicBool::new(false),
-            payload: StdMutex::new(AutoReplyPayload::Fixed(Vec::new())),
-            seq: AtomicU64::new(0),
-        }
-    }
-}
-
-impl AutoReplyConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// 是否启用自动回复（无锁快速路径，未启用时网络层零开销）
-    pub fn is_enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
-    }
-
-    /// UI 下发更新（启用开关 + 回复原文 + 输入模式）
-    ///
-    /// 含 `${` 的原文保存为模板由网络层逐条渲染；否则按当前模式预转换为字节。
-    pub fn set(&self, enabled: bool, text: &str, hex_mode: bool) {
-        self.enabled.store(enabled, Ordering::Relaxed);
-        let payload = if text.contains("${") {
-            AutoReplyPayload::Template {
-                compiled: Arc::new(CompiledTemplate::new(text)),
-                hex_mode,
-            }
-        } else {
-            AutoReplyPayload::Fixed(if hex_mode {
-                crate::utils::hex::hex_to_bytes(text)
-            } else {
-                text.as_bytes().to_vec()
-            })
-        };
-        *self.payload.lock().unwrap() = payload;
-    }
-
-    /// 取本次回复内容
-    ///
-    /// - `Fixed`：直接克隆已转换字节
-    /// - `Template`：按当前时间渲染（hex 模式再解码），`${seq}` 仅在模板含它时消费序号
-    pub fn render_content(&self) -> Vec<u8> {
-        // 先在锁内取出所需数据，渲染在锁外进行，避免阻塞 UI 侧的 set
-        let (compiled, hex_mode) = {
-            let payload = self.payload.lock().unwrap();
-            match &*payload {
-                AutoReplyPayload::Fixed(bytes) => return bytes.clone(),
-                AutoReplyPayload::Template { compiled, hex_mode } => (compiled.clone(), *hex_mode),
-            }
-        };
-
-        let seq = if compiled.needs_seq() {
-            Some(self.seq.fetch_add(1, Ordering::Relaxed))
-        } else {
-            None
-        };
-        let ctx = RenderContext::common(seq);
-        let mut rendered = String::with_capacity(compiled.template_len() + 32);
-        compiled.render(&ctx, hex_mode, &mut rendered);
-        if hex_mode {
-            crate::utils::hex::hex_to_bytes(&rendered)
-        } else {
-            rendered.into_bytes()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        AutoReplyConfig, ClientConfig, ConnectionConfig, ConnectionType, ServerConfig, TrailerKind,
-        apply_trailer,
+        ClientConfig, ConnectionConfig, ConnectionType, ServerConfig, TrailerKind, apply_trailer,
     };
 
     #[test]
@@ -591,46 +489,6 @@ mod tests {
         assert!(!connection_config.is_client());
         assert!(connection_config.is_server());
         assert_eq!(connection_config.protocol(), server_config.protocol);
-    }
-
-    #[test]
-    /// 无变量自动回复必须与升级前逐字节一致(文本 / hex 两种模式)
-    fn test_auto_reply_fixed_equivalence() {
-        let cfg = AutoReplyConfig::new();
-        cfg.set(true, "ok", false);
-        assert!(cfg.is_enabled());
-        assert_eq!(cfg.render_content(), b"ok".to_vec());
-
-        cfg.set(true, "6F 6B", true);
-        assert_eq!(cfg.render_content(), b"ok".to_vec());
-
-        // 未启用时仍可读内容(是否回复由 is_enabled 决定)
-        cfg.set(false, "hello", false);
-        assert!(!cfg.is_enabled());
-        assert_eq!(cfg.render_content(), b"hello".to_vec());
-    }
-
-    #[test]
-    /// 含变量的自动回复逐条重新渲染(时间/UUID 不同, 未知变量原样保留)
-    fn test_auto_reply_template_renders_each_time() {
-        let cfg = AutoReplyConfig::new();
-        cfg.set(true, "id=${uuid}", false);
-        let a = cfg.render_content();
-        let b = cfg.render_content();
-        assert_ne!(a, b, "含 uuid 变量的回复每条应不同");
-        assert_eq!(a.len(), 3 + 36);
-
-        // 未知变量原样保留(与文本发送语义一致)
-        cfg.set(true, "${unknown}", false);
-        assert_eq!(cfg.render_content(), b"${unknown}".to_vec());
-    }
-
-    #[test]
-    /// hex 模式含变量的回复先渲染再解码为字节
-    fn test_auto_reply_template_hex_mode() {
-        let cfg = AutoReplyConfig::new();
-        cfg.set(true, "4142${random:1:1}", true);
-        assert_eq!(cfg.render_content(), vec![0x41, 0x42, 0x01]);
     }
 
     #[test]

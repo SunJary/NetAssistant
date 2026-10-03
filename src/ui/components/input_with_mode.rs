@@ -1,9 +1,8 @@
-use crate::core::toolbox::{compute_tool, resolve_tools, SelectionTool, ToolCategory};
+use crate::core::toolbox::{SelectionTool, ToolCategory, compute_tool, resolve_tools};
 use crate::custom_icons::CustomIconName;
 use crate::message::{MessageDisplayMode, format_json_text};
 use crate::ui::dialog::{dialog_content_max_height, dialog_height};
 use crate::utils::hex::validate_hex_input;
-use gpui_kit::*;
 use gpui_kit::component::{
     ActiveTheme as _, Icon, StyledExt, Theme, WindowExt as _,
     button::{Button, ButtonVariants as _},
@@ -16,6 +15,7 @@ use gpui_kit::component::{
     scroll::ScrollableElement,
     tooltip::Tooltip,
 };
+use gpui_kit::*;
 use rust_i18n::t;
 
 use super::hex_editor::HexEditorState;
@@ -534,71 +534,42 @@ fn overflow_line(theme: &Theme) -> Div {
 
 #[cfg(test)]
 mod repro_tests {
-    //! 复现：自动回复输入框默认值 "ok" 切到 hex 模式后的完整真实序列
+    //! 复现：文本模式下输入框默认值 "ok" 切到 hex 模式后的完整真实序列
     //! （渲染中创建实体/订阅 → text 模式渲染 → 切 hex + 内容转换 → 继续渲染）
+    use gpui_kit::component::{ActiveTheme as _, Root, WindowExt as _, input::EditorState};
     use gpui_kit::{
         AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
         TestAppContext, Window, div, px,
     };
-    use gpui_kit::component::{ActiveTheme as _, Root, WindowExt as _, input::EditorState};
     use rust_i18n::t;
 
     use super::InputWithMode;
     use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
 
     struct Host {
-        tab_id: String,
+        /// 保留字段以对齐真实 app 的键位
+        #[allow(dead_code)]
         is_server: bool,
         message_input: Option<Entity<EditorState>>,
         message_editor: Option<Entity<HexEditorState>>,
-        auto_reply_input: Option<Entity<EditorState>>,
-        auto_reply_editor: Option<Entity<HexEditorState>>,
-        #[allow(dead_code)]
-        subscription: Option<gpui_kit::Subscription>,
         mode: &'static str,
     }
 
     impl Host {
         fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
             Self {
-                tab_id: "t1".into(),
                 is_server: true,
                 message_input: None,
                 message_editor: None,
-                auto_reply_input: None,
-                auto_reply_editor: None,
-                subscription: None,
                 mode: "text",
             }
         }
 
-        /// 与 NetAssistantApp::render 中的 ensure_auto_reply_input_exists 一致:
-        /// 渲染期间创建实体 + 订阅
+        /// 渲染期间创建消息输入框实体
         fn ensure_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-            if !self.is_server || self.auto_reply_input.is_some() {
+            if self.message_input.is_some() {
                 return;
             }
-            let input = cx.new(|cx| {
-                EditorState::new(window, cx)
-                    .language("json")
-                    .line_number(false)
-                    .folding(false)
-            });
-            input.update(cx, |input, cx| {
-                input.set_value("ok".to_string(), window, cx);
-            });
-            let hex_editor = cx.new(HexEditorState::new);
-            let subscription = cx.subscribe(&input, {
-                let tab_id = self.tab_id.clone();
-                move |_host, _input, event, _cx| {
-                    if matches!(event, gpui_kit::component::input::InputEvent::Change) {
-                        log::debug!("[repro] auto reply change {tab_id}");
-                    }
-                }
-            });
-            self.auto_reply_input = Some(input);
-            self.auto_reply_editor = Some(hex_editor);
-            self.subscription = Some(subscription);
             // 消息输入框（含合法 hex 内容, 模拟用户已在文本模式输入）
             let message = cx.new(|cx| {
                 EditorState::new(window, cx)
@@ -621,12 +592,7 @@ mod repro_tests {
             window: &mut Window,
             cx: &mut Context<Self>,
         ) {
-            let inputs: Vec<Entity<EditorState>> = self
-                .message_input
-                .clone()
-                .into_iter()
-                .chain(self.auto_reply_input.clone())
-                .collect();
+            let inputs: Vec<Entity<EditorState>> = self.message_input.clone().into_iter().collect();
             for input in inputs {
                 let value = input.read(cx).value().to_string();
                 let Some(converted) = crate::utils::hex::convert_value(&value, from_mode, to_mode)
@@ -651,17 +617,6 @@ mod repro_tests {
             let theme = cx.theme().clone();
             let mut panel = div().flex().flex_col().gap_2().w(px(480.0));
             if let (Some(input), Some(editor)) = (&self.message_input, &self.message_editor) {
-                hex_adapter::sync(editor, input, cx);
-                panel = panel.child(InputWithMode::render(
-                    input,
-                    Some(editor),
-                    self.mode,
-                    &theme,
-                    window,
-                    cx,
-                ));
-            }
-            if let (Some(input), Some(editor)) = (&self.auto_reply_input, &self.auto_reply_editor) {
                 hex_adapter::sync(editor, input, cx);
                 panel = panel.child(InputWithMode::render(
                     input,
@@ -699,18 +654,25 @@ mod repro_tests {
             let root = window.root::<Root>().unwrap().unwrap();
             let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
             host.update(cx, |host, cx| {
+                // 文本模式下先填入非 hex 默认值 "ok"
+                host.message_input
+                    .as_ref()
+                    .unwrap()
+                    .update(cx, |input, cx| {
+                        input.set_value("ok".to_string(), window, cx)
+                    });
                 host.mode = "hex";
                 host.convert_mode("text", "hex", window, cx);
-                // 转换型语义: 自动回复默认值 "ok" 被编码为 "6F 6B"，hex 模式下合法，
+                // 转换型语义: 默认值 "ok" 被编码为 "6F 6B"，hex 模式下合法，
                 // 不再是「非法 hex」而回退文本框 + 红色边框
-                let auto_reply = host
-                    .auto_reply_input
+                let value = host
+                    .message_input
                     .as_ref()
                     .unwrap()
                     .read(cx)
                     .value()
                     .to_string();
-                assert_eq!(auto_reply, "6F 6B");
+                assert_eq!(value, "6F 6B");
             });
         });
         // hex 模式渲染多帧
@@ -749,8 +711,9 @@ mod repro_tests {
         draw(&mut cx);
 
         let at = point(px(100.0), px(40.0));
-        let dialog_open =
-            |cx: &mut gpui_kit::VisualTestContext| cx.update(|window, cx| window.has_active_dialog(cx));
+        let dialog_open = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.update(|window, cx| window.has_active_dialog(cx))
+        };
 
         let mut hit_offset = None;
         for offset in (30..210).step_by(6) {

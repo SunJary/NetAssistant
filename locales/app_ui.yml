@@ -2,9 +2,6 @@
 _version: 2
 
 app_ui:
-  auto_reply_placeholder:
-    zh-CN: 输入自动回复内容...
-    en: Enter auto-reply content...
   send_not_connected:
     zh-CN: 连接未建立
     en: Connection not established

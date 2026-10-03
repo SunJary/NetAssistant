@@ -28,12 +28,13 @@ fn stress_context(
 ) -> crate::utils::message_vars::RenderContext {
     let seq = global_seq.fetch_add(1, Ordering::Relaxed);
     *worker_counter += 1;
-    crate::utils::message_vars::RenderContext {
-        now: Local::now(),
-        worker_id: Some(worker_id),
-        counter: Some(*worker_counter),
-        seq: Some(seq),
-    }
+    // 压测路径没有接收帧上下文(`rx` 为 None): 与既有行为逐字一致
+    crate::utils::message_vars::RenderContext::for_worker(
+        Local::now(),
+        Some(worker_id),
+        Some(*worker_counter),
+        Some(seq),
+    )
 }
 
 /// 渲染单条报文。

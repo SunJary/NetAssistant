@@ -10,7 +10,7 @@
 
 use super::model::{SendTaskConfig, TaskEndReason, TaskStatus, TaskTarget};
 use crate::message::{Message, MessageDirection, MessageType};
-use crate::network::events::ConnectionEvent;
+use crate::network::events::{ConnectionEvent, WireMessage};
 use log::warn;
 use rust_i18n::t;
 use smol::channel::Sender;
@@ -289,7 +289,7 @@ impl Runner {
                 Err(_) => return false,
             };
             match &*target {
-                TaskTarget::Client(tx) => match tx.try_send(bytes.to_vec()) {
+                TaskTarget::Client(tx) => match tx.try_send(WireMessage::inherit(bytes.to_vec())) {
                     Ok(()) => (true, false),
                     Err(_) => (false, true),
                 },
@@ -300,7 +300,9 @@ impl Runner {
                     } else {
                         let mut delivered = false;
                         for (addr, tx) in clients {
-                            if tx.try_send(bytes.to_vec()).is_err() {
+                            // UDP 服务端需要显式目标地址（TCP 会忽略它）
+                            let wire = WireMessage::inherit_to(bytes.to_vec(), *addr);
+                            if tx.try_send(wire).is_err() {
                                 warn!("[发送任务] 发送到客户端 {} 失败(客户端可能已断开)", addr);
                             } else {
                                 delivered = true;
@@ -427,7 +429,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_sends_all_items_and_finishes() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
 
         let _engine = SendTaskEngine::start(
             config("a\nb\nc", 1, false, None),
@@ -456,7 +458,10 @@ mod tests {
                 }
             }
         }
-        assert_eq!(got, vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec()]);
+        assert_eq!(
+            got.iter().map(|m| m.data().to_vec()).collect::<Vec<_>>(),
+            vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec()]
+        );
         assert!(finished, "应收到 TaskFinished(Completed)");
     }
 
@@ -464,7 +469,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_loop_with_max_rounds() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
 
         let _engine = SendTaskEngine::start(
             config("a\nb\nc", 1, true, Some(2)),
@@ -499,7 +504,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_pause_and_resume() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
 
         let engine = SendTaskEngine::start(
             config("a\nb\nc\nd\ne", 10, false, None),
@@ -514,7 +519,7 @@ mod tests {
             .await
             .expect("应收到第一条")
             .unwrap();
-        assert_eq!(first, b"a".to_vec());
+        assert_eq!(first.data(), b"a".as_slice());
 
         // 暂停并排空在途
         engine.pause(None);
@@ -558,7 +563,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_stop_emits_stopped() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, _write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, _write_rx) = smol::channel::unbounded::<WireMessage>();
 
         let mut engine = SendTaskEngine::start(
             config("a\nb\nc", 1000, true, None),
@@ -591,7 +596,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_disconnect_pauses() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
 
         let _engine = SendTaskEngine::start(
             config("a\nb\nc", 1, false, None),
@@ -625,7 +630,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_empty_server_target_pauses() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
 
         let _engine = SendTaskEngine::start(
             config("a\nb\nc", 1, false, None),
@@ -664,7 +669,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_periodic_realtime_content() {
         let (event_tx, _event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
         let (config, source) = periodic_config(10);
 
         let _engine = SendTaskEngine::start(
@@ -679,7 +684,7 @@ mod tests {
             .await
             .expect("应收到首条")
             .unwrap();
-        assert_eq!(first, b"a".to_vec());
+        assert_eq!(first.data(), b"a".as_slice());
 
         source.set_content("b".to_string());
         let deadline = tokio::time::sleep(Duration::from_secs(2));
@@ -690,7 +695,7 @@ mod tests {
                 _ = &mut deadline => break,
                 r = write_rx.recv() => {
                     if let Ok(b) = r {
-                        if b == b"b".to_vec() {
+                        if b.data() == b"b".as_slice() {
                             saw_new = true;
                             break;
                         }
@@ -705,7 +710,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_periodic_interval_change_takes_effect() {
         let (event_tx, _event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
         let (config, _source) = periodic_config(60_000);
 
         let engine = SendTaskEngine::start(
@@ -731,14 +736,14 @@ mod tests {
             .await
             .expect("改小间隔后应立即发送")
             .unwrap();
-        assert_eq!(got, b"a".to_vec());
+        assert_eq!(got.data(), b"a".as_slice());
     }
 
     /// hidden 周期任务: 不上报进度/结束事件(省事件通道), 但消息照常发出
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_hidden_suppresses_progress() {
         let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let (write_tx, write_rx) = smol::channel::unbounded::<Vec<u8>>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
         let (config, _source) = periodic_config(5);
 
         let _engine = SendTaskEngine::start(

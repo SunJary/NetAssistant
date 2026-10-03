@@ -7,8 +7,6 @@
 
 use std::borrow::Cow;
 
-use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::StyledExt;
 use gpui_kit::component::Theme;
@@ -17,6 +15,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 
 use rust_i18n::t;
 

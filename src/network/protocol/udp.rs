@@ -1,9 +1,11 @@
-use crate::config::connection::{AutoReplyConfig, ClientConfig, ServerConfig, TrailerSetting};
+use crate::config::connection::{ClientConfig, ServerConfig, TrailerSetting};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::{Message, MessageDirection, MessageType};
-use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch};
+use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch, WireMessage};
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
-use log::{debug, error, info};
+use crate::reply::exec::handle_frame;
+use crate::reply::{FrameMeta, FrameOrigin, ReplyRulesStore, RxFrame};
+use log::{debug, error, info, warn};
 use smol::channel::{Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
 use std::future::Future;
@@ -21,33 +23,117 @@ use tokio_util::sync::CancellationToken;
 /// 表现为「批次内存无界增长 + 永不下发事件 + 无法响应停止信号」。达到上界即先下发一批。
 const UDP_MAX_BATCH_PACKETS: u64 = 1024;
 
-/// UDP 网络层自动回复: 每个数据报触发一次回复, Sent 明细聚合入批随批 flush。
+/// 给一个"未指定目标"的待发项补上目标地址（UDP 服务端按客户端注册发送通道时使用）。
 ///
-/// 回复内容由 `AutoReplyConfig::render_content` 给出(无变量时为用户配置的原始字节,
-/// 含变量时逐条渲染), 原样经主发送通道发回源地址, 不额外修改。
-/// 发送计数在发送任务统一累加(手动发送与自动回复共用一个汇聚点), 这里只聚合明细, 不计数。
-fn try_udp_auto_reply(
-    auto_reply_state: &Arc<AutoReplyConfig>,
-    main_tx: &Sender<(SocketAddr, Vec<u8>)>,
+/// 已带目标的项（规则应答）保持原目标不变 —— 规则应答必须回到真实的报文来源。
+fn retarget(wire: WireMessage, addr: SocketAddr) -> WireMessage {
+    if wire.target().is_some() {
+        return wire;
+    }
+    match wire.bypasses_trailer() {
+        true => WireMessage::bypass_to(wire.into_data(), None, Some(addr)),
+        false => WireMessage::inherit_to(wire.into_data(), addr),
+    }
+}
+
+/// UDP 的待发项 = `WireMessage`（`target` 携带目标地址）。
+///
+/// UDP 没有 encoder 链路（发送点直接 `send_to`），因此 trailer 在投递前就由
+/// `wire_bytes` 应用好 —— 既能表达"继承连接设置"，也能表达规则要求的
+/// "原样输出"（二进制协议必需）。这里用类型别名而非独立结构体，
+/// 是为了让 TCP / UDP / app.rs 三处共用同一个写通道类型，避免三套类型互相转换。
+type UdpWire = WireMessage;
+
+/// 计算最终要写到线上的字节（继承连接 trailer 或直接用已处理好的字节）
+fn wire_bytes(wire: &UdpWire, trailer: TrailerSetting) -> Vec<u8> {
+    if wire.bypasses_trailer() {
+        return wire.data().to_vec();
+    }
+    crate::config::connection::apply_trailer(wire.data(), trailer.get()).into_owned()
+}
+
+/// 对单个数据报跑回复规则（UDP 客户端与服务端共用）。
+///
+/// UDP 无粘包 —— 一次 `recv_from` 就是一个数据报，因此这里一次调用即处理完整一帧。
+/// 注意 UDP 仍可能有"一个数据报被解码器拆成多帧"的情形（用户配了 LineBased 等），
+/// 但现有实现按整包语义处理，本函数保持一致。
+///
+fn try_udp_rule_reply(
+    rules: &Arc<ReplyRulesStore>,
+    main_tx: &Sender<UdpWire>,
     batch: &mut ReceivedBatch,
+    counters: &Option<NetCounters>,
+    processor: &Arc<dyn MessageProcessor>,
+    connection_id: &str,
     addr: &SocketAddr,
+    raw: &[u8],
+    unexpected_host: Option<&str>,
 ) {
-    if !auto_reply_state.is_enabled() {
+    // 构造行消息的公共逻辑（规则未启用时也走这里，保证展示路径一致）
+    // P-6：`bytes` 用 `Arc<[u8]>`，与规则引擎的 `RxFrame` 共享同一份数据报缓冲
+    let build_message = |bytes: Arc<[u8]>| -> Message {
+        let message = processor.process_received_message(bytes, MessageType::Text);
+        match unexpected_host {
+            Some(host) => message.with_unexpected_source(addr.to_string(), host),
+            None => message.with_source(addr.to_string()),
+        }
+    };
+
+    if !rules.is_enabled() {
+        let raw_len = raw.len() as u64;
+        if let Some(c) = counters {
+            c.add_received(1);
+            c.add_received_bytes(raw_len);
+        }
+        batch.count += 1;
+        batch.bytes += raw_len;
+        batch.messages.push(build_message(Arc::from(raw)));
         return;
     }
-    let content = auto_reply_state.render_content();
-    if content.is_empty() {
-        return;
+
+    // P-6：整个数据报只复制一次
+    let shared: Arc<[u8]> = Arc::from(raw);
+    let frame = Arc::new(RxFrame::from_shared(
+        shared.clone(),
+        *addr,
+        FrameMeta {
+            origin: FrameOrigin::Decoded,
+        },
+    ));
+    let outcome = handle_frame(rules, &frame, connection_id);
+
+    // 数据报本身照常进明细与计数；规则只可能追加一条应答。
+    let raw_len = raw.len() as u64;
+    if let Some(c) = counters {
+        c.add_received(1);
+        c.add_received_bytes(raw_len);
     }
-    // 投递到主发送通道, 由发送任务 send_to 回发源地址
-    if main_tx.try_send((*addr, content.clone())).is_err() {
-        return;
+    batch.count += 1;
+    batch.bytes += raw_len;
+    batch.messages.push(build_message(shared));
+
+    if let Some(bytes) = &outcome.reply {
+        // P-6：应答字节共享一份 `Arc<[u8]>`（明细用 Arc，投递项仍需独立 Vec）
+        let reply: Arc<[u8]> = Arc::from(bytes.as_slice());
+        // 规则自带编码方式优先（`Raw` = 原样输出）；
+        // 目标固定为**数据报的真实来源**，这是 UDP 广播发现场景的关键
+        let wire = match crate::reply::exec::rule_wire_mode(outcome.codec) {
+            crate::reply::exec::RuleWireMode::Inherit => {
+                WireMessage::inherit_to(reply.to_vec(), *addr)
+            }
+            crate::reply::exec::RuleWireMode::Override(trailer) => {
+                WireMessage::bypass_to(reply.to_vec(), trailer, Some(*addr))
+            }
+        };
+        if main_tx.try_send(wire).is_ok() {
+            batch.sent_messages.push(
+                Message::new(MessageDirection::Sent, reply, MessageType::Text)
+                    .with_source(addr.to_string()),
+            );
+        } else {
+            warn!("[reply] 投递应答失败: rule={:?}", outcome.rule_id);
+        }
     }
-    // Sent 方向明细聚合到本批, 随批 flush(避免自动回复洪泛时二次事件洪泛)
-    batch.sent_messages.push(
-        Message::new(MessageDirection::Sent, content, MessageType::Text)
-            .with_source(addr.to_string()),
-    );
 }
 
 /// UDP客户端实现
@@ -61,6 +147,8 @@ pub struct UdpClient {
     cancel_token: CancellationToken,
     /// 运行期「结尾追加字符」设置(下拉改动即时生效)
     trailer: TrailerSetting,
+    /// 回复规则共享状态（客户端 1:1 构造注入，决策 D-12）
+    reply_rules: Arc<ReplyRulesStore>,
 }
 
 impl UdpClient {
@@ -69,6 +157,7 @@ impl UdpClient {
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<NetCounters>,
         trailer: TrailerSetting,
+        reply_rules: Arc<ReplyRulesStore>,
     ) -> Self {
         // 解析地址，支持IPv4和IPv6
         let address = if config.server_address.contains(':') && !config.server_address.contains('[')
@@ -91,6 +180,7 @@ impl UdpClient {
             is_connected: false,
             cancel_token: CancellationToken::new(),
             trailer,
+            reply_rules,
         }
     }
 }
@@ -111,6 +201,9 @@ impl NetworkConnection for UdpClient {
         let net_counters = self.net_counters.clone();
         let cancel_token = self.cancel_token.clone();
         let trailer = self.trailer.clone();
+        // 注意：必须在进入 async 块**之前**克隆，否则 async 块会借用 `self`，
+        // 与 `&mut self` 的返回 future 生命周期冲突（`'1 must outlive 'static`）。
+        let reply_rules = self.reply_rules.clone();
 
         self.is_connected = true;
 
@@ -137,7 +230,7 @@ impl NetworkConnection for UdpClient {
             })?;
             info!("UDP客户端绑定到本地端口: {:?}", local_addr);
 
-            let (tx, rx) = smol_unbounded::<Vec<u8>>();
+            let (tx, rx) = smol_unbounded::<WireMessage>();
 
             if let Some(sender) = &event_sender {
                 info!("[UDP客户端] 发送 Connected 事件");
@@ -151,7 +244,7 @@ impl NetworkConnection for UdpClient {
                 if let Err(e) = sender
                     .send(ConnectionEvent::ClientWriteSenderReady(
                         config.id.clone(),
-                        tx,
+                        tx.clone(),
                     ))
                     .await
                 {
@@ -171,6 +264,11 @@ impl NetworkConnection for UdpClient {
             let net_counters_clone = net_counters.clone();
             let read_cancel_token = cancel_token.clone();
             let expected_host = server_host;
+            let reply_rules_for_read = reply_rules;
+
+            // 规则应答直接复用主发送通道：目标地址由 `WireMessage.target` 携带，
+            // 因此不需要第二条通道（这是把 UDP 待发项统一成 `WireMessage` 的收益）。
+            let udp_reply_tx = tx.clone();
 
             tokio::spawn(async move {
                 let mut buffer = [0; 1024];
@@ -182,35 +280,34 @@ impl NetworkConnection for UdpClient {
                                 Ok((n, addr)) => {
                                     // 移除源地址过滤，允许接收来自任何地址的回复
                                     // 这对于广播场景很重要：下位机回复来自其真实IP而非广播地址
-                                    let raw_len = n as u64;
-                                    let raw_data = buffer[..n].to_vec();
-                                    let message = message_processor_clone.process_received_message(raw_data, MessageType::Text)
-                                        .with_unexpected_source(addr.to_string(), &expected_host);
-
-                                    if let Some(c) = &net_counters_clone {
-                                        c.add_received(1);
-                                        c.add_received_bytes(raw_len);
-                                    }
-                                    batch.count += 1;
-                                    batch.bytes += raw_len;
-                                    batch.messages.push(message);
+                                    try_udp_rule_reply(
+                                        &reply_rules_for_read,
+                                        &udp_reply_tx,
+                                        &mut batch,
+                                        &net_counters_clone,
+                                        &message_processor_clone,
+                                        &id_clone,
+                                        &addr,
+                                        &buffer[..n],
+                                        Some(&expected_host),
+                                    );
 
                                     // 非阻塞排空: 聚合突发到达的数据报为单个批次事件(洪泛聚合路径)。
                                     // try_recv_from 无可读数据时返回 WouldBlock 自动终止; 达到上界先下发一批, 保证有界
                                     while batch.count < UDP_MAX_BATCH_PACKETS {
                                         match socket_read.try_recv_from(&mut buffer) {
-                                            Ok((n, addr)) => {
-                                                let raw_len = n as u64;
-                                                let raw_data = buffer[..n].to_vec();
-                                                let message = message_processor_clone.process_received_message(raw_data, MessageType::Text)
-                                                    .with_unexpected_source(addr.to_string(), &expected_host);
-                                                if let Some(c) = &net_counters_clone {
-                                                    c.add_received(1);
-                                                    c.add_received_bytes(raw_len);
-                                                }
-                                                batch.count += 1;
-                                                batch.bytes += raw_len;
-                                                batch.messages.push(message);
+                                            Ok((n, src_addr)) => {
+                                                try_udp_rule_reply(
+                                                    &reply_rules_for_read,
+                                                    &udp_reply_tx,
+                                                    &mut batch,
+                                                    &net_counters_clone,
+                                                    &message_processor_clone,
+                                                    &id_clone,
+                                                    &src_addr,
+                                                    &buffer[..n],
+                                                    Some(&expected_host),
+                                                );
                                             }
                                             Err(_) => break,
                                         }
@@ -256,10 +353,12 @@ impl NetworkConnection for UdpClient {
                     tokio::select! {
                         data = rx.recv() => {
                             match data {
-                                Ok(data) => {
-                                    // UDP 无 encoder, 发送点直接调用同一纯函数追加结尾
-                                    let payload = crate::config::connection::apply_trailer(&data, trailer_write.get());
-                                    if let Err(e) = socket_write.send_to(&payload, &server_addr).await {
+                                Ok(wire) => {
+                                    // UDP 无 encoder: 发送点直接调用同一纯函数追加结尾。
+                                    // 规则要求"原样输出"时 `bypasses_trailer()` 为真，字节不再改动。
+                                    let target = wire.target().unwrap_or(server_addr);
+                                    let payload = wire_bytes(&wire, trailer_write.clone());
+                                    if let Err(e) = socket_write.send_to(&payload, target).await {
                                         error!("UDP发送错误: {:?}", e);
                                         if let Some(sender) = &event_sender_clone_write {
                                             if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone_write.clone())).await {
@@ -306,11 +405,18 @@ impl NetworkConnection for UdpClient {
     }
 }
 
+impl Drop for UdpClient {
+    fn drop(&mut self) {
+        // 绕过 disconnect() 直接 drop 时兜底终止收/发任务，避免孤儿 task 持有 socket
+        self.cancel_token.cancel();
+    }
+}
+
 /// UDP服务器实现
 pub struct UdpServer {
     config: ServerConfig,
     event_sender: Option<Sender<ConnectionEvent>>,
-    clients: Arc<RwLock<HashMap<SocketAddr, Sender<Vec<u8>>>>>,
+    clients: Arc<RwLock<HashMap<SocketAddr, Sender<WireMessage>>>>,
     message_processor: Arc<dyn MessageProcessor>,
     net_counters: Option<NetCounters>,
     is_running: bool,
@@ -318,9 +424,12 @@ pub struct UdpServer {
     /// 两个 task 退出后 socket 的 Arc 引用计数归零,端口随之释放
     stop_token: CancellationToken,
     /// 主发送通道，用于手动添加客户端时接入发送链路
-    main_send_tx: Arc<Mutex<Option<Sender<(SocketAddr, Vec<u8>)>>>>,
-    /// 自动回复共享状态(UI 下发 → 网络层每个数据报读取)
-    auto_reply_state: Arc<AutoReplyConfig>,
+    ///
+    /// 通道携带 `WireMessage` 而非裸字节：规则要求"原样输出"时必须能绕过连接
+    /// trailer（二进制协议正确性的关键，见 `network::events::WireMessage`）。
+    main_send_tx: Arc<Mutex<Option<Sender<WireMessage>>>>,
+    /// 回复规则集共享状态（服务端走运行时事件下发，决策 D-12）
+    reply_rules: Arc<ReplyRulesStore>,
     /// 运行期「结尾追加字符」设置(下拉改动即时生效)
     trailer: TrailerSetting,
 }
@@ -341,14 +450,14 @@ impl UdpServer {
             is_running: false,
             stop_token: CancellationToken::new(),
             main_send_tx: Arc::new(Mutex::new(None)),
-            auto_reply_state: Arc::new(AutoReplyConfig::new()),
+            reply_rules: ReplyRulesStore::new(),
             trailer,
         }
     }
 
     /// 手动添加客户端地址（仅UDP有效，不需要真实网络连接）
     /// 本质：在 clients 列表中注册一个地址，创建发送通道接入 socket 发送链路
-    pub async fn add_client(&self, addr: SocketAddr) -> Result<Sender<Vec<u8>>, String> {
+    pub async fn add_client(&self, addr: SocketAddr) -> Result<Sender<WireMessage>, String> {
         // 检查是否已存在
         {
             let clients = self.clients.read().unwrap();
@@ -368,14 +477,20 @@ impl UdpServer {
         };
 
         // 创建客户端发送通道
-        let (client_tx, client_rx) = smol_unbounded::<Vec<u8>>();
+        let (client_tx, client_rx) = smol_unbounded::<WireMessage>();
 
-        // 转发任务：client_rx → main_tx(主发送通道) → socket.send_to
+        // 转发任务：client_rx → main_tx(主发送通道) → socket.send_to。
+        // 用 `retarget` 补上目标地址：手动添加的客户端也要能收到消息，
+        // 而发往它的待发项本就不带目标（与"已注册客户端"路径行为一致）。
         let main_tx_clone = main_tx.clone();
         let addr_clone = addr;
         tokio::spawn(async move {
             while let Ok(data) = client_rx.recv().await {
-                if main_tx_clone.send((addr_clone, data)).await.is_err() {
+                if main_tx_clone
+                    .send(retarget(data, addr_clone))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -406,6 +521,33 @@ impl UdpServer {
     }
 }
 
+/// UDP 服务端的单数据报处理：走规则引擎。
+///
+/// 抽象出来的理由与 TCP 侧同一考量：主收包路径与排空路径必须用**同一段决策逻辑**。
+#[allow(clippy::too_many_arguments)]
+fn process_datagram_server(
+    payload: &[u8],
+    addr: &SocketAddr,
+    processor: &Arc<dyn MessageProcessor>,
+    batch: &mut ReceivedBatch,
+    counters: &Option<NetCounters>,
+    rules: &Arc<ReplyRulesStore>,
+    sender: &Sender<WireMessage>,
+    connection_id: &str,
+) {
+    try_udp_rule_reply(
+        rules,
+        sender,
+        batch,
+        counters,
+        processor,
+        connection_id,
+        addr,
+        payload,
+        None,
+    );
+}
+
 impl NetworkServer for UdpServer {
     fn start(
         &mut self,
@@ -414,7 +556,7 @@ impl NetworkServer for UdpServer {
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
         let net_counters = self.net_counters.clone();
-        let auto_reply_state = self.auto_reply_state.clone();
+        let reply_rules = self.reply_rules.clone();
         let trailer = self.trailer.clone();
 
         // 使用现有的clients字段
@@ -465,23 +607,20 @@ impl NetworkServer for UdpServer {
                 {
                     error!("[UDP服务器] 发送 Listening 事件失败: {:?}", e);
                 }
-                // 自动回复共享状态就绪(UI 下发启用开关与回复内容)
+                // 回复规则集共享状态就绪(UI 运行时下发整表)
                 if let Err(e) = sender
-                    .send(ConnectionEvent::ServerAutoReplyStateReady(
+                    .send(ConnectionEvent::ReplyRulesStoreReady(
                         config.id.clone(),
-                        auto_reply_state.clone(),
+                        reply_rules.clone(),
                     ))
                     .await
                 {
-                    error!(
-                        "[UDP服务器] 发送 ServerAutoReplyStateReady 事件失败: {:?}",
-                        e
-                    );
+                    error!("[UDP服务器] 发送 ReplyRulesStoreReady 事件失败: {:?}", e);
                 }
             }
 
             // 创建发送器和接收器
-            let (tx, rx) = smol_unbounded::<(SocketAddr, Vec<u8>)>();
+            let (tx, rx) = smol_unbounded::<WireMessage>();
 
             // 保存主发送通道，供 add_client 使用
             {
@@ -497,9 +636,7 @@ impl NetworkServer for UdpServer {
             let message_processor_clone = message_processor.clone();
             let net_counters_clone = net_counters.clone();
             let socket_recv = socket_arc.clone();
-            let auto_reply_state_clone = auto_reply_state.clone();
-            // 供网络层自动回复投递回复数据报(addr, content)
-            let main_tx_for_auto_reply = tx.clone();
+            let reply_rules_clone = reply_rules.clone();
             let recv_stop_token = stop_token.clone();
 
             tokio::spawn(async move {
@@ -521,16 +658,16 @@ impl NetworkServer for UdpServer {
                                     let mut clients_mut = clients_clone.write().unwrap();
                                     if !clients_mut.contains_key(&addr) {
                                         // 创建客户端发送通道
-                                        let (client_tx, client_rx) = smol_unbounded::<Vec<u8>>();
+                                        let (client_tx, client_rx) = smol_unbounded::<WireMessage>();
                                         clients_mut.insert(addr, client_tx.clone());
                                         drop(clients_mut);
 
-                                        // 处理从UI来的消息
+                                        // 处理从UI来的消息: 给裸字节补上目标地址
                                         let tx_clone = tx.clone();
                                         let addr_clone = addr;
                                         tokio::spawn(async move {
-                                            while let Ok(data) = client_rx.recv().await {
-                                                if tx_clone.send((addr_clone, data)).await.is_err() {
+                                            while let Ok(wire) = client_rx.recv().await {
+                                                if tx_clone.send(retarget(wire, addr_clone)).await.is_err() {
                                                     break;
                                                 }
                                             }
@@ -563,27 +700,16 @@ impl NetworkServer for UdpServer {
                                 }
                             }
 
-                            // 创建消息对象并累加入批
-                            let raw_len = n as u64;
-                            let data = buffer[..n].to_vec();
-                            let message = message_processor_clone
-                                .process_received_message(data, MessageType::Text)
-                                .with_source(addr.to_string());
-                            if let Some(c) = &net_counters_clone {
-                                c.add_received(1);
-                                c.add_received_bytes(raw_len);
-                            }
-                            batch.count += 1;
-                            batch.bytes += raw_len;
-                            batch.messages.push(message);
-
-                            // 网络层自动回复: 每个数据报触发一次回复, Sent 明细聚合入批
-                            // 回复内容为用户配置的原始字节, 原样经主发送通道发回源地址, 不额外修改
-                            try_udp_auto_reply(
-                                &auto_reply_state_clone,
-                                &main_tx_for_auto_reply,
-                                &mut batch,
+                            // 网络层规则/自动回复: 每个数据报触发一次, Sent 明细聚合入批
+                            process_datagram_server(
+                                &buffer[..n],
                                 &addr,
+                                &message_processor_clone,
+                                &mut batch,
+                                &net_counters_clone,
+                                &reply_rules_clone,
+                                &tx,
+                                &id_clone,
                             );
 
                             // 非阻塞排空: 聚合突发到达的数据报为单个批次事件(洪泛聚合路径)。
@@ -599,14 +725,14 @@ impl NetworkServer for UdpServer {
                                         drop(clients_guard);
                                         let mut clients_mut = clients_clone.write().unwrap();
                                         if !clients_mut.contains_key(&addr) {
-                                            let (client_tx, client_rx) = smol_unbounded::<Vec<u8>>();
+                                            let (client_tx, client_rx) = smol_unbounded::<WireMessage>();
                                             clients_mut.insert(addr, client_tx.clone());
                                             drop(clients_mut);
                                             let tx_clone = tx.clone();
                                             let addr_clone = addr;
                                             tokio::spawn(async move {
-                                                while let Ok(data) = client_rx.recv().await {
-                                                    if tx_clone.send((addr_clone, data)).await.is_err() {
+                                                while let Ok(wire) = client_rx.recv().await {
+                                                    if tx_clone.send(retarget(wire, addr_clone)).await.is_err() {
                                                         break;
                                                     }
                                                 }
@@ -623,23 +749,15 @@ impl NetworkServer for UdpServer {
                                         }
                                     }
                                 }
-                                let raw_len = n as u64;
-                                let data = buffer[..n].to_vec();
-                                let message = message_processor_clone
-                                    .process_received_message(data, MessageType::Text)
-                                    .with_source(addr.to_string());
-                                if let Some(c) = &net_counters_clone {
-                                    c.add_received(1);
-                                    c.add_received_bytes(raw_len);
-                                }
-                                batch.count += 1;
-                                batch.bytes += raw_len;
-                                batch.messages.push(message);
-                                try_udp_auto_reply(
-                                    &auto_reply_state_clone,
-                                    &main_tx_for_auto_reply,
-                                    &mut batch,
+                                process_datagram_server(
+                                    &buffer[..n],
                                     &addr,
+                                    &message_processor_clone,
+                                    &mut batch,
+                                    &net_counters_clone,
+                                    &reply_rules_clone,
+                                    &tx,
+                                    &id_clone,
                                 );
                             }
 
@@ -679,9 +797,17 @@ impl NetworkServer for UdpServer {
                     tokio::select! {
                         data = rx.recv() => {
                             match data {
-                                Ok((addr, message)) => {
-                                    let payload = crate::config::connection::apply_trailer(&message, trailer_write.get());
-                                    if let Err(e) = socket_write.send_to(&payload, addr).await {
+                                Ok(wire) => {
+                                    // `finalized` 表示字节已按规则编码方式处理好（如"原样输出"），
+                                    // 此时不得再追加连接 trailer —— 否则 Modbus 应答的 CRC 后面会多出字节。
+                                    // UDP 服务端的每一个待发项都必须带目标（注册客户端时补上，
+                                    // 规则应答则携带真实来源），无目标即丢弃并告警。
+                                    let Some(target) = wire.target() else {
+                                        warn!("[UDP服务器] 待发项缺少目标地址, 已丢弃");
+                                        continue;
+                                    };
+                                    let payload = wire_bytes(&wire, trailer_write.clone());
+                                    if let Err(e) = socket_write.send_to(&payload, target).await {
                                         error!("UDP服务器发送消息时发生错误: {:?}", e);
                                     } else if let Some(c) = &net_counters_clone_write {
                                         // 洪泛下逐包日志会疯狂写文件且格式化字节开销大, 发送路径不再逐包记录
@@ -756,5 +882,112 @@ impl Drop for UdpServer {
     fn drop(&mut self) {
         // 绕过 stop() 直接 drop 时兜底终止收/发任务,避免孤儿 task 持有 socket
         self.stop_token.cancel();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reply::model::{MatchNode, ReplyPayload, ReplyRule, ReplyRulesConfig, RuleCodec};
+
+    fn addr() -> SocketAddr {
+        "127.0.0.1:5000".parse().unwrap()
+    }
+
+    fn processor() -> Arc<dyn MessageProcessor> {
+        Arc::new(DefaultMessageProcessor)
+    }
+
+    fn rule_on_len(text: &str) -> ReplyRule {
+        ReplyRule {
+            matcher: MatchNode::Length { min: 1, max: 64 },
+            payload: ReplyPayload {
+                text: text.to_string(),
+                hex_mode: false,
+                codec: RuleCodec::Raw,
+            },
+            ..ReplyRule::new("测试规则", 10)
+        }
+    }
+
+    fn store(cfg: ReplyRulesConfig) -> Arc<ReplyRulesStore> {
+        let store = ReplyRulesStore::new();
+        store.replace(&cfg);
+        // 全局作用域规则缺省不生效（缺省 gate=false）；测试统一开启 "tab"
+        store.set_connection_gates([("tab".to_string(), true)].into_iter().collect());
+        store
+    }
+
+    fn sent_bytes(batch: &ReceivedBatch) -> Vec<Vec<u8>> {
+        batch
+            .sent_messages
+            .iter()
+            .map(|m| m.raw_data.to_vec())
+            .collect()
+    }
+
+    /// T-3 ①（UDP 侧）：总开关开但规则全禁用 → 不产生任何应答
+    #[test]
+    fn test_master_on_all_rules_disabled_no_reply() {
+        let mut disabled = rule_on_len("RULE");
+        disabled.enabled = false;
+        let store = store(ReplyRulesConfig {
+            enabled: true,
+            rules: vec![disabled],
+            ..Default::default()
+        });
+        assert!(!store.is_enabled(), "无启用规则时快速路径必须关闭");
+
+        let (tx, _rx) = smol_unbounded::<UdpWire>();
+        let mut batch = ReceivedBatch::default();
+        process_datagram_server(
+            b"req",
+            &addr(),
+            &processor(),
+            &mut batch,
+            &Some(NetCounters::default()),
+            &store,
+            &tx,
+            "tab",
+        );
+
+        assert_eq!(batch.count, 1, "数据报照常进明细");
+        assert!(sent_bytes(&batch).is_empty(), "无启用规则时不产生应答");
+    }
+
+    /// T-3 ②（UDP 侧）：有启用规则 → 走规则引擎，只回规则应答
+    #[test]
+    fn test_enabled_rule_replies() {
+        let store = store(ReplyRulesConfig {
+            enabled: true,
+            rules: vec![rule_on_len("RULE")],
+            ..Default::default()
+        });
+        assert!(store.is_enabled());
+
+        let (tx, _rx) = smol_unbounded::<UdpWire>();
+        let mut batch = ReceivedBatch::default();
+        process_datagram_server(
+            b"req",
+            &addr(),
+            &processor(),
+            &mut batch,
+            &Some(NetCounters::default()),
+            &store,
+            &tx,
+            "tab",
+        );
+
+        assert_eq!(batch.count, 1, "数据报照常进明细");
+        assert_eq!(
+            sent_bytes(&batch),
+            vec![b"RULE".to_vec()],
+            "有启用规则时旧固定回复不得生效"
+        );
+        assert_eq!(
+            store.hits_snapshot().values().sum::<u64>(),
+            1,
+            "规则命中计数 +1"
+        );
     }
 }

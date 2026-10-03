@@ -4,8 +4,6 @@ use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
 use crate::ui::dialog::{FavoriteListPanel, open_new_connection_dialog};
 use crate::ui::tab_container::TabContainer;
-use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::component::Icon;
 use gpui_kit::component::IconName;
@@ -13,6 +11,8 @@ use gpui_kit::component::StyledExt;
 use gpui_kit::component::TitleBar;
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 use rust_i18n::t;
 
 pub struct MainWindow<'a> {

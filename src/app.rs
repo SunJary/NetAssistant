@@ -1,18 +1,20 @@
-use gpui_kit::*;
 use gpui_kit::component::input::{EditorState, InputEvent, InputState};
+use gpui_kit::*;
 use log::{debug, error, info, warn};
 use rust_i18n::t;
 
 use crate::config;
 use crate::config::app_stats::AppStats;
 use crate::config::connection::{
-    AutoReplyConfig, ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig,
+    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig,
 };
 use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
 use crate::message::{MAX_KEEP_LAST, Message, MessageDirection, MessageType};
-use crate::network::events::{ConnectionEvent, NetCounters};
+use crate::network::events::{ConnectionEvent, NetCounters, WireMessage};
+use crate::reply::ReplyRulesStore;
+use crate::reply::model::ReplyRulesConfig;
 use crate::send_task::{
     IntervalHandle, PeriodicSource, SendTaskConfig, SendTaskEngine, SendTaskEntry, SendTaskState,
     TaskEndReason, TaskStatus, TaskTarget, TimedTaskProfile, build_periodic_config,
@@ -24,12 +26,11 @@ use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 use crate::utils::file_source::{FileSourceError, validate_len};
 use crate::utils::hex::convert_value;
 
-use crate::ui::components::hex_editor::HexEditorState;
 use crate::ui::connection_tab::{ConnectionTabState, SEARCH_RECALC_MIN_INTERVAL};
 use crate::ui::dialog::{
-    DecoderSelectionDialogState, ImportFileDialogState, StressConfigDialogState,
-    TimedTaskDialogState, open_import_file_dialog, open_new_connection_dialog,
-    open_stress_config_dialog, open_timed_task_dialog,
+    DecoderSelectionDialogState, ImportFileDialogState, ReplyRuleEditDialogState,
+    ReplyRulesDialogState, StressConfigDialogState, TimedTaskDialogState, open_import_file_dialog,
+    open_new_connection_dialog, open_stress_config_dialog, open_timed_task_dialog,
 };
 use crate::ui::main_window::MainWindow;
 
@@ -86,13 +87,6 @@ pub struct NetAssistantApp {
     pub connection_tabs: IndexMap<String, ConnectionTabState>,
     pub tab_multiline: bool,
 
-    // 自动回复输入框状态（每个标签页一个）
-    pub auto_reply_inputs: HashMap<String, Entity<EditorState>>,
-    // 自动回复输入框（hex 模式）的十六进制编辑器状态（与 auto_reply_inputs 同生命周期）
-    pub auto_reply_hex_editors: HashMap<String, Entity<HexEditorState>>,
-    // 自动回复输入框变更订阅(保持订阅存活; 内容变化时同步到网络层)
-    pub auto_reply_input_subscriptions: HashMap<String, Subscription>,
-
     // 连接事件通道（用于通知UI更新）- 使用smol channel与GPUI兼容
     pub connection_event_sender: Option<Sender<ConnectionEvent>>,
     pub connection_event_receiver: Option<Receiver<ConnectionEvent>>,
@@ -113,6 +107,11 @@ pub struct NetAssistantApp {
     // 「添加到定时任务」(心跳)弹窗状态(打开时创建, 关闭时置 None)
     pub timed_task_dialog: Option<TimedTaskDialogState>,
 
+    // 「回复规则」管理弹窗状态(打开时创建, 关闭时置 None)
+    pub reply_rules_dialog: Option<ReplyRulesDialogState>,
+    // 「回复规则」编辑弹窗状态(打开时创建, 关闭时置 None)
+    pub reply_rule_edit_dialog: Option<ReplyRuleEditDialogState>,
+
     // 本机临时端口范围检测结果 (懒检测 + 手动重新检测, 全局共享)
     // None + !detecting: 尚未检测 或 检测失败 (UI 应提示用户手动获取而非回退默认值)
     // Some: 已检测的真实系统配置
@@ -129,13 +128,20 @@ pub struct NetAssistantApp {
     >,
 
     // 写入发送器映射（无锁设计，每个标签页独立管理）- 使用smol channel
-    pub client_write_senders: HashMap<String, Sender<Vec<u8>>>,
-    pub server_clients: HashMap<String, HashMap<SocketAddr, Sender<Vec<u8>>>>,
+    //
+    // 通道类型为 `WireMessage`：回复规则可能要求"原样输出"（绕过连接 trailer），
+    // 该意图必须与数据一起传递。既有发送点直接 `send(vec)` 仍然可用。
+    pub client_write_senders: HashMap<String, Sender<WireMessage>>,
+    pub server_clients: HashMap<String, HashMap<SocketAddr, Sender<WireMessage>>>,
     // 解码器控制发送器映射（用于运行时下发解码器配置，无需重连）
     pub decoder_control_senders: HashMap<String, Sender<DecoderConfig>>,
     pub server_decoder_controls: HashMap<String, HashMap<SocketAddr, Sender<DecoderConfig>>>,
-    // 服务端自动回复共享状态(UI 下发启用开关与回复内容 → 网络层每条消息读取)
-    pub server_auto_reply_states: HashMap<String, Arc<AutoReplyConfig>>,
+    // 回复规则集共享状态(UI 下发整表 → 网络层按规则求值)
+    //
+    // 全局唯一：规则是**可分享的知识资产**，不绑定连接（决策 D-2）。
+    // 客户端在构造时注入，服务端通过 `ReplyRulesStoreReady` 事件运行时下发。
+    pub reply_rules_store: Arc<ReplyRulesStore>,
+    pub server_reply_rules_stores: HashMap<String, Arc<ReplyRulesStore>>,
 
     // 右键菜单状态
     pub show_context_menu: bool,
@@ -227,8 +233,18 @@ impl NetAssistantApp {
         let (stress_event_sender, stress_event_receiver) = smol_unbounded::<StressEvent>();
 
         // 初始化网络连接管理器
+        //
+        // 回复规则集在这里先建好，再注入网络管理器：客户端连接构造时直接拿到
+        // 同一份 store（决策 D-12），UI 改规则即刻对已连接客户端生效。
+        let reply_rules_store = ReplyRulesStore::new();
+        let loaded_reply_rules = storage.reply_rules().clone();
+        reply_rules_store.replace(&loaded_reply_rules);
+        // 连接级「全局规则开关」同步下发（缺省 false）
+        reply_rules_store.set_connection_gates(storage.reply_connection_enabled_map());
+
         let network_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
-            crate::network::connection::manager::NetworkConnectionManager::new(),
+            crate::network::connection::manager::NetworkConnectionManager::new()
+                .with_reply_rules(reply_rules_store.clone()),
         ));
 
         // 初始化写入发送器映射
@@ -262,9 +278,6 @@ impl NetAssistantApp {
             active_tab,
             connection_tabs,
             tab_multiline: false,
-            auto_reply_inputs: HashMap::new(),
-            auto_reply_hex_editors: HashMap::new(),
-            auto_reply_input_subscriptions: HashMap::new(),
             connection_event_sender: Some(connection_event_sender),
             connection_event_receiver: Some(connection_event_receiver),
             net_counters: HashMap::new(),
@@ -273,6 +286,8 @@ impl NetAssistantApp {
             stress_config_dialog: None,
             import_file_dialog: None,
             timed_task_dialog: None,
+            reply_rules_dialog: None,
+            reply_rule_edit_dialog: None,
             detected_port_range: None,
             port_range_detected: false,
             port_range_detecting: false,
@@ -281,7 +296,10 @@ impl NetAssistantApp {
             server_clients,
             decoder_control_senders,
             server_decoder_controls,
-            server_auto_reply_states: HashMap::new(),
+            // 回复规则集：从持久化配置构造，并把同一份 store 注入网络管理器，
+            // 使客户端连接与 UI 共享同一个规则集（UDP/TCP 客户端构造时注入）
+            reply_rules_store,
+            server_reply_rules_stores: HashMap::new(),
             show_context_menu: false,
             context_menu_connection: None,
             context_menu_is_client: false,
@@ -591,7 +609,14 @@ impl NetAssistantApp {
             ),
         };
         self.timed_task_dialog = Some(TimedTaskDialogState::new(
-            tab_id, editing, enabled, hex_mode, message, interval_ms, window, cx,
+            tab_id,
+            editing,
+            enabled,
+            hex_mode,
+            message,
+            interval_ms,
+            window,
+            cx,
         ));
         open_timed_task_dialog(cx.entity().downgrade(), window, cx);
     }
@@ -718,7 +743,7 @@ impl NetAssistantApp {
     /// - `hex → text`：内容为合法 hex 时解码回字符（不可打印字节用 `\xNN` 转义）；
     ///   内容非法时不动内容（与既有「不擅自改动用户内容」一致）
     ///
-    /// 覆盖消息输入框与自动回复输入框；`from_mode == to_mode` 时不做任何事。
+    /// 覆盖消息输入框；`from_mode == to_mode` 时不做任何事。
     pub fn convert_input_on_mode_switch(
         &mut self,
         tab_id: &str,
@@ -735,7 +760,6 @@ impl NetAssistantApp {
             .get(tab_id)
             .and_then(|tab| tab.message_input.clone())
             .into_iter()
-            .chain(self.auto_reply_inputs.get(tab_id).cloned())
             .collect();
         for input in inputs {
             let value = input.read(cx).value().to_string();
@@ -1248,69 +1272,15 @@ impl NetAssistantApp {
                 }
                 continue;
             };
-            tab_state.message_list_state.scroll_to(gpui_kit::ListOffset {
-                item_ix,
-                offset_in_item: px(0.),
-            });
+            tab_state
+                .message_list_state
+                .scroll_to(gpui_kit::ListOffset {
+                    item_ix,
+                    offset_in_item: px(0.),
+                });
             break;
         }
         cx.notify();
-    }
-
-    pub fn ensure_auto_reply_input_exists(
-        &mut self,
-        tab_id: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.auto_reply_inputs.contains_key(&tab_id) {
-            // 默认回复内容随当前模式生成: 文本模式下 "ok", hex 模式下为 "ok" 的编码,
-            // 避免默认值在 hex 模式被判为非法 hex
-            let default_reply = if self
-                .connection_tabs
-                .get(&tab_id)
-                .map(|tab| tab.message_input_mode == "hex")
-                .unwrap_or(false)
-            {
-                "6F 6B"
-            } else {
-                "ok"
-            };
-            let auto_reply_input = cx.new(|cx| {
-                EditorState::new(window, cx)
-                    .language("json")
-                    .line_number(false)
-                    .folding(false)
-                    // 关闭 Input 内置的原生右键菜单: 由 InputWithMode 统一挂「转换为 Hex/文本」绘制菜单
-                    .context_menu(false)
-                    .placeholder(t!("app_ui.auto_reply_placeholder").to_string())
-            });
-            auto_reply_input.update(cx, |input, cx| {
-                input.set_value(default_reply.to_string(), window, cx);
-            });
-            // 自动回复框面板较窄: 每行 5 字节
-            let hex_editor = cx.new(|cx| {
-                crate::ui::components::hex_editor::HexEditorState::with_inline_bytes_per_row(
-                    cx,
-                    crate::ui::components::hex_editor::adapter::INLINE_BYTES_PER_ROW_AUTO_REPLY,
-                )
-            });
-            // 订阅输入内容变化: 实时将用户配置的回复内容同步到网络层(严格按用户输入, 不改内容)
-            let tab_id_for_sub = tab_id.clone();
-            let subscription = cx.subscribe(&auto_reply_input, {
-                move |app, _input, event, cx| {
-                    if matches!(event, InputEvent::Change) {
-                        app.sync_auto_reply_to_network(&tab_id_for_sub, cx);
-                    }
-                }
-            });
-            self.auto_reply_inputs
-                .insert(tab_id.clone(), auto_reply_input);
-            self.auto_reply_hex_editors
-                .insert(tab_id.clone(), hex_editor);
-            self.auto_reply_input_subscriptions
-                .insert(tab_id, subscription);
-        }
     }
 
     /// 打开「新建连接」对话框（重置为新建模式）
@@ -1523,8 +1493,6 @@ impl NetAssistantApp {
                     tab_state.message_input_mode = to_mode.clone();
                 }
                 self.convert_input_on_mode_switch(&edit_id, &from_mode, &to_mode, window, cx);
-                // 转换走的是 replace_all(不发 Change 事件), 需手动把自动回复同步到网络层
-                self.sync_auto_reply_to_network(&edit_id, cx);
             }
         } else {
             // 新建模式
@@ -1587,24 +1555,10 @@ impl NetAssistantApp {
             debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
         }
 
-        if self.auto_reply_inputs.remove(&tab_id).is_some() {
-            debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
-        }
-        self.auto_reply_hex_editors.remove(&tab_id);
-        if self
-            .auto_reply_input_subscriptions
-            .remove(&tab_id)
-            .is_some()
-        {
-            debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
-        }
         self.message_input_enter_subscriptions.remove(&tab_id);
         self.keep_last_subscriptions.remove(&tab_id);
         self.search_subscriptions.remove(&tab_id);
         self.periodic_sync_subscriptions.remove(&tab_id);
-        if self.server_auto_reply_states.remove(&tab_id).is_some() {
-            debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
-        }
 
         // 清理客户端连接发送器
         if self.client_write_senders.remove(&tab_id).is_some() {
@@ -2400,11 +2354,6 @@ impl NetAssistantApp {
                     input.update(cx, |input, cx| input.insert(text.to_string(), window, cx));
                 }
             }
-            Some(crate::ui::dialog::variable_picker::VariablePickerTarget::AutoReply) => {
-                if let Some(input) = self.auto_reply_inputs.get(tab_id).cloned() {
-                    input.update(cx, |input, cx| input.insert(text.to_string(), window, cx));
-                }
-            }
             None => {}
         }
 
@@ -2459,7 +2408,11 @@ impl NetAssistantApp {
                 .client_write_senders
                 .get(tab_id)
                 .ok_or(SendDispatchError::ClientWriteUnavailable)?;
-            if write_sender.try_send(bytes.clone()).is_err() {
+            // `inherit` = 由连接级 trailer 设置决定是否追加结尾（与升级前一致）
+            if write_sender
+                .try_send(WireMessage::inherit(bytes.clone()))
+                .is_err()
+            {
                 return Err(SendDispatchError::SendFailed);
             }
             if let Some(sender) = sender {
@@ -2487,7 +2440,10 @@ impl NetAssistantApp {
                 warn!("[发送] 客户端 {} 不存在或已断开", target_addr);
                 return Ok(());
             };
-            if write_sender.try_send(bytes.clone()).is_err() {
+            if write_sender
+                .try_send(WireMessage::inherit(bytes.clone()))
+                .is_err()
+            {
                 // 单个客户端发送失败不应影响整个服务端，仅记录日志
                 // TCP/UDP 层会通过 ServerClientDisconnected 事件清理该客户端
                 warn!(
@@ -2508,13 +2464,19 @@ impl NetAssistantApp {
         }
 
         // 广播给所有客户端（并行发送）
+        //
+        // 先把 (addr, sender) 快照 clone 出来再 spawn：`tokio::spawn` 要求 'static，
+        // 在闭包里直接引用 `self.server_clients` 会让借用逃逸出方法体。
+        let broadcast_targets: Vec<(SocketAddr, Sender<WireMessage>)> =
+            clients.iter().map(|(a, s)| (*a, s.clone())).collect();
         let bytes_arc = Arc::new(bytes.clone());
-        for (addr, write_sender) in clients.iter() {
-            let sender_clone = write_sender.clone();
+        for (addr, sender_clone) in broadcast_targets {
             let bytes_clone = bytes_arc.clone();
             let addr_str = addr.to_string();
             tokio::spawn(async move {
-                if sender_clone.send((*bytes_clone).clone()).await.is_err() {
+                // UDP 服务端需要显式目标地址；TCP 的发送任务天然绑定在一条 socket 上
+                let wire = WireMessage::inherit_to((*bytes_clone).clone(), addr);
+                if sender_clone.send(wire).await.is_err() {
                     error!("[发送] 广播发送给客户端 {} 失败", addr_str);
                 }
             });
@@ -2578,7 +2540,7 @@ impl NetAssistantApp {
             return Some(TaskTarget::Client(sender));
         }
         let clients = self.server_clients.get(tab_id)?;
-        let list: Vec<(SocketAddr, Sender<Vec<u8>>)> = match tab_state.selected_client {
+        let list: Vec<(SocketAddr, Sender<WireMessage>)> = match tab_state.selected_client {
             Some(addr) => clients
                 .get(&addr)
                 .map(|s| vec![(addr, s.clone())])
@@ -2608,7 +2570,7 @@ impl NetAssistantApp {
                     .map(|s| s.connection_config.is_client())
                     .unwrap_or(true);
                 if is_client {
-                    let (tx, rx) = smol_unbounded::<Vec<u8>>();
+                    let (tx, rx) = smol_unbounded::<WireMessage>();
                     drop(rx);
                     TaskTarget::Client(tx)
                 } else {
@@ -2664,7 +2626,7 @@ impl NetAssistantApp {
         let has_target = snapshot.is_some();
         // 占位目标: 无可用的写通道时给一个已关闭的通道, 引擎不会误发
         let target = snapshot.unwrap_or_else(|| {
-            let (tx, rx) = smol_unbounded::<Vec<u8>>();
+            let (tx, rx) = smol_unbounded::<WireMessage>();
             drop(rx);
             TaskTarget::Client(tx)
         });
@@ -3140,12 +3102,6 @@ impl NetAssistantApp {
                 });
             }
         }
-        // 刷新自动回复输入框的 placeholder
-        for input in self.auto_reply_inputs.values() {
-            input.update(cx, |input, cx| {
-                input.set_placeholder(t!("app_ui.auto_reply_placeholder").to_string(), window, cx)
-            });
-        }
 
         cx.notify();
     }
@@ -3289,26 +3245,71 @@ impl NetAssistantApp {
         }
     }
 
-    /// 将 UI 层自动回复配置(开关 + 内容原文 + 输入模式)同步到网络层共享状态。
+    // ===== 回复规则（全局规则集，见 docs/plan-reply-rules.md）=====
+
+    /// 当前生效的回复规则集（UI 真源 = `ConfigStorage`）
+    pub fn reply_rules_config(&self) -> ReplyRulesConfig {
+        self.storage.reply_rules().clone()
+    }
+
+    /// 把规则集下发给**所有**网络层读入口。
     ///
-    /// 下发原文而非已转换字节: 无变量的原文由网络层按模式转成等价字节;
-    /// 含 `${...}` 的原文由网络层保存为模板, 每条回复重新渲染。
-    /// 不额外修改内容、不添加换行符; 编码由用户配置的 encoder 负责。
-    /// 服务端未就绪(未启动)时无目标, 待 ServerAutoReplyStateReady 到达后再同步。
-    pub fn sync_auto_reply_to_network(&mut self, tab_id: &str, cx: &mut Context<Self>) {
-        let Some(auto_reply_state) = self.server_auto_reply_states.get(tab_id).cloned() else {
-            return;
-        };
-        let Some(tab_state) = self.connection_tabs.get(tab_id) else {
-            return;
-        };
-        let enabled = tab_state.auto_reply_enabled;
-        let hex_mode = tab_state.message_input_mode == "hex";
-        let text = match self.auto_reply_inputs.get(tab_id) {
-            Some(input) => input.read(cx).text().to_string(),
-            None => String::new(),
-        };
-        auto_reply_state.set(enabled, &text, hex_mode);
+    /// 两个入口（这是本轮"客户端侧也可用"的关键）：
+    /// 1. `reply_rules_store` —— 进程级 store，TCP/UDP **客户端**连接在构造时就持有它，
+    ///    因此 UI 改规则对已连客户端立即生效；
+    /// 2. `server_reply_rules_stores` —— 每个服务端 tab 的 store（事件下发获得），
+    ///    多客户端共享同一份，同样立即生效。
+    ///
+    /// 之所以两边都要下发：客户端与服务端的 store 实例不同（服务端先于 UI 就绪，
+    /// 走 `ReplyRulesStoreReady` 事件往返），但内容必须始终一致。
+    pub fn sync_reply_rules_to_network(&mut self, cx: &mut Context<Self>) {
+        let config = self.reply_rules_config();
+        let gates = self.storage.reply_connection_enabled_map();
+        self.reply_rules_store.replace(&config);
+        self.reply_rules_store.set_connection_gates(gates.clone());
+        for store in self.server_reply_rules_stores.values() {
+            store.replace(&config);
+            store.set_connection_gates(gates.clone());
+        }
+        debug!(
+            "[reply] 规则集已下发: {} 条规则(启用 {}), 总开关={}, 启用连接数={}",
+            config.rules.len(),
+            config.rules.iter().filter(|r| r.enabled).count(),
+            config.enabled,
+            gates.values().filter(|v| **v).count()
+        );
+        cx.notify();
+    }
+
+    /// 指定连接是否启用「全局作用域规则」（缺省 false；转发 `ConfigStorage`）
+    pub fn reply_connection_enabled(&self, connection_id: &str) -> bool {
+        self.storage.reply_connection_enabled(connection_id)
+    }
+
+    /// 是否已启用规则引擎（UI 展示与"旧轨/新轨"提示都用它）
+    pub fn reply_rules_active(&self) -> bool {
+        self.reply_rules_store.is_enabled()
+    }
+
+    /// 规则命中计数快照（**跨 store 聚合**）
+    ///
+    /// 必须聚合的原因：客户端命中累加在进程级 `reply_rules_store`，
+    /// 而每个服务端 tab 在 `TcpServer::new` / `UdpServer::new` 里各自建了一个
+    /// store（见 `ReplyRulesStoreReady` 事件），两者是**不同实例**。
+    /// 只读进程级 store 会让服务端模式下命中数恒为 0。
+    pub fn reply_rule_hits(&self) -> HashMap<String, u64> {
+        let mut hits = self.reply_rules_store.hits_snapshot();
+        for store in self.server_reply_rules_stores.values() {
+            for (rule_id, count) in store.hits_snapshot() {
+                *hits.entry(rule_id).or_insert(0) += count;
+            }
+        }
+        hits
+    }
+
+    /// 规则集里是否有启用中的规则
+    pub fn has_enabled_reply_rules(&self) -> bool {
+        self.reply_rules_store.enabled_rule_count() > 0
     }
 
     /// 运行时下发解码器配置到在线连接(客户端或服务端所有已连接客户端)，无需重连。
@@ -3518,11 +3519,24 @@ impl NetAssistantApp {
                 // 服务端目标集合变化: 刷新该 tab 全部发送任务的目标
                 self.refresh_send_task_targets(&tab_id);
             }
-            ConnectionEvent::ServerAutoReplyStateReady(tab_id, auto_reply_state) => {
-                // 服务端共享状态就绪: 保存句柄, 并将 UI 当前配置推送到网络层
-                self.server_auto_reply_states
-                    .insert(tab_id.clone(), auto_reply_state);
-                self.sync_auto_reply_to_network(&tab_id, cx);
+            ConnectionEvent::ReplyRulesStoreReady(tab_id, store) => {
+                // 服务端规则集共享状态就绪: 保存句柄, 并把 UI 当前规则集推进去
+                //
+                // 服务端为什么走事件下发而不是构造注入：server 先于 UI 就绪，
+                // 且多客户端共享同一 store（决策 D-12 的对照说明）。
+                self.server_reply_rules_stores
+                    .insert(tab_id.clone(), store.clone());
+                // 用进程级 store 的内容初始化服务端 store —— 二者内容始终一致，
+                // 但服务端 store 是网络层的读入口，必须拿到同一份数据
+                let config = self.reply_rules_config();
+                store.replace(&config);
+                store.set_connection_gates(self.storage.reply_connection_enabled_map());
+                debug!(
+                    "[reply] 服务端 tab {} 规则集就绪: {} 条规则, 启用={}",
+                    tab_id,
+                    config.rules.len(),
+                    config.enabled
+                );
                 cx.notify();
             }
             ConnectionEvent::MessageReceived(tab_id, message) => {
@@ -3598,26 +3612,10 @@ impl Drop for NetAssistantApp {
                 debug!("[关闭标签页] 移除标签页状态: {}", tab_id);
             }
 
-            if self.auto_reply_inputs.remove(&tab_id).is_some() {
-                debug!("[关闭标签页] 移除自动回复输入框: {}", tab_id);
-            }
-            self.auto_reply_hex_editors.remove(&tab_id);
-
-            if self
-                .auto_reply_input_subscriptions
-                .remove(&tab_id)
-                .is_some()
-            {
-                debug!("[关闭标签页] 移除自动回复输入订阅: {}", tab_id);
-            }
             self.message_input_enter_subscriptions.remove(&tab_id);
             self.keep_last_subscriptions.remove(&tab_id);
             self.search_subscriptions.remove(&tab_id);
             self.periodic_sync_subscriptions.remove(&tab_id);
-
-            if self.server_auto_reply_states.remove(&tab_id).is_some() {
-                debug!("[关闭标签页] 移除服务端自动回复共享状态: {}", tab_id);
-            }
 
             // 清理客户端连接发送器
             if self.client_write_senders.remove(&tab_id).is_some() {
@@ -3636,14 +3634,6 @@ impl Drop for NetAssistantApp {
 
 impl Render for NetAssistantApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.active_tab.is_empty() {
-            if let Some(tab_state) = self.connection_tabs.get(&self.active_tab) {
-                if !tab_state.connection_config.is_client() {
-                    self.ensure_auto_reply_input_exists(self.active_tab.clone(), window, cx);
-                }
-            }
-        }
-
         MainWindow::new(self, cx).render(window, cx)
     }
 }

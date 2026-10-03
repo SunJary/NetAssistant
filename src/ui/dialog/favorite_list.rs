@@ -1,10 +1,10 @@
-use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
 use gpui_kit::component::{
     ActiveTheme, Icon, IconName, StyledExt,
     input::{Input, InputState},
     scroll::ScrollableElement,
 };
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 use rust_i18n::t;
 use std::sync::Arc;
 

@@ -8,8 +8,6 @@
 // 打开/关闭沿用 gpui_component 命令式对话框惯例(见 import_file.rs / stress_config.rs)。
 // 状态挂在 `app.timed_task_dialog`, 内容闭包每帧从 app 读取最新状态。
 
-use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::StyledExt;
@@ -19,6 +17,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::input::{EditorState, Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;

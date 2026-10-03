@@ -1,3 +1,6 @@
+use gpui_kit::component::dialog::Dialog;
+use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::{Root, WindowExt, v_flex};
 /// 对话框滚动布局的无头测试：复现 Dialog 组件内「auto 高度面板 + max_h 封顶 + 滚动容器」
 /// 的精确结构，验证内容超高时滚动容器被 clamp 且可滚动。
 use gpui_kit::{
@@ -5,9 +8,6 @@ use gpui_kit::{
     Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext, VisualTestContext, Window,
     div, point, px,
 };
-use gpui_kit::component::dialog::Dialog;
-use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::component::{Root, WindowExt, v_flex};
 
 fn draw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
@@ -188,4 +188,120 @@ fn dialog_esc_and_overlay_click_both_close(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("escape");
     draw(&mut cx);
     assert!(!is_open(&mut cx), "ESC should close the dialog");
+}
+
+/// T-2：「回复规则」管理弹窗的结构复现 —— 固定顶部区（总开关）+ 规则列表滚动区 + 底部按钮条。
+///
+/// 规则条数现实中可达数十条，本用例用 30 行验证两件事：
+/// 1. 长列表被 `max_h` 钳制且**可滚动**（不会把底部按钮挤出窗口）；
+/// 2. 底部按钮始终留在窗口内（布局不溢出）。
+struct ReplyRulesDialogHost {
+    opened: bool,
+}
+
+impl ReplyRulesDialogHost {
+    fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.open_dialog(cx, |dialog, _window, _cx| {
+            let content_cap = px(352.);
+            dialog
+                .title("Reply Rules")
+                .w(px(760.))
+                .max_h(px(480.))
+                .footer(
+                    gpui_kit::component::dialog::DialogFooter::new().child(
+                        div()
+                            .h(px(28.))
+                            .w(px(60.))
+                            .debug_selector(|| "rr-footer-ok".to_string())
+                            .child("OK"),
+                    ),
+                )
+                .content(move |content, _window, _cx| {
+                    content.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            // 固定顶部区（总开关/提示）
+                            .child(
+                                div()
+                                    .h(px(32.))
+                                    .flex_shrink_0()
+                                    .debug_selector(|| "rr-top".to_string())
+                                    .child("master switch"),
+                            )
+                            // 规则列表：max_h 在外层普通 div 钳制可视区，内层滚动容器不限高
+                            .child(
+                                div().max_h(content_cap).child(
+                                    div()
+                                        .overflow_y_scrollbar()
+                                        .debug_selector(|| "rr-list".to_string())
+                                        .child(
+                                            v_flex().children(
+                                                (0..30)
+                                                    .map(|i| row(format!("rr-row-{}", i), 40.))
+                                                    .collect::<Vec<_>>(),
+                                            ),
+                                        ),
+                                ),
+                            ),
+                    )
+                })
+                .on_cancel(|_, _, _| true)
+        });
+    }
+}
+
+impl Render for ReplyRulesDialogHost {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.opened {
+            self.opened = true;
+            self.open(window, cx);
+        }
+        div().size_full()
+    }
+}
+
+#[gpui_kit::test]
+fn reply_rules_dialog_long_list_clamps_scrolls_and_keeps_footer(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::component::init);
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let host = cx.new(|cx| ReplyRulesDialogHost { opened: false });
+        Root::new(host, window, cx)
+    });
+    let mut cx = cx;
+    draw(&mut cx);
+    draw(&mut cx);
+    draw(&mut cx);
+
+    let row0 = cx.debug_bounds("rr-row-0").expect("rr-row-0 bounds");
+    let row29 = cx.debug_bounds("rr-row-29").expect("rr-row-29 bounds");
+    let footer = cx.debug_bounds("rr-footer-ok").expect("footer bounds");
+    let top = cx.debug_bounds("rr-top").expect("top bounds");
+
+    // 布局位置保留（30 行 x 40px，跨度 29*40 = 1160），说明列表区确实被钳成可视高度
+    let content_span = row29.origin.y - row0.origin.y;
+    assert!(
+        (content_span - px(1160.)).abs() < px(2.),
+        "rows keep layout positions, span={content_span:?}"
+    );
+
+    // 底部按钮条在窗口内（不溢出）
+    let win_h = cx.update(|window, _| window.bounds().size.height);
+    assert!(
+        footer.origin.y + footer.size.height <= win_h,
+        "footer must stay inside the window: footer={footer:?} win_h={win_h:?}"
+    );
+    // 顶部固定区与列表区不重叠
+    assert!(
+        row0.origin.y >= top.origin.y + top.size.height - px(1.),
+        "list must start below the fixed top section"
+    );
+
+    // 滚动生效：row-0 上移
+    scroll(&mut cx, 900., 300., 0., -100.);
+    let row0_after = cx.debug_bounds("rr-row-0").expect("rr-row-0 after scroll");
+    assert!(
+        row0_after.origin.y < row0.origin.y,
+        "list should scroll, before={row0:?} after={row0_after:?}"
+    );
 }

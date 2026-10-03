@@ -6,9 +6,9 @@
 
 use std::sync::Arc;
 
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use gpui_kit::component::tooltip::Tooltip;
 use rust_i18n::t;
 
 use super::core::{self, Action, Cell, MoveDir};
@@ -395,21 +395,16 @@ fn render_row(
                     .rounded_sm()
                     .max_w(px(150.0))
                     .truncate()
+                    // 基础色先写, 光标/选中态在后面覆盖(与 byte_span 同序):
+                    // 若把基础 bg 写在后, 会盖掉下面的光标底色, 只剩白色光标文字落在
+                    // 浅色变量底上 —— 就是"已插入变量看不清"的原因
+                    .text_color(style.token_text)
+                    .bg(style.token_bg)
                     .when(on_token && focused, |d| {
                         d.bg(style.cursor_bg).text_color(style.cursor_text)
                     })
                     .when(on_token && !focused, |d| d.bg(style.cursor_bg_unfocused))
                     .when(!on_token && selected, |d| d.bg(style.selection))
-                    .text_color(if on_token && focused {
-                        style.cursor_text
-                    } else {
-                        style.token_text
-                    })
-                    .bg(if (on_token && !focused) || selected {
-                        gpui_kit::transparent_black()
-                    } else {
-                        style.token_bg
-                    })
                     .child(text.clone())
                     .on_mouse_down(MouseButton::Left, {
                         let editor = editor.clone();
@@ -710,12 +705,12 @@ mod visual_tests {
     //! 无头可视化测试：网格布局/滚动/点击定位/键入改写
     use std::sync::Arc;
 
+    use gpui_kit::component::Root;
     use gpui_kit::{
         AppContext as _, Context, Entity, IntoElement, MouseButton, MouseDownEvent,
         ParentElement as _, Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext,
         VisualTestContext, Window, div, point, px, white,
     };
-    use gpui_kit::component::Root;
 
     use super::{HexEditorState, HexEditorStyle, HexViewConfig, render_grid};
     use crate::ui::components::hex_editor::core::{self, Cursor};

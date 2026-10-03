@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use gpui_kit::*;
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
@@ -14,6 +13,7 @@ use gpui_kit::component::{
     input::EditorState,
     tooltip::Tooltip,
 };
+use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::custom_icons::CustomIconName;
@@ -30,8 +30,6 @@ const INLINE_HEIGHT: f32 = 128.0;
 /// 内联每行字节数 —— 消息发送框/压测 payload：16 字节一行
 /// （行宽 ≈ offset 52px + 16×20px ≈ 372px）
 pub const INLINE_BYTES_PER_ROW_WIDE: usize = 16;
-/// 内联每行字节数 —— 自动回复框：5 字节一行（面板窄）
-pub const INLINE_BYTES_PER_ROW_AUTO_REPLY: usize = 5;
 /// 内联网格可见行数：网格区约 100px / 行高 20px
 const INLINE_MAX_ROWS: usize = 5;
 const EXPANDED_BYTES_PER_ROW: usize = 16;

@@ -1,5 +1,6 @@
 use crate::config::connection::ConnectionConfig;
 use crate::message::{FavoriteItem, FavoritesMap};
+use crate::reply::model::{ReplyRule, ReplyRulesConfig};
 use crate::send_task::model::TimedTaskProfile;
 use crate::stress::config::StressTestConfig;
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,19 @@ pub struct AppConfig {
     /// 界面语言（如 "zh-CN" / "en"），None 表示用户未选择过
     #[serde(default)]
     pub language: Option<String>,
+    /// 回复规则集（全局表 + `scope` 字段区分作用域）
+    ///
+    /// 旧配置无此字段 → `serde(default)` 得到"空规则集 + 总开关关闭"，
+    /// 网络层走既有固定回复路径，**升级后行为与升级前完全一致**。
+    #[serde(default)]
+    pub reply_rules: ReplyRulesConfig,
+    /// 「全局作用域回复规则」在哪些连接上启用（按 connection_id 索引）
+    ///
+    /// 查询契约：**缺省 = false**（未列出即未启用）。因此升级前已存在的连接、
+    /// 以及新建连接都默认不启用，需用户在连接面板逐个打开；无需迁移标记，
+    /// 也无需在 `add_connection` 播种。
+    #[serde(default)]
+    pub reply_connection_enabled: HashMap<String, bool>,
 }
 
 impl Default for AppConfig {
@@ -59,6 +73,8 @@ impl Default for AppConfig {
             stress_profiles: HashMap::new(),
             timed_tasks: HashMap::new(),
             language: None,
+            reply_rules: ReplyRulesConfig::default(),
+            reply_connection_enabled: HashMap::new(),
         }
     }
 }
@@ -233,6 +249,8 @@ impl ConfigStorage {
         });
         // 连带删除该连接的定时任务(心跳)配置
         self.config.timed_tasks.remove(connection_id);
+        // 连带删除该连接的「全局规则启用」开关，避免残留
+        self.config.reply_connection_enabled.remove(connection_id);
         if self.config.auto_save {
             let _ = self.save();
         }
@@ -249,6 +267,8 @@ impl ConfigStorage {
         });
         // 连带删除该连接的定时任务(心跳)配置
         self.config.timed_tasks.remove(connection_id);
+        // 连带删除该连接的「全局规则启用」开关，避免残留
+        self.config.reply_connection_enabled.remove(connection_id);
         if self.config.auto_save {
             let _ = self.save();
         }
@@ -357,10 +377,403 @@ impl ConfigStorage {
             let _ = self.save();
         }
     }
+
+    // ========================================================================
+    // 回复规则（全局规则表，不按连接索引 —— 见 plan-reply-rules.md 决策 D-2）
+    // ========================================================================
+
+    /// 读取回复规则集（回填规则管理弹窗用）
+    pub fn reply_rules(&self) -> &ReplyRulesConfig {
+        &self.config.reply_rules
+    }
+
+    /// 整表替换回复规则集（UI 保存后一次性下发）
+    pub fn save_reply_rules(&mut self, config: ReplyRulesConfig) {
+        self.config.reply_rules = config;
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 指定连接是否启用「全局作用域规则」。**缺省 false**（未列出即未启用）
+    pub fn reply_connection_enabled(&self, connection_id: &str) -> bool {
+        self.config
+            .reply_connection_enabled
+            .get(connection_id)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// 设置指定连接的「全局作用域规则」启用开关（写入 + 按需 auto_save）
+    pub fn set_reply_connection_enabled(&mut self, connection_id: &str, enabled: bool) {
+        self.config
+            .reply_connection_enabled
+            .insert(connection_id.to_string(), enabled);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 连接开关整表快照（供下发运行期 store）
+    pub fn reply_connection_enabled_map(&self) -> HashMap<String, bool> {
+        self.config.reply_connection_enabled.clone()
+    }
+
+    /// 新增或更新一条规则
+    ///
+    /// 按 `id` 匹配：存在则**原地替换**（保持列表位置），不存在则追加到末尾。
+    /// 原地替换而非"先删后加"是必要的：规则顺序即求值优先级，先删后加会把
+    /// 用户调好的顺序打乱。
+    pub fn upsert_reply_rule(&mut self, rule: ReplyRule) {
+        match self
+            .config
+            .reply_rules
+            .rules
+            .iter_mut()
+            .find(|r| r.id == rule.id)
+        {
+            Some(existing) => *existing = rule,
+            None => self.config.reply_rules.rules.push(rule),
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 按 id 删除一条规则；返回是否确实删除了
+    pub fn delete_reply_rule(&mut self, rule_id: &str) -> bool {
+        let before = self.config.reply_rules.rules.len();
+        self.config.reply_rules.rules.retain(|r| r.id != rule_id);
+        let removed = before != self.config.reply_rules.rules.len();
+        if removed && self.config.auto_save {
+            let _ = self.save();
+        }
+        removed
+    }
+
+    /// 设置总开关（关闭时网络层零开销）
+    pub fn set_reply_rules_enabled(&mut self, enabled: bool) {
+        self.config.reply_rules.enabled = enabled;
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 按当前列表顺序重写全部 `priority`（列表顺序 = 求值顺序，决策 U-11）
+    ///
+    /// `index * 10` 留出间隔，便于手工微调；返回被改动的规则数。
+    pub fn renumber_reply_rule_priorities(&mut self) -> usize {
+        let mut changed = 0;
+        for (i, rule) in self.config.reply_rules.rules.iter_mut().enumerate() {
+            let priority = (i as u32) * 10;
+            if rule.priority != priority {
+                rule.priority = priority;
+                changed += 1;
+            }
+        }
+        if changed > 0 && self.config.auto_save {
+            let _ = self.save();
+        }
+        changed
+    }
+
+    /// 把某条规则移动到新位置（上移 / 下移），并重排 priority
+    pub fn move_reply_rule(&mut self, rule_id: &str, new_index: usize) -> bool {
+        let rules = &mut self.config.reply_rules.rules;
+        let Some(from) = rules.iter().position(|r| r.id == rule_id) else {
+            return false;
+        };
+        let to = new_index.min(rules.len().saturating_sub(1));
+        if from == to {
+            return false;
+        }
+        let rule = rules.remove(from);
+        rules.insert(to, rule);
+        self.renumber_reply_rule_priorities();
+        true
+    }
 }
 
 impl Default for ConfigStorage {
     fn default() -> Self {
         Self::new().expect("无法创建配置存储")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::connection::ClientConfig;
+    use crate::reply::model::{BytePattern, MatchNode, ReplyPayload, ReplyRule, RuleCodec};
+
+    fn rule(name: &str) -> ReplyRule {
+        ReplyRule {
+            matcher: MatchNode::Length { min: 1, max: 8 },
+            payload: ReplyPayload {
+                text: "ok".to_string(),
+                hex_mode: false,
+                codec: RuleCodec::Raw,
+            },
+            // 与 UI「新建规则」一致：priority 由列表位置决定，初始都是 10
+            ..ReplyRule::new(name, 10)
+        }
+    }
+
+    /// 旧配置文件（无 `reply_rules` 字段）必须无损加载：得到空规则集 + 总开关关闭
+    #[test]
+    fn test_legacy_app_config_loads_without_reply_rules() {
+        let json = r#"{
+        "connections": [],
+        "auto_save": true,
+        "save_interval": 30,
+        "window_x": null,
+        "window_y": null,
+        "window_width": null,
+        "window_height": null,
+        "sidebar_width": null,
+        "sidebar_collapsed": null
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(!config.reply_rules.enabled);
+        assert!(config.reply_rules.rules.is_empty());
+        assert_eq!(config.reply_rules.version, 1);
+        // 行为等价于"升级前"：无规则可命中
+        assert!(!config.reply_rules.enabled);
+        assert!(!config.reply_rules.rules.iter().any(|r| r.enabled));
+    }
+
+    /// 含规则集的配置序列化往返一致
+    #[test]
+    fn test_app_config_reply_rules_roundtrip() {
+        let mut config = AppConfig::default();
+        config.reply_rules.enabled = true;
+        config.reply_rules.rules.push(ReplyRule {
+            matcher: MatchNode::Contains {
+                bytes: BytePattern::Hex("01 03".to_string()),
+            },
+            ..rule("Modbus")
+        });
+
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.reply_rules, config.reply_rules);
+        assert!(back.reply_rules.enabled && back.reply_rules.rules.iter().any(|r| r.enabled));
+    }
+
+    /// upsert 必须**原地替换**（保持列表顺序 = 求值优先级），新规则追加到末尾
+    #[test]
+    fn test_upsert_keeps_order() {
+        let mut storage = ConfigStorage {
+            config_file: PathBuf::from("unused.json"),
+            config: AppConfig {
+                auto_save: false,
+                ..Default::default()
+            },
+        };
+        let a = rule("A");
+        let b = rule("B");
+        let c = rule("C");
+        storage.upsert_reply_rule(a.clone());
+        storage.upsert_reply_rule(b.clone());
+        storage.upsert_reply_rule(c.clone());
+        assert_eq!(
+            storage
+                .reply_rules()
+                .rules
+                .iter()
+                .map(|r| r.name.clone())
+                .collect::<Vec<_>>(),
+            vec!["A", "B", "C"]
+        );
+
+        // 改 A 不应把它挪到末尾
+        let mut a2 = a.clone();
+        a2.name = "A2".to_string();
+        storage.upsert_reply_rule(a2);
+        assert_eq!(
+            storage
+                .reply_rules()
+                .rules
+                .iter()
+                .map(|r| r.name.clone())
+                .collect::<Vec<_>>(),
+            vec!["A2", "B", "C"]
+        );
+        assert_eq!(storage.reply_rules().rules.len(), 3);
+    }
+
+    /// 删除与开关
+    #[test]
+    fn test_delete_and_toggles() {
+        let mut storage = ConfigStorage {
+            config_file: PathBuf::from("unused.json"),
+            config: AppConfig {
+                auto_save: false,
+                ..Default::default()
+            },
+        };
+        let a = rule("A");
+        let id = a.id.clone();
+        storage.upsert_reply_rule(a);
+        assert!(storage.delete_reply_rule(&id));
+        assert!(!storage.delete_reply_rule(&id), "重复删除应返回 false");
+        assert!(storage.reply_rules().rules.is_empty());
+
+        storage.set_reply_rules_enabled(true);
+        assert!(storage.reply_rules().enabled);
+    }
+
+    /// 连接开关持久化语义：缺省 false、显式设置后可读、删除连接连带清理、serde 往返
+    #[test]
+    fn test_reply_connection_enabled_defaults_and_cleanup() {
+        let mut storage = ConfigStorage {
+            config_file: PathBuf::from("unused.json"),
+            config: AppConfig {
+                auto_save: false,
+                ..Default::default()
+            },
+        };
+        // 缺省 false（未列出的连接一律视为未启用）
+        assert!(!storage.reply_connection_enabled("conn-a"));
+
+        storage.set_reply_connection_enabled("conn-a", true);
+        assert!(storage.reply_connection_enabled("conn-a"));
+        assert_eq!(
+            storage
+                .reply_connection_enabled_map()
+                .get("conn-a")
+                .copied(),
+            Some(true)
+        );
+
+        storage.set_reply_connection_enabled("conn-a", false);
+        assert!(!storage.reply_connection_enabled("conn-a"));
+
+        // 删除连接连带清理开关
+        storage.add_connection(ConnectionConfig::Client(ClientConfig {
+            id: "conn-b".to_string(),
+            ..Default::default()
+        }));
+        storage.set_reply_connection_enabled("conn-b", true);
+        storage.remove_client_connection("conn-b");
+        assert!(
+            !storage
+                .reply_connection_enabled_map()
+                .contains_key("conn-b")
+        );
+
+        // serde 往返保留开关
+        storage.set_reply_connection_enabled("conn-c", true);
+        let json = serde_json::to_string(&storage.config).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.reply_connection_enabled.get("conn-c").copied(),
+            Some(true)
+        );
+    }
+
+    /// 旧配置无 `reply_connection_enabled` 字段 → 空 map，查询恒为 false（不兼容语义）
+    #[test]
+    fn test_legacy_config_has_no_reply_connection_enabled() {
+        let json = r#"{
+        "connections": [],
+        "auto_save": true,
+        "save_interval": 30,
+        "window_x": null,
+        "window_y": null,
+        "window_width": null,
+        "window_height": null,
+        "sidebar_width": null,
+        "sidebar_collapsed": null
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(config.reply_connection_enabled.is_empty());
+    }
+
+    /// 上移/下移必须真正改变求值顺序，并重排 priority 的间隔
+    #[test]
+    fn test_move_rule_renumbers_priorities() {
+        let mut storage = ConfigStorage {
+            config_file: PathBuf::from("unused.json"),
+            config: AppConfig {
+                auto_save: false,
+                ..Default::default()
+            },
+        };
+        let a = rule("A");
+        let b = rule("B");
+        let c = rule("C");
+        let (ia, ib, ic) = (a.id.clone(), b.id.clone(), c.id.clone());
+        storage.upsert_reply_rule(a);
+        storage.upsert_reply_rule(b);
+        storage.upsert_reply_rule(c);
+        assert_eq!(
+            storage
+                .reply_rules()
+                .rules
+                .iter()
+                .map(|r| r.priority)
+                .collect::<Vec<_>>(),
+            vec![10, 10, 10],
+            "构造时 priority 都是 10"
+        );
+
+        // C 移到最前
+        assert!(storage.move_reply_rule(&ic, 0));
+        let names: Vec<String> = storage
+            .reply_rules()
+            .rules
+            .iter()
+            .map(|r| r.name.clone())
+            .collect();
+        assert_eq!(names, vec!["C", "A", "B"]);
+        let priorities: Vec<u32> = storage
+            .reply_rules()
+            .rules
+            .iter()
+            .map(|r| r.priority)
+            .collect();
+        assert_eq!(priorities, vec![0, 10, 20], "顺序即优先级，间隔 10");
+
+        // 移到越界位置会被夹到末尾
+        assert!(storage.move_reply_rule(&ic, 99));
+        assert_eq!(storage.reply_rules().rules.last().unwrap().id, ic);
+
+        // 不存在的 id / 位置不变 都返回 false
+        assert!(!storage.move_reply_rule("nope", 0));
+        assert!(!storage.move_reply_rule(&ic, 2));
+        // 三个 id 都还在（没有被 move 弄丢）
+        for id in [ia, ib, ic] {
+            assert!(storage.reply_rules().rules.iter().any(|r| r.id == id));
+        }
+    }
+
+    /// renumber 只改需要改的，返回值反映实际改动数
+    #[test]
+    fn test_renumber_reports_changes() {
+        let mut storage = ConfigStorage {
+            config_file: PathBuf::from("unused.json"),
+            config: AppConfig {
+                auto_save: false,
+                ..Default::default()
+            },
+        };
+        storage.upsert_reply_rule(rule("A"));
+        storage.upsert_reply_rule(rule("B"));
+        // 构造时两条规则的 priority 都是 10 → 重排后第二条要改（第一条落到 0）
+        assert_eq!(storage.reply_rules().rules[0].priority, 10);
+        assert_eq!(storage.renumber_reply_rule_priorities(), 1);
+        let priorities: Vec<u32> = storage
+            .reply_rules()
+            .rules
+            .iter()
+            .map(|r| r.priority)
+            .collect();
+        assert_eq!(priorities, vec![0, 10], "列表顺序即优先级");
+        assert_eq!(
+            storage.renumber_reply_rule_priorities(),
+            0,
+            "已就绪时应为 0"
+        );
     }
 }

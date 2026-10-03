@@ -294,12 +294,6 @@ connection_tab:
   auto_reply:
     zh-CN: 自动回复
     en: Auto Reply
-  enable_auto_reply:
-    zh-CN: 启用自动回复
-    en: Enable Auto Reply
-  reply_content_label:
-    zh-CN: "回复内容:"
-    en: "Reply Content:"
   client_connections:
     zh-CN: 客户端连接
     en: Client Connections
@@ -408,6 +402,24 @@ connection_tab:
   trailer_tooltip:
     zh-CN: 发送时在每条消息末尾追加结尾字符（无 / LF / CRLF），点击切换；立即生效，同时对逐行发送任务与自动回复生效
     en: Append a trailing character (None / LF / CRLF) to every outgoing message; click to cycle. Takes effect immediately, also applies to line-send tasks and auto reply
+  reply_rules:
+    zh-CN: 回复规则
+    en: Reply Rules
+  reply_rules_enabled:
+    zh-CN: 已启用 %{n}
+    en: "%{n} enabled"
+  reply_rules_off:
+    zh-CN: 未启用
+    en: Disabled
+  auto_reply_active:
+    zh-CN: 已启用 · %{n} 条规则
+    en: "%{n} rules active"
+  manage_reply_rules:
+    zh-CN: 管理规则
+    en: Manage Rules
+  manage_reply_rules_tooltip:
+    zh-CN: 打开自动回复规则管理：按报文条件匹配并自动应答
+    en: "Open auto reply rules: match incoming frames and respond automatically"
 
 send_task:
   reason_not_connected:

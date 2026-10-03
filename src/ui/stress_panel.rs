@@ -3,12 +3,12 @@
 // 同步读 ConnectionTabState.stress_stats / stress_report 渲染。
 // 所有控制按钮通过 cx.listener dispatch 到 app 方法, 无 async。
 
-use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::StyledExt;
 use gpui_kit::component::Theme;
 use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;

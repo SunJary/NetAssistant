@@ -1,8 +1,8 @@
-use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::IconName;
 use gpui_kit::component::StyledExt;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
