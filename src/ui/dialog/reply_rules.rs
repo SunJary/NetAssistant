@@ -1,7 +1,8 @@
 // 「回复规则」管理弹窗
 //
 // 入口: 连接标签页发送区的「管理规则…」按钮(客户端/服务端都可见)。
-// 职责: 规则集的**总览与批量操作** —— 总开关、逐条启用/排序/复制/删除/清零。
+// 职责: **本连接**规则集的概览与批量操作 —— 逐条启用/排序/复制/删除/清零。
+// 规则严格按连接隔离: 从连接 A 打开只看到 A 的规则。
 // 单条规则的具体编辑(条件树、动作、内联试跑)在 `reply_rule_edit.rs`。
 //
 // 打开/关闭沿用 gpui_component 命令式对话框惯例(见 timed_task.rs / stress_config.rs):
@@ -23,6 +24,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::switch::Switch;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Sizable as _, Size};
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -31,13 +33,17 @@ use rust_i18n::t;
 
 use crate::app::NetAssistantApp;
 use crate::reply::model::{
-    ReplyRule, Severity, format_matcher_summary, format_reply_summary, validate_rules_config,
+    ReplyRule, Severity, format_matcher_summary, format_reply_summary, validate_rule,
 };
 
 use super::{dialog_content_max_height, dialog_height, open_reply_rule_edit_dialog};
 
 /// 「回复规则」管理弹窗状态(打开时创建, 关闭时由 app 置 None)
 pub struct ReplyRulesDialogState {
+    /// 本弹窗所属的连接 id（= tab_id）。规则严格按连接隔离，列表只读该连接的规则。
+    pub tab_id: String,
+    /// 连接展示名（如 "127.0.0.1:502"），用于标题/空态文案
+    pub tab_label: String,
     /// 已点击过一次「删除」、等待二次确认的规则 id
     ///
     /// 用"按钮自身变确认态"而不是再开一个确认弹窗: 弹窗栈里再叠弹窗会让
@@ -47,8 +53,10 @@ pub struct ReplyRulesDialogState {
 }
 
 impl ReplyRulesDialogState {
-    pub fn new() -> Self {
+    pub fn new(tab_id: impl Into<String>, tab_label: impl Into<String>) -> Self {
         Self {
+            tab_id: tab_id.into(),
+            tab_label: tab_label.into(),
             confirm_delete: None,
         }
     }
@@ -73,9 +81,32 @@ impl ReplyRulesDialogState {
     }
 }
 
-impl Default for ReplyRulesDialogState {
-    fn default() -> Self {
-        Self::new()
+/// 拖动排序的载荷：只带被拖规则的 id(落点由目标卡片的渲染序号决定)
+///
+/// 不复用 `DragPanel` 之类的现成类型是因为规则的落点语义是"重排到第 N 位",
+/// 与面板/标签页的跨容器搬运无关; 独立类型也让 `can_drop` 的类型过滤更直接。
+#[derive(Clone)]
+struct RuleDragPayload {
+    rule_id: String,
+    name: String,
+}
+
+/// 拖动时跟随光标的预览(只显示规则名, 避免大面积遮挡列表)
+struct RuleDragPreview {
+    name: String,
+}
+
+impl Render for RuleDragPreview {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme().clone();
+        div()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .bg(theme.primary)
+            .text_color(theme.primary_foreground)
+            .text_xs()
+            .child(self.name.clone())
     }
 }
 
@@ -114,57 +145,39 @@ pub fn open_reply_rules_dialog(
     });
 }
 
-/// 渲染弹窗主体(每帧从 app 读最新规则集与命中计数)
+/// 渲染弹窗主体(每帧从 app 读**本连接**的规则集与命中计数)
 fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div {
     let theme = cx.theme().clone();
     let state = app.read(cx);
-    let config = state.reply_rules_config();
+    let tab_id = state
+        .reply_rules_dialog
+        .as_ref()
+        .map(|s| s.tab_id.clone())
+        .unwrap_or_default();
+    // 严格按连接隔离：只取本连接（tab_id）的规则
+    let rules: Vec<ReplyRule> = state.storage.rules_for_connection(&tab_id).to_vec();
     let hits = state.reply_rule_hits();
-    let total_hits: u64 = hits.values().sum();
-    let issues = validate_rules_config(&config);
-    let error_count = issues
+    let total_hits: u64 = rules
         .iter()
-        .filter(|i| i.severity == Severity::Error)
-        .count();
+        .map(|r| hits.get(&r.id).copied().unwrap_or(0))
+        .sum();
+    let per_rule_errors: Vec<Vec<String>> = rules
+        .iter()
+        .map(|rule| {
+            validate_rule(rule)
+                .into_iter()
+                .filter(|i| i.severity == Severity::Error)
+                .map(|i| i.message)
+                .collect()
+        })
+        .collect();
+    let error_count: usize = per_rule_errors.iter().map(|v| v.len()).sum();
     let confirm_delete = state
         .reply_rules_dialog
         .as_ref()
         .and_then(|s| s.confirm_delete.clone());
 
     let mut body = div().flex().flex_col().gap_3().px_6().pb_4();
-
-    // ===== 顶部: 总开关 =====
-    let master_switch_entity = app.clone();
-    body = body.child(
-        div().flex().flex_row().items_center().gap_3().child(
-            Switch::new("reply-rules-master-switch")
-                .checked(config.enabled)
-                .with_size(Size::Small)
-                .label(t!("reply_rules.enabled").to_string())
-                .on_change(move |_next, _window, cx| {
-                    master_switch_entity.update(cx, |app, cx| {
-                        let next = !app.storage.reply_rules().enabled;
-                        app.storage.set_reply_rules_enabled(next);
-                        app.sync_reply_rules_to_network(cx);
-                        cx.notify();
-                    });
-                }),
-        ),
-    );
-
-    // 未启用时的中性提示(不是错误: 未启用=功能完全不参与网络路径)
-    if !config.enabled {
-        body = body.child(hint_line(
-            t!("reply_rules.disabled_hint").to_string(),
-            theme.muted_foreground,
-        ));
-    } else if !config.rules.is_empty() && !state.has_enabled_reply_rules() {
-        // 总开关开着但每条规则都被单独禁用: 提示比"看起来什么都没发生"有用得多
-        body = body.child(hint_line(
-            t!("reply_rules.no_enabled_rule").to_string(),
-            theme.muted_foreground,
-        ));
-    }
 
     // ===== 规则集概览 =====
     body = body.child(
@@ -186,7 +199,7 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
                     .text_color(theme.muted_foreground)
                     .child(format!(
                         "{} · {}",
-                        t!("reply_rules.count", n = config.rules.len()),
+                        t!("reply_rules.count", n = rules.len()),
                         t!("reply_rules.hits", n = total_hits)
                     )),
             )
@@ -201,8 +214,16 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
             }),
     );
 
+    // 拖动排序的提示: 只有 ≥2 条时拖动才有意义
+    if rules.len() > 1 {
+        body = body.child(hint_line(
+            t!("reply_rules.drag_hint").to_string(),
+            theme.muted_foreground,
+        ));
+    }
+
     // ===== 规则列表 =====
-    if config.rules.is_empty() {
+    if rules.is_empty() {
         body = body.child(
             div()
                 .p_4()
@@ -220,23 +241,15 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
                 ),
         );
     } else {
-        for (index, rule) in config.rules.iter().enumerate() {
+        for (index, rule) in rules.iter().enumerate() {
             let hit = hits.get(&rule.id).copied().unwrap_or(0);
-            let rule_errors: Vec<String> = issues
-                .iter()
-                .filter(|i| {
-                    i.severity == Severity::Error
-                        && i.path.starts_with(&format!("rules[{}]", index))
-                })
-                .map(|i| i.message.clone())
-                .collect();
             body = body.child(render_rule_row(
                 app,
+                &tab_id,
                 rule,
                 index,
-                config.rules.len(),
                 hit,
-                rule_errors,
+                per_rule_errors[index].clone(),
                 confirm_delete.as_deref() == Some(rule.id.as_str()),
                 &theme,
             ));
@@ -252,12 +265,14 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
 }
 
 /// 单条规则卡片
-#[allow(clippy::too_many_arguments)]
+///
+/// 布局: 左侧拖动手柄 | 中间摘要(标题/条件/动作/错误) | 右侧上下两块(次数+开关 / 图标操作组)。
+/// 开关放右上角是因为它是最常按的单条操作; 破坏性操作(删除)收进右下角并保留二次点击确认。
 fn render_rule_row(
     app: &Entity<NetAssistantApp>,
+    tab_id: &str,
     rule: &ReplyRule,
     index: usize,
-    total: usize,
     hits: u64,
     errors: Vec<String>,
     confirming_delete: bool,
@@ -268,11 +283,13 @@ fn render_rule_row(
     let action = format_reply_summary(&rule.payload);
     let enabled = rule.enabled;
 
+    // ===== 中间: 标题 + 条件 + 动作 + 错误 =====
     let mut head = div()
         .flex()
         .flex_row()
         .items_center()
         .gap_2()
+        .flex_wrap()
         .child(
             div()
                 .text_xs()
@@ -326,27 +343,13 @@ fn render_rule_row(
                 .child(tag.clone()),
         );
     }
-    head = head.child(
-        div()
-            .ml_auto()
-            .text_xs()
-            .text_color(theme.muted_foreground)
-            .child(t!("reply_rules.row_hits", n = hits).to_string()),
-    );
 
-    let mut row = div()
+    let mut main = div()
         .flex()
         .flex_col()
+        .flex_1()
+        .min_w_0()
         .gap_1()
-        .p_2()
-        .rounded_md()
-        .border_1()
-        .border_color(if errors.is_empty() {
-            theme.border
-        } else {
-            theme.danger
-        })
-        .bg(theme.secondary)
         .child(head)
         .child(
             div()
@@ -368,37 +371,98 @@ fn render_rule_row(
         );
 
     for err in &errors {
-        row = row.child(hint_line(err.clone(), theme.danger));
+        main = main.child(hint_line(err.clone(), theme.danger));
     }
 
-    // ===== 行内操作 =====
+    // ===== 右上: 触发次数 + 启用开关 =====
+    let top_right = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(t!("reply_rules.row_hits", n = hits).to_string()),
+        )
+        .child(
+            Switch::new(ElementId::named_usize("reply-rule-switch", index))
+                .checked(enabled)
+                .with_size(Size::Small)
+                .on_change({
+                    let entity = app.clone();
+                    let rule_id = rule_id.clone();
+                    let tab_id = tab_id.to_string();
+                    move |_next, _window, cx| {
+                        entity.update(cx, |app, cx| {
+                            // `storage.reply_rules()` 只给不可变引用: 取整表副本改完再整表保存
+                            let mut config = app.reply_rules_config();
+                            let mut changed = false;
+                            if let Some(conn_rules) = config.connections.get_mut(&tab_id) {
+                                for rule in conn_rules.iter_mut() {
+                                    if rule.id == rule_id {
+                                        rule.enabled = !rule.enabled;
+                                        changed = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if changed {
+                                app.storage.save_reply_rules(config);
+                                app.sync_reply_rules_to_network(cx);
+                            }
+                            cx.notify();
+                        });
+                    }
+                }),
+        );
+
+    // ===== 右下: 图标操作组 =====
+    // 删除进入确认态后按钮会换成文字, 用 i18n 文案而不是写死中文
+    let delete_label = if confirming_delete {
+        t!("reply_rules.delete_confirm").to_string()
+    } else {
+        "✕".to_string()
+    };
     let mut ops = div().flex().flex_row().items_center().gap_1();
-    // 编辑按钮不走 `row_button`: 它内部已持有 `NetAssistantApp` 的租约,
+    // 编辑按钮不走 `row_icon_button`: 它内部已持有 `NetAssistantApp` 的租约,
     // 而 `open_reply_rule_edit_dialog` 需要自己 update 该实体, 嵌套会 double lease panic。
-    ops = ops.child(row_button_raw(
+    ops = ops.child(row_icon_button_raw(
         ElementId::named_usize("reply-rule-edit", index),
+        "✎".to_string(),
         t!("reply_rules.edit").to_string(),
+        false,
         theme,
         {
             let app = app.downgrade();
             let rule_id = rule_id.clone();
+            let tab_id = tab_id.to_string();
             move |window, cx| {
-                open_reply_rule_edit_dialog(app.clone(), Some(rule_id.clone()), window, cx);
+                open_reply_rule_edit_dialog(
+                    app.clone(),
+                    tab_id.clone(),
+                    Some(rule_id.clone()),
+                    window,
+                    cx,
+                );
             }
         },
     ));
-    ops = ops.child(row_button(
+    ops = ops.child(row_icon_button(
         ElementId::named_usize("reply-rule-dup", index),
+        "⧉".to_string(),
         t!("reply_rules.duplicate").to_string(),
+        false,
         theme,
         app,
         {
             let rule_id = rule_id.clone();
+            let tab_id = tab_id.to_string();
             move |app, cx, _window| {
                 if let Some(original) = app
                     .storage
-                    .reply_rules()
-                    .rules
+                    .rules_for_connection(&tab_id)
                     .iter()
                     .find(|r| r.id == rule_id)
                     .cloned()
@@ -406,71 +470,19 @@ fn render_rule_row(
                     let mut copy = original;
                     copy.id = uuid::Uuid::new_v4().to_string();
                     copy.name = format!("{} {}", copy.name, t!("reply_rules.copy_suffix"));
-                    app.storage.upsert_reply_rule(copy);
+                    app.storage.upsert_reply_rule(&tab_id, copy);
+                    // 副本追加到末尾后须重排 priority，否则会与原规则同值、顺序错乱
+                    app.storage.renumber_reply_rule_priorities(&tab_id);
                     app.sync_reply_rules_to_network(cx);
                 }
             }
         },
     ));
-    ops = ops.child(
-        Switch::new(ElementId::named_usize("reply-rule-switch", index))
-            .checked(enabled)
-            .with_size(Size::Small)
-            .on_change({
-                let entity = app.clone();
-                let rule_id = rule_id.clone();
-                move |_next, _window, cx| {
-                    entity.update(cx, |app, cx| {
-                        // `storage.reply_rules()` 只给不可变引用: 取整表副本改完再整表保存
-                        let mut config = app.reply_rules_config();
-                        let mut changed = false;
-                        for rule in config.rules.iter_mut() {
-                            if rule.id == rule_id {
-                                rule.enabled = !rule.enabled;
-                                changed = true;
-                                break;
-                            }
-                        }
-                        if changed {
-                            app.storage.save_reply_rules(config);
-                            app.sync_reply_rules_to_network(cx);
-                        }
-                        cx.notify();
-                    });
-                }
-            }),
-    );
-    ops = ops.child(row_button(
-        ElementId::named_usize("reply-rule-up", index),
-        "↑".to_string(),
-        theme,
-        app,
-        {
-            let rule_id = rule_id.clone();
-            move |app, cx, _window| {
-                if index > 0 && app.storage.move_reply_rule(&rule_id, index - 1) {
-                    app.sync_reply_rules_to_network(cx);
-                }
-            }
-        },
-    ));
-    ops = ops.child(row_button(
-        ElementId::named_usize("reply-rule-down", index),
-        "↓".to_string(),
-        theme,
-        app,
-        {
-            let rule_id = rule_id.clone();
-            move |app, cx, _window| {
-                if index + 1 < total && app.storage.move_reply_rule(&rule_id, index + 1) {
-                    app.sync_reply_rules_to_network(cx);
-                }
-            }
-        },
-    ));
-    ops = ops.child(row_button(
+    ops = ops.child(row_icon_button(
         ElementId::named_usize("reply-rule-reset-hits", index),
+        "↺".to_string(),
         t!("reply_rules.reset_hits").to_string(),
+        false,
         theme,
         app,
         {
@@ -485,17 +497,16 @@ fn render_rule_row(
         },
     ));
     // 删除: 破坏性动作需二次确认(按钮自身变确认态)
-    ops = ops.child(row_button(
+    ops = ops.child(row_icon_button(
         ElementId::named_usize("reply-rule-delete", index),
-        if confirming_delete {
-            t!("reply_rules.delete_confirm").to_string()
-        } else {
-            t!("reply_rules.delete").to_string()
-        },
+        delete_label,
+        t!("reply_rules.delete_confirm").to_string(),
+        true,
         theme,
         app,
         {
             let rule_id = rule_id.clone();
+            let tab_id = tab_id.to_string();
             move |app, cx, _window| {
                 // 删除不可撤销，一律二次确认（按钮自身变确认态）
                 let confirmed = app
@@ -507,64 +518,150 @@ fn render_rule_row(
                     cx.notify();
                     return;
                 }
-                if app.storage.delete_reply_rule(&rule_id) {
+                if app.storage.delete_reply_rule(&tab_id, &rule_id) {
                     app.sync_reply_rules_to_network(cx);
                 }
             }
         },
     ));
-    row = row.child(ops);
 
-    row
-}
+    let right = div()
+        .flex_none()
+        .flex()
+        .flex_col()
+        .items_end()
+        .gap_2()
+        .child(top_right)
+        .child(ops);
 
-/// 行内小按钮(仅样式 + 点击回调)
-///
-/// 回调直接拿到 `App`/`Window`, 由调用方自行决定是否 `update` `NetAssistantApp`:
-/// 需要 app 可变引用的用 [`row_button`]; 需要自己 update 实体或叠开弹窗的
-/// (例如「编辑」) 用本函数, 以免在已持有租约时再次 update 造成 double lease panic。
-fn row_button_raw(
-    id: ElementId,
-    label: String,
-    theme: &Theme,
-    on_click: impl Fn(&mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    let color = theme.foreground;
-    let hover_bg = theme.primary;
-    let hover_fg = theme.primary_foreground;
-    div()
-        .id(id)
-        .px_2()
+    // ===== 左侧: 拖动手柄(独占鼠标事件, 卡片其余区域保持点击/选择行为) =====
+    let handle_bg = theme.border;
+    let handle = div()
+        .id(ElementId::named_usize("reply-rule-handle", index))
+        .flex_none()
+        .px_1()
         .py_0p5()
         .rounded_md()
-        .text_xs()
-        .cursor_pointer()
-        .text_color(color)
-        .bg(theme.border)
-        .hover(move |d| d.bg(hover_bg).text_color(hover_fg))
-        .child(label)
-        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-            on_click(window, cx);
+        .text_sm()
+        .text_color(theme.muted_foreground)
+        .cursor_grab()
+        .hover(move |d| d.bg(handle_bg))
+        .child("⠿")
+        .tooltip({
+            let tip = t!("reply_rules.drag_handle_tooltip").to_string();
+            move |window, cx| Tooltip::new(tip.clone()).build(window, cx)
+        })
+        .on_drag(
+            RuleDragPayload {
+                rule_id: rule_id.clone(),
+                name: rule.name.clone(),
+            },
+            |payload, _offset, _window, cx| {
+                cx.new(|_| RuleDragPreview {
+                    name: payload.name.clone(),
+                })
+            },
+        );
+
+    div()
+        .flex()
+        .flex_row()
+        .items_start()
+        .gap_2()
+        .p_2()
+        .rounded_md()
+        .border_1()
+        .border_color(if errors.is_empty() {
+            theme.border
+        } else {
+            theme.danger
+        })
+        .bg(theme.secondary)
+        .child(handle)
+        .child(main)
+        .child(right)
+        // 落点高亮: 只有拖别的规则到本卡片上方时才亮边框
+        .can_drop({
+            let self_id = rule.id.clone();
+            move |dragged, _window, _cx| {
+                dragged
+                    .downcast_ref::<RuleDragPayload>()
+                    .is_some_and(|p| p.rule_id != self_id)
+            }
+        })
+        .drag_over::<RuleDragPayload>(|d, _drag, _window, cx| {
+            d.border_color(cx.theme().primary)
+        })
+        .on_drop({
+            let entity = app.clone();
+            let drop_tab_id = tab_id.to_string();
+            move |drag: &RuleDragPayload, _window, cx| {
+                let dragged = drag.rule_id.clone();
+                entity.update(cx, |app, cx| {
+                    // 落点语义 = "重排到第 index 位"; 原地投放时 move 返回 false, 天然 no-op
+                    if app
+                        .storage
+                        .move_reply_rule(&drop_tab_id, &dragged, index)
+                    {
+                        app.sync_reply_rules_to_network(cx);
+                    }
+                    cx.notify();
+                });
+            }
         })
 }
 
-/// 行内小按钮(自动在 `NetAssistantApp` 的 update 中执行回调)
-///
-/// 回调签名带 `window` 是因为部分动作需要 `window`(例如叠开弹窗)。
-fn row_button(
+/// 行内图标按钮(自动在 `NetAssistantApp` 的 update 中执行回调)
+fn row_icon_button(
     id: ElementId,
     label: String,
+    tooltip: String,
+    danger: bool,
     theme: &Theme,
     app: &Entity<NetAssistantApp>,
     on_click: impl Fn(&mut NetAssistantApp, &mut Context<NetAssistantApp>, &mut Window) + 'static,
 ) -> impl IntoElement {
     let entity = app.clone();
-    row_button_raw(id, label, theme, move |window, cx| {
+    row_icon_button_raw(id, label, tooltip, danger, theme, move |window, cx| {
         entity.update(cx, |app, cx| {
             on_click(app, cx, window);
             cx.notify();
         });
     })
+}
+
+/// 行内图标按钮(仅样式 + 点击回调 + tooltip)
+///
+/// 回调直接拿到 `App`/`Window`, 由调用方自行决定是否 `update` `NetAssistantApp`:
+/// 需要 app 可变引用的用 [`row_icon_button`]; 需要自己 update 实体或叠开弹窗的
+/// (例如「编辑」) 用本函数, 以免在已持有租约时再次 update 造成 double lease panic。
+fn row_icon_button_raw(
+    id: ElementId,
+    label: String,
+    tooltip: String,
+    danger: bool,
+    theme: &Theme,
+    on_click: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let base_fg = if danger { theme.danger } else { theme.foreground };
+    let hover_bg = if danger { theme.danger } else { theme.primary };
+    let hover_fg = theme.primary_foreground;
+    div()
+        .id(id)
+        .px_1p5()
+        .py_0p5()
+        .rounded_md()
+        .text_xs()
+        .whitespace_nowrap()
+        .cursor_pointer()
+        .text_color(base_fg)
+        .bg(theme.border)
+        .hover(move |d| d.bg(hover_bg).text_color(hover_fg))
+        .child(label)
+        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            on_click(window, cx);
+        })
 }
 
 /// 提示行(中性 / 错误 / 成功都用它, 只换颜色)
@@ -578,17 +675,34 @@ fn hint_line(text: String, color: gpui_kit::Hsla) -> Div {
 
 /// 底部操作按钮: 新建规则 / 全部清零 / 关闭
 fn render_footer(app: &WeakEntity<NetAssistantApp>, cx: &App) -> DialogFooter {
-    let has_rules = app
+    // 本弹窗所属连接: 只统计/操作该连接的规则
+    let (has_rules, tab_id) = app
         .upgrade()
-        .map(|e| !e.read(cx).storage.reply_rules().rules.is_empty())
-        .unwrap_or(false);
+        .map(|e| {
+            let s = e.read(cx);
+            let tab_id = s
+                .reply_rules_dialog
+                .as_ref()
+                .map(|d| d.tab_id.clone())
+                .unwrap_or_default();
+            let has_rules = !s.storage.rules_for_connection(&tab_id).is_empty();
+            (has_rules, tab_id)
+        })
+        .unwrap_or_default();
 
     let app_new = app.clone();
+    let new_tab_id = tab_id.clone();
     let new_rule = Button::new("reply-rules-new")
         .primary()
         .label(t!("reply_rules.new_rule").to_string())
         .on_click(move |_, window, cx| {
-            open_reply_rule_edit_dialog(app_new.clone(), None, window, cx);
+            open_reply_rule_edit_dialog(
+                app_new.clone(),
+                new_tab_id.clone(),
+                None,
+                window,
+                cx,
+            );
         });
 
     let app_reset = app.clone();
@@ -635,7 +749,7 @@ mod tests {
     /// T-2：删除二次确认状态机 —— 第一次点击只进入确认态，第二次才真正删除。
     #[test]
     fn test_delete_requires_second_click() {
-        let mut state = ReplyRulesDialogState::new();
+        let mut state = ReplyRulesDialogState::new("tab-1", "127.0.0.1:502");
         assert!(!state.on_delete_click("rule-a"), "首次点击不得删除");
         assert_eq!(state.confirm_delete.as_deref(), Some("rule-a"));
 
@@ -646,7 +760,7 @@ mod tests {
     /// 确认态具有"排他性"：点另一条规则会把确认态转移过去，且当前点击不删除。
     #[test]
     fn test_delete_confirm_moves_to_other_rule() {
-        let mut state = ReplyRulesDialogState::new();
+        let mut state = ReplyRulesDialogState::new("tab-1", "127.0.0.1:502");
         assert!(!state.on_delete_click("rule-a"));
         assert!(!state.on_delete_click("rule-b"), "点别的规则不得删除该规则");
         assert_eq!(state.confirm_delete.as_deref(), Some("rule-b"));

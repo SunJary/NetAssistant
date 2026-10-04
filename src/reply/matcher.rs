@@ -790,12 +790,17 @@ mod tests {
             ..ReplyRule::new("测试", 10)
         };
         let store = ReplyRulesStore::new();
-        store.replace(&ReplyRulesConfig {
-            enabled: true,
-            rules: vec![rule],
-            ..Default::default()
-        });
+        store.replace(&rules_config(vec![rule]));
         store.enabled_rules().as_ref().clone()
+    }
+
+    /// 构造某连接下的规则集（按连接分组存储）；测试统一挂到 "tab"
+    fn rules_config(rules: Vec<ReplyRule>) -> ReplyRulesConfig {
+        let mut cfg = ReplyRulesConfig::default();
+        if !rules.is_empty() {
+            cfg.connections.insert("tab".to_string(), rules);
+        }
+        cfg
     }
 
     fn frame(bytes: &[u8]) -> Arc<RxFrame> {
@@ -1328,34 +1333,30 @@ mod tests {
     #[test]
     fn test_priority_order_and_stop_on_first_hit() {
         let store = ReplyRulesStore::new();
-        store.replace(&ReplyRulesConfig {
-            enabled: true,
-            rules: vec![
-                ReplyRule {
-                    name: "兜底".to_string(),
-                    priority: 9000,
-                    matcher: MatchNode::Length { min: 1, max: 65535 },
-                    payload: ReplyPayload {
-                        text: "兜底".to_string(),
-                        ..Default::default()
-                    },
-                    ..ReplyRule::new("兜底", 9000)
+        store.replace(&rules_config(vec![
+            ReplyRule {
+                name: "兜底".to_string(),
+                priority: 9000,
+                matcher: MatchNode::Length { min: 1, max: 65535 },
+                payload: ReplyPayload {
+                    text: "兜底".to_string(),
+                    ..Default::default()
                 },
-                ReplyRule {
-                    name: "精确".to_string(),
-                    priority: 10,
-                    matcher: MatchNode::Contains {
-                        bytes: BytePattern::Hex("01 03".to_string()),
-                    },
-                    payload: ReplyPayload {
-                        text: "精确".to_string(),
-                        ..Default::default()
-                    },
-                    ..ReplyRule::new("精确", 10)
+                ..ReplyRule::new("兜底", 9000)
+            },
+            ReplyRule {
+                name: "精确".to_string(),
+                priority: 10,
+                matcher: MatchNode::Contains {
+                    bytes: BytePattern::Hex("01 03".to_string()),
                 },
-            ],
-            ..Default::default()
-        });
+                payload: ReplyPayload {
+                    text: "精确".to_string(),
+                    ..Default::default()
+                },
+                ..ReplyRule::new("精确", 10)
+            },
+        ]));
         let rules = store.enabled_rules();
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].rule.name, "精确", "priority 小者先求值");
@@ -1376,11 +1377,7 @@ mod tests {
         b.matcher = MatchNode::Length { min: 2, max: 2 };
 
         let store = ReplyRulesStore::new();
-        store.replace(&ReplyRulesConfig {
-            enabled: true,
-            rules: vec![a, b],
-            ..Default::default()
-        });
+        store.replace(&rules_config(vec![a, b]));
         let rules = store.enabled_rules();
         assert_eq!(rules[0].rule.id, "aaa");
         assert_eq!(rules[1].rule.id, "bbb");

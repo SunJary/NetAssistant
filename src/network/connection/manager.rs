@@ -671,14 +671,17 @@ mod tests {
     // 回复规则端到端（真实 TCP 链路，验证"预演 = 真实行为"）
     // ========================================================================
 
-    /// 构造一个只含单条规则的规则集
-    fn rules_with(rule: crate::reply::model::ReplyRule) -> Arc<crate::reply::ReplyRulesStore> {
+    /// 构造某连接下只含单条规则的规则集，并开启该连接的总闸
+    fn rules_with(
+        connection_id: &str,
+        rule: crate::reply::model::ReplyRule,
+    ) -> Arc<crate::reply::ReplyRulesStore> {
         let store = crate::reply::ReplyRulesStore::new();
-        store.replace(&crate::reply::model::ReplyRulesConfig {
-            enabled: true,
-            rules: vec![rule],
-            ..Default::default()
-        });
+        let mut cfg = crate::reply::model::ReplyRulesConfig::default();
+        cfg.connections
+            .insert(connection_id.to_string(), vec![rule]);
+        store.replace(&cfg);
+        store.set_connection_gates([(connection_id.to_string(), true)].into_iter().collect());
         store
     }
 
@@ -784,20 +787,21 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let server_addr = listener.local_addr().unwrap();
 
-        // 客户端侧规则：收到 Modbus 读保持寄存器请求 → 回 CRC16 小端应答
-        let rules = rules_with(reply_rule_on_len("01 03 00 00 00 02 ${crc16modbus:0:6:le}"));
-
-        let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
-
+        // 客户端配置（其 id 即规则所属连接）
         let client_config = crate::config::connection::ClientConfig {
             protocol: ConnectionType::Tcp,
             server_address: "127.0.0.1".to_string(),
             server_port: server_addr.port(),
             ..Default::default()
         };
-        // 全局规则缺省不生效（缺省 gate=false）；本端到端用例需在客户端连接上开启
-        rules.set_connection_gates([(client_config.id.clone(), true)].into_iter().collect());
+        // 客户端侧规则：收到 Modbus 读保持寄存器请求 → 回 CRC16 小端应答
+        let rules = rules_with(
+            &client_config.id,
+            reply_rule_on_len("01 03 00 00 00 02 ${crc16modbus:0:6:le}"),
+        );
+
+        let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
         manager
             .create_and_connect_client(&client_config, Some(tx))
             .await
@@ -863,10 +867,6 @@ mod tests {
         let device = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let device_addr = device.local_addr().unwrap();
 
-        let rules = rules_with(reply_rule_on_len("4F 4B")); // "OK"
-
-        let (tx, _rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
         let client_config = crate::config::connection::ClientConfig {
             protocol: ConnectionType::Udp,
             server_address: "127.0.0.1".to_string(),
@@ -876,8 +876,10 @@ mod tests {
             local_port: Some(client_local_port),
             ..Default::default()
         };
-        // 全局规则缺省不生效（缺省 gate=false）；本端到端用例需在客户端连接上开启
-        rules.set_connection_gates([(client_config.id.clone(), true)].into_iter().collect());
+        let rules = rules_with(&client_config.id, reply_rule_on_len("4F 4B")); // "OK"
+
+        let (tx, _rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
         manager
             .create_and_connect_client(&client_config, Some(tx))
             .await

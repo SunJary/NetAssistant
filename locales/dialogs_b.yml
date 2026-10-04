@@ -207,15 +207,9 @@ reply_rules:
   title:
     zh-CN: 回复规则
     en: Reply Rules
-  enabled:
-    zh-CN: 启用回复规则
-    en: Enable reply rules
-  disabled_hint:
-    zh-CN: 总开关已关闭：规则完全不参与网络处理，行为与未使用该功能一致。
-    en: "Master switch is off: rules take no part in network handling at all."
   no_enabled_rule:
-    zh-CN: 所有规则都被单独禁用了，当前不会有任何规则生效。
-    en: Every rule is individually disabled, so no rule will take effect.
+    zh-CN: 无启用规则
+    en: No active rules
   legacy_hint:
     zh-CN: 检测到旧的「自动回复」内容。可一键迁移成一条等价规则（旧的固定回复会被关闭，避免两条轨同时生效）。
     en: Legacy auto-reply content detected. Migrate it into an equivalent rule in one click (the legacy fixed reply is turned off so both paths never run at once).
@@ -279,6 +273,12 @@ reply_rules:
   reset_all:
     zh-CN: 全部清零
     en: Reset All
+  drag_hint:
+    zh-CN: 提示：按住左侧 ⠿ 手柄可拖动调整规则顺序。
+    en: "Tip: drag the ⠿ handle on the left to reorder rules."
+  drag_handle_tooltip:
+    zh-CN: 拖动排序
+    en: Drag to reorder
   delete:
     zh-CN: 删除
     en: Delete
@@ -299,15 +299,15 @@ reply_rule_edit:
   title_edit:
     zh-CN: 编辑回复规则
     en: Edit Reply Rule
-  section_basic:
-    zh-CN: 基本信息
-    en: Basics
+  section_notes:
+    zh-CN: 备注与标签
+    en: Notes & tags
   name:
     zh-CN: 规则名
     en: Name
   name_placeholder:
-    zh-CN: 如 Modbus 读保持寄存器应答
-    en: e.g. Modbus read-holding-registers reply
+    zh-CN: 给这条规则起个名字
+    en: Name this rule
   description:
     zh-CN: 备注
     en: Notes
@@ -318,20 +318,11 @@ reply_rule_edit:
     zh-CN: 标签（逗号分隔）
     en: Tags (comma separated)
   tags_placeholder:
-    zh-CN: modbus, rtu
-    en: modbus, rtu
-  scope:
-    zh-CN: 作用域
-    en: Scope
-  scope_global:
-    zh-CN: 全局
-    en: Global
-  scope_connection:
-    zh-CN: 仅当前连接
-    en: This connection only
-  scope_global_gate_hint:
-    zh-CN: 全局规则需在各连接打开「启用自动回复」后才在该连接生效。
-    en: Global rules only run on a connection after you turn on "Enable auto-reply" there.
+    zh-CN: 可选，用于分组筛选
+    en: Optional, for grouping
+  belongs_to:
+    zh-CN: 所属连接
+    en: Connection
   enabled:
     zh-CN: 启用
     en: Enabled

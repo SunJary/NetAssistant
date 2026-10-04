@@ -12,22 +12,7 @@ use crate::core::checksum::ChecksumAlgorithm;
 use crate::utils::hex::hex_to_bytes;
 use crate::utils::message_vars::CompiledTemplate;
 use serde::{Deserialize, Serialize};
-
-/// 规则作用域：全局共享 / 绑定到具体连接
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum RuleScope {
-    /// 全局：所有连接可见（默认，协议规则属于可分享知识）
-    Global,
-    /// 仅绑定到指定 connection_id 的 tab
-    Connection { id: String },
-}
-
-impl Default for RuleScope {
-    fn default() -> Self {
-        RuleScope::Global
-    }
-}
+use std::collections::HashMap;
 
 /// 字节模式：hex 文本（hex 模式下是字节；文本模式下是 UTF-8 字节）
 ///
@@ -546,7 +531,6 @@ pub struct ReplyRule {
     pub enabled: bool,
     /// 求值顺序，升序；相同值按 `id` 字典序稳定排序
     pub priority: u32,
-    pub scope: RuleScope,
     /// 标签（用于分组筛选与整包导出，如 ["modbus", "hj212"]）
     #[serde(default)]
     pub tags: Vec<String>,
@@ -567,7 +551,6 @@ impl ReplyRule {
             description: String::new(),
             enabled: true,
             priority,
-            scope: RuleScope::Global,
             tags: Vec::new(),
             matcher: MatchNode::All {
                 children: Vec::new(),
@@ -582,7 +565,11 @@ impl ReplyRule {
     }
 }
 
-/// 规则集持久化容器（对齐 plan-reply-rules.md §4.3）
+/// 规则集持久化容器（按连接分组）
+///
+/// 每条规则只属于一个连接：`connections` 的 key 即 `connection_id`（= tab_id），
+/// value 是该连接的规则列表，物理顺序即求值优先级（自上而下、命中即停）。
+/// 连接页的「自动回复」开关是该连接唯一总闸；规则只存在于这张表里。
 ///
 /// 没有"未命中时的行为"开关：未命中一律什么都不做（不回、不记、不提示），
 /// 这是整个功能的语义边界，不需要用户配置。
@@ -591,12 +578,9 @@ pub struct ReplyRulesConfig {
     /// schema 版本，为未来迁移预留
     #[serde(default = "default_schema_version")]
     pub version: u32,
-    /// 总开关（关闭时网络层零开销，等价于整个功能不存在）
+    /// 按连接分组的规则表：connection_id -> 该连接的规则列表
     #[serde(default)]
-    pub enabled: bool,
-    /// 规则列表（顺序 = 持久化顺序；求值时按 priority 排序后遍历）
-    #[serde(default)]
-    pub rules: Vec<ReplyRule>,
+    pub connections: HashMap<String, Vec<ReplyRule>>,
 }
 
 /// 当前 schema 版本
@@ -610,8 +594,7 @@ impl Default for ReplyRulesConfig {
     fn default() -> Self {
         Self {
             version: REPLY_RULES_SCHEMA_VERSION,
-            enabled: false,
-            rules: Vec::new(),
+            connections: HashMap::new(),
         }
     }
 }
@@ -945,23 +928,27 @@ pub fn validate_payload(payload: &ReplyPayload, path: &str, issues: &mut Vec<Iss
 }
 
 /// 校验整个规则集（含跨规则问题）
+///
+/// 按连接逐组校验：id 重复只在同一连接内视为冲突（不同连接的规则互不影响）。
 pub fn validate_rules_config(config: &ReplyRulesConfig) -> Vec<Issue> {
     let mut issues = Vec::new();
-    let mut seen_ids: Vec<&str> = Vec::new();
-    for (i, rule) in config.rules.iter().enumerate() {
-        if seen_ids.contains(&rule.id.as_str()) {
-            issues.push(Issue::error(
-                format!("rules[{}].id", i),
-                format!("规则 id 重复: {}", rule.id),
-            ));
-        }
-        seen_ids.push(&rule.id);
-        for issue in validate_rule(rule) {
-            issues.push(Issue {
-                severity: issue.severity,
-                path: format!("rules[{}].{}", i, issue.path),
-                message: issue.message,
-            });
+    for (conn_id, rules) in &config.connections {
+        let mut seen_ids: Vec<&str> = Vec::new();
+        for (i, rule) in rules.iter().enumerate() {
+            if seen_ids.contains(&rule.id.as_str()) {
+                issues.push(Issue::error(
+                    format!("connections[{}].rules[{}].id", conn_id, i),
+                    format!("规则 id 重复: {}", rule.id),
+                ));
+            }
+            seen_ids.push(&rule.id);
+            for issue in validate_rule(rule) {
+                issues.push(Issue {
+                    severity: issue.severity,
+                    path: format!("connections[{}].rules[{}].{}", conn_id, i, issue.path),
+                    message: issue.message,
+                });
+            }
         }
     }
     issues
@@ -1116,11 +1103,12 @@ mod tests {
     /// serde 往返：规则集 JSON 与内存模型完全一致（持久化真源）
     #[test]
     fn test_config_serde_roundtrip() {
-        let mut config = ReplyRulesConfig {
-            enabled: true,
-            ..Default::default()
-        };
-        config.rules.push(ReplyRule {
+        let mut config = ReplyRulesConfig::default();
+        config
+            .connections
+            .entry("conn-1".to_string())
+            .or_default()
+            .push(ReplyRule {
             name: "Modbus 读保持寄存器应答".to_string(),
             description: "功能码 0x03；帧长 8".to_string(),
             priority: 10,
@@ -1164,10 +1152,13 @@ mod tests {
             json.contains("\"kind\": \"prefix_range\""),
             "条件 tag 为 kind"
         );
-        assert!(json.contains("\"kind\": \"global\""), "作用域 tag 为 kind");
+        assert!(
+            json.contains("\"connections\""),
+            "规则按连接分组存储"
+        );
     }
 
-    /// 向后兼容：旧配置文件没有 `reply_rules` 字段时得到空规则集 + enabled=false，
+    /// 向后兼容：旧配置文件没有 `reply_rules` 字段时得到空规则集，
     /// 行为与升级前完全一致
     #[test]
     fn test_legacy_config_without_reply_rules() {
@@ -1177,8 +1168,7 @@ mod tests {
     "save_interval": 30
 }"#;
         let config: ReplyRulesConfig = serde_json::from_str("{}").unwrap();
-        assert!(!config.enabled);
-        assert!(config.rules.is_empty());
+        assert!(config.connections.is_empty());
         assert_eq!(config.version, REPLY_RULES_SCHEMA_VERSION);
         // 上面那份"旧配置"里没有 reply_rules 字段 —— 由 AppConfig 的 serde(default) 兜底
         let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
@@ -1190,57 +1180,57 @@ mod tests {
     fn test_documented_json_example_loads() {
         let json = r#"{
   "version": 1,
-  "enabled": true,
-  "rules": [
-    {
-      "id": "3f2a9c14-8b6e-4d21-9f03-7c1e5a4b8d02",
-      "name": "Modbus 读保持寄存器应答",
-      "description": "功能码 0x03；帧长 8；返回固定 2 个寄存器",
-      "enabled": true,
-      "priority": 10,
-      "scope": { "kind": "global" },
-      "tags": ["modbus", "rtu"],
-      "matcher": {
-        "kind": "all",
-        "children": [
-          {
-            "kind": "prefix_range",
-            "prefix": { "hex": "01 03" },
-            "min_len": 8,
-            "max_len": 8,
-            "constraints": [
-              { "kind": "byte_eq", "offset": 1, "value": 3 }
-            ]
-          },
-          {
-            "kind": "checksum_valid",
-            "algorithm": "crc16_modbus",
-            "at": { "kind": "trailing", "n": 2, "width": "u16" },
-            "range": [0, 6]
-          }
-        ]
+  "connections": {
+    "3f2a9c14-8b6e-4d21-9f03-7c1e5a4b8d02": [
+      {
+        "id": "3f2a9c14-8b6e-4d21-9f03-7c1e5a4b8d02",
+        "name": "Modbus 读保持寄存器应答",
+        "description": "功能码 0x03；帧长 8；返回固定 2 个寄存器",
+        "enabled": true,
+        "priority": 10,
+        "tags": ["modbus", "rtu"],
+        "matcher": {
+          "kind": "all",
+          "children": [
+            {
+              "kind": "prefix_range",
+              "prefix": { "hex": "01 03" },
+              "min_len": 8,
+              "max_len": 8,
+              "constraints": [
+                { "kind": "byte_eq", "offset": 1, "value": 3 }
+              ]
+            },
+            {
+              "kind": "checksum_valid",
+              "algorithm": "crc16_modbus",
+              "at": { "kind": "trailing", "n": 2, "width": "u16" },
+              "range": [0, 6]
+            }
+          ]
+        },
+        "payload": {
+          "text": "01 03 04 00 0A 00 14 ${rx.crc16modbus:0:9}",
+          "hex_mode": true,
+          "codec": "raw"
+        }
       },
-      "payload": {
-        "text": "01 03 04 00 0A 00 14 ${rx.crc16modbus:0:9}",
-        "hex_mode": true,
-        "codec": "raw"
+      {
+        "id": "9b1d4e77-2c05-4a8f-b3e6-1d7f2a9c4e10",
+        "name": "ECHO 回显一切",
+        "enabled": true,
+        "priority": 9000,
+        "tags": ["echo"],
+        "matcher": { "kind": "length", "min": 1, "max": 65535 },
+        "payload": { "text": "${rx.raw}", "hex_mode": true, "codec": "raw" }
       }
-    },
-    {
-      "id": "9b1d4e77-2c05-4a8f-b3e6-1d7f2a9c4e10",
-      "name": "ECHO 回显一切",
-      "enabled": true,
-      "priority": 9000,
-      "scope": { "kind": "global" },
-      "tags": ["echo"],
-      "matcher": { "kind": "length", "min": 1, "max": 65535 },
-      "payload": { "text": "${rx.raw}", "hex_mode": true, "codec": "raw" }
-    }
-  ]
+    ]
+  }
 }"#;
         let config: ReplyRulesConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.rules.len(), 2);
-        assert!(config.enabled && config.rules.iter().any(|r| r.enabled));
+        let rules = config.connections.get("3f2a9c14-8b6e-4d21-9f03-7c1e5a4b8d02").unwrap();
+        assert_eq!(rules.len(), 2);
+        assert!(rules.iter().any(|r| r.enabled));
         assert!(
             validate_rules_config(&config).is_empty(),
             "文档示例必须全部通过校验"
@@ -1429,11 +1419,10 @@ mod tests {
     /// 合法的完整规则必须零问题，否则 UI 会因为"合法规则被拒"完全不可用
     #[test]
     fn test_valid_rules_produce_no_issues() {
-        let mut config = ReplyRulesConfig {
-            enabled: true,
-            ..Default::default()
-        };
-        config.rules = vec![
+        let mut config = ReplyRulesConfig::default();
+        config.connections.insert(
+            "conn-1".to_string(),
+            vec![
             ReplyRule {
                 name: "前缀+校验".to_string(),
                 matcher: MatchNode::All {
@@ -1483,7 +1472,8 @@ mod tests {
                 },
                 ..ReplyRule::new("占位", 2)
             },
-        ];
+            ],
+        );
         let issues = validate_rules_config(&config);
         assert!(issues.is_empty(), "合法规则不应有问题: {:?}", issues);
     }
@@ -1520,10 +1510,10 @@ mod tests {
             matcher: MatchNode::Length { min: 1, max: 8 },
             ..ReplyRule::new("重复", 1)
         };
-        let config = ReplyRulesConfig {
-            rules: vec![rule.clone(), rule],
-            ..Default::default()
-        };
+        let mut config = ReplyRulesConfig::default();
+        config
+            .connections
+            .insert("conn-1".to_string(), vec![rule.clone(), rule]);
         let issues = validate_rules_config(&config);
         assert!(
             issues.iter().any(|i| i.message.contains("规则 id 重复")),
@@ -1751,7 +1741,6 @@ mod tests {
         let rule = ReplyRule::new("新规则", 100);
         assert!(rule.enabled);
         assert_eq!(rule.priority, 100);
-        assert_eq!(rule.scope, RuleScope::Global);
         assert!(
             uuid::Uuid::parse_str(&rule.id).is_ok(),
             "id 必须是合法 UUID"

@@ -913,9 +913,18 @@ mod tests {
     fn store(cfg: ReplyRulesConfig) -> Arc<ReplyRulesStore> {
         let store = ReplyRulesStore::new();
         store.replace(&cfg);
-        // 全局作用域规则缺省不生效（缺省 gate=false）；测试统一开启 "tab"
+        // 该连接总闸缺省 false；测试统一开启 "tab"
         store.set_connection_gates([("tab".to_string(), true)].into_iter().collect());
         store
+    }
+
+    /// 构造挂到 "tab" 连接下的规则集
+    fn cfg(rules: Vec<ReplyRule>) -> ReplyRulesConfig {
+        let mut cfg = ReplyRulesConfig::default();
+        if !rules.is_empty() {
+            cfg.connections.insert("tab".to_string(), rules);
+        }
+        cfg
     }
 
     fn sent_bytes(batch: &ReceivedBatch) -> Vec<Vec<u8>> {
@@ -926,16 +935,12 @@ mod tests {
             .collect()
     }
 
-    /// T-3 ①（UDP 侧）：总开关开但规则全禁用 → 不产生任何应答
+    /// T-3 ①（UDP 侧）：规则全禁用 → 不产生任何应答
     #[test]
     fn test_master_on_all_rules_disabled_no_reply() {
         let mut disabled = rule_on_len("RULE");
         disabled.enabled = false;
-        let store = store(ReplyRulesConfig {
-            enabled: true,
-            rules: vec![disabled],
-            ..Default::default()
-        });
+        let store = store(cfg(vec![disabled]));
         assert!(!store.is_enabled(), "无启用规则时快速路径必须关闭");
 
         let (tx, _rx) = smol_unbounded::<UdpWire>();
@@ -958,11 +963,7 @@ mod tests {
     /// T-3 ②（UDP 侧）：有启用规则 → 走规则引擎，只回规则应答
     #[test]
     fn test_enabled_rule_replies() {
-        let store = store(ReplyRulesConfig {
-            enabled: true,
-            rules: vec![rule_on_len("RULE")],
-            ..Default::default()
-        });
+        let store = store(cfg(vec![rule_on_len("RULE")]));
         assert!(store.is_enabled());
 
         let (tx, _rx) = smol_unbounded::<UdpWire>();

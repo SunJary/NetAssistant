@@ -236,25 +236,36 @@ mod tests {
     use super::*;
     use crate::reply::frame::RxFrame;
     use crate::reply::model::{
-        BytePattern, MatchNode, ReplyRule, ReplyRulesConfig, RuleCodec, RuleScope,
+        BytePattern, MatchNode, ReplyRule, ReplyRulesConfig, RuleCodec,
     };
     use crate::reply::store::ReplyRulesStore;
+    use std::collections::HashMap;
 
-    fn store_with(rules: Vec<ReplyRule>) -> Arc<ReplyRulesStore> {
+    /// 把规则挂到指定连接下构造 store, 并开启这些连接的自动回复总闸。
+    ///
+    /// 规则现在严格属于单一连接: 想在哪条连接上生效, 就必须挂到该连接 id 下。
+    fn store_with_conns(pairs: Vec<(&str, Vec<ReplyRule>)>) -> Arc<ReplyRulesStore> {
         let store = ReplyRulesStore::new();
-        // 全局作用域规则缺省不生效（缺省 gate=false）；测试统一开启所需连接
         store.set_connection_gates(
             ["tab", "tab-a", "tab-b"]
                 .into_iter()
                 .map(|s| (s.to_string(), true))
                 .collect(),
         );
+        let mut connections: HashMap<String, Vec<ReplyRule>> = HashMap::new();
+        for (conn, rules) in pairs {
+            connections.insert(conn.to_string(), rules);
+        }
         store.replace(&ReplyRulesConfig {
-            enabled: true,
-            rules,
+            connections,
             ..Default::default()
         });
         store
+    }
+
+    /// 单连接测试的便捷封装: 规则挂到 "tab" 下。
+    fn store_with(rules: Vec<ReplyRule>) -> Arc<ReplyRulesStore> {
+        store_with_conns(vec![("tab", rules)])
     }
 
     fn reply_rule(matcher: MatchNode, text: &str, hex_mode: bool, codec: RuleCodec) -> ReplyRule {
@@ -326,12 +337,16 @@ mod tests {
     /// 本测试把该语义固定下来（跨连接共享同一序列），防止将来被误改为按连接计数。
     #[test]
     fn test_seq_is_process_global_across_connections() {
-        let store = store_with(vec![reply_rule(
+        let shared = reply_rule(
             MatchNode::Length { min: 1, max: 8 },
             "n=${seq}",
             false,
             RuleCodec::Inherit,
-        )]);
+        );
+        let store = store_with_conns(vec![
+            ("tab-a", vec![shared.clone()]),
+            ("tab-b", vec![shared]),
+        ]);
         let f = frame(&[1]);
         assert_eq!(
             handle_frame(&store, &f, "tab-a").reply.as_deref(),
@@ -468,21 +483,21 @@ mod tests {
         assert_eq!(store.hits_snapshot().values().sum::<u64>(), 0);
     }
 
-    /// 作用域：绑定到别的连接的规则不得在本连接上生效
+    /// 连接隔离：挂到别的连接(id=tab-a)下的规则不得在 tab-b 上生效
     #[test]
     fn test_scope_respected_in_handle_frame() {
-        let store = store_with(vec![ReplyRule {
-            scope: RuleScope::Connection {
-                id: "tab-a".to_string(),
-            },
-            matcher: MatchNode::Length { min: 1, max: 8 },
-            payload: ReplyPayload {
-                text: "ok".to_string(),
-                hex_mode: false,
-                codec: RuleCodec::Raw,
-            },
-            ..ReplyRule::new("局部", 1)
-        }]);
+        let store = store_with_conns(vec![(
+            "tab-a",
+            vec![ReplyRule {
+                matcher: MatchNode::Length { min: 1, max: 8 },
+                payload: ReplyPayload {
+                    text: "ok".to_string(),
+                    hex_mode: false,
+                    codec: RuleCodec::Raw,
+                },
+                ..ReplyRule::new("局部", 1)
+            }],
+        )]);
         let f = frame(&[1]);
         assert!(handle_frame(&store, &f, "tab-a").reply.is_some());
         assert!(handle_frame(&store, &f, "tab-b").reply.is_none());
@@ -678,12 +693,13 @@ mod tests {
             },
             ..ReplyRule::new("兜底命中", 9999)
         });
+        let mut connections: HashMap<String, Vec<ReplyRule>> = HashMap::new();
+        connections.insert("tab".to_string(), rules);
         store.replace(&ReplyRulesConfig {
-            enabled: true,
-            rules,
+            connections,
             ..Default::default()
         });
-        // 全局规则缺省不生效，本性能回归需让 "tab" 上真正求值
+        // 规则需连接总闸开启后才在该连接求值: 本性能回归需让 "tab" 上真正求值
         store.set_connection_gates([("tab".to_string(), true)].into_iter().collect());
 
         let disabled_frame = frame(&frame_bytes);
@@ -766,14 +782,18 @@ mod tests {
 
         // 写线程：反复整表替换（模拟 UI 连续编辑规则）
         for i in 0..300u32 {
-            store.replace(&ReplyRulesConfig {
-                enabled: true,
-                rules: vec![reply_rule(
+            let mut connections: HashMap<String, Vec<ReplyRule>> = HashMap::new();
+            connections.insert(
+                "tab".to_string(),
+                vec![reply_rule(
                     MatchNode::Length { min: 1, max: 64 },
                     "6F 6B",
                     true,
                     RuleCodec::Raw,
                 )],
+            );
+            store.replace(&ReplyRulesConfig {
+                connections,
                 ..Default::default()
             });
             let _ = i;

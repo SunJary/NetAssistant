@@ -1255,13 +1255,17 @@ impl<'a> ConnectionTab<'a> {
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
-        let enabled_rules = self.app.reply_rules_store.enabled_rule_count();
-        let rules_active = self.app.reply_rules_active();
+        // 严格按连接隔离: 计数与活跃判定都只看本连接(tab_id)的规则
+        let enabled_rules = self.app.reply_rules_store.enabled_rule_count_for(&self.tab_id);
+        let rules_active = self.app.reply_rules_active(&self.tab_id);
         let gate_on = self.app.reply_connection_enabled(&self.tab_id);
 
-        // 两态文案: 开关开且有活跃规则→已启用 · N 条规则; 其余→未启用
+        // 三态文案: 总闸开且有活跃规则→已启用 · N 条规则; 总闸开但无启用规则→提示;
+        // 总闸关→未启用
         let status_text = if gate_on && rules_active {
             t!("connection_tab.auto_reply_active", n = enabled_rules).to_string()
+        } else if gate_on {
+            t!("reply_rules.no_enabled_rule").to_string()
         } else {
             t!("connection_tab.reply_rules_off").to_string()
         };
@@ -1269,6 +1273,9 @@ impl<'a> ConnectionTab<'a> {
         // 连接级开关: 决定该连接是否运行自动回复(标题即开关标签, 不再重复文案)
         let switch_entity = cx.entity().clone();
         let switch_tab_id = self.tab_id.clone();
+        // 「管理规则」弹窗的所属连接: 规则严格隔离, 弹窗只展示/编辑该连接的规则
+        let dialog_tab_id = self.tab_id.clone();
+        let dialog_tab_label = self.tab_state.connection_config.address_label();
 
         div()
             .flex()
@@ -1352,7 +1359,10 @@ impl<'a> ConnectionTab<'a> {
                                 // 弹窗状态必须在这里建好: 删除的二次确认态存在该状态里,
                                 // 为空时删除按钮永远只走到「未确认」分支, 点了没反应。
                                 // 此处直接改字段而非 app.update, 避免在已持有租约时重入 update。
-                                app.reply_rules_dialog = Some(ReplyRulesDialogState::new());
+                                app.reply_rules_dialog = Some(ReplyRulesDialogState::new(
+                                    dialog_tab_id.clone(),
+                                    dialog_tab_label.clone(),
+                                ));
                                 open_reply_rules_dialog(
                                     cx.entity().downgrade(),
                                     window,

@@ -51,7 +51,7 @@ use crate::core::checksum::ChecksumAlgorithm;
 use crate::reply::matcher::PredicateResult;
 use crate::reply::model::{
     ByteOp, BytePattern, ChecksumAt, Cmp, Constraint, Endian, MatchNode, ReplyPayload, ReplyRule,
-    ReplyRulesConfig, RuleCodec, RuleScope, Severity, Width, format_matcher_summary, validate_rule,
+    ReplyRulesConfig, RuleCodec, Severity, Width, format_matcher_summary, validate_rule,
 };
 use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
 use crate::ui::components::input_with_mode::InputWithMode;
@@ -1013,8 +1013,7 @@ pub struct ReplyRuleEditDialogState {
     pub desc_input: Entity<InputState>,
     pub tags_input: Entity<InputState>,
     pub enabled: bool,
-    pub scope_is_connection: bool,
-    /// 当前 tab (作用域绑定与地址展示)
+    /// 本规则所属连接 id（= tab_id）。规则严格属于某一连接, 不再有全局作用域。
     pub tab_id: String,
     pub tab_label: String,
 
@@ -1062,11 +1061,12 @@ impl ReplyRuleEditDialogState {
             }
             None => {
                 // 新建: 默认匹配模式是「任意消息」(matcher 固定空 All, 见下方)。
-                // 条件树草稿仍预填 `All { Length { 1..64 } }` —— 用户切到「自定义条件」时
-                // 有一个能直接编辑的起点，而不是面对空树。
-                let mut root = CondDraft::new(0, CondKind::All);
-                root.children.push(CondDraft::new(1, CondKind::Length));
-                next_uid = 2;
+                //
+                // 条件树草稿预置为**空 All 根**(无任何子条件): 切到「自定义条件」后,
+                // 由用户自己点根节点上的「＋ 添加条件」逐条构建。
+                // 不预填 `Length { 1..64 }` 之类的假条件 —— 默认值很容易被当成
+                // 业务约束直接保存, 从而默默过滤掉本该匹配的报文。
+                let root = CondDraft::new(0, CondKind::All);
                 let mut r = ReplyRule::new(String::new(), 0);
                 r.payload = ReplyPayload::default();
                 (r, root)
@@ -1158,7 +1158,6 @@ impl ReplyRuleEditDialogState {
             desc_input,
             tags_input,
             enabled: true,
-            scope_is_connection: false,
             tab_id,
             tab_label,
             payload_input,
@@ -1210,7 +1209,6 @@ impl ReplyRuleEditDialogState {
         self.payload_hex_mode.hash(&mut h);
         std::mem::discriminant(&self.payload_codec).hash(&mut h);
         self.enabled.hash(&mut h);
-        self.scope_is_connection.hash(&mut h);
         self.match_mode.hash(&mut h);
         let mut keys: Vec<&String> = self.cond_inputs.keys().collect();
         keys.sort_unstable();
@@ -1249,13 +1247,6 @@ impl ReplyRuleEditDialogState {
             .filter(|s| !s.is_empty())
             .collect();
         self.draft.enabled = self.enabled;
-        self.draft.scope = if self.scope_is_connection {
-            RuleScope::Connection {
-                id: self.tab_id.clone(),
-            }
-        } else {
-            RuleScope::Global
-        };
         let payload_text = self.payload_input.read(cx).text().to_string();
         self.draft.payload = ReplyPayload {
             text: payload_text,
@@ -1298,8 +1289,12 @@ fn text_input(
 // ============================================================================
 
 /// 打开规则编辑弹窗。`rule_id = None` 表示新建。
+///
+/// `tab_id` = 规则所属连接, 由打开入口(连接页 / 管理弹窗)显式传入,
+/// 不再依赖 `app.active_tab`(那会随标签切换而漂移)。
 pub fn open_reply_rule_edit_dialog(
     app: WeakEntity<NetAssistantApp>,
+    tab_id: String,
     rule_id: Option<String>,
     window: &mut Window,
     cx: &mut App,
@@ -1308,13 +1303,11 @@ pub fn open_reply_rule_edit_dialog(
     let _ = app.update(cx, |app, cx| {
         let editing = rule_id.as_ref().and_then(|id| {
             app.storage
-                .reply_rules()
-                .rules
+                .rules_for_connection(&tab_id)
                 .iter()
                 .find(|r| &r.id == id)
                 .cloned()
         });
-        let tab_id = app.active_tab.clone();
         let tab_label = app
             .connection_tabs
             .get(&tab_id)
@@ -1322,7 +1315,7 @@ pub fn open_reply_rule_edit_dialog(
             .unwrap_or_default();
         // 重新借用: `window` 会被闭包按 move 捕获, 直接捕获会让后续 open_dialog 用不了它
         let window: &mut Window = &mut *window;
-        let state = ReplyRuleEditDialogState::new(editing, tab_id, tab_label, window, cx);
+        let state = ReplyRuleEditDialogState::new(editing, tab_id.clone(), tab_label, window, cx);
         app.reply_rule_edit_dialog = Some(state);
     });
 
@@ -1498,9 +1491,10 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
         .collect();
 
     let mut body = div().flex().flex_col().gap_4().px_6().pb_4();
-    body = body.child(render_basic(app, s, &theme));
+    body = body.child(render_topbar(app, s, &theme));
     body = body.child(render_conditions(app, s, issues, &theme, window, cx));
     body = body.child(render_action(app, s, issues, &theme, window, cx));
+    body = body.child(render_notes(s, &theme));
     body = body.child(render_test(app, s, &theme, window, cx));
 
     if let Some(err) = &s.error {
@@ -1554,36 +1548,26 @@ fn field_label(text: String, theme: &Theme) -> Div {
         .child(text)
 }
 
-/// ===== A 基本信息 =====
-fn render_basic(app: &Entity<NetAssistantApp>, s: &ReplyRuleEditDialogState, theme: &Theme) -> Div {
-    let scope_chip = |connection: bool| -> Div {
-        let label = if connection {
-            t!("reply_rule_edit.scope_connection").to_string()
-        } else {
-            t!("reply_rule_edit.scope_global").to_string()
-        };
-        chip(
-            app,
-            label,
-            s.scope_is_connection == connection,
-            false,
-            theme,
-            move |app, _window, _cx| {
-                if let Some(st) = app.reply_rule_edit_dialog.as_mut() {
-                    st.scope_is_connection = connection;
-                }
-            },
-        )
-    };
-
+/// ===== 顶部属性条: 规则名 + 所属连接 + 启用 =====
+///
+/// 这三项决定"这条规则是什么、属于哪个连接、是否参与求值", 是编辑时最先要确认的
+/// 属性; 抽到顶部固定区, 让下面的条件/动作构建器专注"匹配什么、回什么"。
+///
+/// 规则严格属于单一连接(不再有全局作用域), 因此这里只静态展示所属连接地址。
+fn render_topbar(
+    app: &Entity<NetAssistantApp>,
+    s: &ReplyRuleEditDialogState,
+    theme: &Theme,
+) -> Div {
     div()
         .flex()
         .flex_col()
         .gap_2()
-        .child(section_title(
-            t!("reply_rule_edit.section_basic").to_string(),
-            theme,
-        ))
+        .p_3()
+        .rounded_md()
+        .border_1()
+        .border_color(theme.primary.opacity(0.4))
+        .bg(theme.secondary)
         .child(
             div()
                 .flex()
@@ -1592,6 +1576,64 @@ fn render_basic(app: &Entity<NetAssistantApp>, s: &ReplyRuleEditDialogState, the
                 .child(field_label(t!("reply_rule_edit.name").to_string(), theme))
                 .child(input_box(&s.name_input, theme)),
         )
+        .child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .flex_wrap()
+                .child(field_label(
+                    t!("reply_rule_edit.belongs_to").to_string(),
+                    theme,
+                ))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(s.tab_label.clone()),
+                )
+                .child(
+                    div()
+                        .ml_auto()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_2()
+                        .child(field_label(
+                            t!("reply_rule_edit.enabled").to_string(),
+                            theme,
+                        ))
+                        .child(
+                            Switch::new("reply-rule-edit-enabled-switch")
+                                .checked(s.enabled)
+                                .with_size(Size::Small)
+                                .on_change({
+                                    let entity = app.clone();
+                                    move |_next, _window, cx| {
+                                        entity.update(cx, |app, cx| {
+                                            if let Some(st) = app.reply_rule_edit_dialog.as_mut() {
+                                                st.enabled = !st.enabled;
+                                            }
+                                            cx.notify();
+                                        });
+                                    }
+                                }),
+                        ),
+                ),
+        )
+}
+
+/// ===== 备注与标签(非必填次要信息, 下沉到动作之后) =====
+fn render_notes(s: &ReplyRuleEditDialogState, theme: &Theme) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(section_title(
+            t!("reply_rule_edit.section_notes").to_string(),
+            theme,
+        ))
         .child(
             div()
                 .flex()
@@ -1610,61 +1652,6 @@ fn render_basic(app: &Entity<NetAssistantApp>, s: &ReplyRuleEditDialogState, the
                 .gap_1()
                 .child(field_label(t!("reply_rule_edit.tags").to_string(), theme))
                 .child(input_box(&s.tags_input, theme)),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_2()
-                .child(field_label(t!("reply_rule_edit.scope").to_string(), theme))
-                .child(scope_chip(false))
-                .child(scope_chip(true))
-                .when(s.scope_is_connection, |d| {
-                    d.child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(s.tab_label.clone()),
-                    )
-                }),
-        )
-        .when(!s.scope_is_connection, |d| {
-            // 全局规则不自动对全部连接生效: 需在各连接打开「启用自动回复」
-            d.child(
-                div()
-                    .text_xs()
-                    .whitespace_normal()
-                    .text_color(theme.muted_foreground)
-                    .child(t!("reply_rule_edit.scope_global_gate_hint").to_string()),
-            )
-        })
-        .child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_2()
-                .child(field_label(
-                    t!("reply_rule_edit.enabled").to_string(),
-                    theme,
-                ))
-                .child(
-                    Switch::new("reply-rule-edit-enabled-switch")
-                        .checked(s.enabled)
-                        .with_size(Size::Small)
-                        .on_change({
-                            let entity = app.clone();
-                            move |_next, _window, cx| {
-                                entity.update(cx, |app, cx| {
-                                    if let Some(st) = app.reply_rule_edit_dialog.as_mut() {
-                                        st.enabled = !st.enabled;
-                                    }
-                                    cx.notify();
-                                });
-                            }
-                        }),
-                ),
         )
 }
 
@@ -3006,9 +2993,10 @@ fn run_test(app: &mut NetAssistantApp, cx: &mut App) {
 
     // 临时 store: 规则集未保存也要能试跑(草稿只在内存里)
     let store = crate::reply::ReplyRulesStore::new();
+    let mut connections = std::collections::HashMap::new();
+    connections.insert("tab".to_string(), vec![rule.clone()]);
     store.replace(&ReplyRulesConfig {
-        enabled: true,
-        rules: vec![rule.clone()],
+        connections,
         ..Default::default()
     });
     let frame: Arc<crate::reply::RxFrame> = Arc::new(crate::reply::RxFrame::new(
@@ -3188,7 +3176,10 @@ fn render_footer(app: &WeakEntity<NetAssistantApp>, cx: &App) -> DialogFooter {
             let _ = app_save.update(cx, |app, cx| {
                 if let Some(st) = app.reply_rule_edit_dialog.as_ref() {
                     let rule = st.draft.clone();
-                    app.storage.upsert_reply_rule(rule);
+                    let tab_id = st.tab_id.clone();
+                    app.storage.upsert_reply_rule(&tab_id, rule);
+                    // 新建时 priority 由列表位置决定，须重排以保证列表顺序 = 求值顺序
+                    app.storage.renumber_reply_rule_priorities(&tab_id);
                     app.sync_reply_rules_to_network(cx);
                 }
                 app.reply_rule_edit_dialog = None;

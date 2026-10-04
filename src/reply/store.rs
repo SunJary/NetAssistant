@@ -10,7 +10,7 @@
 //   - 排序只在 `replace()` 时做一次，不在每帧做。
 
 use crate::reply::matcher::{AddrSpec, parse_addr_spec};
-use crate::reply::model::{BytePattern, CompiledReply, ReplyRule, ReplyRulesConfig, RuleScope};
+use crate::reply::model::{BytePattern, CompiledReply, ReplyRule, ReplyRulesConfig};
 use log::warn;
 use regex::Regex;
 use std::collections::HashMap;
@@ -175,28 +175,24 @@ impl RuleRuntime {
 /// 规则集运行期状态（UI 写 / 网络线程读）
 #[derive(Debug)]
 pub struct ReplyRulesStore {
-    /// 总开关：未启用时网络线程零开销
+    /// 快速路径开关：没有任何启用规则时为 false，网络线程零开销
     enabled: AtomicBool,
-    /// 当前生效的规则表（已按 priority 升序排序，且已按 scope 语义保留全部规则；
-    /// 作用域过滤在 `rules_for` 里做，因为网络层知道自己在哪个连接上）
-    rules: RwLock<Arc<Vec<Arc<RuleRuntime>>>>,
-    /// 已排序的表版本号：网络线程据此判断是否需要重新过滤作用域
+    /// 按连接分组的运行期规则表（每连接已按 priority 升序排序，含禁用规则）
+    tables: RwLock<Arc<HashMap<String, Arc<Vec<Arc<RuleRuntime>>>>>>,
+    /// 表版本号：`replace` / `set_connection_gates` 递增，令 `scope_cache` 作废
     version: AtomicU64,
-    /// 每连接过滤结果的缓存（P-3）：以 `version` 为边界标记，版本未变即复用
+    /// 每连接「已启用规则」过滤结果的缓存（以 `version` 为边界标记）
     scope_cache: Mutex<ScopeCache>,
-    /// 「全局作用域规则」在哪些连接上启用（缺省 = false）。由 AppConfig 下发。
-    ///
-    /// 与 `rules` 同为整表替换的低频写；改动经 `set_connection_gates` 递增 `version`
-    /// 令 `scope_cache` 整表作废。
+    /// 各连接的「自动回复」总闸（缺省 = false）。由 AppConfig 下发。
     gates: RwLock<Arc<HashMap<String, bool>>>,
     /// 应答独立递增序号（供 `${seq}` 使用，网络线程自取，不回 UI 线程取数）
     seq: AtomicU64,
 }
 
-/// `rules_for` 的按连接缓存（P-3）
+/// `rules_for` 的按连接缓存
 #[derive(Debug, Default)]
 struct ScopeCache {
-    /// 缓存对应的规则表版本；与 store 的 `version` 不一致即整表作废
+    /// 缓存对应的表版本；与 store 的 `version` 不一致即整表作废
     version: u64,
     by_connection: HashMap<String, Arc<Vec<Arc<RuleRuntime>>>>,
 }
@@ -205,7 +201,7 @@ impl Default for ReplyRulesStore {
     fn default() -> Self {
         Self {
             enabled: AtomicBool::new(false),
-            rules: RwLock::new(Arc::new(Vec::new())),
+            tables: RwLock::new(Arc::new(HashMap::new())),
             version: AtomicU64::new(0),
             scope_cache: Mutex::new(ScopeCache::default()),
             gates: RwLock::new(Arc::new(HashMap::new())),
@@ -230,49 +226,68 @@ impl ReplyRulesStore {
         self.seq.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// 启用规则总数
+    /// 全部连接下的启用规则总数
     pub fn enabled_rule_count(&self) -> usize {
-        self.sorted().iter().filter(|r| r.rule.enabled).count()
+        self.all_runtimes()
+            .values()
+            .flat_map(|rules| rules.iter())
+            .filter(|r| r.rule.enabled)
+            .count()
+    }
+
+    /// 指定连接下的启用规则数（连接页状态文案用）
+    pub fn enabled_rule_count_for(&self, connection_id: &str) -> usize {
+        self.rules_for(connection_id)
+            .iter()
+            .filter(|r| r.rule.enabled)
+            .count()
     }
 
     /// UI 下发：整表替换（低频写）
     ///
     /// 命中计数按 `id` 继承：编辑规则不会让用户辛苦积累的调试计数归零，
     /// 但被删除的规则其计数自然消失。
+    ///
+    /// 规则按连接分组构建，每组独立按 `priority` 升序排序（顺序即该连接的求值优先级）。
     pub fn replace(&self, config: &ReplyRulesConfig) {
+        // 收集既有计数（跨全部连接），供同 id 规则继承
         let previous: HashMap<String, Arc<AtomicU64>> = self
-            .sorted()
-            .iter()
+            .all_runtimes()
+            .values()
+            .flat_map(|rules| rules.iter())
             .map(|r| (r.rule.id.clone(), r.hits.clone()))
             .collect();
 
-        let mut runtimes: Vec<Arc<RuleRuntime>> = config
-            .rules
-            .iter()
-            .map(|rule| {
-                let hits = previous
-                    .get(&rule.id)
-                    .cloned()
-                    .unwrap_or_else(|| Arc::new(AtomicU64::new(0)));
-                RuleRuntime::new(rule.clone(), hits)
-            })
-            .collect();
-
-        // 求值顺序即语义：priority 升序，同值按 id 字典序稳定排序
-        runtimes.sort_by(|a, b| {
-            a.rule
-                .priority
-                .cmp(&b.rule.priority)
-                .then_with(|| a.rule.id.cmp(&b.rule.id))
-        });
+        let mut tables: HashMap<String, Arc<Vec<Arc<RuleRuntime>>>> = HashMap::new();
+        for (connection_id, rules) in &config.connections {
+            let mut runtimes: Vec<Arc<RuleRuntime>> = rules
+                .iter()
+                .map(|rule| {
+                    let hits = previous
+                        .get(&rule.id)
+                        .cloned()
+                        .unwrap_or_else(|| Arc::new(AtomicU64::new(0)));
+                    RuleRuntime::new(rule.clone(), hits)
+                })
+                .collect();
+            // 求值顺序即语义：priority 升序，同值按 id 字典序稳定排序
+            runtimes.sort_by(|a, b| {
+                a.rule
+                    .priority
+                    .cmp(&b.rule.priority)
+                    .then_with(|| a.rule.id.cmp(&b.rule.id))
+            });
+            tables.insert(connection_id.clone(), Arc::new(runtimes));
+        }
 
         // 没有启用规则时直接关闭快速路径：网络线程连读锁都不碰。
-        // （总开关打开但规则全被禁用的状态等价于"功能整体关闭"）
-        let active = config.enabled && runtimes.iter().any(|r| r.rule.enabled);
+        let active = tables
+            .values()
+            .any(|rules| rules.iter().any(|r| r.rule.enabled));
 
         {
-            let mut guard = self.rules.write().unwrap_or_else(|e| e.into_inner());
-            *guard = Arc::new(runtimes);
+            let mut guard = self.tables.write().unwrap_or_else(|e| e.into_inner());
+            *guard = Arc::new(tables);
         }
 
         self.enabled.store(active, Ordering::Relaxed);
@@ -280,12 +295,12 @@ impl ReplyRulesStore {
         self.version.fetch_add(1, Ordering::Release);
     }
 
-    /// 取当前排序后的规则表快照（一次读锁 + 一次 Arc clone，之后遍历无锁）
-    fn sorted(&self) -> Arc<Vec<Arc<RuleRuntime>>> {
-        self.rules.read().unwrap_or_else(|e| e.into_inner()).clone()
+    /// 全部连接下的运行期规则快照（一次读锁 + 一次 Arc clone）
+    fn all_runtimes(&self) -> Arc<HashMap<String, Arc<Vec<Arc<RuleRuntime>>>>> {
+        self.tables.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    /// UI 下发：整表替换「全局规则连接开关」。**缺省 false**
+    /// UI 下发：整表替换各连接的「自动回复」总闸。**缺省 false**
     ///
     /// 递增 `version`（Release）令 `scope_cache` 整表作废，使下帧起按新开关过滤。
     pub fn set_connection_gates(&self, gates: HashMap<String, bool>) {
@@ -296,7 +311,7 @@ impl ReplyRulesStore {
         self.version.fetch_add(1, Ordering::Release);
     }
 
-    /// 指定连接是否启用「全局作用域规则」（缺省 false）
+    /// 指定连接是否启用「自动回复」总闸（缺省 false）
     fn gate_of(&self, connection_id: &str) -> bool {
         self.gates
             .read()
@@ -306,26 +321,31 @@ impl ReplyRulesStore {
             .unwrap_or(false)
     }
 
-    /// 网络线程读：拿排序后的**全部启用规则**
-    ///
-    /// 返回 `Arc<Vec<...>>` 让调用方在锁外遍历，避免长时间持读锁。
+    /// 全部连接下的启用规则并集（供纯函数求值测试等场景使用）
     pub fn enabled_rules(&self) -> Arc<Vec<Arc<RuleRuntime>>> {
-        let all = self.sorted();
-        Arc::new(
-            all.iter()
-                .filter(|r| r.rule.enabled)
-                .cloned()
-                .collect::<Vec<_>>(),
-        )
+        let tables = self.all_runtimes();
+        let mut all: Vec<Arc<RuleRuntime>> = tables
+            .values()
+            .flat_map(|rules| rules.iter())
+            .filter(|r| r.rule.enabled)
+            .cloned()
+            .collect();
+        // 跨连接排序：priority 升序 + id 稳定
+        all.sort_by(|a, b| {
+            a.rule
+                .priority
+                .cmp(&b.rule.priority)
+                .then_with(|| a.rule.id.cmp(&b.rule.id))
+        });
+        Arc::new(all)
     }
 
-    /// 按连接作用域过滤（`Global` 受连接开关约束；`Connection{id}` 只在匹配连接上生效）
+    /// 网络线程读：某连接下**已启用的规则**
     ///
-    /// `Global` 规则须该连接在 `gates` 中显式启用（缺省 false），回应用户
-    /// "全局规则不能擅自给所有连接打开自动回复"；`Connection{id}` 规则绑定连接本身
-    /// 即显式选择，不受开关约束。
+    /// 该连接的「自动回复」总闸必须为 true，否则返回空（该连接不参与规则求值）。
+    /// 返回 `Arc<Vec<...>>` 让调用方在锁外遍历，避免长时间持读锁。
     ///
-    /// **每连接缓存（P-3）**：过滤结果与规则表版本一一对应，版本未变时直接复用，
+    /// **每连接缓存**：过滤结果与表版本一一对应，版本未变时直接复用，
     /// 洪泛场景下省去每帧的 N 次 `Arc` 克隆与 `Vec` 分配。
     /// 只有"构建前后版本一致"才写入缓存 —— 否则可能把旧快照挂到新版本号上。
     pub fn rules_for(&self, connection_id: &str) -> Arc<Vec<Arc<RuleRuntime>>> {
@@ -339,19 +359,21 @@ impl ReplyRulesStore {
             }
         }
 
-        let all = self.sorted();
-        let filtered: Arc<Vec<Arc<RuleRuntime>>> = Arc::new(
-            all.iter()
-                .filter(|r| {
-                    r.rule.enabled
-                        && match &r.rule.scope {
-                            RuleScope::Global => self.gate_of(connection_id),
-                            RuleScope::Connection { id } => id == connection_id,
-                        }
-                })
-                .cloned()
-                .collect(),
-        );
+        let filtered: Arc<Vec<Arc<RuleRuntime>>> = if self.gate_of(connection_id) {
+            let tables = self.all_runtimes();
+            match tables.get(connection_id) {
+                Some(rules) => Arc::new(
+                    rules
+                        .iter()
+                        .filter(|r| r.rule.enabled)
+                        .cloned()
+                        .collect(),
+                ),
+                None => Arc::new(Vec::new()),
+            }
+        } else {
+            Arc::new(Vec::new())
+        };
 
         if self.version.load(Ordering::Acquire) == version {
             let mut cache = self.scope_cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -368,15 +390,16 @@ impl ReplyRulesStore {
 
     /// 命中计数的快照（UI 每拍读取，节流后调用）
     pub fn hits_snapshot(&self) -> HashMap<String, u64> {
-        self.sorted()
-            .iter()
+        self.all_runtimes()
+            .values()
+            .flat_map(|rules| rules.iter())
             .map(|r| (r.rule.id.clone(), r.hit_count()))
             .collect()
     }
 
     /// 单条规则计数归零（决策 U-10：调一条规则时不想丢其他规则的计数）
     pub fn reset_hits_of(&self, rule_id: &str) {
-        for runtime in self.sorted().iter() {
+        for runtime in self.all_runtimes().values().flat_map(|rules| rules.iter()) {
             if runtime.rule.id == rule_id {
                 runtime.hits.store(0, Ordering::Relaxed);
             }
@@ -385,7 +408,7 @@ impl ReplyRulesStore {
 
     /// 全部归零
     pub fn reset_hits(&self) {
-        for runtime in self.sorted().iter() {
+        for runtime in self.all_runtimes().values().flat_map(|rules| rules.iter()) {
             runtime.hits.store(0, Ordering::Relaxed);
         }
     }
@@ -396,31 +419,29 @@ mod tests {
     use super::*;
     use crate::reply::frame::RxFrame;
     use crate::reply::matcher::evaluate;
-    use crate::reply::model::{
-        BytePattern, MatchNode, ReplyPayload, ReplyRule, RuleCodec, RuleScope,
-    };
+    use crate::reply::model::{BytePattern, MatchNode, ReplyPayload, ReplyRule, RuleCodec};
     use std::sync::atomic::AtomicBool;
 
-    fn rule(id: &str, priority: u32, enabled: bool, scope: RuleScope) -> ReplyRule {
+    fn rule(id: &str, priority: u32, enabled: bool) -> ReplyRule {
         ReplyRule {
             id: id.to_string(),
             enabled,
-            scope,
             matcher: MatchNode::Length { min: 1, max: 8 },
             ..ReplyRule::new(id, priority)
         }
     }
 
-    fn config(rules: Vec<ReplyRule>) -> ReplyRulesConfig {
-        ReplyRulesConfig {
-            enabled: true,
-            rules,
-            ..Default::default()
+    /// 构造某连接下的规则集（按连接分组存储）
+    fn config(connection_id: &str, rules: Vec<ReplyRule>) -> ReplyRulesConfig {
+        let mut cfg = ReplyRulesConfig::default();
+        if !rules.is_empty() {
+            cfg.connections.insert(connection_id.to_string(), rules);
         }
+        cfg
     }
 
     /// 构造带连接开关的 store：给定连接 id 全部置 true。
-    /// 缺省 false 会令「全局作用域」规则不生效，故凡用 `rules_for` 断言全局规则的用例都需先开启。
+    /// 缺省 false 会令该连接规则不生效，故凡用 `rules_for` 断言规则的用例都需先开启。
     fn gated_store(ids: &[&str]) -> Arc<ReplyRulesStore> {
         let store = ReplyRulesStore::new();
         let gates = ids.iter().map(|id| (id.to_string(), true)).collect();
@@ -434,29 +455,26 @@ mod tests {
         let store = ReplyRulesStore::new();
         assert!(!store.is_enabled());
         assert!(store.hits_snapshot().is_empty());
-        store.replace(&config(vec![rule("a", 1, true, RuleScope::Global)]));
+        store.replace(&config("tab", vec![rule("a", 1, true)]));
         assert!(store.is_enabled());
     }
 
-    /// 总开关关闭时，即使有规则也不启用（规则集存在但功能整体关闭）
+    /// 规则全被禁用时快速路径关闭（等价于"功能整体关闭"）
     #[test]
-    fn test_master_switch_off() {
+    fn test_all_disabled_keeps_fast_path_off() {
         let store = ReplyRulesStore::new();
-        let mut cfg = config(vec![rule("a", 1, true, RuleScope::Global)]);
-        cfg.enabled = false;
-        store.replace(&cfg);
-        assert!(!store.is_enabled(), "总开关关闭时不得进入规则求值路径");
+        store.replace(&config("tab", vec![rule("a", 1, false)]));
+        assert!(!store.is_enabled(), "无启用规则时不得进入规则求值路径");
     }
 
     /// 排序：priority 升序 + 同值按 id 稳定
     #[test]
     fn test_sorting() {
         let store = gated_store(&["tab"]);
-        store.replace(&config(vec![
-            rule("c", 300, true, RuleScope::Global),
-            rule("a", 100, true, RuleScope::Global),
-            rule("b", 200, true, RuleScope::Global),
-        ]));
+        store.replace(&config(
+            "tab",
+            vec![rule("c", 300, true), rule("a", 100, true), rule("b", 200, true)],
+        ));
         let ids: Vec<String> = store
             .rules_for("tab")
             .iter()
@@ -465,86 +483,71 @@ mod tests {
         assert_eq!(ids, vec!["a", "b", "c"]);
     }
 
-    /// 作用域过滤：Global 在开关开启的连接上生效，Connection 只对指定连接
+    /// 连接隔离：规则只属于其所属连接，其他连接看不到
     #[test]
-    fn test_scope_filtering() {
+    fn test_connection_isolation() {
         let store = gated_store(&["tab-1", "tab-2"]);
-        store.replace(&config(vec![
-            rule("g", 1, true, RuleScope::Global),
-            rule(
-                "c1",
-                2,
-                true,
-                RuleScope::Connection {
-                    id: "tab-1".to_string(),
-                },
-            ),
-        ]));
-        assert_eq!(store.rules_for("tab-1").len(), 2);
+        let mut cfg = config("tab-1", vec![rule("a", 1, true)]);
+        cfg.connections
+            .insert("tab-2".to_string(), vec![rule("b", 2, true)]);
+        store.replace(&cfg);
+        assert_eq!(store.rules_for("tab-1").len(), 1);
         assert_eq!(store.rules_for("tab-2").len(), 1);
-        let scoped = store
-            .rules_for("tab-1")
-            .iter()
-            .filter(|r| matches!(r.rule.scope, RuleScope::Connection { .. }))
-            .count();
-        assert_eq!(scoped, 1);
+        assert_eq!(store.rules_for("tab-1")[0].rule.id, "a");
+        assert_eq!(store.rules_for("tab-2")[0].rule.id, "b");
+        assert!(store.rules_for("tab-x").is_empty());
     }
 
-    /// 连接开关语义：全局规则缺省不生效；显式置 true 后生效；
-    /// 连接作用域规则不受开关约束；gate 变更后缓存失效（立即生效）。
+    /// 连接总闸：关闭时该连接全部规则不生效；开启后立即生效（缓存失效）
     #[test]
-    fn test_connection_gate_controls_global_rules() {
+    fn test_connection_gate_controls_all_rules() {
         let store = ReplyRulesStore::new();
-        store.replace(&config(vec![
-            rule("g", 1, true, RuleScope::Global),
-            rule(
-                "c1",
-                2,
-                true,
-                RuleScope::Connection {
-                    id: "tab-1".to_string(),
-                },
-            ),
-        ]));
+        store.replace(&config(
+            "tab-1",
+            vec![rule("a", 1, true), rule("b", 2, true)],
+        ));
 
-        // 缺省 false：全局规则不生效，但绑定本连接的规则恒生效
-        let ids: Vec<String> = store
-            .rules_for("tab-1")
-            .iter()
-            .map(|r| r.rule.id.clone())
-            .collect();
-        assert_eq!(ids, vec!["c1"]);
-        assert!(store.rules_for("tab-2").is_empty());
+        // 缺省 false：本连接规则不生效
+        assert!(store.rules_for("tab-1").is_empty());
 
-        // 显式开启后全局规则立即生效（gate 变更令 scope_cache 作废）
+        // 显式开启后立即生效（gate 变更令 scope_cache 作废）
         store.set_connection_gates(HashMap::from([("tab-1".to_string(), true)]));
         let ids: Vec<String> = store
             .rules_for("tab-1")
             .iter()
             .map(|r| r.rule.id.clone())
             .collect();
-        assert_eq!(ids, vec!["g", "c1"]);
-        // 未开启的连接依旧只有自身规则
+        assert_eq!(ids, vec!["a", "b"]);
+        // 未开启的连接依旧为空
         assert!(store.rules_for("tab-2").is_empty());
 
         // 关闭后重新回到不生效
         store.set_connection_gates(HashMap::from([("tab-1".to_string(), false)]));
-        let ids: Vec<String> = store
-            .rules_for("tab-1")
-            .iter()
-            .map(|r| r.rule.id.clone())
-            .collect();
-        assert_eq!(ids, vec!["c1"]);
+        assert!(store.rules_for("tab-1").is_empty());
+    }
+
+    /// 启用计数：全量 / 按连接
+    #[test]
+    fn test_enabled_rule_count() {
+        let store = gated_store(&["tab-1", "tab-2"]);
+        let mut cfg = config("tab-1", vec![rule("a", 1, true), rule("off", 2, false)]);
+        cfg.connections
+            .insert("tab-2".to_string(), vec![rule("b", 1, true)]);
+        store.replace(&cfg);
+        assert_eq!(store.enabled_rule_count(), 2);
+        assert_eq!(store.enabled_rule_count_for("tab-1"), 1);
+        assert_eq!(store.enabled_rule_count_for("tab-2"), 1);
+        assert_eq!(store.enabled_rule_count_for("tab-x"), 0);
     }
 
     /// 禁用规则不参与求值，但仍在列表里可见
     #[test]
     fn test_disabled_rule_skipped() {
         let store = ReplyRulesStore::new();
-        store.replace(&config(vec![
-            rule("off", 1, false, RuleScope::Global),
-            rule("on", 2, true, RuleScope::Global),
-        ]));
+        store.replace(&config(
+            "tab",
+            vec![rule("off", 1, false), rule("on", 2, true)],
+        ));
         assert_eq!(store.enabled_rules().len(), 1);
         // 快照覆盖全部规则（含禁用项），故仍为 2
         assert_eq!(store.hits_snapshot().len(), 2);
@@ -555,20 +558,20 @@ mod tests {
     #[test]
     fn test_hits_survive_replace_by_id() {
         let store = gated_store(&["tab"]);
-        store.replace(&config(vec![rule("a", 1, true, RuleScope::Global)]));
+        store.replace(&config("tab", vec![rule("a", 1, true)]));
         store.rules_for("tab")[0]
             .hits
             .fetch_add(5, Ordering::Relaxed);
         assert_eq!(store.hits_snapshot()["a"], 5);
 
         // 改规则内容（同 id）后计数保留
-        let mut edited = rule("a", 1, true, RuleScope::Global);
+        let mut edited = rule("a", 1, true);
         edited.name = "改名了".to_string();
-        store.replace(&config(vec![edited]));
+        store.replace(&config("tab", vec![edited]));
         assert_eq!(store.hits_snapshot()["a"], 5, "同 id 规则改名后计数应保留");
 
         // 删除规则后计数消失
-        store.replace(&config(vec![]));
+        store.replace(&config("tab", vec![]));
         assert!(store.hits_snapshot().is_empty());
     }
 
@@ -576,10 +579,10 @@ mod tests {
     #[test]
     fn test_reset_hits() {
         let store = gated_store(&["tab"]);
-        store.replace(&config(vec![
-            rule("a", 1, true, RuleScope::Global),
-            rule("b", 2, true, RuleScope::Global),
-        ]));
+        store.replace(&config(
+            "tab",
+            vec![rule("a", 1, true), rule("b", 2, true)],
+        ));
         let rules = store.rules_for("tab");
         rules
             .iter()
@@ -608,7 +611,7 @@ mod tests {
     #[test]
     fn test_concurrent_hit_counting() {
         let store = gated_store(&["tab"]);
-        store.replace(&config(vec![rule("a", 1, true, RuleScope::Global)]));
+        store.replace(&config("tab", vec![rule("a", 1, true)]));
         let handle = store.rules_for("tab")[0].hits.clone();
 
         let threads: Vec<_> = (0..8)
@@ -631,7 +634,7 @@ mod tests {
     #[test]
     fn test_concurrent_replace_and_read() {
         let store = gated_store(&["tab"]);
-        store.replace(&config(vec![rule("a", 1, true, RuleScope::Global)]));
+        store.replace(&config("tab", vec![rule("a", 1, true)]));
 
         let stop = Arc::new(AtomicBool::new(false));
         let reader_store = store.clone();
@@ -646,15 +649,10 @@ mod tests {
         });
 
         for i in 0..200u32 {
-            store.replace(&config(vec![
-                rule("a", 1, true, RuleScope::Global),
-                rule(
-                    &format!("extra-{}", i),
-                    2 + i,
-                    i % 2 == 0,
-                    RuleScope::Global,
-                ),
-            ]));
+            store.replace(&config(
+                "tab",
+                vec![rule("a", 1, true), rule(&format!("extra-{}", i), 2 + i, i % 2 == 0)],
+            ));
         }
         stop.store(true, Ordering::Relaxed);
         let count = reader.join().unwrap();
@@ -676,12 +674,15 @@ mod tests {
     #[test]
     fn test_invalid_regex_cached_as_none() {
         let store = ReplyRulesStore::new();
-        store.replace(&config(vec![ReplyRule {
-            matcher: MatchNode::Regex {
-                pattern: "([".to_string(),
-            },
-            ..ReplyRule::new("bad regex", 1)
-        }]));
+        store.replace(&config(
+            "tab",
+            vec![ReplyRule {
+                matcher: MatchNode::Regex {
+                    pattern: "([".to_string(),
+                },
+                ..ReplyRule::new("bad regex", 1)
+            }],
+        ));
         let rules = store.enabled_rules();
         let runtime = &rules[0];
         assert!(runtime.regex().is_none());
@@ -697,10 +698,13 @@ mod tests {
     fn test_overlong_regex_disabled() {
         let store = ReplyRulesStore::new();
         let long = "a".repeat(crate::reply::model::MAX_REGEX_LEN + 1);
-        store.replace(&config(vec![ReplyRule {
-            matcher: MatchNode::Regex { pattern: long },
-            ..ReplyRule::new("long regex", 1)
-        }]));
+        store.replace(&config(
+            "tab",
+            vec![ReplyRule {
+                matcher: MatchNode::Regex { pattern: long },
+                ..ReplyRule::new("long regex", 1)
+            }],
+        ));
         assert!(store.enabled_rules()[0].regex().is_none());
     }
 
@@ -708,12 +712,15 @@ mod tests {
     #[test]
     fn test_pattern_cache() {
         let store = ReplyRulesStore::new();
-        store.replace(&config(vec![ReplyRule {
-            matcher: MatchNode::Contains {
-                bytes: BytePattern::Hex("01 03".to_string()),
-            },
-            ..ReplyRule::new("ok pattern", 1)
-        }]));
+        store.replace(&config(
+            "tab",
+            vec![ReplyRule {
+                matcher: MatchNode::Contains {
+                    bytes: BytePattern::Hex("01 03".to_string()),
+                },
+                ..ReplyRule::new("ok pattern", 1)
+            }],
+        ));
         let rules = store.enabled_rules();
         let runtime = &rules[0];
         assert_eq!(
@@ -724,12 +731,15 @@ mod tests {
         );
 
         let store2 = ReplyRulesStore::new();
-        store2.replace(&config(vec![ReplyRule {
-            matcher: MatchNode::Contains {
-                bytes: BytePattern::Hex("ZZ".to_string()),
-            },
-            ..ReplyRule::new("bad pattern", 1)
-        }]));
+        store2.replace(&config(
+            "tab",
+            vec![ReplyRule {
+                matcher: MatchNode::Contains {
+                    bytes: BytePattern::Hex("ZZ".to_string()),
+                },
+                ..ReplyRule::new("bad pattern", 1)
+            }],
+        ));
         let rules2 = store2.enabled_rules();
         assert!(
             rules2[0]
@@ -743,15 +753,18 @@ mod tests {
     #[test]
     fn test_hit_counting_through_evaluate() {
         let store = gated_store(&["tab"]);
-        store.replace(&config(vec![ReplyRule {
-            matcher: MatchNode::Length { min: 1, max: 8 },
-            payload: ReplyPayload {
-                text: "6F 6B".to_string(),
-                hex_mode: true,
-                codec: RuleCodec::Raw,
-            },
-            ..ReplyRule::new("命中", 1)
-        }]));
+        store.replace(&config(
+            "tab",
+            vec![ReplyRule {
+                matcher: MatchNode::Length { min: 1, max: 8 },
+                payload: ReplyPayload {
+                    text: "6F 6B".to_string(),
+                    hex_mode: true,
+                    codec: RuleCodec::Raw,
+                },
+                ..ReplyRule::new("命中", 1)
+            }],
+        ));
         let rules = store.rules_for("tab");
         let frame = RxFrame::for_test(vec![1, 2, 3]);
         for _ in 0..3 {

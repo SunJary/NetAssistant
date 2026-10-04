@@ -3245,7 +3245,7 @@ impl NetAssistantApp {
         }
     }
 
-    // ===== 回复规则（全局规则集，见 docs/plan-reply-rules.md）=====
+    // ===== 回复规则（按连接分组的规则集，见 docs/plan-reply-rules-scope.md）=====
 
     /// 当前生效的回复规则集（UI 真源 = `ConfigStorage`）
     pub fn reply_rules_config(&self) -> ReplyRulesConfig {
@@ -3272,23 +3272,27 @@ impl NetAssistantApp {
             store.set_connection_gates(gates.clone());
         }
         debug!(
-            "[reply] 规则集已下发: {} 条规则(启用 {}), 总开关={}, 启用连接数={}",
-            config.rules.len(),
-            config.rules.iter().filter(|r| r.enabled).count(),
-            config.enabled,
+            "[reply] 规则集已下发: {} 条规则(启用 {}), 启用连接数={}",
+            config.connections.values().map(|v| v.len()).sum::<usize>(),
+            config
+                .connections
+                .values()
+                .flat_map(|v| v.iter())
+                .filter(|r| r.enabled)
+                .count(),
             gates.values().filter(|v| **v).count()
         );
         cx.notify();
     }
 
-    /// 指定连接是否启用「全局作用域规则」（缺省 false；转发 `ConfigStorage`）
+    /// 指定连接是否启用「自动回复」总闸（缺省 false；转发 `ConfigStorage`）
     pub fn reply_connection_enabled(&self, connection_id: &str) -> bool {
         self.storage.reply_connection_enabled(connection_id)
     }
 
-    /// 是否已启用规则引擎（UI 展示与"旧轨/新轨"提示都用它）
-    pub fn reply_rules_active(&self) -> bool {
-        self.reply_rules_store.is_enabled()
+    /// 指定连接是否已有启用中的规则（该连接总闸开启且至少一条规则启用）
+    pub fn reply_rules_active(&self, connection_id: &str) -> bool {
+        self.reply_rules_store.enabled_rule_count_for(connection_id) > 0
     }
 
     /// 规则命中计数快照（**跨 store 聚合**）
@@ -3305,11 +3309,6 @@ impl NetAssistantApp {
             }
         }
         hits
-    }
-
-    /// 规则集里是否有启用中的规则
-    pub fn has_enabled_reply_rules(&self) -> bool {
-        self.reply_rules_store.enabled_rule_count() > 0
     }
 
     /// 运行时下发解码器配置到在线连接(客户端或服务端所有已连接客户端)，无需重连。
@@ -3531,11 +3530,12 @@ impl NetAssistantApp {
                 let config = self.reply_rules_config();
                 store.replace(&config);
                 store.set_connection_gates(self.storage.reply_connection_enabled_map());
+                let total_rules: usize = config.connections.values().map(|v| v.len()).sum();
                 debug!(
-                    "[reply] 服务端 tab {} 规则集就绪: {} 条规则, 启用={}",
+                    "[reply] 服务端 tab {} 规则集就绪: {} 条规则 / {} 个连接",
                     tab_id,
-                    config.rules.len(),
-                    config.enabled
+                    total_rules,
+                    config.connections.len()
                 );
                 cx.notify();
             }
