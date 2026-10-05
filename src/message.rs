@@ -80,7 +80,10 @@ pub struct Message {
     pub timestamp: String,
     pub direction: MessageDirection,
     pub message_type: MessageType,
-    pub raw_data: Vec<u8>,
+    /// 原始字节。用 `Arc<[u8]>` 而非 `Vec<u8>`：网络层收到的帧需要**同时**喂给
+    /// 规则引擎（`RxFrame`）与本消息记录（P-6），共享同一份缓冲可省掉一次拷贝；
+    /// 日志/导出时的 `Message::clone()` 也退化为引用计数递增。
+    pub raw_data: Arc<[u8]>,
     pub source: Option<String>,
     /// 源地址是否为非预期地址（如UDP广播场景下，回复来自非目标地址）
     #[serde(default)]
@@ -99,7 +102,12 @@ fn default_cached_content() -> String {
 }
 
 impl Message {
-    pub fn new(direction: MessageDirection, raw_data: Vec<u8>, message_type: MessageType) -> Self {
+    pub fn new(
+        direction: MessageDirection,
+        raw_data: impl Into<Arc<[u8]>>,
+        message_type: MessageType,
+    ) -> Self {
+        let raw_data: Arc<[u8]> = raw_data.into();
         let cached_content = Self::compute_content(&raw_data, message_type);
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -395,7 +403,7 @@ mod tests {
             MessageType::Text,
         );
         assert_eq!(text_message.direction, MessageDirection::Sent);
-        assert_eq!(text_message.raw_data, b"Hello World".to_vec());
+        assert_eq!(&*text_message.raw_data, &b"Hello World"[..]);
         assert_eq!(text_message.message_type, MessageType::Text);
         assert!(text_message.id.len() > 0);
         assert!(text_message.timestamp.len() > 0);
@@ -407,7 +415,7 @@ mod tests {
             MessageType::Hex,
         );
         assert_eq!(hex_message.direction, MessageDirection::Received);
-        assert_eq!(hex_message.raw_data, b"48656c6c6f".to_vec());
+        assert_eq!(&*hex_message.raw_data, &b"48656c6c6f"[..]);
         assert_eq!(hex_message.message_type, MessageType::Hex);
         assert!(hex_message.id.len() > 0);
         assert!(hex_message.timestamp.len() > 0);
@@ -553,7 +561,7 @@ mod tests {
 
     /// 取消息内容中的序号。
     fn message_number(message: &Message) -> usize {
-        String::from_utf8(message.raw_data.clone())
+        String::from_utf8(message.raw_data.to_vec())
             .unwrap()
             .parse::<usize>()
             .unwrap()
@@ -574,8 +582,8 @@ mod tests {
         }
         assert_eq!(state.messages.len(), 100);
         assert_eq!(state.total_messages(), 100);
-        assert_eq!(state.messages[0].raw_data, vec![0]);
-        assert_eq!(state.messages[99].raw_data, vec![99]);
+        assert_eq!(state.messages[0].raw_data.as_ref(), &[0u8][..]);
+        assert_eq!(state.messages[99].raw_data.as_ref(), &[99u8][..]);
     }
 
     #[test]
@@ -588,8 +596,8 @@ mod tests {
         assert_eq!(state.add_messages_batch(batch), 0);
         assert_eq!(state.messages.len(), 3);
         assert_eq!(state.total_received, 3);
-        assert_eq!(state.messages[0].raw_data, vec![0]);
-        assert_eq!(state.messages[2].raw_data, vec![2]);
+        assert_eq!(state.messages[0].raw_data.as_ref(), &[0u8][..]);
+        assert_eq!(state.messages[2].raw_data.as_ref(), &[2u8][..]);
 
         // 第二批：远未到上限，全部追加，头部未被丢弃
         let batch: Vec<Message> = (3..6u8)
@@ -597,8 +605,8 @@ mod tests {
             .collect();
         assert_eq!(state.add_messages_batch(batch), 0);
         assert_eq!(state.messages.len(), 6);
-        assert_eq!(state.messages[0].raw_data, vec![0]);
-        assert_eq!(state.messages.last().unwrap().raw_data, vec![5]);
+        assert_eq!(state.messages[0].raw_data.as_ref(), &[0u8][..]);
+        assert_eq!(state.messages.last().unwrap().raw_data.as_ref(), &[5u8][..]);
         // 累计：3 接收 + 3 发送 = 6
         assert_eq!(state.total_messages(), 6);
     }

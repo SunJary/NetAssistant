@@ -8,11 +8,11 @@
 // 面板内容需要按每帧最新状态渲染, 且操作要直接落到 app 的发送任务方法上,
 // 受控 Popover 的内容闭包拿不到 `Context<NetAssistantApp>`, 故不适用。
 
-use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ElementExt as _, Icon, StyledExt as _, Theme};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 use indexmap::IndexMap;
 use rust_i18n::t;
 
@@ -260,8 +260,10 @@ impl<'a> SendTaskPanel<'a> {
                     )
             })
             .child(
-                Icon::new(CustomIconName::IconName(gpui_kit::component::IconName::Plus))
-                    .size(px(12.0)),
+                Icon::new(CustomIconName::IconName(
+                    gpui_kit::component::IconName::Plus,
+                ))
+                .size(px(12.0)),
             )
             .child(add_label)
             .tooltip(move |window, cx| Tooltip::new(add_tooltip.clone()).build(window, cx));
@@ -527,9 +529,7 @@ impl<'a> SendTaskPanel<'a> {
                                     .child(round_text),
                             )
                     })
-                    .child(
-                        t!("send_task.interval", ms = config.interval.get()).to_string(),
-                    ),
+                    .child(t!("send_task.interval", ms = config.interval.get()).to_string()),
             );
 
         // 暂停原因 / 失败原因

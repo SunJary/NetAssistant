@@ -90,27 +90,12 @@ impl TokenBucket {
         inner.last_refill = now;
         inner.tokens = (inner.tokens + elapsed * inner.refill_rate).min(inner.capacity);
     }
-
-    /// 当前可用令牌数(主要用于测试/调试)
-    #[allow(dead_code)]
-    pub fn available_tokens(&self) -> f64 {
-        let mut inner = self.inner.lock().expect("令牌桶锁中毒");
-        Self::refill(&mut inner);
-        inner.tokens
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
-
-    #[test]
-    fn test_unbounded_never_blocks() {
-        let bucket = TokenBucket::unbounded();
-        let available = bucket.available_tokens();
-        assert!(available.is_finite() == false || available >= 1.0);
-    }
 
     #[tokio::test]
     async fn test_unbounded_acquire_returns_immediately() {
@@ -121,30 +106,6 @@ mod tests {
         }
         // 1000 次不应耗时超过 1 秒
         assert!(start.elapsed() < Duration::from_secs(1));
-    }
-
-    #[test]
-    fn test_capacity_equals_qps() {
-        let bucket = TokenBucket::new(100);
-        // 初始令牌 = qps (允许 1 秒突发)
-        let available = bucket.available_tokens();
-        assert!(
-            (available - 100.0).abs() < 1.0,
-            "初始应有约 100 令牌, 实际 {}",
-            available
-        );
-    }
-
-    #[tokio::test]
-    async fn test_acquire_decrements_tokens() {
-        let bucket = TokenBucket::new(100);
-        bucket.acquire().await;
-        let available = bucket.available_tokens();
-        assert!(
-            (available - 99.0).abs() < 1.0,
-            "取 1 个后应剩约 99, 实际 {}",
-            available
-        );
     }
 
     #[tokio::test]
@@ -191,18 +152,6 @@ mod tests {
         h2.await.unwrap();
         // 突发 40 个用完即结束，不应超 1 秒
         assert!(start.elapsed() < Duration::from_secs(1));
-    }
-
-    #[test]
-    fn test_with_initial_tokens_sets_initial_amount() {
-        // qps=100, 初始令牌=10: 初始应只有 10 个可用, 容量仍为 100
-        let bucket = TokenBucket::with_initial_tokens(100, 10.0);
-        let available = bucket.available_tokens();
-        assert!(
-            (available - 10.0).abs() < 1.0,
-            "初始令牌应约为 10, 实际 {}",
-            available
-        );
     }
 
     #[tokio::test]

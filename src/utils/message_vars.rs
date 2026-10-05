@@ -26,13 +26,23 @@
 // 一条消息内所有时间变量共用同一个 `now`, 避免 ${datetime} 与 ${timestamp} 跨毫秒不一致。
 
 use chrono::{DateTime, Local, SecondsFormat, Utc};
+use log::warn;
+use std::sync::Arc;
 use uuid::Uuid;
+
+use crate::core::checksum::ChecksumAlgorithm;
+use crate::reply::frame::{ByteView, RxContext, RxFrame};
 
 /// 单次渲染的上下文
 ///
 /// `worker_id` / `counter` / `seq` 用 `Option` 表达"当前场景是否适用":
 /// - 普通消息: 三者均可为 None, 对应变量按"未知变量"原样保留(不误导成 0)
 /// - 压测: 三者均为 Some, 行为与既有实现逐字一致
+///
+/// `rx` 是本轮新增的**接收帧上下文**: 普通发送/压测为 None(既有调用点一行不用改),
+/// 规则应答为 Some(见 `RenderContext::for_reply`)。用 `Option<Arc<RxFrame>>` 而非
+/// 新参数, 是为了让 `render()` 签名完全不变 —— 这是"零破坏"的关键
+/// (决策见 docs/plan-reply-rules-expr.md §思路)。
 #[derive(Debug, Clone)]
 pub struct RenderContext {
     /// 同一条消息共享的时间基准
@@ -43,6 +53,8 @@ pub struct RenderContext {
     pub counter: Option<u64>,
     /// 递增序号(不消费序号时传 None; 与 CompiledTemplate::needs_seq 配合)
     pub seq: Option<u64>,
+    /// 接收帧上下文(普通发送为 None, 规则应答为 Some)
+    pub rx: Option<Arc<RxFrame>>,
 }
 
 impl RenderContext {
@@ -55,12 +67,39 @@ impl RenderContext {
             worker_id: None,
             counter: None,
             seq,
+            rx: None,
+        }
+    }
+
+    /// 压测 worker 上下文(含 worker_id / counter), 既有行为逐字保留
+    pub fn for_worker(
+        now: DateTime<Local>,
+        worker_id: Option<usize>,
+        counter: Option<u64>,
+        seq: Option<u64>,
+    ) -> Self {
+        Self {
+            now,
+            worker_id,
+            counter,
+            seq,
+            rx: None,
+        }
+    }
+
+    /// 规则应答上下文: 带接收帧快照
+    ///
+    /// 传 `Arc` 而非引用: `render` 可能被跨线程调用, 且调试面板需要长期持有帧快照。
+    pub fn for_reply(seq: Option<u64>, frame: Arc<RxFrame>) -> Self {
+        Self {
+            rx: Some(frame),
+            ..Self::common(seq)
         }
     }
 }
 
 /// 预编译的模板段
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VarSegment {
     /// 字面量文本
     Literal(String),
@@ -92,15 +131,63 @@ pub enum VarSegment {
     WorkerId,
     /// ${counter}
     Counter,
+    /// ${rx.<accessor>:off[:len]} 接收帧标量/字节区间取值
+    RxAccess {
+        accessor: String,
+        offset: usize,
+        len: Option<usize>,
+        /// 原始变量名(如 `rx.raw:0:2`): 无上下文时按**原样**保留,
+        /// 而不是用解析后的字段重新拼写 —— 否则 `${rx.raw}` 会变成 `${rx.raw:0}`,
+        /// 用户看到的"未生效提示"与他写的不一致。
+        source: String,
+    },
+    /// ${rx.len} / ${rx.src} / ${rx.src_ip} / ${rx.port}
+    RxMeta(RxMetaKind),
+    /// ${<算法>:off:len[:le]} 生成型校验, 作用于**模板自身已渲染出的字节**
+    ///
+    /// 这是 F-32「发送前自动填充校验位」的核心: 发送框里写
+    /// `01 03 00 00 00 02 ${crc16modbus:0:6:le}` 即可自动算出 `C4 0B`。
+    GenChecksum {
+        algorithm: ChecksumAlgorithm,
+        offset: usize,
+        len: usize,
+        little: bool,
+    },
+    /// ${= 表达式 } 单表达式(见 src/reply/expr.rs)
+    Expr(Box<crate::reply::expr::Expr>),
     /// 未知变量 / 非法格式, 原样保留 ${name}
     Unknown(String),
+}
+
+/// `${rx.*}` 的元信息取值种类
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RxMetaKind {
+    /// 帧总字节数
+    Len,
+    /// 来源地址 IP:port
+    Src,
+    /// 来源 IP
+    SrcIp,
+    /// 来源端口
+    Port,
+}
+
+impl RxMetaKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            RxMetaKind::Len => "len",
+            RxMetaKind::Src => "src",
+            RxMetaKind::SrcIp => "src_ip",
+            RxMetaKind::Port => "port",
+        }
+    }
 }
 
 /// 预编译的模板
 ///
 /// 解析一次, 拆分为段(Literal / 变量), 避免每包重复执行 `char_indices().collect()`
 /// 和字符串搜索。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompiledTemplate {
     segments: Vec<VarSegment>,
     /// 原始模板长度(用于调用方预分配输出缓冲)
@@ -166,6 +253,24 @@ impl CompiledTemplate {
     /// 调用方据此决定是否 `fetch_add`, 避免"只发 ${uuid} 也吃掉一个序号"。
     pub fn needs_seq(&self) -> bool {
         self.segments.iter().any(|s| matches!(s, VarSegment::Seq))
+    }
+
+    /// 模板是否引用接收帧(`rx.*` / 表达式里的 `rx.*` / 校验函数)
+    ///
+    /// 规则应答据此省掉一次 `Arc<RxFrame>` 构造与原子递增 —— 不含 `rx.*` 的
+    /// 规则在洪泛下完全不付这份成本(决策见 plan-reply-rules-expr.md §4.3)。
+    pub fn needs_rx(&self) -> bool {
+        self.segments.iter().any(|s| match s {
+            VarSegment::RxAccess { .. } | VarSegment::RxMeta(_) => true,
+            // 表达式可能引用 rx.* 或校验函数（二者都依赖接收帧）
+            VarSegment::Expr(expr) => crate::reply::expr::needs_rx(expr),
+            _ => false,
+        })
+    }
+
+    /// 全部段(只读)。供调试面板列出"这条模板里有哪些变量"。
+    pub fn segments(&self) -> &[VarSegment] {
+        &self.segments
     }
 
     /// 渲染到给定的 String 缓冲(调用方负责 clear + 预分配)
@@ -240,13 +345,275 @@ impl CompiledTemplate {
                     Some(v) => push_u64(out, v, hex_mode),
                     None => out.push_str("${counter}"),
                 },
+                // ===== 新增: 接收帧取值 =====
+                //
+                // 无接收上下文时按"未知变量"原样保留(决策 E-2): 静默渲染成空会掩盖
+                // 配置错误(旧发送框里误写 ${rx.x} 会静默发出空内容), 保留字面量让用户
+                // 一眼看出"这个变量没生效"。
+                VarSegment::RxAccess {
+                    accessor,
+                    offset,
+                    len,
+                    source,
+                } => match &ctx.rx {
+                    None => out.push_str(&format!("${{{}}}", source)),
+                    Some(frame) => {
+                        let rx = RxContext::new(frame);
+                        match resolve_rx_access(&rx, accessor, *offset, *len) {
+                            Ok(RxValue::Scalar(v)) => push_i64(out, v, hex_mode),
+                            Ok(RxValue::Bytes(b)) => push_bytes(out, &b, hex_mode),
+                            // 越界: 渲染为空 + warn(决策 E-3)。
+                            // 与 E-2 区分: 上下文不对是配置问题, 越界是"帧比预期短"的数据问题;
+                            // 空串让应答帧结构保持(长度位不会多出 rx.u16be:99 这种文本)。
+                            Err(e) => warn!("[rx] ${{{}}} 取值失败: {}", source, e.describe()),
+                        }
+                    }
+                },
+                VarSegment::RxMeta(kind) => match &ctx.rx {
+                    None => out.push_str(&render_source(seg)),
+                    Some(frame) => {
+                        let rx = RxContext::new(frame);
+                        match kind {
+                            RxMetaKind::Len => push_u64(out, rx.len() as u64, hex_mode),
+                            RxMetaKind::Src => push_text(out, &rx.source(), hex_mode),
+                            RxMetaKind::SrcIp => push_text(out, &rx.source_ip(), hex_mode),
+                            RxMetaKind::Port => push_u64(out, rx.source_port() as u64, hex_mode),
+                        }
+                    }
+                },
+                // ===== 新增: 生成型校验(读 out 自身, 流式语义) =====
+                VarSegment::GenChecksum {
+                    algorithm,
+                    offset,
+                    len,
+                    little,
+                } => {
+                    // hex 模式: out 里是大写 hex 字符(可能含空格), 需还原为字节;
+                    //           out 是"半成品", 末尾必须落在完整字节边界上 —— 见
+                    //           保存期校验的奇偶性检查。
+                    // text 模式: out 就是 UTF-8 字节流。
+                    let bytes = if hex_mode {
+                        crate::utils::hex::hex_to_bytes(out)
+                    } else {
+                        out.as_bytes().to_vec()
+                    };
+                    match bytes.get(*offset..offset.saturating_add(*len)) {
+                        Some(slice) => {
+                            let value = algorithm.compute_with_endian(slice, *little);
+                            push_bytes(out, &value, hex_mode);
+                        }
+                        None => warn!(
+                            "[gen] {} 校验区间越界: {}..{} (已渲染 {} 字节)",
+                            algorithm.name(),
+                            offset,
+                            offset + len,
+                            bytes.len()
+                        ),
+                    }
+                }
+                // ===== 新增: 单表达式 =====
+                VarSegment::Expr(expr) => {
+                    let rx_ctx = ctx.rx.as_ref().map(|f| RxContext::new(f));
+                    if let Err(e) = crate::reply::expr::validate_expr(expr) {
+                        warn!("[expr] 表达式不可用: {}", e.describe());
+                        out.push_str(&render_source(seg));
+                        continue;
+                    }
+                    match crate::reply::expr::eval(expr, rx_ctx.as_ref()) {
+                        Ok(v) => push_i64(out, v, hex_mode),
+                        Err(e) => warn!("[expr] 求值失败: {}", e.describe()),
+                    }
+                }
                 VarSegment::Unknown(s) => out.push_str(s),
             }
         }
     }
 }
 
+/// `rx.*` 取值的结果(标量或字节区间)
+enum RxValue {
+    Scalar(i64),
+    Bytes(Vec<u8>),
+}
+
+/// 解析一个 `rx.<accessor>` 取值
+fn resolve_rx_access(
+    rx: &RxContext<'_>,
+    accessor: &str,
+    offset: usize,
+    len: Option<usize>,
+) -> Result<RxValue, crate::reply::frame::RxError> {
+    // 校验取值(由 parse_rx_segment 编码为 `__checksum:<算法>:<字节序>`)
+    if let Some(spec) = accessor.strip_prefix("__checksum:") {
+        let mut fields = spec.split(':');
+        let algorithm = fields.next().unwrap_or_default();
+        let little = fields.next() == Some("le");
+        return rx
+            .checksum_by_name(algorithm, offset, len.unwrap_or(0), little)
+            .map(RxValue::Bytes);
+    }
+    // 标量访问标识(不含冒号)走标量路径; 其余走字节区间路径
+    if crate::reply::frame::parse_scalar_accessor(accessor).is_some() {
+        return rx.get_scalar(accessor, offset).map(RxValue::Scalar);
+    }
+    match ByteView::parse(accessor) {
+        Some(view) => rx.get_bytes(view, offset, len).map(RxValue::Bytes),
+        None => Err(crate::reply::frame::RxError::UnknownAccessor(
+            accessor.to_string(),
+        )),
+    }
+}
+
+/// 字节区间输出: hex 模式下已经是 hex 文本(rx.hex)或原始字节, 需分别处理
+fn push_bytes(out: &mut String, bytes: &[u8], hex_mode: bool) {
+    if hex_mode {
+        // 生成型校验与校验取值给的是真实字节 → 输出为无分隔大写 hex
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        for b in bytes {
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0F) as usize] as char);
+        }
+    } else {
+        // 文本模式按 Latin-1 直出: 保证 raw 变量的目标是"字节级原样回显"
+        // (用户若想构造应答帧应当用 hex 模式 + ${rx.raw})
+        for &b in bytes {
+            out.push(b as char);
+        }
+    }
+}
+
+/// 把一个变量段还原为源码写法(日志诊断用)
+fn render_source(seg: &VarSegment) -> String {
+    match seg {
+        VarSegment::RxAccess { source, .. } => format!("${{{}}}", source),
+        VarSegment::RxMeta(kind) => format!("${{rx.{}}}", kind.name()),
+        VarSegment::GenChecksum {
+            algorithm,
+            offset,
+            len,
+            little,
+        } => {
+            let suffix = if *little { ":le" } else { "" };
+            format!(
+                "${{{algo}:{offset}:{len}{suffix}}}",
+                algo = algorithm.compact_name()
+            )
+        }
+        VarSegment::Expr(_) => "${= ... }".to_string(),
+        VarSegment::Unknown(s) => s.clone(),
+        other => format!("{:?}", other),
+    }
+}
+
+/// 解析 `${rx.<accessor>[:off[:len]]}`
+fn parse_rx_segment(var_name: &str) -> VarSegment {
+    let body = &var_name["rx.".len()..];
+    let parts: Vec<&str> = body.split(':').map(|p| p.trim()).collect();
+    let accessor = parts[0];
+
+    // 元信息: 不带参数
+    if parts.len() == 1 {
+        match accessor {
+            "len" => return VarSegment::RxMeta(RxMetaKind::Len),
+            "src" => return VarSegment::RxMeta(RxMetaKind::Src),
+            "src_ip" => return VarSegment::RxMeta(RxMetaKind::SrcIp),
+            "port" => return VarSegment::RxMeta(RxMetaKind::Port),
+            "" => return VarSegment::Unknown(format!("${{{}}}", var_name)),
+            _ => {}
+        }
+    }
+
+    // 校验取值: ${rx.crc16modbus:off:len[:le]}
+    if let Some(algo) = ChecksumAlgorithm::parse(accessor) {
+        if parts.len() < 3 || parts.len() > 4 {
+            return VarSegment::Unknown(format!("${{{}}}", var_name));
+        }
+        let (Ok(offset), Ok(len)) = (parts[1].parse::<usize>(), parts[2].parse::<usize>()) else {
+            return VarSegment::Unknown(format!("${{{}}}", var_name));
+        };
+        let little = match parts.get(3) {
+            None => false,
+            Some(&"le") => true,
+            Some(&"be") => false,
+            Some(_) => return VarSegment::Unknown(format!("${{{}}}", var_name)),
+        };
+        return VarSegment::RxAccess {
+            accessor: format!(
+                "__checksum:{}:{}",
+                algo.name(),
+                if little { "le" } else { "be" }
+            ),
+            offset,
+            len: Some(len),
+            source: var_name.to_string(),
+        };
+    }
+
+    // 标量 / 字节区间取值
+    let scalar = crate::reply::frame::parse_scalar_accessor(accessor).is_some();
+    let view = ByteView::parse(accessor).is_some();
+    if !scalar && !view {
+        return VarSegment::Unknown(format!("${{{}}}", var_name));
+    }
+    let offset = match parts.get(1) {
+        None | Some(&"") => 0,
+        Some(text) => match text.parse::<usize>() {
+            Ok(v) => v,
+            Err(_) => return VarSegment::Unknown(format!("${{{}}}", var_name)),
+        },
+    };
+    let len = match parts.get(2) {
+        None | Some(&"") => None,
+        Some(text) => match text.parse::<usize>() {
+            Ok(v) => Some(v),
+            Err(_) => return VarSegment::Unknown(format!("${{{}}}", var_name)),
+        },
+    };
+    if parts.len() > 3 {
+        return VarSegment::Unknown(format!("${{{}}}", var_name));
+    }
+    // 标量取值不接受 len
+    if scalar && len.is_some() {
+        return VarSegment::Unknown(format!("${{{}}}", var_name));
+    }
+    VarSegment::RxAccess {
+        accessor: accessor.to_string(),
+        offset,
+        len,
+        source: var_name.to_string(),
+    }
+}
+
+/// 解析生成型校验变量 `${<算法>:off:len[:le]}`
+fn parse_gen_checksum(var_name: &str) -> Option<VarSegment> {
+    let parts: Vec<&str> = var_name.split(':').map(|p| p.trim()).collect();
+    if parts.len() < 3 || parts.len() > 4 {
+        return None;
+    }
+    let algorithm = ChecksumAlgorithm::parse(parts[0])?;
+    let offset = parts[1].parse::<usize>().ok()?;
+    let len = parts[2].parse::<usize>().ok()?;
+    let little = match parts.get(3) {
+        None => false,
+        Some(&"le") => true,
+        Some(&"be") => false,
+        Some(_) => return None,
+    };
+    Some(VarSegment::GenChecksum {
+        algorithm,
+        offset,
+        len,
+        little,
+    })
+}
+
 /// 将变量名解析为预编译段
+///
+/// 解析顺序: 既有精确名 → `${= 表达式 }` → `${rx.*}` → 生成型校验 → `${time:}` /
+/// `${random:}` → 未知变量原样保留。
+///
+/// **既有变量的语义一个都不改** —— 这是"零破坏"的硬标准(既有 30+ 个测试
+/// 一行不改即通过)。
 fn parse_segment(var_name: &str) -> VarSegment {
     match var_name {
         "seq" => VarSegment::Seq,
@@ -261,6 +628,19 @@ fn parse_segment(var_name: &str) -> VarSegment {
         "iso" => VarSegment::Iso,
         "utc" => VarSegment::Utc,
         "uuid" => VarSegment::Uuid,
+        // ${= 表达式 }: 显式 `=` 前缀避免与"变量名含冒号"歧义(决策 E-8)
+        _ if var_name.starts_with('=') => {
+            let source = var_name[1..].trim();
+            match crate::reply::expr::parse(source) {
+                Ok(expr) => match crate::reply::expr::validate_expr(&expr) {
+                    Ok(()) => VarSegment::Expr(Box::new(expr)),
+                    Err(_) => VarSegment::Unknown(format!("${{{}}}", var_name)),
+                },
+                Err(_) => VarSegment::Unknown(format!("${{{}}}", var_name)),
+            }
+        }
+        // ${rx.*}
+        _ if var_name.starts_with("rx.") => parse_rx_segment(var_name),
         _ if var_name.starts_with("time:") => {
             let fmt = &var_name["time:".len()..];
             // 空格式按 ${time} 默认处理
@@ -287,7 +667,10 @@ fn parse_segment(var_name: &str) -> VarSegment {
                 _ => VarSegment::Unknown(format!("${{{}}}", var_name)),
             }
         }
-        _ => VarSegment::Unknown(format!("${{{}}}", var_name)),
+        _ => match parse_gen_checksum(var_name) {
+            Some(seg) => seg,
+            None => VarSegment::Unknown(format!("${{{}}}", var_name)),
+        },
     }
 }
 
@@ -406,6 +789,7 @@ mod tests {
             worker_id: Some(7),
             counter: Some(1),
             seq: Some(0),
+            rx: None,
         };
         assert_eq!(render_text("w${worker_id}-c${counter}", &ctx), "w7-c1");
     }
@@ -470,6 +854,7 @@ mod tests {
             worker_id: None,
             counter: None,
             seq: None,
+            rx: None,
         };
         let out = render_hex("${date}", &ctx);
         // "YYYY-MM-DD" → 10 字节 → 20 个 hex 字符
@@ -544,6 +929,7 @@ mod tests {
             worker_id: Some(12),
             counter: None,
             seq: Some(0),
+            rx: None,
         };
         let out = render_hex("4142${worker_id}${seq}", &ctx);
         assert_eq!(out, "41420C00");
@@ -575,5 +961,248 @@ mod tests {
         // 模板含中文等多字节字符时按 char 边界解析, 不 panic 且字面量完整保留
         let out = render_text("中文-${random:1:1}-文", &common_ctx());
         assert_eq!(out, "中文-1-文");
+    }
+
+    // ========================================================================
+    // 本轮新增: ${rx.*} / 生成型校验 / 表达式
+    // ========================================================================
+
+    /// 构造带接收帧的渲染上下文(规则应答侧)
+    fn reply_ctx(bytes: &[u8], seq: Option<u64>) -> RenderContext {
+        RenderContext::for_reply(seq, crate::reply::RxFrame::for_test(bytes.to_vec()))
+    }
+
+    /// `${rx.*}` 标量取值(与 `${seq}` 同构: text 十进制 / hex 偶数长度大写)
+    #[test]
+    fn test_rx_scalar_values() {
+        let ctx = reply_ctx(&[0x01, 0x03, 0x00, 0x02], Some(0));
+        assert_eq!(render_text("${rx.u8:0}", &ctx), "1");
+        assert_eq!(render_text("${rx.u8:3}", &ctx), "2");
+        assert_eq!(render_text("${rx.u16be:2}", &ctx), "2");
+        assert_eq!(render_text("${rx.u16le:0}", &ctx), "769");
+        assert_eq!(render_hex("${rx.u8:0}", &ctx), "01");
+        // 数值变量的 hex 输出是"最短偶数长度"，不按位宽补零（与既有 ${seq} 一致）
+        assert_eq!(render_hex("${rx.u16be:2}", &ctx), "02");
+        assert_eq!(render_hex("${rx.u16be:0}", &ctx), "0103");
+        // 偏移省略 = 0
+        assert_eq!(render_text("${rx.u16be}", &ctx), "259");
+    }
+
+    /// `${rx}` 元信息
+    #[test]
+    fn test_rx_meta_values() {
+        let ctx = reply_ctx(&[0xAA, 0xBB], None);
+        assert_eq!(render_text("${rx.len}", &ctx), "2");
+        assert_eq!(render_hex("${rx.len}", &ctx), "02");
+        // RxFrame::for_test 的来源是 127.0.0.1:12345
+        assert_eq!(render_text("${rx.src}", &ctx), "127.0.0.1:12345");
+        assert_eq!(render_text("${rx.src_ip}", &ctx), "127.0.0.1");
+        assert_eq!(render_text("${rx.port}", &ctx), "12345");
+        assert_eq!(render_hex("${rx.port}", &ctx), "3039");
+    }
+
+    /// `${rx.raw}` / `hex` / `ascii` / `base64` 四种字节视图
+    #[test]
+    fn test_rx_byte_views() {
+        let ctx = reply_ctx(b"AT+CSQ", None);
+        // 文本模式: raw 按 Latin-1 直出(保证"字节级原样回显")
+        assert_eq!(render_text("${rx.raw}", &ctx), "AT+CSQ");
+        assert_eq!(render_text("${rx.raw:0:2}", &ctx), "AT");
+        // hex 模式: raw 输出无分隔大写 hex
+        assert_eq!(render_hex("${rx.raw:0:2}", &ctx), "4154");
+        // hex 视图在两种模式下都是大写 hex 文本(hex 模式再编码一次)
+        assert_eq!(render_text("${rx.hex:0:2}", &ctx), "41 54");
+        assert_eq!(render_text("${rx.ascii:0:6}", &ctx), "AT+CSQ");
+        assert_eq!(render_text("${rx.base64:0:3}", &ctx), "QVQr");
+        // 到帧尾
+        assert_eq!(render_text("${rx.raw:3}", &ctx), "CSQ");
+    }
+
+    /// `${rx.<算法>:off:len[:le]}` 作用于**接收帧**
+    #[test]
+    fn test_rx_checksum_variables() {
+        // Modbus 读保持寄存器请求帧
+        let ctx = reply_ctx(&[0x01, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x0B], None);
+        assert_eq!(render_hex("${rx.crc16modbus:0:6}", &ctx), "0BC4");
+        assert_eq!(render_hex("${rx.crc16modbus:0:6:le}", &ctx), "C40B");
+        assert_eq!(render_hex("${rx.xor:0:3}", &ctx), "02");
+        assert_eq!(render_hex("${rx.sum8:0:3}", &ctx), "04");
+        assert_eq!(render_hex("${rx.lrc:0:2}", &ctx), "FC");
+        assert_eq!(render_hex("${rx.crc32:0:6}", &ctx).len(), 8);
+    }
+
+    /// 生成型校验: `${crc16modbus:off:len:le}` 作用于**模板自身已渲染出的字节**
+    ///
+    /// 这是 F-32「发送前自动填充校验位」的核心用法 —— 用户不需要手算 CRC 再粘贴。
+    /// 注意模板的字面量（含空格）原样保留，校验字节追加在末尾。
+    #[test]
+    fn test_generated_checksum_modbus_rtu_frame() {
+        let ctx = common_ctx();
+        // Modbus RTU 读保持寄存器: 6 字节头 + CRC(小端)
+        assert_eq!(
+            render_hex("01 03 00 00 00 02 ${crc16modbus:0:6:le}", &ctx),
+            "01 03 00 00 00 02 C40B",
+            "必须与手算的 Modbus CRC 一致"
+        );
+        // 默认大端
+        assert_eq!(
+            render_hex("01 03 00 00 00 02 ${crc16modbus:0:6}", &ctx),
+            "01 03 00 00 00 02 0BC4"
+        );
+        // 无分隔写法（不变量 2: hex 解析对空白与大小写容错）
+        assert_eq!(
+            render_hex("010300000002${crc16modbus:0:6:le}", &ctx),
+            "010300000002C40B"
+        );
+        // 文字面量的空格不影响字节解析（不变量 2）
+        assert_eq!(
+            render_hex("01 03 00 00 00 02${crc16modbus:0:6:le}", &ctx),
+            "01 03 00 00 00 02C40B"
+        );
+        // 累积和 / 异或 / LRC
+        assert_eq!(render_hex("010300${sum8:0:3}", &ctx), "01030004");
+        assert_eq!(render_hex("010300${xor:0:3}", &ctx), "01030002");
+        assert_eq!(render_hex("0103${lrc:0:2}", &ctx), "0103FC");
+    }
+
+    /// 生成型校验的区间越界: 渲染为空 + warn(不 panic、不破坏后续段)
+    #[test]
+    fn test_generated_checksum_out_of_range() {
+        let ctx = common_ctx();
+        // 已渲染 2 字节却要求覆盖 6 → 越界, 该变量渲染为空, 前面的字面量原样保留
+        assert_eq!(render_hex("0103${crc16modbus:0:6:le}", &ctx), "0103");
+        assert_eq!(render_hex("01 03 ${crc16modbus:0:6:le}", &ctx), "01 03 ");
+    }
+
+    /// `${= 表达式 }`(决策 E-8/E-9/E-10)
+    #[test]
+    fn test_expression_variables() {
+        let ctx = reply_ctx(&[0x01, 0x03, 0x00, 0x02], Some(0));
+        assert_eq!(render_text("${= 1 + 2 }", &ctx), "3");
+        assert_eq!(render_text("${= 0xFF }", &ctx), "255");
+        assert_eq!(render_text("${= rx.u16be(2) + 1 }", &ctx), "3");
+        assert_eq!(render_text("${= if(rx.u8(1) == 3, 4, 0) }", &ctx), "4");
+        assert_eq!(render_text("${= bits(0x8A5F, 10, 4) }", &ctx), "2");
+        // 无 rx 上下文的普通模板里, 不引用帧的表达式照样可用
+        assert_eq!(render_text("${= 2 * 3 }", &common_ctx()), "6");
+        // hex 模式按数值输出
+        assert_eq!(render_hex("${= 10 }", &ctx), "0A");
+    }
+
+    // ===== 决策 E-2 / E-3: 上下文与越界的区别 =====
+
+    /// 无接收帧上下文时 `${rx.*}` **原样保留**(E-2): 静默渲染成空会掩盖配置错误
+    #[test]
+    fn test_rx_variables_preserved_without_context() {
+        let ctx = common_ctx();
+        assert_eq!(render_text("${rx.raw}", &ctx), "${rx.raw}");
+        assert_eq!(render_text("${rx.u16be:2}", &ctx), "${rx.u16be:2}");
+        assert_eq!(render_text("${rx.len}", &ctx), "${rx.len}");
+        assert_eq!(render_text("${rx.src}", &ctx), "${rx.src}");
+        assert_eq!(
+            render_text("${rx.crc16modbus:0:6}", &ctx),
+            "${rx.crc16modbus:0:6}"
+        );
+        assert_eq!(render_text("v=${rx.u8:0}", &ctx), "v=${rx.u8:0}");
+    }
+
+    /// 有上下文但**越界**时渲染为空(E-3): 帧比预期短是数据问题, 空串保持应答帧结构
+    #[test]
+    fn test_rx_out_of_range_renders_empty() {
+        let ctx = reply_ctx(&[0x01], None);
+        assert_eq!(render_text("A${rx.u16be:0}B", &ctx), "AB");
+        assert_eq!(render_text("A${rx.raw:5}C", &ctx), "AC");
+        assert_eq!(render_text("A${rx.hex:0:9}D", &ctx), "AD");
+    }
+
+    /// 空帧上的行为(边界表)
+    #[test]
+    fn test_rx_empty_frame() {
+        let ctx = reply_ctx(&[], None);
+        assert_eq!(render_text("${rx.raw}", &ctx), "");
+        assert_eq!(render_text("${rx.len}", &ctx), "0");
+        // 空帧取 1 字节 → 越界 → 空串
+        assert_eq!(render_text("[${rx.u8:0}]", &ctx), "[]");
+        // 空输入 CRC16 = 0xFFFF（与 checksum 既有断言一致）
+        assert_eq!(render_hex("${rx.crc16modbus:0:0}", &ctx), "FFFF");
+    }
+
+    /// 未知 accessor 按未知变量原样保留(与 `${unknown}` 一致)
+    ///
+    /// 注意 `${rx.u8}`（省略偏移）是**合法**写法，等价于 `${rx.u8:0}` ——
+    /// 这是有意保留的便利写法，不是拼写错误。
+    #[test]
+    fn test_unknown_rx_accessor_preserved() {
+        for template in [
+            "${rx.u17be:0}",
+            "${rx.foo:0}",
+            "${rx.u8:0:2}",
+            "${rx.raw:0:1:2}",
+            "${rx.u8le:0}",
+        ] {
+            assert_eq!(
+                render_text(template, &reply_ctx(&[1, 2, 3, 4], None)),
+                template,
+                "非法语法必须原样保留: {}",
+                template
+            );
+        }
+        // 省略偏移 = 0（便利写法）
+        assert_eq!(render_text("${rx.u8}", &reply_ctx(&[7, 8], None)), "7");
+    }
+
+    /// 非法表达式按未知变量原样保留(未知函数 / 参数个数不符 / 语法错)
+    #[test]
+    fn test_invalid_expression_preserved() {
+        for template in [
+            "${= send(1) }",
+            "${= min(1) }",
+            "${= 1 + }",
+            "${= foo }",
+            "${= }",
+        ] {
+            assert_eq!(
+                render_text(template, &common_ctx()),
+                template,
+                "非法表达式必须原样保留: {}",
+                template
+            );
+        }
+    }
+
+    /// 非法生成型校验名按未知变量保留(不能把 `${crc99:0:6}` 当成合法变量)
+    #[test]
+    fn test_invalid_gen_checksum_preserved() {
+        for template in [
+            "${crc99:0:6}",
+            "${crc16modbus:0}",
+            "${crc16modbus:a:b}",
+            "${crc16modbus:0:6:xx}",
+        ] {
+            assert_eq!(render_text(template, &common_ctx()), template);
+        }
+    }
+
+    /// `needs_seq` / `needs_rx` 探测(快路径判断)
+    #[test]
+    fn test_needs_detection() {
+        assert!(CompiledTemplate::new("${rx.u8:0}").needs_rx());
+        assert!(CompiledTemplate::new("${rx.len}").needs_rx());
+        assert!(CompiledTemplate::new("${= rx.u8(0) }").needs_rx());
+        assert!(!CompiledTemplate::new("${seq}").needs_rx());
+        assert!(!CompiledTemplate::new("hello").needs_rx());
+
+        // 既有探测不受影响
+        assert!(CompiledTemplate::new("${seq}").needs_seq());
+        assert!(!CompiledTemplate::new("${uuid}").needs_seq());
+    }
+
+    /// `${rx.*}` 与 `${seq}` 共存: 序号只在模板含它时消费
+    #[test]
+    fn test_rx_with_seq() {
+        let ctx = reply_ctx(&[0x01], Some(7));
+        assert_eq!(render_text("${rx.u8:0}-${seq}", &ctx), "1-7");
+        let compiled = CompiledTemplate::new("${rx.u8:0}");
+        assert!(!compiled.needs_seq(), "不含 seq 的模板不得消费序号");
     }
 }

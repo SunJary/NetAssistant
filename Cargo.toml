@@ -9,7 +9,7 @@ gpui-kit = { version = "0.7", features = ["tree-sitter"] }
 gpui-pre-platform = { version = "0.3.7", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
 anyhow = "1.0"
 indexmap = "2"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 thiserror = "2.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }

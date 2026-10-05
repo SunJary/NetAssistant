@@ -4,11 +4,9 @@ use crate::ui::dialog::variable_picker::{
     VariableItem, VariablePickerTarget, message_variable_items, render_variable_picker,
 };
 use crate::ui::dialog::{
-    DecoderSelectionDialogState, open_add_client_dialog, open_decoder_selection_dialog,
-    open_favorite_remark_dialog,
+    DecoderSelectionDialogState, ReplyRulesDialogState, open_add_client_dialog,
+    open_decoder_selection_dialog, open_favorite_remark_dialog, open_reply_rules_dialog,
 };
-use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
 use gpui_kit::component::ElementExt as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_kit::component::{
@@ -16,8 +14,11 @@ use gpui_kit::component::{
     clipboard::Clipboard,
     input::{EditorState, Input, InputState},
     scroll::{Scrollbar, ScrollbarMode},
+    switch::Switch,
     tooltip::Tooltip,
 };
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 
 use log::{debug, info};
 use rust_i18n::t;
@@ -60,7 +61,6 @@ pub struct ConnectionTabState {
     pub error_message: Option<String>,
     /// 实际生效的本地端点(IP:端口, 连接成功后由 Connected 事件上报; UDP 自动分配端口也可见)
     pub local_endpoint: Option<String>,
-    pub auto_reply_enabled: bool,
     pub auto_scroll_enabled: bool,
     pub client_connections: Vec<SocketAddr>,
     pub selected_client: Option<SocketAddr>,
@@ -96,8 +96,6 @@ pub struct ConnectionTabState {
     pub variable_picker_target: Option<VariablePickerTarget>,
     /// 普通消息区「插入变量」按钮的窗口坐标（on_prepaint 更新，供浮层锚定）
     pub message_var_button_bounds: Option<Bounds<Pixels>>,
-    /// 自动回复区「插入变量」按钮的窗口坐标（on_prepaint 更新）
-    pub auto_reply_var_button_bounds: Option<Bounds<Pixels>>,
     /// 手动发送与周期发送共享的递增序号（${seq}）
     pub message_seq: Arc<AtomicU64>,
 
@@ -185,7 +183,6 @@ impl ConnectionTabState {
             is_connected: false,
             error_message: None,
             local_endpoint: None,
-            auto_reply_enabled: false,
             auto_scroll_enabled: true,
             client_connections: Vec::new(),
             selected_client: None,
@@ -243,7 +240,6 @@ impl ConnectionTabState {
             // 消息变量插入（默认收起）
             variable_picker_target: None,
             message_var_button_bounds: None,
-            auto_reply_var_button_bounds: None,
             message_seq,
 
             // 消息搜索（默认收起，无查询词 → 零扫描）
@@ -555,7 +551,6 @@ impl<'a> ConnectionTab<'a> {
         let target = self.tab_state.variable_picker_target?;
         let bounds = match target {
             VariablePickerTarget::Message => self.tab_state.message_var_button_bounds?,
-            VariablePickerTarget::AutoReply => self.tab_state.auto_reply_var_button_bounds?,
         };
 
         let tab_id = self.tab_id.clone();
@@ -1173,8 +1168,6 @@ impl<'a> ConnectionTab<'a> {
                                                     }
                                                     // 转换型语义: 切模式时把输入内容整体互转(hex → 文本)
                                                     app.convert_input_on_mode_switch(&tab_id_text, &from_mode, "text", window, cx);
-                                                    // 输入模式影响自动回复内容解析, 同步到网络层
-                                                    app.sync_auto_reply_to_network(&tab_id_text, cx);
                                                     cx.notify();
                                                 }
                                             })),
@@ -1226,8 +1219,6 @@ impl<'a> ConnectionTab<'a> {
                                                             focus.focus(window, cx);
                                                         }
                                                     }
-                                                    // 输入模式影响自动回复内容解析, 同步到网络层
-                                                    app.sync_auto_reply_to_network(&tab_id_hex, cx);
                                                     cx.notify();
                                                 }
                                             })),
@@ -1235,8 +1226,11 @@ impl<'a> ConnectionTab<'a> {
                             ),
                     ),
             )
+            // 回复规则入口: 客户端与服务端都显示(F-04)。
+            .child(self.render_reply_rules_section(window, cx))
+            // 服务端专属: 客户端连接列表
             .when(!is_client, |this| {
-                this.child(self.render_auto_reply_config(window, cx))
+                this.child(self.render_client_connections(window, cx))
             })
             // 连接相关错误信息显示
             .when(self.tab_state.error_message.is_some(), |this| {
@@ -1252,16 +1246,141 @@ impl<'a> ConnectionTab<'a> {
             })
     }
 
-    /// 渲染自动回复配置区域
-    fn render_auto_reply_config(
+    /// 渲染「自动回复」入口区(客户端与服务端都可见 —— F-04)。
+    ///
+    /// 单行入口: 标题 + 开关 + 状态 + 「管理规则」按钮; 具体规则在弹窗里维护。
+    fn render_reply_rules_section(
         &self,
-        window: &mut Window,
+        _window: &mut Window,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> impl IntoElement {
+        let theme = cx.theme().clone();
+        // 严格按连接隔离: 计数与活跃判定都只看本连接(tab_id)的规则
+        let enabled_rules = self.app.reply_rules_store.enabled_rule_count_for(&self.tab_id);
+        let rules_active = self.app.reply_rules_active(&self.tab_id);
+        let gate_on = self.app.reply_connection_enabled(&self.tab_id);
+
+        // 三态文案: 总闸开且有活跃规则→已启用 · N 条规则; 总闸开但无启用规则→提示;
+        // 总闸关→未启用
+        let status_text = if gate_on && rules_active {
+            t!("connection_tab.auto_reply_active", n = enabled_rules).to_string()
+        } else if gate_on {
+            t!("reply_rules.no_enabled_rule").to_string()
+        } else {
+            t!("connection_tab.reply_rules_off").to_string()
+        };
+
+        // 连接级开关: 决定该连接是否运行自动回复(标题即开关标签, 不再重复文案)
+        let switch_entity = cx.entity().clone();
+        let switch_tab_id = self.tab_id.clone();
+        // 「管理规则」弹窗的所属连接: 规则严格隔离, 弹窗只展示/编辑该连接的规则
+        let dialog_tab_id = self.tab_id.clone();
+
+        div()
+            .flex()
+            .items_start() // 按钮始终贴首行顶部: 状态文案变长时只让左侧内容换行, 按钮不掉到下一行
+            .gap_2()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .child(
+                // 左侧: 标题 + 开关 + 状态; 侧栏偏窄时在内部换行, 不挤压右侧按钮
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(theme.foreground)
+                            .flex_shrink_0()
+                            .child(t!("connection_tab.auto_reply").to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .child(
+                                Switch::new(format!("reply-gate-switch-{}", self.tab_id))
+                                    .checked(gate_on)
+                                    .with_size(Size::Small)
+                                    .on_change(move |next, _window, cx| {
+                                        let tab_id = switch_tab_id.clone();
+                                        switch_entity.update(cx, |app, cx| {
+                                            app.storage
+                                                .set_reply_connection_enabled(&tab_id, *next);
+                                            app.sync_reply_rules_to_network(cx);
+                                        });
+                                    }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .flex_shrink_0()
+                            .child(status_text),
+                    ),
+            )
+            // 「管理规则」: 打开规则管理弹窗(客户端/服务端通用)
+            .child(
+                div()
+                    .id("manage-reply-rules-btn")
+                    .flex_shrink_0()
+                    .px_1p5()
+                    .py_0p5()
+                    .rounded_md()
+                    .text_xs()
+                    .font_medium()
+                    .cursor_pointer()
+                    .text_color(theme.primary)
+                    .bg(theme.primary.opacity(0.06))
+                    .hover(|this| {
+                        this.text_color(gpui_kit::white()).bg(theme.primary)
+                    })
+                    .tooltip(|window, cx| {
+                        Tooltip::new(
+                            t!("connection_tab.manage_reply_rules_tooltip").to_string(),
+                        )
+                        .build(window, cx)
+                    })
+                    .child(t!("connection_tab.manage_reply_rules").to_string())
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(
+                            move |app: &mut NetAssistantApp,
+                                  _event: &MouseDownEvent,
+                                  window: &mut Window,
+                                  cx: &mut Context<NetAssistantApp>| {
+                                // 弹窗状态必须在这里建好: 删除的二次确认态存在该状态里,
+                                // 为空时删除按钮永远只走到「未确认」分支, 点了没反应。
+                                // 此处直接改字段而非 app.update, 避免在已持有租约时重入 update。
+                                app.reply_rules_dialog = Some(ReplyRulesDialogState::new(
+                                    dialog_tab_id.clone(),
+                                ));
+                                open_reply_rules_dialog(
+                                    cx.entity().downgrade(),
+                                    window,
+                                    cx,
+                                );
+                                cx.notify();
+                            },
+                        ),
+                    ),
+            )
+    }
+
+    /// 渲染服务端「客户端连接」列表(仅服务端 tab 有内容)
+    fn render_client_connections(
+        &self,
+        _window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
         let tab_id = self.tab_id.clone();
-        let tab_id_for_toggle = tab_id.clone();
-        let auto_reply_enabled = self.tab_state.auto_reply_enabled;
         let is_connected = self.tab_state.is_connected;
         let is_udp_server = self.tab_state.connection_config.protocol()
             == crate::config::connection::ConnectionType::Udp;
@@ -1271,7 +1390,6 @@ impl<'a> ConnectionTab<'a> {
             .flex_col()
             .gap_2()
             .flex_1()
-            .min_h_0() // 允许 flex 子项收缩
             .child(
                 div()
                     .flex()
@@ -1282,155 +1400,8 @@ impl<'a> ConnectionTab<'a> {
                             .text_xs()
                             .font_semibold()
                             .text_color(theme.foreground)
-                            .child(t!("connection_tab.auto_reply").to_string()),
+                            .child(t!("connection_tab.client_connections").to_string()),
                     )
-                    .child(
-                        div()
-                            .w_4()
-                            .h_4()
-                            .border_1()
-                            .border_color(theme.border)
-                            .rounded(px(4.))
-                            .cursor_pointer()
-                            .when(auto_reply_enabled, |this| {
-                                this.bg(theme.primary)
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(theme.primary_foreground)
-                                            .font_bold()
-                                            .child("✓"),
-                                    )
-                            })
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |app, _event, window, cx| {
-                                if let Some(tab_state) = app.connection_tabs.get_mut(&tab_id_for_toggle) {
-                                    tab_state.auto_reply_enabled = !tab_state.auto_reply_enabled;
-                                    if tab_state.auto_reply_enabled {
-                                        app.ensure_auto_reply_input_exists(tab_id_for_toggle.clone(), window, cx);
-                                    }
-                                }
-                                // 开关变化实时同步到网络层(网络层每条消息读取)
-                                app.sync_auto_reply_to_network(&tab_id_for_toggle, cx);
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(t!("connection_tab.enable_auto_reply").to_string()),
-                    )
-                    // 「插入变量」按钮: 与消息区复用同一浮层组件, 目标为自动回复输入框
-                    .child({
-                        let prepaint_entity = cx.entity().clone();
-                        let prepaint_tab_id = tab_id.clone();
-                        let prepaint_handler: Box<
-                            dyn Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static,
-                        > = Box::new(move |bounds, _window, cx| {
-                            prepaint_entity.update(cx, |app, _| {
-                                if let Some(tab_state) =
-                                    app.connection_tabs.get_mut(&prepaint_tab_id)
-                                {
-                                    tab_state.auto_reply_var_button_bounds = Some(bounds);
-                                }
-                            });
-                        });
-                        let toggle_tab_id = tab_id.clone();
-                        let active = self.tab_state.variable_picker_target
-                            == Some(VariablePickerTarget::AutoReply);
-                        div()
-                            // on_prepaint 需挂在 Div 上(ElementExt 仅对 ParentElement 实现),
-                            // 必须在 .id()/.tooltip() 转为 Stateful 之前调用
-                            .on_prepaint(prepaint_handler)
-                            .id("insert-var-btn-auto-reply")
-                            .ml_auto()
-                            .px_1p5()
-                            .py_0p5()
-                            .rounded_md()
-                            .text_xs()
-                            .font_medium()
-                            .cursor_pointer()
-                            .when(active, |this| {
-                                this.text_color(gpui_kit::white()).bg(theme.primary)
-                            })
-                            .when(!active, |this| {
-                                this.text_color(theme.primary).bg(theme.primary.opacity(0.06))
-                            })
-                            .hover(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
-                            .active(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
-                            .tooltip(|window, cx| {
-                                Tooltip::new(
-                                    t!("connection_tab.insert_variable_tooltip").to_string(),
-                                )
-                                .build(window, cx)
-                            })
-                            .on_mouse_down(MouseButton::Left, cx.listener(
-                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                    if let Some(tab_state) = app.connection_tabs.get_mut(&toggle_tab_id) {
-                                        tab_state.variable_picker_target =
-                                            if tab_state.variable_picker_target == Some(VariablePickerTarget::AutoReply) {
-                                                None
-                                            } else {
-                                                Some(VariablePickerTarget::AutoReply)
-                                            };
-                                    }
-                                    cx.notify();
-                                },
-                            ))
-                            .child(t!("connection_tab.insert_variable").to_string())
-                    }),
-            )
-            .when(auto_reply_enabled, |this| {
-
-                if let Some(input_state) = self.app.auto_reply_inputs.get(&tab_id) {
-                    let hex_editor = self.app.auto_reply_hex_editors.get(&tab_id);
-                    this.child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(t!("connection_tab.reply_content_label").to_string()),
-                            )
-                            .child(
-                                self.render_input_with_mode(
-                                    input_state,
-                                    hex_editor,
-                                    &self.tab_state.message_input_mode,
-                                    &theme,
-                                    window,
-                                    cx,
-                                ),
-                            ),
-                    )
-                } else {
-                    this
-                }
-            })
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .flex_1()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(theme.foreground)
-                                    .child(t!("connection_tab.client_connections").to_string()),
-                            )
                             .child(
                                 div()
                                     .text_xs()
@@ -1599,7 +1570,6 @@ impl<'a> ConnectionTab<'a> {
                                 },
                             ),
                     )
-            )
     }
 
     /// 渲染报文记录区域（聊天样式）- 使用 GPUI list 组件

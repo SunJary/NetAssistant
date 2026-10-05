@@ -5,8 +5,6 @@
 // 每帧从 NetAssistantApp 读取最新状态(编辑态标题、协议/消息模式/解码器 chips、
 // 「更多设置」折叠区随状态刷新), 内容过高时中间滚动, 标题与底部按钮固定。
 
-use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::StyledExt;
 use gpui_kit::component::Theme;
@@ -15,6 +13,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::NetAssistantApp;

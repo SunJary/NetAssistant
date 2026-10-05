@@ -193,7 +193,10 @@ mod tests {
     fn test_convert_compute() {
         let to_hex = selection_tools().iter().find(|t| t.id == "to_hex").unwrap();
         assert_eq!(to_hex.compute("ok"), "6F 6B");
-        let to_text = selection_tools().iter().find(|t| t.id == "to_text").unwrap();
+        let to_text = selection_tools()
+            .iter()
+            .find(|t| t.id == "to_text")
+            .unwrap();
         assert_eq!(to_text.compute("6F 6B"), "ok");
     }
 

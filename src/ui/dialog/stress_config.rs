@@ -6,8 +6,6 @@
 // 滚动结构为「外层 max_h 钳制可视区 + 内层 overflow_y_scrollbar」
 // (见 dialog_content_max_height 文档, max_h 不能直接放滚动容器上, 否则滚轮不响应)。
 
-use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::ElementExt as _;
 use gpui_kit::component::StyledExt;
@@ -17,6 +15,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::input::{EditorState, Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 
 use rust_i18n::t;
 

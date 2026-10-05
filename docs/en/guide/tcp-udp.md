@@ -52,20 +52,22 @@ In hex mode the file is imported as **raw bytes** with no encoding involved; con
 
 ![File data source screenshot](../../../assets/screenshots/en/screenshot_file_source.png)
 
-## Periodic Send
+## Periodic Send and Send Tasks
 
-1. Enable periodic send on the connection tab
-2. Set the send interval (in milliseconds)
-3. Click `[Send]` to start periodic sending
-4. Uncheck periodic send to stop the sending task
+**Periodic send**: enable periodic send on the connection tab, set the send interval (in milliseconds) and click `[Send]` to repeat the current send-box content at that interval; uncheck to stop. Suitable for long-run stability tests or simulating device heartbeats.
 
-Suitable for long-run stability tests or simulating device heartbeats.
+**Line-by-line send**: after importing a file or pasting multiple lines, choose "Send Line by Line" as the send mode to send them one per line; you can set a per-line interval, looping and a maximum round count. The task panel shows live progress with pause / resume / stop / delete.
 
-## Auto-Reply
+**Timed task (heartbeat)**: each connection supports one timed task that loops a single message (with `${...}` variables) at a fixed interval, optionally auto-starting with the connection; the interval can be edited in the task panel and applies immediately.
 
-1. Enable auto-reply on the connection tab
-2. Set the auto-reply content
-3. Incoming messages are answered automatically
+A "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message, and also to line-send tasks and auto reply.
+
+## Auto-Reply (Reply Rules)
+
+1. Click `[Manage Rules]` on the connection tab to create or edit rules
+2. Each rule is a **condition** plus an **action**: conditions support nesting of "all of / any of / not" and predicates such as contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address and checksum validation; the action is the reply content sent on a hit, and may use received-frame variables such as `${rx.*}`
+3. The connection page's "Auto Reply" switch is that connection's single master gate, and rules only apply within their own connection (evaluated top to bottom, first hit wins)
+4. The editor offers an "inline test run": enter a test frame to immediately see whether it hits, the first unmet condition, and the rendered reply
 
 Suitable for simulating server or client responses and verifying the peer's handling logic.
 

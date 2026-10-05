@@ -1,13 +1,10 @@
 name: Deploy Docs
 
 on:
+  # 文档改动不自动部署；发布 tag 时部署，或手动触发（用于未发布功能先上线文档）
   push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/deploy-docs.yml'
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 permissions:

@@ -1,5 +1,5 @@
-use gpui_kit::*;
 use gpui_kit::component::TitleBar;
+use gpui_kit::*;
 use log::{error, info};
 use simple_logger::SimpleLogger;
 use std::borrow::Cow;
@@ -19,6 +19,7 @@ mod export;
 mod log_writer;
 mod message;
 mod network;
+mod reply;
 mod send_task;
 mod stress;
 mod theme_event_handler;

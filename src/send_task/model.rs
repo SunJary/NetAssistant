@@ -8,6 +8,7 @@
 //! - `SendTimed`: 定时任务(心跳), 固定单条无限循环(面板可见)
 //! - `SendPeriodic`: 周期发送(行内勾选), 每轮实时取发送框内容(面板隐藏)
 
+use crate::network::events::WireMessage;
 use crate::utils::message_vars::{CompiledTemplate, RenderContext};
 use serde::{Deserialize, Serialize};
 use smol::channel::Sender;
@@ -286,10 +287,10 @@ pub fn build_periodic_config(
 /// 发送目标(App 注入 / 推送刷新)。
 #[derive(Debug, Clone)]
 pub enum TaskTarget {
-    /// 客户端模式: 该 tab 的连接写通道
-    Client(Sender<Vec<u8>>),
-    /// 服务端模式: App 在客户端连接/断开时推送的目标快照(addr 仅用于报错定位)
-    ServerClients(Vec<(SocketAddr, Sender<Vec<u8>>)>),
+    /// 客户端模式: 该 tab 的连接写通道（目标由连接自身决定）
+    Client(Sender<WireMessage>),
+    /// 服务端模式: App 在客户端连接/断开时推送的目标快照
+    ServerClients(Vec<(SocketAddr, Sender<WireMessage>)>),
 }
 
 /// 运行期状态(UI 侧持有, 事件泵写入)。
@@ -306,7 +307,6 @@ pub enum TaskStatus {
     Stopped,
     /// 预留: `TaskEndReason::Failed` 的信源(心跳探活/运行期编码错误等确定性失败时构造);
     /// 当前引擎对发送失败一律走「暂停保留」, 故尚未有构造点
-    #[allow(dead_code)]
     Failed(String),
 }
 

@@ -4,11 +4,11 @@
 //! 嵌套链, 用 debug_bounds 逐层测量高度, 并模拟滚轮验证滚动是否生效。
 //! 目的: 定位高度约束链断点 (滚动失效 = 某层被内容撑开, scroll_max 恒为 0)。
 
+use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::{
     Context, InteractiveElement, IntoElement, ParentElement, Render, ScrollDelta, ScrollWheelEvent,
     Size, Styled, TestAppContext, VisualTestContext, Window, div, point, px,
 };
-use gpui_kit::component::scroll::ScrollableElement;
 
 const WINDOW_SIZE: (f32, f32) = (1000., 500.);
 

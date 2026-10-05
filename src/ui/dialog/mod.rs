@@ -5,6 +5,8 @@ mod favorite_remark;
 mod import_file;
 mod new_connection;
 mod port_limit_help;
+mod reply_rule_edit;
+mod reply_rules;
 mod stress_config;
 mod timed_task;
 pub mod variable_picker;
@@ -16,6 +18,8 @@ pub use favorite_remark::open_favorite_remark_dialog;
 pub use import_file::{ImportFileDialogState, open_import_file_dialog};
 pub use new_connection::open_new_connection_dialog;
 pub use port_limit_help::open_port_limit_help_dialog;
+pub use reply_rule_edit::{ReplyRuleEditDialogState, open_reply_rule_edit_dialog};
+pub use reply_rules::{ReplyRulesDialogState, open_reply_rules_dialog};
 pub use stress_config::{StressConfigDialogState, open_stress_config_dialog};
 pub use timed_task::{TimedTaskDialogState, open_timed_task_dialog};
 

@@ -121,6 +121,493 @@ variable_picker:
   hint:
     zh-CN: "提示: 点击输入框定位光标, 变量会插入到光标处; Hex 模式下数值变量自动转为十六进制"
     en: "Tip: Click in the input to place the cursor; variables are inserted at the cursor. In Hex mode, numeric variables are automatically converted to hexadecimal"
+  group_common:
+    zh-CN: 通用变量
+    en: General
+  group_rx:
+    zh-CN: 接收帧变量
+    en: Received Frame
+  group_checksum:
+    zh-CN: 生成校验（发送时填充）
+    en: Generated Checksum (filled on send)
+  group_expr:
+    zh-CN: 表达式
+    en: Expressions
+  desc_rx_raw:
+    zh-CN: 触发本条规则的整帧内容（原样）
+    en: The whole frame that triggered this rule (verbatim)
+  desc_rx_raw_slice:
+    zh-CN: "接收帧的第 0 字节起 4 字节"
+    en: "4 bytes of the received frame starting at offset 0"
+  desc_rx_len:
+    zh-CN: 接收帧长度（字节）
+    en: Length of the received frame in bytes
+  desc_rx_src:
+    zh-CN: "来源地址, 如 192.168.1.9:5000"
+    en: "Source address, e.g. 192.168.1.9:5000"
+  desc_rx_src_ip:
+    zh-CN: 来源 IP（不含端口）
+    en: Source IP (without port)
+  desc_rx_port:
+    zh-CN: 来源端口
+    en: Source port
+  desc_rx_u8:
+    zh-CN: "接收帧偏移 0 处的 1 字节无符号整数"
+    en: "Unsigned 8-bit value at offset 0 of the received frame"
+  desc_rx_u16be:
+    zh-CN: 接收帧大端 16 位无符号整数
+    en: Big-endian unsigned 16-bit value of the received frame
+  desc_rx_u16le:
+    zh-CN: 接收帧小端 16 位无符号整数
+    en: Little-endian unsigned 16-bit value of the received frame
+  desc_rx_i32be:
+    zh-CN: 接收帧大端 32 位有符号整数
+    en: Big-endian signed 32-bit value of the received frame
+  desc_rx_hex:
+    zh-CN: 接收帧某段字节的十六进制文本
+    en: Hex text of a byte range of the received frame
+  desc_rx_ascii:
+    zh-CN: 接收帧某段字节的 ASCII 文本
+    en: ASCII text of a byte range of the received frame
+  desc_rx_crc16modbus:
+    zh-CN: 对接收帧某段字节现算 CRC16/MODBUS
+    en: Compute CRC16/MODBUS over a byte range of the received frame
+  desc_gen_crc16modbus:
+    zh-CN: 对**应答内容**现算 CRC16/MODBUS（大端）
+    en: Compute CRC16/MODBUS over the reply payload (big-endian)
+  desc_gen_crc16modbus_le:
+    zh-CN: 对**应答内容**现算 CRC16/MODBUS（小端，Modbus RTU 用）
+    en: Compute CRC16/MODBUS over the reply payload (little-endian, for Modbus RTU)
+  desc_gen_xor:
+    zh-CN: 对**应答内容**现算异或校验（1 字节）
+    en: Compute XOR checksum over the reply payload (1 byte)
+  desc_gen_sum8:
+    zh-CN: 对**应答内容**现算累加和（1 字节）
+    en: Compute 8-bit sum over the reply payload (1 byte)
+  desc_gen_lrc:
+    zh-CN: 对**应答内容**现算 Modbus LRC（1 字节）
+    en: Compute Modbus LRC over the reply payload (1 byte)
+  desc_gen_crc32:
+    zh-CN: 对**应答内容**现算 CRC32（4 字节）
+    en: Compute CRC32 over the reply payload (4 bytes)
+  desc_expr_arith:
+    zh-CN: 算术表达式（支持 + - * / % 与括号）
+    en: Arithmetic expression (supports + - * / % and parentheses)
+  desc_expr_rx:
+    zh-CN: 表达式里读取接收帧数值
+    en: Read a value from the received frame inside an expression
+  desc_expr_if:
+    zh-CN: 条件表达式（if(条件, 真值, 假值)）
+    en: Conditional expression (if(cond, then, else))
+  desc_expr_bits:
+    zh-CN: 取某值的位段（起始位, 位数）
+    en: Extract a bit field (start bit, length)
+
+reply_rules:
+  title:
+    zh-CN: 回复规则
+    en: Reply Rules
+  no_enabled_rule:
+    zh-CN: 无启用规则
+    en: No active rules
+  legacy_hint:
+    zh-CN: 检测到旧的「自动回复」内容。可一键迁移成一条等价规则（旧的固定回复会被关闭，避免两条轨同时生效）。
+    en: Legacy auto-reply content detected. Migrate it into an equivalent rule in one click (the legacy fixed reply is turned off so both paths never run at once).
+  migrate:
+    zh-CN: 一键迁移
+    en: Migrate
+  migrate_done:
+    zh-CN: 已迁移为规则（可在列表中继续调整）。
+    en: Migrated into a rule (you can keep editing it in the list).
+  migrate_nothing:
+    zh-CN: 没有可迁移的旧固定回复内容。
+    en: There is no legacy fixed reply content to migrate.
+  list_title:
+    zh-CN: 规则列表（自上而下依次求值，命中即停）
+    en: Rules (evaluated top to bottom, first hit wins)
+  count:
+    zh-CN: 规则 %{n} 条
+    en: "%{n} rules"
+  hits:
+    zh-CN: 触发 %{n} 次
+    en: "%{n} triggers"
+  invalid_count:
+    zh-CN: "%{n} 条规则存在错误"
+    en: "%{n} rules have errors"
+  empty:
+    zh-CN: 还没有规则。点击左下角「新建规则」开始。
+    en: No rules yet. Click the New Rule button at the bottom left to start.
+  row_hits:
+    zh-CN: 触发 %{n} 次
+    en: "%{n} triggers"
+  label_condition:
+    zh-CN: 条件
+    en: Condition
+  label_action:
+    zh-CN: 动作
+    en: Action
+  badge_disabled:
+    zh-CN: 已禁用
+    en: Disabled
+  badge_any_message:
+    zh-CN: 任意消息
+    en: Any message
+  edit:
+    zh-CN: 编辑
+    en: Edit
+  duplicate:
+    zh-CN: 复制
+    en: Duplicate
+  copy_suffix:
+    zh-CN: 副本
+    en: copy
+  enable:
+    zh-CN: 启用
+    en: Enable
+  disable:
+    zh-CN: 停用
+    en: Disable
+  reset_hits:
+    zh-CN: 清零
+    en: Reset
+  reset_all:
+    zh-CN: 全部清零
+    en: Reset All
+  drag_hint:
+    zh-CN: 提示：按住左侧 ⠿ 手柄可拖动调整规则顺序。
+    en: "Tip: drag the ⠿ handle on the left to reorder rules."
+  drag_handle_tooltip:
+    zh-CN: 拖动排序
+    en: Drag to reorder
+  delete:
+    zh-CN: 删除
+    en: Delete
+  delete_confirm:
+    zh-CN: 确认删除？
+    en: Confirm delete?
+  new_rule:
+    zh-CN: 新建规则
+    en: New Rule
+  close:
+    zh-CN: 关闭
+    en: Close
+
+reply_rule_edit:
+  title_new:
+    zh-CN: 新建回复规则
+    en: New Reply Rule
+  title_edit:
+    zh-CN: 编辑回复规则
+    en: Edit Reply Rule
+  section_notes:
+    zh-CN: 备注与标签
+    en: Notes & tags
+  name:
+    zh-CN: 规则名
+    en: Name
+  name_placeholder:
+    zh-CN: 给这条规则起个名字
+    en: Name this rule
+  description:
+    zh-CN: 备注
+    en: Notes
+  description_placeholder:
+    zh-CN: 说明这条规则的用途（可选）
+    en: What this rule is for (optional)
+  tags:
+    zh-CN: 标签（逗号分隔）
+    en: Tags (comma separated)
+  tags_placeholder:
+    zh-CN: 可选，用于分组筛选
+    en: Optional, for grouping
+  belongs_to:
+    zh-CN: 所属连接
+    en: Connection
+  enabled:
+    zh-CN: 启用
+    en: Enabled
+  section_condition:
+    zh-CN: 条件（满足才执行动作）
+    en: Conditions (must hold to run the action)
+  match_mode:
+    zh-CN: 匹配模式
+    en: Match mode
+  match_mode_any:
+    zh-CN: 任意消息
+    en: Any message
+  match_mode_custom:
+    zh-CN: 自定义条件
+    en: Custom conditions
+  match_all_hint:
+    zh-CN: 匹配全部报文（任意消息）
+    en: Matches every frame (any message)
+  summary:
+    zh-CN: 当前条件
+    en: Current condition
+  add_condition:
+    zh-CN: ＋ 添加条件
+    en: "+ Add condition"
+  add_condition_close:
+    zh-CN: 收起
+    en: Collapse
+  kind_all:
+    zh-CN: 全部满足 (All)
+    en: All of
+  kind_any:
+    zh-CN: 任一满足 (Any)
+    en: Any of
+  kind_not:
+    zh-CN: 取反 (Not)
+    en: Not
+  kind_contains:
+    zh-CN: 包含字节序列
+    en: Contains bytes
+  kind_fixed_exact:
+    zh-CN: 定长精确匹配
+    en: Fixed exact
+  kind_fixed_mask:
+    zh-CN: 定长模糊匹配
+    en: Fixed masked
+  kind_prefix_range:
+    zh-CN: 前缀 + 长度区间
+    en: Prefix + length range
+  kind_length:
+    zh-CN: 帧长度区间
+    en: Frame length
+  kind_byte_at:
+    zh-CN: 指定偏移字节
+    en: Byte at offset
+  kind_scalar_at:
+    zh-CN: 指定偏移整数
+    en: Integer at offset
+  kind_suffix:
+    zh-CN: 帧尾匹配
+    en: Suffix
+  kind_regex:
+    zh-CN: 正则匹配
+    en: Regex
+  kind_from:
+    zh-CN: 来源地址
+    en: Source address
+  kind_field_eq:
+    zh-CN: 字段等于
+    en: Field equals
+  kind_checksum_valid:
+    zh-CN: 校验值有效
+    en: Checksum valid
+  field_bytes:
+    zh-CN: 字节（Hex/文本）
+    en: Bytes (hex/text)
+  field_len:
+    zh-CN: 帧长
+    en: Length
+  field_mask:
+    zh-CN: 掩码（Hex）
+    en: Mask (hex)
+  field_prefix:
+    zh-CN: 前缀
+    en: Prefix
+  field_min_len:
+    zh-CN: 最小帧长
+    en: Min length
+  field_max_len:
+    zh-CN: 最大帧长
+    en: Max length
+  field_min:
+    zh-CN: 最小
+    en: Min
+  field_max:
+    zh-CN: 最大
+    en: Max
+  field_offset:
+    zh-CN: 偏移
+    en: Offset
+  field_width:
+    zh-CN: 宽度
+    en: Width
+  field_endian:
+    zh-CN: 字节序
+    en: Endian
+  field_signed:
+    zh-CN: 符号
+    en: Sign
+  field_cmp:
+    zh-CN: 比较
+    en: Compare
+  field_value:
+    zh-CN: 值
+    en: Value
+  field_pattern:
+    zh-CN: 正则
+    en: Pattern
+  field_addrs:
+    zh-CN: 地址（逗号分隔，支持 CIDR）
+    en: Addresses (comma separated, CIDR allowed)
+  field_accessor:
+    zh-CN: 取值标识
+    en: Accessor
+  field_algorithm:
+    zh-CN: 算法
+    en: Algorithm
+  field_at:
+    zh-CN: 校验位位置
+    en: Checksum position
+  at_fixed:
+    zh-CN: 固定偏移
+    en: Fixed offset
+  at_trailing:
+    zh-CN: 末尾倒数
+    en: From end
+  field_n:
+    zh-CN: 倒数第 N 字节
+    en: Nth from end
+  field_range:
+    zh-CN: 覆盖区间（起始:长度，留空=到校验位前）
+    en: "Range (start:len, empty = up to the checksum)"
+  field_op:
+    zh-CN: 字节操作
+    en: Byte op
+  op_eq:
+    zh-CN: 等于
+    en: Equals
+  op_ne:
+    zh-CN: 不等于
+    en: Not equal
+  op_masked:
+    zh-CN: 掩码比较
+    en: Masked
+  op_in:
+    zh-CN: 在集合内
+    en: In set
+  field_byte_value:
+    zh-CN: 值（Hex 字节）
+    en: Value (hex byte)
+  field_byte_mask:
+    zh-CN: 掩码（Hex 字节）
+    en: Mask (hex byte)
+  field_values:
+    zh-CN: 集合（Hex 字节）
+    en: Set (hex bytes)
+  field_constraints:
+    zh-CN: 位置约束
+    en: Positional constraints
+  field_len_offset:
+    zh-CN: 长度位偏移
+    en: Length field offset
+  field_base:
+    zh-CN: 长度基准
+    en: Length base
+  add_constraint:
+    zh-CN: ＋ 添加约束
+    en: "+ Add constraint"
+  add_constraint_close:
+    zh-CN: 收起
+    en: Collapse
+  constraint_byte_eq:
+    zh-CN: 字节等于
+    en: Byte equals
+  constraint_byte_mask:
+    zh-CN: 掩码位非零
+    en: Masked bits non-zero
+  constraint_byte_in:
+    zh-CN: 字节在集合内
+    en: Byte in set
+  constraint_length_from_byte:
+    zh-CN: 帧长由长度位决定
+    en: Length from byte
+  byte_mode:
+    zh-CN: 模式
+    en: Mode
+  mode_hex:
+    zh-CN: Hex
+    en: Hex
+  mode_text:
+    zh-CN: 文本
+    en: Text
+  section_action:
+    zh-CN: 动作（命中后执行）
+    en: Action (run on hit)
+  payload_placeholder:
+    zh-CN: 应答内容（可含 ${rx.*} 等变量）
+    en: Reply content (may contain ${rx.*} variables)
+  insert_variable:
+    zh-CN: 插入变量
+    en: Insert Variable
+  codec:
+    zh-CN: 编码方式
+    en: Encoding
+  codec_inherit:
+    zh-CN: 继承连接
+    en: Inherit
+  codec_raw:
+    zh-CN: 原样输出
+    en: Raw
+  codec_lf:
+    zh-CN: 追加 LF
+    en: LF
+  codec_crlf:
+    zh-CN: 追加 CRLF
+    en: CRLF
+  codec_hint:
+    zh-CN: 二进制协议请选「原样输出」，否则会在帧尾追加换行导致校验失败。
+    en: For binary protocols choose "Raw", otherwise a line ending is appended and the checksum breaks.
+  hex_codec_warning:
+    zh-CN: Hex 模式下建议把编码方式改为「原样输出」，避免在帧尾追加换行。
+    en: In Hex mode prefer "Raw" encoding to avoid an appended line ending.
+  section_test:
+    zh-CN: 内联试跑
+    en: Inline Test
+  test_frame:
+    zh-CN: 测试报文
+    en: Test frame
+  test_frame_placeholder:
+    zh-CN: 输入一帧报文，用当前草稿试跑
+    en: Enter a frame to test against the current draft
+  test_source:
+    zh-CN: 来源地址
+    en: Source address
+  test_source_placeholder:
+    zh-CN: 127.0.0.1:12345
+    en: 127.0.0.1:12345
+  run_test:
+    zh-CN: 试跑
+    en: Run Test
+  test_no_result:
+    zh-CN: 尚未试跑（修改任意字段都会清空上次结果，避免看到过期结论）。
+    en: Not run yet (editing any field clears the previous result so stale conclusions cannot mislead).
+  test_hit:
+    zh-CN: 命中规则
+    en: "Hit rule:"
+  test_miss:
+    zh-CN: 未命中任何规则
+    en: No rule matched
+  test_first_failure:
+    zh-CN: 首个失败项
+    en: First failure
+  test_actual:
+    zh-CN: 实际
+    en: actual
+  test_rendered:
+    zh-CN: 渲染出的应答
+    en: Rendered reply
+  test_rendered_empty:
+    zh-CN: （无应答内容）
+    en: (no reply content)
+  test_vars:
+    zh-CN: 应答引用的接收帧变量
+    en: Frame variables used by the reply
+  test_vars_empty:
+    zh-CN: （未引用接收帧变量）
+    en: (no frame variables referenced)
+  cannot_save:
+    zh-CN: 无法保存
+    en: Cannot save
+  save:
+    zh-CN: 保存
+    en: Save
+  cancel:
+    zh-CN: 取消
+    en: Cancel
 
 add_client:
   title:

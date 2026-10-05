@@ -1,10 +1,120 @@
-use crate::config::connection::{AutoReplyConfig, DecoderConfig};
+use crate::config::connection::DecoderConfig;
 use crate::message::Message;
+use crate::reply::ReplyRulesStore;
 use crate::send_task::model::{TaskEndReason, TaskStatus};
 use smol::channel::Sender;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 写入通道里的一个待发项。
+///
+/// 绝大多数发送走"继承"路径：由连接级「结尾追加字符」（trailer）设置决定是否追加。
+/// **回复规则**可以要求"原样输出"（二进制协议必需）—— 若让 Modbus 应答继承 CRLF，
+/// CRC 后面会多出 2 字节，协议直接错且症状隐晦（对端只报校验错）。
+///
+/// 为什么用"通道里带标记"而不是给 encoder 加 bypass 开关：连接的 encoder 对
+/// **所有**写入生效（手动发送、发送任务、规则应答共用一条写通道），加一个
+/// 跨线程的 bypass 标志会让并发的手动发送被误 bypass —— 那是不可接受的竞态。
+/// 把意图随数据一起传递，既不改变既有通道语义，也没有竞态。
+///
+/// `target` 只有 UDP 用得上：TCP 连接的写通道天然绑定在一条 socket 上，
+/// 而 UDP 的应答必须发回**数据报的真实来源**（广播发现场景下通常是设备自己的 IP，
+/// 而不是广播地址），因此目标地址需要随数据传递。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WireMessage {
+    data: Vec<u8>,
+    /// true = 字节已按规则指定的方式处理好，发送点**不得**再追加连接 trailer
+    finalized: bool,
+    /// UDP 显式目标地址；None = 使用连接/会话的默认目标
+    target: Option<std::net::SocketAddr>,
+}
+
+impl WireMessage {
+    /// 普通发送：由连接 trailer 设置决定是否追加结尾（与既有行为逐字一致）
+    pub fn inherit(data: Vec<u8>) -> Self {
+        Self {
+            data,
+            finalized: false,
+            target: None,
+        }
+    }
+
+    /// 普通发送 + 指定目标（UDP 回发源地址场景）
+    pub fn inherit_to(data: Vec<u8>, target: std::net::SocketAddr) -> Self {
+        Self {
+            data,
+            finalized: false,
+            target: Some(target),
+        }
+    }
+
+    /// 规则应答：`trailer` 为 None 表示原样输出，否则追加指定结尾
+    pub fn bypass(data: Vec<u8>, trailer: Option<crate::config::connection::TrailerKind>) -> Self {
+        Self::bypass_to(data, trailer, None)
+    }
+
+    /// 规则应答 + 指定目标（UDP）
+    pub fn bypass_to(
+        data: Vec<u8>,
+        trailer: Option<crate::config::connection::TrailerKind>,
+        target: Option<std::net::SocketAddr>,
+    ) -> Self {
+        use crate::config::connection::apply_trailer;
+        let data = match trailer {
+            None => data,
+            Some(kind) => apply_trailer(&data, kind).into_owned(),
+        };
+        Self {
+            data,
+            finalized: true,
+            target,
+        }
+    }
+
+    /// 最终要写到 socket 上的字节
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn into_data(self) -> Vec<u8> {
+        self.data
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn bypasses_trailer(&self) -> bool {
+        self.finalized
+    }
+
+    /// UDP 显式目标地址（None = 用会话默认目标）
+    pub fn target(&self) -> Option<std::net::SocketAddr> {
+        self.target
+    }
+}
+
+/// 既有发送点统一投递 `Vec<u8>`：默认继承连接 trailer（零改动语义）
+impl From<Vec<u8>> for WireMessage {
+    fn from(data: Vec<u8>) -> Self {
+        Self::inherit(data)
+    }
+}
+
+impl AsRef<[u8]> for WireMessage {
+    fn as_ref(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+impl std::ops::Deref for WireMessage {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
 
 /// 一批接收到的消息(源头聚合)。
 ///
@@ -108,17 +218,24 @@ pub enum ConnectionEvent {
     /// 收到一批消息(洪泛压测聚合路径, 高频消息全部走此事件)
     MessagesReceived(String, ReceivedBatch),
     /// 客户端写入发送器准备就绪
-    ClientWriteSenderReady(String, Sender<Vec<u8>>),
+    ///
+    /// 通道携带 `WireMessage` 而非裸字节：回复规则可能要求"原样输出"（绕过连接 trailer），
+    /// 这个意图必须与数据一起传递（见 `WireMessage` 的说明）。
+    /// 既有发送点直接 `send(vec)` 仍然可用（`From<Vec<u8>>` 默认继承 trailer）。
+    ClientWriteSenderReady(String, Sender<WireMessage>),
     /// 服务端客户端连接
-    ServerClientConnected(String, SocketAddr, Sender<Vec<u8>>),
+    ServerClientConnected(String, SocketAddr, Sender<WireMessage>),
     /// 服务端客户端断开
     ServerClientDisconnected(String, SocketAddr),
     /// 客户端解码器控制发送器就绪(用于运行时下发解码器配置, 无需重连)
     DecoderControlSenderReady(String, Sender<DecoderConfig>),
     /// 服务端某客户端的解码器控制发送器就绪
     ServerDecoderControlSenderReady(String, SocketAddr, Sender<DecoderConfig>),
-    /// 服务端自动回复共享状态就绪(UI 运行时下发启用开关与回复内容)
-    ServerAutoReplyStateReady(String, Arc<AutoReplyConfig>),
+    /// 回复规则集共享状态就绪(UI 运行时下发整表；服务端多客户端共享同一 store)
+    ///
+    /// 客户端侧不需要此事件：客户端是 1:1，在 `TcpClient::new` / `UdpClient::new`
+    /// 构造时直接注入 store（决策 D-12），少一次事件往返。
+    ReplyRulesStoreReady(String, Arc<ReplyRulesStore>),
     /// 发送任务进度(节流上报; UI 只刷新展示)
     TaskProgress {
         tab_id: String,

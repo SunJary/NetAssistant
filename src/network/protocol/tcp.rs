@@ -1,13 +1,13 @@
-use crate::config::connection::{
-    AutoReplyConfig, ClientConfig, DecoderConfig, ServerConfig, TrailerSetting,
-};
+use crate::config::connection::{ClientConfig, DecoderConfig, ServerConfig, TrailerSetting};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::{Message, MessageDirection, MessageType};
-use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch};
+use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch, WireMessage};
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::decoder::CodecFactory;
+use crate::reply::exec::handle_frame;
+use crate::reply::{FrameMeta, FrameOrigin, ReplyRulesStore, RxFrame};
 use bytes::BytesMut;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use smol::channel::{Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -27,20 +27,40 @@ use tokio_util::sync::CancellationToken;
 /// 避免对端半包后静默时数据长时间滞留。
 const FLUSH_DELAY: Duration = Duration::from_millis(50);
 
-/// 将解码出的数据构造为 Message 并累加入批(客户端方向, 无 source)。
+/// 处理一个解码出的帧(可与回复规则交互)并累加入批。
 ///
-/// 同时累加网络层精确计数(与显示解耦, 洪泛下不漏计)。
+/// 先跑回复规则（只可能追加一条应答），帧本身照常进明细、照常计数。
 #[allow(clippy::too_many_arguments)]
-fn accumulate_decoded(
+fn process_frame(
     data: BytesMut,
     processor: &Arc<dyn MessageProcessor>,
     batch: &mut ReceivedBatch,
     counters: &Option<NetCounters>,
     message_type: MessageType,
+    rules: &Arc<ReplyRulesStore>,
+    sender: &Sender<WireMessage>,
+    connection_id: &str,
+    source: &SocketAddr,
+    meta: FrameMeta,
 ) {
     let raw_len = data.len() as u64;
-    let raw_data: Vec<u8> = data.to_vec();
-    let message = processor.process_received_message(raw_data, message_type);
+    // P-6：整帧只复制一次（`BytesMut` → `Arc<[u8]>`），规则引擎的 `RxFrame`
+    // 与消息明细共享同一份缓冲，不再各复制一份。
+    let raw: Arc<[u8]> = Arc::from(&data[..]);
+
+    if rules.is_enabled() {
+        try_rule_reply(
+            rules,
+            sender,
+            batch,
+            connection_id,
+            source,
+            raw.clone(),
+            meta,
+        );
+    }
+
+    let message = processor.process_received_message(raw, message_type);
     if let Some(c) = counters {
         c.add_received(1);
         c.add_received_bytes(raw_len);
@@ -48,6 +68,36 @@ fn accumulate_decoded(
     batch.count += 1;
     batch.bytes += raw_len;
     batch.messages.push(message);
+}
+
+/// TCP 服务端读循环的单帧处理：走规则引擎。
+///
+/// 抽成函数是为了让"主解码循环 / 静默强刷 / 解码器切换 / 连接结束"四个产出点
+/// 用**同一段决策逻辑**。
+#[allow(clippy::too_many_arguments)]
+fn process_frame_server(
+    data: BytesMut,
+    processor: &Arc<dyn MessageProcessor>,
+    batch: &mut ReceivedBatch,
+    counters: &Option<NetCounters>,
+    rules: &Arc<ReplyRulesStore>,
+    sender: &Sender<WireMessage>,
+    connection_id: &str,
+    source: &SocketAddr,
+    meta: FrameMeta,
+) {
+    process_frame(
+        data,
+        processor,
+        batch,
+        counters,
+        MessageType::Text,
+        rules,
+        sender,
+        connection_id,
+        source,
+        meta,
+    );
 }
 
 /// 将本批消息一次性推送为单个 MessagesReceived 事件(洪泛聚合路径)。
@@ -70,37 +120,52 @@ fn flush_batch(
     }
 }
 
-/// 网络层自动回复: 每条解码出的完整消息触发一次回复。
+/// 对一帧跑回复规则并投递应答(TCP 服务端与客户端共用)。
 ///
-/// 回复内容由 `AutoReplyConfig::render_content` 给出(无变量时为用户配置的原始字节,
-/// 含变量时逐条渲染), 通过该连接的发送通道投递后由用户配置的 encoder 编码发送
-/// ——不额外修改内容、不擅自添加换行符。
-/// 仅在启用且内容非空时发送; 未启用走 `is_enabled()` 无锁快速路径, 零开销。
-fn try_auto_reply(
-    auto_reply_state: &Arc<AutoReplyConfig>,
-    client_tx: &Sender<Vec<u8>>,
+/// 关键点:
+///   1. 走**规则引擎**而非单条固定载荷 —— 按规则集逐条匹配, 命中即停;
+///   2. 应答载荷可引用 `${rx.*}`(请求帧字段), 或含 `${crc16modbus:0:6:le}`
+///      这类生成型校验(发送前自动填充校验位)。
+///
+/// 未命中时不产生任何动作；未启用规则时零开销(`is_enabled()` 原子读即返回)。
+fn try_rule_reply(
+    rules: &Arc<ReplyRulesStore>,
+    client_tx: &Sender<WireMessage>,
     batch: &mut ReceivedBatch,
-    _connection_id: &str,
+    connection_id: &str,
     source: &SocketAddr,
-    _counters: &Option<NetCounters>,
+    raw: Arc<[u8]>,
+    meta: FrameMeta,
 ) {
-    if !auto_reply_state.is_enabled() {
+    if !rules.is_enabled() {
         return;
     }
-    let content = auto_reply_state.render_content();
-    if content.is_empty() {
-        return;
+
+    // P-6：`raw` 已由调用方与本帧的 Message 共享，这里不再 `to_vec()`
+    let frame = Arc::new(RxFrame::from_shared(raw, *source, meta));
+    let outcome = handle_frame(rules, &frame, connection_id);
+
+    if let Some(bytes) = &outcome.reply {
+        // P-6：应答字节也共享一份 `Arc<[u8]>` —— 明细用 Arc，投递项仍需独立 Vec
+        let shared: Arc<[u8]> = Arc::from(bytes.as_slice());
+        // 规则自带的编码方式优先（`Raw` = 原样输出，二进制协议必需）；
+        // `Inherit` 时由 encoder 追加连接级 trailer，与手动发送完全一致（决策 D-8）
+        let wire = match crate::reply::exec::rule_wire_mode(outcome.codec) {
+            crate::reply::exec::RuleWireMode::Inherit => WireMessage::inherit(shared.to_vec()),
+            crate::reply::exec::RuleWireMode::Override(trailer) => {
+                WireMessage::bypass(shared.to_vec(), trailer)
+            }
+        };
+        if client_tx.try_send(wire).is_ok() {
+            batch.sent_messages.push(
+                Message::new(MessageDirection::Sent, shared, MessageType::Text)
+                    .with_source(source.to_string()),
+            );
+        } else {
+            // 通道满/关闭：不阻塞网络任务，只告警（沿用既有 try_send 语义）
+            warn!("[reply] 投递应答失败: rule={:?}", outcome.rule_id);
+        }
     }
-    // 投递到该连接的发送通道, 由 send_fut 经 encoder 编码后写出
-    if client_tx.try_send(content.clone()).is_err() {
-        return;
-    }
-    // Sent 方向明细聚合到本批, 随批 flush(避免自动回复洪泛时二次事件洪泛)。
-    // 发送计数在发送任务统一累加(手动发送与自动回复共用汇聚点), 这里不重复计数。
-    batch.sent_messages.push(
-        Message::new(MessageDirection::Sent, content, MessageType::Text)
-            .with_source(source.to_string()),
-    );
 }
 
 /// TCP客户端实现
@@ -113,6 +178,8 @@ pub struct TcpClient {
     cancel_token: CancellationToken,
     /// 运行期「结尾追加字符」设置(下拉改动即时生效)
     trailer: TrailerSetting,
+    /// 回复规则共享状态（客户端 1:1 构造注入，决策 D-12：少一次事件往返）
+    reply_rules: Arc<ReplyRulesStore>,
 }
 
 impl TcpClient {
@@ -121,6 +188,7 @@ impl TcpClient {
         event_sender: Option<Sender<ConnectionEvent>>,
         net_counters: Option<NetCounters>,
         trailer: TrailerSetting,
+        reply_rules: Arc<ReplyRulesStore>,
     ) -> Self {
         TcpClient {
             config,
@@ -130,6 +198,7 @@ impl TcpClient {
             is_connected: false,
             cancel_token: CancellationToken::new(),
             trailer,
+            reply_rules,
         }
     }
 }
@@ -145,6 +214,7 @@ impl NetworkConnection for TcpClient {
         let net_counters = self.net_counters.clone();
         let cancel_token = self.cancel_token.clone();
         let trailer = self.trailer.clone();
+        let reply_rules = self.reply_rules.clone();
 
         Pin::from(Box::new(async move {
             // 解析地址，支持IPv4和IPv6
@@ -190,7 +260,7 @@ impl NetworkConnection for TcpClient {
             );
 
             // 创建发送器和接收器
-            let (tx, rx) = smol_unbounded::<Vec<u8>>();
+            let (tx, rx) = smol_unbounded::<WireMessage>();
             // 创建解码器控制通道(用于运行时下发解码器配置, 无需重连)
             let (decoder_control_tx, decoder_control_rx) = smol_unbounded::<DecoderConfig>();
 
@@ -207,7 +277,7 @@ impl NetworkConnection for TcpClient {
                 if let Err(e) = sender
                     .send(ConnectionEvent::ClientWriteSenderReady(
                         config.id.clone(),
-                        tx,
+                        tx.clone(),
                     ))
                     .await
                 {
@@ -240,6 +310,10 @@ impl NetworkConnection for TcpClient {
             let net_counters_clone = net_counters.clone();
             let decoder_config = config.decoder_config.clone();
             let read_cancel_token = cancel_token.clone();
+            let reply_rules_for_read = reply_rules.clone();
+            let client_tx_for_reply = tx.clone();
+            // 客户端侧的对端地址(远端服务端)：`${rx.src}` 与 `From` 谓词用
+            let peer_addr = socket_addr;
             // 用 Option 包装: 控制通道关闭后置 None, 让 select! 中该分支退化为 pending
             let mut decoder_control_rx = Some(decoder_control_rx);
             tokio::spawn(async move {
@@ -274,12 +348,21 @@ impl NetworkConnection for TcpClient {
                                         match decoder.decode(&mut buffer) {
                                             Ok(Some(data)) => {
                                                 let data: BytesMut = data;
-                                                accumulate_decoded(
+                                                // 【回复规则】先跑规则（可能投递一条应答），
+                                                // 帧本身照常进明细与计数。
+                                                process_frame(
                                                     data,
                                                     &message_processor_clone,
                                                     &mut batch,
                                                     &net_counters_clone,
                                                     MessageType::Text,
+                                                    &reply_rules_for_read,
+                                                    &client_tx_for_reply,
+                                                    &config_clone.id,
+                                                    &peer_addr,
+                                                    FrameMeta {
+                                                        origin: FrameOrigin::Decoded,
+                                                    },
                                                 );
                                             },
                                             Ok(None) => {
@@ -317,16 +400,25 @@ impl NetworkConnection for TcpClient {
                             }
                         }, if flush_deadline.is_some() => {
                             flush_deadline = None;
-                            // 静默到点: 残留被取走并清空缓冲区, 作为一条消息计入统计
+                            // 静默到点: 残留被取走并清空缓冲区, 作为一条消息计入统计。
+                            // 半帧同样要过规则（F-21 的认知风险：静默强刷的半帧与完整帧无法
+                            // 区分会误导读用户），因此 origin 标记为 ForceFlushed。
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;
-                                accumulate_decoded(
+                                process_frame(
                                     data,
                                     &message_processor_clone,
                                     &mut batch,
                                     &net_counters_clone,
                                     MessageType::Text,
-                                );
+                                    &reply_rules_for_read,
+                                    &client_tx_for_reply,
+                                    &config_clone.id,
+                                    &peer_addr,
+                                    FrameMeta {
+                                        origin: FrameOrigin::ForceFlushed,
+                                    },
+                                                                    );
                                 flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                             }
                         }
@@ -351,13 +443,20 @@ impl NetworkConnection for TcpClient {
                                 // 交换前把旧解码器残留取出吐出, 计入统计(残留不会重现)
                                 if let Some(data) = decoder.force_flush() {
                                     let data: BytesMut = data;
-                                    accumulate_decoded(
+                                    process_frame(
                                         data,
                                         &message_processor_clone,
                                         &mut batch,
                                         &net_counters_clone,
                                         MessageType::Text,
-                                    );
+                                        &reply_rules_for_read,
+                                        &client_tx_for_reply,
+                                        &config_clone.id,
+                                        &peer_addr,
+                                        FrameMeta {
+                                            origin: FrameOrigin::ForceFlushed,
+                                        },
+                                                                            );
                                     flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                                 }
                                 decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
@@ -379,12 +478,19 @@ impl NetworkConnection for TcpClient {
                 // 否则"对端发半条后立刻断开"的残留永远不会显示(计入统计)
                 if let Some(data) = decoder.force_flush() {
                     let data: BytesMut = data;
-                    accumulate_decoded(
+                    process_frame(
                         data,
                         &message_processor_clone,
                         &mut batch,
                         &net_counters_clone,
                         MessageType::Text,
+                        &reply_rules_for_read,
+                        &client_tx_for_reply,
+                        &config_clone.id,
+                        &peer_addr,
+                        FrameMeta {
+                            origin: FrameOrigin::EofFlushed,
+                        },
                     );
                     flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                 }
@@ -410,13 +516,13 @@ impl NetworkConnection for TcpClient {
                         data = rx.recv() => {
                             match data {
                                 Ok(data) => {
-                                    let mut buffer = BytesMut::with_capacity(data.len());
-                                    let data_bytes = BytesMut::from(data.as_slice());
-
-                                    if let Err(e) = encoder.encode(data_bytes, &mut buffer) {
-                                        error!("TCP编码错误: {:?}", e);
-                                        break;
-                                    }
+                                    let buffer = match encode_wire(&mut encoder, data) {
+                                        Ok(buffer) => buffer,
+                                        Err(e) => {
+                                            error!("TCP编码错误: {:?}", e);
+                                            break;
+                                        }
+                                    };
 
                                     if let Err(e) = socket_write.write_all(&buffer).await {
                                         error!("TCP写入错误: {:?}", e);
@@ -459,19 +565,42 @@ impl NetworkConnection for TcpClient {
     }
 }
 
+/// 把一个待发项编码成最终要写到 socket 上的字节。
+///
+/// 两个分支：
+///   - `WireMessage::inherit`（默认，手动发送 / 发送任务 / 旧固定回复）→ 走连接 encoder，
+///     由它按连接级 trailer 设置决定是否追加结尾。**与既有行为逐字一致**。
+///   - `WireMessage::bypass`（回复规则要求原样输出）→ 直接写原始字节，跳过 encoder。
+///     二进制协议（Modbus / JT808）必须这样，否则 CRLF 会追加在 CRC 后面。
+fn encode_wire(
+    encoder: &mut Box<
+        dyn tokio_util::codec::Encoder<BytesMut, Error = std::io::Error> + Send + Sync,
+    >,
+    message: WireMessage,
+) -> Result<BytesMut, std::io::Error> {
+    if message.bypasses_trailer() {
+        let data = message.into_data();
+        return Ok(BytesMut::from(data.as_slice()));
+    }
+    let mut buffer = BytesMut::with_capacity(message.len());
+    encoder.encode(BytesMut::from(message.data()), &mut buffer)?;
+    Ok(buffer)
+}
+
 /// TCP服务器实现
 pub struct TcpServer {
     config: ServerConfig,
     event_sender: Option<Sender<ConnectionEvent>>,
-    clients: Arc<Mutex<HashMap<SocketAddr, Sender<Vec<u8>>>>>,
+    clients: Arc<Mutex<HashMap<SocketAddr, Sender<WireMessage>>>>,
     message_processor: Arc<dyn MessageProcessor>,
     net_counters: Option<NetCounters>,
     is_running: bool,
     listener_handle: Option<JoinHandle<()>>,
     client_handles: Arc<Mutex<HashMap<SocketAddr, JoinHandle<()>>>>,
     listener: Option<Arc<TcpListener>>,
-    /// 自动回复共享状态(UI 下发 → 网络层每条消息读取)
-    auto_reply_state: Arc<AutoReplyConfig>,
+    /// 回复规则集共享状态（多客户端共享同一 store；server 先于 UI 就绪，
+    /// 因此走运行时事件下发而非构造注入 —— 决策 D-12）
+    reply_rules: Arc<ReplyRulesStore>,
     /// 运行期「结尾追加字符」设置(下拉改动即时生效)
     trailer: TrailerSetting,
 }
@@ -515,7 +644,7 @@ impl TcpServer {
             listener_handle: None,
             client_handles: Arc::new(Mutex::new(HashMap::new())),
             listener: None,
-            auto_reply_state: Arc::new(AutoReplyConfig::new()),
+            reply_rules: ReplyRulesStore::new(),
             trailer,
         }
     }
@@ -564,7 +693,7 @@ impl NetworkServer for TcpServer {
         let net_counters = self.net_counters.clone();
         let clients = self.clients.clone();
         let client_handles = self.client_handles.clone();
-        let auto_reply_state = self.auto_reply_state.clone();
+        let reply_rules = self.reply_rules.clone();
         let trailer = self.trailer.clone();
 
         // bind 直接在返回的 future 内执行: 失败带上下文返回 Err(对齐 UDP 模式),
@@ -587,18 +716,15 @@ impl NetworkServer for TcpServer {
                 {
                     error!("[TCP服务器] 发送 Listening 事件失败: {:?}", e);
                 }
-                // 自动回复共享状态就绪(UI 下发启用开关与回复内容)
+                // 回复规则集共享状态就绪(UI 运行时下发整表)
                 if let Err(e) = sender
-                    .send(ConnectionEvent::ServerAutoReplyStateReady(
+                    .send(ConnectionEvent::ReplyRulesStoreReady(
                         config.id.clone(),
-                        auto_reply_state.clone(),
+                        reply_rules.clone(),
                     ))
                     .await
                 {
-                    error!(
-                        "[TCP服务器] 发送 ServerAutoReplyStateReady 事件失败: {:?}",
-                        e
-                    );
+                    error!("[TCP服务器] 发送 ReplyRulesStoreReady 事件失败: {:?}", e);
                 }
             }
 
@@ -614,7 +740,7 @@ impl NetworkServer for TcpServer {
                 let net_counters = net_counters.clone();
                 let clients = clients.clone();
                 let client_handles = client_handles.clone();
-                let auto_reply_state = auto_reply_state.clone();
+                let reply_rules = reply_rules.clone();
                 async move {
                     loop {
                         match listener_clone.accept().await {
@@ -622,9 +748,7 @@ impl NetworkServer for TcpServer {
                                 debug!("TCP服务器接收到来自 {} 的连接", addr);
 
                                 // 创建客户端连接的发送器和接收器
-                                let (tx, rx) = smol_unbounded::<Vec<u8>>();
-                                // 供网络层自动回复投递回复字节(经该连接 encoder 编码)
-                                let client_tx_auto_reply = tx.clone();
+                                let (tx, rx) = smol_unbounded::<WireMessage>();
                                 // 创建解码器控制通道(用于运行时下发解码器配置, 无需重连)
                                 let (decoder_control_tx, decoder_control_rx) =
                                     smol_unbounded::<DecoderConfig>();
@@ -632,7 +756,7 @@ impl NetworkServer for TcpServer {
                                 // 保存客户端连接到共享的clients哈希表
                                 let mut clients_guard: tokio::sync::MutexGuard<
                                     '_,
-                                    HashMap<SocketAddr, Sender<Vec<u8>>>,
+                                    HashMap<SocketAddr, Sender<WireMessage>>,
                                 > = clients.lock().await;
                                 clients_guard.insert(addr, tx.clone());
                                 drop(clients_guard);
@@ -643,7 +767,7 @@ impl NetworkServer for TcpServer {
                                         .send(ConnectionEvent::ServerClientConnected(
                                             config.id.clone(),
                                             addr,
-                                            tx,
+                                            tx.clone(),
                                         ))
                                         .await
                                     {
@@ -676,7 +800,7 @@ impl NetworkServer for TcpServer {
                                 let clients_clone_for_disconnect = clients.clone();
                                 let config_clone_for_client = config.clone();
                                 let client_handles_clone_for_client = client_handles.clone();
-                                let auto_reply_state_for_client = auto_reply_state.clone();
+                                let reply_rules_for_client = reply_rules.clone();
                                 let trailer_for_client = trailer.clone();
 
                                 // 创建客户端连接的任务句柄
@@ -690,12 +814,11 @@ impl NetworkServer for TcpServer {
                                         config_clone_for_client.decoder_config.clone();
                                     let encoder = CodecFactory::create_encoder(
                                         &config_clone_for_client.decoder_config,
-                                        trailer_for_client,
+                                        trailer_for_client.clone(),
                                     );
                                     // 用 Option 包装: 控制通道关闭后置 None, 让 select! 中该分支退化为 pending
                                     let mut decoder_control_rx = Some(decoder_control_rx);
-                                    let auto_reply_state = auto_reply_state_for_client;
-                                    let client_tx_auto_reply = client_tx_auto_reply;
+                                    let reply_rules = reply_rules_for_client;
 
                                     // 启动接收消息循环
                                     let recv_fut = async {
@@ -729,24 +852,21 @@ impl NetworkServer for TcpServer {
                                                             loop {
                                                                 match decoder.decode(&mut buffer) {
                                                                     Ok(Some(data)) => {
-                                                                        // 处理接收到的消息
                                                                         let data: BytesMut = data;
-                                                                        accumulate_decoded(
+                                                                        // 规则优先；未启用规则时走旧固定回复轨（行为零变化）
+                                                                        process_frame_server(
                                                                             data,
                                                                             &client_message_processor,
                                                                             &mut batch,
                                                                             &client_net_counters,
-                                                                            MessageType::Text,
-                                                                        );
-                                                                        // 网络层自动回复(每条解码出的完整消息触发一次)
-                                                                        try_auto_reply(
-                                                                            &auto_reply_state,
-                                                                            &client_tx_auto_reply,
-                                                                            &mut batch,
+                                                                            &reply_rules,
+                                                                            &tx,
                                                                             &client_id_clone,
                                                                             &addr,
-                                                                            &client_net_counters,
-                                                                        );
+                                                                            FrameMeta {
+                                                                                origin: FrameOrigin::Decoded,
+                                                                            },
+                                                                                                                                                    );
                                                                     },
                                                                     Ok(None) => {
                                                                         // 解码器需要更多数据，退出循环
@@ -785,13 +905,19 @@ impl NetworkServer for TcpServer {
                                                     // 静默到点: 残留被取走并清空缓冲区, 作为一条消息计入统计
                                                     if let Some(data) = decoder.force_flush() {
                                                         let data: BytesMut = data;
-                                                        accumulate_decoded(
+                                                        process_frame_server(
                                                             data,
                                                             &client_message_processor,
                                                             &mut batch,
                                                             &client_net_counters,
-                                                            MessageType::Text,
-                                                        );
+                                                            &reply_rules,
+                                                            &tx,
+                                                            &client_id_clone,
+                                                            &addr,
+                                                            FrameMeta {
+                                                                origin: FrameOrigin::ForceFlushed,
+                                                            },
+                                                                                                                    );
                                                         flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                     }
                                                 }
@@ -814,13 +940,19 @@ impl NetworkServer for TcpServer {
                                                         // 交换前把旧解码器残留取出吐出, 计入统计(残留不会重现)
                                                         if let Some(data) = decoder.force_flush() {
                                                             let data: BytesMut = data;
-                                                            accumulate_decoded(
+                                                            process_frame_server(
                                                                 data,
                                                                 &client_message_processor,
                                                                 &mut batch,
                                                                 &client_net_counters,
-                                                                MessageType::Text,
-                                                            );
+                                                                &reply_rules,
+                                                                &tx,
+                                                                &client_id_clone,
+                                                                &addr,
+                                                                FrameMeta {
+                                                                    origin: FrameOrigin::ForceFlushed,
+                                                                },
+                                                                                                                            );
                                                             flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                         }
                                                         decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
@@ -837,12 +969,18 @@ impl NetworkServer for TcpServer {
                                         // 否则"对端发半条后立刻断开"的残留永远不会显示(计入统计)
                                         if let Some(data) = decoder.force_flush() {
                                             let data: BytesMut = data;
-                                            accumulate_decoded(
+                                            process_frame_server(
                                                 data,
                                                 &client_message_processor,
                                                 &mut batch,
                                                 &client_net_counters,
-                                                MessageType::Text,
+                                                &reply_rules,
+                                                &tx,
+                                                &client_id_clone,
+                                                &addr,
+                                                FrameMeta {
+                                                    origin: FrameOrigin::EofFlushed,
+                                                },
                                             );
                                             flush_batch(
                                                 &client_event_sender,
@@ -858,21 +996,20 @@ impl NetworkServer for TcpServer {
                                         loop {
                                             match rx.recv().await {
                                                 Ok(message) => {
-                                                    let mut buffer =
-                                                        BytesMut::with_capacity(message.len());
-                                                    let data_bytes =
-                                                        BytesMut::from(message.as_slice());
-
-                                                    // 使用encoder编码数据
-                                                    if let Err(e) =
-                                                        encoder.encode(data_bytes, &mut buffer)
-                                                    {
-                                                        error!(
-                                                            "TCP服务器编码消息时发生错误: {:?}",
-                                                            e
-                                                        );
-                                                        break;
-                                                    }
+                                                    // 规则要求"原样输出"时绕过连接 trailer（二进制协议必需）
+                                                    let buffer = match encode_wire(
+                                                        &mut encoder,
+                                                        message,
+                                                    ) {
+                                                        Ok(buffer) => buffer,
+                                                        Err(e) => {
+                                                            error!(
+                                                                "TCP服务器编码消息时发生错误: {:?}",
+                                                                e
+                                                            );
+                                                            break;
+                                                        }
+                                                    };
 
                                                     // 写入数据
                                                     if let Err(e) =
@@ -892,11 +1029,11 @@ impl NetworkServer for TcpServer {
 
                                                     // 尝试将消息转换为文本，如果失败则显示十六进制
                                                     let send_message_str =
-                                                        match String::from_utf8(message.clone()) {
+                                                        match String::from_utf8(buffer.to_vec()) {
                                                             Ok(s) => s,
                                                             Err(_) => {
                                                                 // 转换为十六进制
-                                                                let hex: Vec<String> = message
+                                                                let hex: Vec<String> = buffer
                                                                     .iter()
                                                                     .map(|b| format!("{:02x}", b))
                                                                     .collect();
@@ -929,7 +1066,7 @@ impl NetworkServer for TcpServer {
                                     // 从共享的clients哈希表中移除断开连接的客户端
                                     let mut clients_guard: tokio::sync::MutexGuard<
                                         '_,
-                                        HashMap<SocketAddr, Sender<Vec<u8>>>,
+                                        HashMap<SocketAddr, Sender<WireMessage>>,
                                     > = clients_clone_for_disconnect.lock().await;
                                     clients_guard.remove(&addr);
                                     drop(clients_guard);
@@ -1056,5 +1193,118 @@ impl NetworkServer for TcpServer {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::message_processor::DefaultMessageProcessor;
+    use crate::network::events::{NetCounters, ReceivedBatch};
+    use crate::reply::model::{MatchNode, ReplyPayload, ReplyRule, ReplyRulesConfig, RuleCodec};
+
+    fn source() -> SocketAddr {
+        "127.0.0.1:5000".parse().unwrap()
+    }
+
+    fn processor() -> Arc<dyn MessageProcessor> {
+        Arc::new(DefaultMessageProcessor)
+    }
+
+    fn rule_on_len(text: &str) -> ReplyRule {
+        ReplyRule {
+            matcher: MatchNode::Length { min: 1, max: 64 },
+            payload: ReplyPayload {
+                text: text.to_string(),
+                hex_mode: false,
+                codec: RuleCodec::Raw,
+            },
+            ..ReplyRule::new("测试规则", 10)
+        }
+    }
+
+    fn store(cfg: ReplyRulesConfig) -> Arc<ReplyRulesStore> {
+        let store = ReplyRulesStore::new();
+        store.replace(&cfg);
+        // 该连接总闸缺省 false；测试统一开启 "tab"
+        store.set_connection_gates([("tab".to_string(), true)].into_iter().collect());
+        store
+    }
+
+    /// 构造挂到 "tab" 连接下的规则集
+    fn cfg(rules: Vec<ReplyRule>) -> ReplyRulesConfig {
+        let mut cfg = ReplyRulesConfig::default();
+        if !rules.is_empty() {
+            cfg.connections.insert("tab".to_string(), rules);
+        }
+        cfg
+    }
+
+    fn sent_bytes(batch: &ReceivedBatch) -> Vec<Vec<u8>> {
+        batch
+            .sent_messages
+            .iter()
+            .map(|m| m.raw_data.to_vec())
+            .collect()
+    }
+
+    /// T-3 ①：**规则全被禁用** → `is_enabled()` 为 false，
+    /// 不产生任何应答（规则引擎是唯一路径，无旧固定回复兜底）。
+    #[test]
+    fn test_master_on_all_rules_disabled_no_reply() {
+        let mut disabled = rule_on_len("RULE");
+        disabled.enabled = false;
+        let store = store(cfg(vec![disabled]));
+        assert!(!store.is_enabled(), "无启用规则时快速路径必须关闭");
+
+        let (tx, _rx) = smol_unbounded::<WireMessage>();
+        let mut batch = ReceivedBatch::default();
+        process_frame_server(
+            BytesMut::from(&b"req"[..]),
+            &processor(),
+            &mut batch,
+            &Some(NetCounters::default()),
+            &store,
+            &tx,
+            "tab",
+            &source(),
+            FrameMeta::decoded(),
+        );
+
+        assert_eq!(batch.count, 1, "帧照常进明细");
+        assert!(sent_bytes(&batch).is_empty(), "无启用规则时不产生应答");
+    }
+
+    /// T-3 ②：**有启用规则** → 走规则引擎，只回规则应答。
+    #[test]
+    fn test_enabled_rule_replies() {
+        let store = store(cfg(vec![rule_on_len("RULE")]));
+        assert!(store.is_enabled());
+
+        let (tx, _rx) = smol_unbounded::<WireMessage>();
+        let mut batch = ReceivedBatch::default();
+        process_frame_server(
+            BytesMut::from(&b"req"[..]),
+            &processor(),
+            &mut batch,
+            &Some(NetCounters::default()),
+            &store,
+            &tx,
+            "tab",
+            &source(),
+            FrameMeta::decoded(),
+        );
+
+        assert_eq!(batch.count, 1, "帧照常进明细");
+        assert_eq!(
+            sent_bytes(&batch),
+            vec![b"RULE".to_vec()],
+            "有启用规则时回复规则应答"
+        );
+        assert_eq!(
+            store.hits_snapshot().values().sum::<u64>(),
+            1,
+            "规则命中计数 +1"
+        );
     }
 }
