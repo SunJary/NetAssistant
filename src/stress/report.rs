@@ -103,6 +103,7 @@ mod tests {
             concurrency: 10,
             message_input_mode: "text".to_string(),
             payload_template: "PING".to_string(),
+            trailer: crate::stress::config::StressTrailer::default(),
             send_interval_ms: 100,
             global_qps_limit: None,
             stop_condition: StopCondition::Duration(2),

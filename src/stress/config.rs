@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use crate::config::connection::ConnectionType;
+use crate::config::connection::{ConnectionType, TrailerKind};
 
 /// 压测模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +49,54 @@ impl std::fmt::Display for ConnectionMode {
         match self {
             ConnectionMode::Long => write!(f, "长连接"),
             ConnectionMode::Short => write!(f, "短连接"),
+        }
+    }
+}
+
+/// 压测报文的结尾字符设置。
+///
+/// 压测 worker 自管理连接、不走网络层写路径，无法自动继承连接 trailer；
+/// 这里显式建模: `Inherit` = 启动时取当前连接的 `send_trailer`(与手动发送一致)，
+/// 其余为覆盖。这样既能默认"跟随消息面板"，又能单独指定二进制等场景所需结尾。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StressTrailer {
+    /// 继承连接级 send_trailer 设置(默认，与手动发送一致)
+    #[default]
+    Inherit,
+    /// 不追加
+    None,
+    /// 追加 \n
+    Lf,
+    /// 追加 \r\n
+    CrLf,
+}
+
+impl StressTrailer {
+    pub const ALL: [StressTrailer; 4] = [
+        StressTrailer::Inherit,
+        StressTrailer::None,
+        StressTrailer::Lf,
+        StressTrailer::CrLf,
+    ];
+
+    /// 解析为具体结尾字符; `Inherit` 回落到传入的连接级设置。
+    pub fn resolve(self, conn: TrailerKind) -> TrailerKind {
+        match self {
+            StressTrailer::Inherit => conn,
+            StressTrailer::None => TrailerKind::None,
+            StressTrailer::Lf => TrailerKind::Lf,
+            StressTrailer::CrLf => TrailerKind::CrLf,
+        }
+    }
+
+    /// 选项中英文案对应的 i18n key
+    pub fn label_key(self) -> &'static str {
+        match self {
+            StressTrailer::Inherit => "stress_config.trailer_inherit",
+            StressTrailer::None => "stress_config.trailer_none",
+            StressTrailer::Lf => "stress_config.trailer_lf",
+            StressTrailer::CrLf => "stress_config.trailer_crlf",
         }
     }
 }
@@ -124,6 +172,9 @@ pub struct StressTestConfig {
     pub message_input_mode: String,
     /// 报文模板(支持变量替换)
     pub payload_template: String,
+    /// 报文结尾字符: 继承连接设置 / 无 / LF / CRLF
+    #[serde(default)]
+    pub trailer: StressTrailer,
     /// 单客户端发包间隔(毫秒)
     pub send_interval_ms: u64,
     /// 全局 QPS 限制(None=不限)
@@ -149,6 +200,7 @@ impl Default for StressTestConfig {
             concurrency: 10,
             message_input_mode: "text".to_string(),
             payload_template: "PING ${seq}".to_string(),
+            trailer: StressTrailer::default(),
             send_interval_ms: 0,
             global_qps_limit: None,
             stop_condition: StopCondition::default(),
@@ -223,6 +275,28 @@ mod tests {
         assert!(cfg.response_validation.is_none());
         assert!(cfg.is_ping_pong());
         assert!(cfg.is_long_connection());
+        assert_eq!(cfg.trailer, StressTrailer::Inherit);
+    }
+
+    #[test]
+    fn test_stress_trailer_resolve() {
+        assert_eq!(
+            StressTrailer::Inherit.resolve(TrailerKind::CrLf),
+            TrailerKind::CrLf
+        );
+        assert_eq!(
+            StressTrailer::Inherit.resolve(TrailerKind::None),
+            TrailerKind::None
+        );
+        assert_eq!(
+            StressTrailer::None.resolve(TrailerKind::CrLf),
+            TrailerKind::None
+        );
+        assert_eq!(StressTrailer::Lf.resolve(TrailerKind::None), TrailerKind::Lf);
+        assert_eq!(
+            StressTrailer::CrLf.resolve(TrailerKind::Lf),
+            TrailerKind::CrLf
+        );
     }
 
     #[test]
@@ -311,6 +385,7 @@ mod tests {
             concurrency: 500,
             message_input_mode: "hex".to_string(),
             payload_template: "4142${seq}".to_string(),
+            trailer: StressTrailer::CrLf,
             send_interval_ms: 50,
             global_qps_limit: Some(1000),
             stop_condition: StopCondition::Either {
@@ -356,5 +431,7 @@ mod tests {
         assert_eq!(cfg.target_address, "1.2.3.4");
         assert!(cfg.response_validation.is_none());
         assert_eq!(cfg.stop_condition, StopCondition::Manual);
+        // 旧配置无 trailer 字段: 默认为 Inherit(跟随连接设置), 保持既有行为
+        assert_eq!(cfg.trailer, StressTrailer::Inherit);
     }
 }

@@ -20,6 +20,24 @@ stress_config:
   payload_content_label:
     zh-CN: 报文内容
     en: Payload Content
+  trailer_label:
+    zh-CN: 结尾字符
+    en: Trailer
+  trailer_hint:
+    zh-CN: 发送时在每包末尾追加；「继承」跟随消息面板的结尾设置
+    en: Appended to each packet on send; "Inherit" follows the message panel's trailer setting
+  trailer_inherit:
+    zh-CN: 继承
+    en: Inherit
+  trailer_none:
+    zh-CN: 无
+    en: None
+  trailer_lf:
+    zh-CN: LF
+    en: LF
+  trailer_crlf:
+    zh-CN: CRLF
+    en: CRLF
   reading_port_config:
     zh-CN: "ⓘ 正在读取系统临时端口配置…"
     en: "ⓘ Reading system ephemeral port configuration…"

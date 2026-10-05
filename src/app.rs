@@ -6,7 +6,7 @@ use rust_i18n::t;
 use crate::config;
 use crate::config::app_stats::AppStats;
 use crate::config::connection::{
-    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig,
+    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, TrailerKind,
 };
 use crate::config::storage::ConfigStorage;
 use crate::export::{self, ExportFormat};
@@ -1937,6 +1937,13 @@ impl NetAssistantApp {
                 .save_stress_profile(&connection_id, config.clone());
         }
 
+        // 把「继承连接设置」解析为具体结尾字符: 取该连接当前的运行期 send_trailer
+        let resolved_trailer = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|t| config.trailer.resolve(t.send_trailer_setting.get()))
+            .unwrap_or(TrailerKind::None);
+
         if let Some(tab) = self.connection_tabs.get_mut(&tab_id) {
             // 若已有引擎在运行，先停止
             if let Some(engine_arc) = &tab.stress_engine {
@@ -1954,7 +1961,7 @@ impl NetAssistantApp {
             tab.view_mode = TabViewMode::Stress;
 
             // 启动引擎
-            let engine = StressTestEngine::start(config, tab_id.clone(), sender);
+            let engine = StressTestEngine::start(config, resolved_trailer, tab_id.clone(), sender);
             tab.stress_engine = Some(Arc::new(Mutex::new(Some(engine))));
             info!("[压测] 引擎已启动 (tab={})", tab_id);
         }

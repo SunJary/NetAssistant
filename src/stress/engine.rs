@@ -20,6 +20,7 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
+use crate::config::connection::TrailerKind;
 use crate::stress::client_worker::run_worker;
 use crate::stress::config::{StopCondition, StressTestConfig};
 use crate::stress::events::{StressEvent, StressReport};
@@ -38,15 +39,17 @@ pub struct StressTestEngine {
 impl StressTestEngine {
     /// 启动压测。event_sender 由 App 层提供(smol channel)。
     /// `tab_id` 用于事件路由(App 层按 tab_id 投递, 不依赖 active_tab)。
+    /// `trailer`: 已解析的报文结尾字符(App 层已把「继承连接设置」解析为具体值)。
     pub fn start(
         config: StressTestConfig,
+        trailer: TrailerKind,
         tab_id: String,
         event_sender: Sender<StressEvent>,
     ) -> Self {
         let cancel = CancellationToken::new();
         let cancel_clone = cancel.clone();
         let orchestrator = tokio::spawn(async move {
-            Self::run(config, tab_id, event_sender, cancel_clone).await;
+            Self::run(config, trailer, tab_id, event_sender, cancel_clone).await;
         });
         Self {
             cancel,
@@ -64,6 +67,7 @@ impl StressTestEngine {
 
     async fn run(
         config: StressTestConfig,
+        trailer: TrailerKind,
         tab_id: String,
         event_sender: Sender<StressEvent>,
         cancel: CancellationToken,
@@ -215,7 +219,7 @@ impl StressTestEngine {
             let es = event_sender.clone();
             let cl = connect_limiter.clone();
             worker_handles.push(tokio::spawn(async move {
-                run_worker(i, cfg, seq, lim, st, hg, c, es, cl).await;
+                run_worker(i, cfg, seq, lim, st, hg, c, es, cl, trailer).await;
             }));
         }
 
@@ -825,6 +829,7 @@ mod tests {
             concurrency: 5,
             message_input_mode: "text".to_string(),
             payload_template: "PING ${seq}".to_string(),
+            trailer: crate::stress::config::StressTrailer::default(),
             send_interval_ms: 10,
             global_qps_limit: None,
             stop_condition: StopCondition::Count(50),
@@ -834,7 +839,7 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, "test".to_string(), sender);
+        let mut engine = StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
 
         // 收集事件直到 Finished
         let mut got_finished = false;
@@ -898,6 +903,7 @@ mod tests {
             concurrency: 3,
             message_input_mode: "text".to_string(),
             payload_template: "data${seq}".to_string(),
+            trailer: crate::stress::config::StressTrailer::default(),
             send_interval_ms: 5,
             global_qps_limit: None,
             stop_condition: StopCondition::Count(30),
@@ -907,7 +913,7 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, "test".to_string(), sender);
+        let mut engine = StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
 
         let mut got_finished = false;
         while let Ok(event) = tokio::time::timeout(Duration::from_secs(10), receiver.recv()).await {
@@ -984,6 +990,7 @@ mod tests {
             concurrency: 50,
             message_input_mode: "text".to_string(),
             payload_template: "PING ${seq}".to_string(),
+            trailer: crate::stress::config::StressTrailer::default(),
             send_interval_ms: 100,
             global_qps_limit: None,
             stop_condition: StopCondition::Duration(5),
@@ -996,7 +1003,7 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, "test".to_string(), sender);
+        let mut engine = StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
 
         // 收集快照, 找到首个 elapsed_ms >= 1000 的快照
         let mut snapshot_at_1s: Option<StressStats> = None;

@@ -17,7 +17,7 @@ use tokio::net::{TcpStream, UdpSocket};
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-use crate::config::connection::ConnectionType;
+use crate::config::connection::{apply_trailer, ConnectionType, TrailerKind};
 use crate::stress::config::{ResponseValidation, StressMode, StressTestConfig};
 use crate::stress::events::StressEvent;
 use crate::stress::rate_limiter::TokenBucket;
@@ -84,6 +84,7 @@ impl Validator {
 /// - `cancel`: 协作取消令牌
 /// - `_error_sender`: 致命错误上报通道(目前仅日志，预留)
 /// - `connect_limiter`: 首次建连速率令牌桶(ramp-up; unbounded 时零开销)
+/// - `trailer`: 已解析的报文结尾字符(由 App 层把「继承连接设置」解析为具体值)
 pub async fn run_worker(
     worker_id: usize,
     config: StressTestConfig,
@@ -94,6 +95,7 @@ pub async fn run_worker(
     cancel: CancellationToken,
     _error_sender: Sender<StressEvent>,
     connect_limiter: Arc<TokenBucket>,
+    trailer: TrailerKind,
 ) {
     let validator = Validator::build(&config.response_validation);
     let target_addr = match config.parse_target_addr() {
@@ -132,6 +134,7 @@ pub async fn run_worker(
                     send_interval,
                     &compiled,
                     &connect_limiter,
+                    trailer,
                 )
                 .await;
             } else {
@@ -150,6 +153,7 @@ pub async fn run_worker(
                     send_interval,
                     &compiled,
                     &connect_limiter,
+                    trailer,
                 )
                 .await;
             }
@@ -170,6 +174,7 @@ pub async fn run_worker(
                 send_interval,
                 &compiled,
                 &connect_limiter,
+                trailer,
             )
             .await;
         }
@@ -185,6 +190,7 @@ fn build_payload(
     worker_id: usize,
     worker_counter: &mut u64,
     hex_mode: bool,
+    trailer: TrailerKind,
 ) -> Vec<u8> {
     let mut rendered = String::with_capacity(compiled.template_len() + 32);
     compiled.render(
@@ -194,10 +200,15 @@ fn build_payload(
         hex_mode,
         &mut rendered,
     );
-    if hex_mode {
+    let bytes = if hex_mode {
         hex_to_bytes(&rendered)
     } else {
         rendered.into_bytes()
+    };
+    // 追加结尾字符(无 = 零拷贝返回原字节)
+    match apply_trailer(&bytes, trailer) {
+        std::borrow::Cow::Borrowed(_) => bytes,
+        std::borrow::Cow::Owned(v) => v,
     }
 }
 
@@ -293,6 +304,7 @@ async fn run_tcp_long(
     send_interval: Duration,
     compiled: &CompiledTemplate,
     connect_limiter: &Arc<TokenBucket>,
+    trailer: TrailerKind,
 ) {
     let mut socket: Option<TcpStream> = None;
     let hex_mode = config.message_input_mode == "hex";
@@ -372,7 +384,14 @@ async fn run_tcp_long(
             break;
         }
 
-        let payload = build_payload(compiled, global_seq, worker_id, worker_counter, hex_mode);
+        let payload = build_payload(
+            compiled,
+            global_seq,
+            worker_id,
+            worker_counter,
+            hex_mode,
+            trailer,
+        );
         stats.sent.fetch_add(1, Ordering::Relaxed);
 
         let ok = send_and_maybe_recv_tcp(
@@ -438,6 +457,7 @@ async fn run_tcp_short(
     send_interval: Duration,
     compiled: &CompiledTemplate,
     connect_limiter: &Arc<TokenBucket>,
+    trailer: TrailerKind,
 ) {
     let hex_mode = config.message_input_mode == "hex";
     // 首次建连受 ramp-up 限速; 后续每包建连不受限(由 global QPS 令牌桶控制)
@@ -483,7 +503,14 @@ async fn run_tcp_short(
             }
         };
 
-        let payload = build_payload(compiled, global_seq, worker_id, worker_counter, hex_mode);
+        let payload = build_payload(
+            compiled,
+            global_seq,
+            worker_id,
+            worker_counter,
+            hex_mode,
+            trailer,
+        );
         stats.sent.fetch_add(1, Ordering::Relaxed);
 
         let _ = send_and_maybe_recv_tcp(
@@ -532,6 +559,7 @@ async fn run_udp(
     send_interval: Duration,
     compiled: &CompiledTemplate,
     connect_limiter: &Arc<TokenBucket>,
+    trailer: TrailerKind,
 ) {
     let bind_addr = if target_addr.is_ipv6() {
         "[::]:0"
@@ -572,7 +600,14 @@ async fn run_udp(
             break;
         }
 
-        let payload = build_payload(compiled, global_seq, worker_id, worker_counter, hex_mode);
+        let payload = build_payload(
+            compiled,
+            global_seq,
+            worker_id,
+            worker_counter,
+            hex_mode,
+            trailer,
+        );
         stats.sent.fetch_add(1, Ordering::Relaxed);
 
         // 发送(响应 cancel)

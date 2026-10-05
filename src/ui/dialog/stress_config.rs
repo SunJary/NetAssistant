@@ -23,7 +23,7 @@ use rust_i18n::t;
 use crate::app::NetAssistantApp;
 use crate::config::connection::ConnectionType;
 use crate::stress::config::{
-    ConnectionMode, RampUpConfig, StopCondition, StressMode, StressTestConfig,
+    ConnectionMode, RampUpConfig, StopCondition, StressMode, StressTestConfig, StressTrailer,
 };
 use crate::stress::port_range::{EphemeralPortRange, STATIC_THRESHOLD};
 use crate::ui::components::hex_editor::HexEditorState;
@@ -66,6 +66,7 @@ pub struct StressConfigDialogState {
     pub stress_mode: StressMode,
     pub connection_mode: ConnectionMode,
     pub message_input_mode: String,
+    pub trailer: StressTrailer,
     pub stop_condition_type: StopConditionType,
     pub auto_reconnect: bool,
     pub ramp_up_enabled: bool,
@@ -145,6 +146,7 @@ impl StressConfigDialogState {
             stress_mode: config.mode,
             connection_mode: config.connection_mode,
             message_input_mode: config.message_input_mode.clone(),
+            trailer: config.trailer,
             stop_condition_type,
             auto_reconnect: config.auto_reconnect,
             ramp_up_enabled: config.ramp_up.enabled,
@@ -185,6 +187,7 @@ impl StressConfigDialogState {
             concurrency: parse_usize(&self.concurrency_input).max(1),
             message_input_mode: self.message_input_mode.clone(),
             payload_template: self.payload_input.read(cx).value().to_string(),
+            trailer: self.trailer,
             send_interval_ms: parse_u64(&self.send_interval_input),
             global_qps_limit: parse_opt_u32(&self.qps_limit_input),
             stop_condition,
@@ -485,6 +488,8 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, window: &Window, cx
                     cx,
                 )),
         )
+        // 报文结尾字符 (继承连接设置 / 无 / LF / CRLF)
+        .child(render_trailer_selector(app, state, theme, cx).mt_4())
         // 更多设置折叠区
         .child(render_advanced(app, state, theme, cx))
 }
@@ -706,6 +711,77 @@ fn render_connection_mode_selector(
                     theme,
                 )),
         )
+}
+
+/// 渲染「报文结尾字符」选择器(继承连接设置 / 无 / LF / CRLF)
+fn render_trailer_selector(
+    app: &Entity<NetAssistantApp>,
+    state: &StressConfigDialogState,
+    theme: &Theme,
+    _cx: &App,
+) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(
+            div()
+                .text_sm()
+                .font_semibold()
+                .text_color(theme.foreground)
+                .child(t!("stress_config.trailer_label").to_string()),
+        )
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .children(StressTrailer::ALL.iter().map(|&value| {
+                    render_trailer_chip(
+                        app,
+                        state,
+                        value,
+                        &t!(value.label_key()).to_string(),
+                        theme,
+                    )
+                })),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(t!("stress_config.trailer_hint").to_string()),
+        )
+}
+
+/// 渲染单个结尾字符芯片
+fn render_trailer_chip(
+    app: &Entity<NetAssistantApp>,
+    state: &StressConfigDialogState,
+    value: StressTrailer,
+    label: &str,
+    theme: &Theme,
+) -> Div {
+    let selected = state.trailer == value;
+    let entity = app.clone();
+    div()
+        .px_2()
+        .py_0p5()
+        .rounded_md()
+        .text_xs()
+        .cursor_pointer()
+        .when(selected, |d| {
+            d.bg(theme.primary).text_color(theme.primary_foreground)
+        })
+        .when(!selected, |d| d.bg(theme.border).text_color(theme.foreground))
+        .child(label.to_string())
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                if let Some(s) = &mut app.stress_config_dialog {
+                    s.trailer = value;
+                }
+                cx.notify();
+            });
+        })
 }
 
 /// 渲染「插入变量」按钮 (切换显隐浮层, on_prepaint 追踪位置供浮层定位)
