@@ -37,32 +37,6 @@ fn stress_context(
     )
 }
 
-/// 渲染单条报文。
-///
-/// - `template`: 报文模板
-/// - `global_seq`: 全局递增计数器(所有 worker 共享)
-/// - `worker_id`: 当前 worker 编号
-/// - `worker_counter`: 当前 worker 本地计数(每包自增)
-/// - `hex_mode`: hex 模式下数值变量格式化为十六进制(偶数长度)
-#[allow(dead_code)]
-pub fn render_payload(
-    template: &str,
-    global_seq: &AtomicU64,
-    worker_id: usize,
-    worker_counter: &mut u64,
-    hex_mode: bool,
-) -> String {
-    // 快速路径: 无变量直接返回
-    if !template.contains("${") {
-        return template.to_string();
-    }
-
-    let compiled = CompiledTemplate::new(template);
-    let mut out = String::with_capacity(template.len() + 32);
-    compiled.render(global_seq, worker_id, worker_counter, hex_mode, &mut out);
-    out
-}
-
 /// 预编译的报文模板(压测调用点使用的薄包装)
 ///
 /// 委托共享引擎; `render` 的签名与旧实现一致, 因此 `client_worker.rs` 调用点无需改动。
@@ -107,7 +81,8 @@ mod tests {
     fn test_no_variable_fast_path() {
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("hello world", &s, 0, &mut c, false);
+        let mut out = String::new();
+        CompiledTemplate::new("hello world").render(&s, 0, &mut c, false, &mut out);
         assert_eq!(out, "hello world");
     }
 
@@ -115,8 +90,10 @@ mod tests {
     fn test_seq_global_increment() {
         let s = seq();
         let mut c = 0u64;
-        let a = render_payload("req-${seq}", &s, 0, &mut c, false);
-        let b = render_payload("req-${seq}", &s, 0, &mut c, false);
+        let mut a = String::new();
+        CompiledTemplate::new("req-${seq}").render(&s, 0, &mut c, false, &mut a);
+        let mut b = String::new();
+        CompiledTemplate::new("req-${seq}").render(&s, 0, &mut c, false, &mut b);
         assert_eq!(a, "req-0");
         assert_eq!(b, "req-1");
     }
@@ -125,8 +102,10 @@ mod tests {
     fn test_worker_id_and_counter() {
         let s = seq();
         let mut c = 0u64;
-        let a = render_payload("w${worker_id}-c${counter}", &s, 7, &mut c, false);
-        let b = render_payload("w${worker_id}-c${counter}", &s, 7, &mut c, false);
+        let mut a = String::new();
+        CompiledTemplate::new("w${worker_id}-c${counter}").render(&s, 7, &mut c, false, &mut a);
+        let mut b = String::new();
+        CompiledTemplate::new("w${worker_id}-c${counter}").render(&s, 7, &mut c, false, &mut b);
         assert_eq!(a, "w7-c1");
         assert_eq!(b, "w7-c2");
     }
@@ -136,15 +115,16 @@ mod tests {
         let s = seq();
         let mut c = 5u64;
         let ts_before = Local::now().timestamp_millis();
-        let out = render_payload(
-            "${seq}|${worker_id}|${counter}|${timestamp}",
+        let mut out = String::new();
+        CompiledTemplate::new("${seq}|${worker_id}|${counter}|${timestamp}").render(
             &s,
             3,
             &mut c,
             false,
+            &mut out,
         );
         let ts_after = Local::now().timestamp_millis();
-        // timestamp 在 render_payload 内部取,允许 ±几毫秒误差
+        // timestamp 在渲染内部取,允许 ±几毫秒误差
         let expected_prefix = "0|3|6|";
         assert!(out.starts_with(expected_prefix), "got: {}", out);
         let ts_str = &out[expected_prefix.len()..];
@@ -162,7 +142,8 @@ mod tests {
     fn test_uuid_is_valid_format() {
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("id=${uuid}", &s, 0, &mut c, false);
+        let mut out = String::new();
+        CompiledTemplate::new("id=${uuid}").render(&s, 0, &mut c, false, &mut out);
         let uuid_part = &out[3..];
         assert!(uuid::Uuid::parse_str(uuid_part).is_ok(), "应生成合法 UUID");
     }
@@ -172,7 +153,8 @@ mod tests {
         // hex 模式下 uuid 输出为纯 32 字符十六进制(无连字符), 且可被 hex_to_bytes 解析为 16 字节
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("0000${uuid}", &s, 0, &mut c, true);
+        let mut out = String::new();
+        CompiledTemplate::new("0000${uuid}").render(&s, 0, &mut c, true, &mut out);
         let uuid_hex = &out[4..];
         assert_eq!(uuid_hex.len(), 32, "uuid hex 应为 32 字符: {}", uuid_hex);
         assert!(
@@ -190,7 +172,8 @@ mod tests {
         // 文本模式下 uuid 输出保持标准带连字符格式(向后兼容)
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("${uuid}", &s, 0, &mut c, false);
+        let mut out = String::new();
+        CompiledTemplate::new("${uuid}").render(&s, 0, &mut c, false, &mut out);
         assert!(out.contains('-'), "文本模式 uuid 应保留连字符: {}", out);
     }
 
@@ -199,7 +182,8 @@ mod tests {
         let s = seq();
         let mut c = 0u64;
         for _ in 0..100 {
-            let out = render_payload("${random:1:10}", &s, 0, &mut c, false);
+            let mut out = String::new();
+            CompiledTemplate::new("${random:1:10}").render(&s, 0, &mut c, false, &mut out);
             let n: i64 = out.parse().unwrap();
             assert!((1..=10).contains(&n));
         }
@@ -209,7 +193,8 @@ mod tests {
     fn test_random_equal_min_max() {
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("${random:5:5}", &s, 0, &mut c, false);
+        let mut out = String::new();
+        CompiledTemplate::new("${random:5:5}").render(&s, 0, &mut c, false, &mut out);
         assert_eq!(out, "5");
     }
 
@@ -217,7 +202,8 @@ mod tests {
     fn test_unknown_variable_preserved() {
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("v=${unknown_var}", &s, 0, &mut c, false);
+        let mut out = String::new();
+        CompiledTemplate::new("v=${unknown_var}").render(&s, 0, &mut c, false, &mut out);
         assert_eq!(out, "v=${unknown_var}");
     }
 
@@ -225,25 +211,23 @@ mod tests {
     fn test_malformed_random_preserved() {
         let s = seq();
         let mut c = 0u64;
-        assert_eq!(
-            render_payload("${random:abc:5}", &s, 0, &mut c, false),
-            "${random:abc:5}"
-        );
-        assert_eq!(
-            render_payload("${random:1}", &s, 0, &mut c, false),
-            "${random:1}"
-        );
-        assert_eq!(
-            render_payload("${random:5:1}", &s, 0, &mut c, false),
-            "${random:5:1}"
-        );
+        let mut out = String::new();
+        CompiledTemplate::new("${random:abc:5}").render(&s, 0, &mut c, false, &mut out);
+        assert_eq!(out, "${random:abc:5}");
+        let mut out = String::new();
+        CompiledTemplate::new("${random:1}").render(&s, 0, &mut c, false, &mut out);
+        assert_eq!(out, "${random:1}");
+        let mut out = String::new();
+        CompiledTemplate::new("${random:5:1}").render(&s, 0, &mut c, false, &mut out);
+        assert_eq!(out, "${random:5:1}");
     }
 
     #[test]
     fn test_unclosed_brace_preserved() {
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("x=${seq y", &s, 0, &mut c, false);
+        let mut out = String::new();
+        CompiledTemplate::new("x=${seq y").render(&s, 0, &mut c, false, &mut out);
         // 没有 } → 原样保留
         assert_eq!(out, "x=${seq y");
     }
@@ -254,7 +238,8 @@ mod tests {
         // worker_id=12 → hex "0C", seq=0 → hex "00"
         let s = seq();
         let mut c = 0u64;
-        let out = render_payload("4142${worker_id}${seq}", &s, 12, &mut c, true);
+        let mut out = String::new();
+        CompiledTemplate::new("4142${worker_id}${seq}").render(&s, 12, &mut c, true, &mut out);
         assert_eq!(out, "41420C00");
         let bytes = crate::utils::hex::hex_to_bytes(&out);
         assert_eq!(bytes, vec![0x41, 0x42, 0x0C, 0x00]);
@@ -265,15 +250,18 @@ mod tests {
         // hex 模式下 seq 递增: 0→00, 10→0A, 255→FF, 256→0100
         let s = AtomicU64::new(10);
         let mut c = 0u64;
-        let out = render_payload("${seq}", &s, 0, &mut c, true);
+        let mut out = String::new();
+        CompiledTemplate::new("${seq}").render(&s, 0, &mut c, true, &mut out);
         assert_eq!(out, "0A");
 
         let s2 = AtomicU64::new(255);
-        let out2 = render_payload("${seq}", &s2, 0, &mut c, true);
+        let mut out2 = String::new();
+        CompiledTemplate::new("${seq}").render(&s2, 0, &mut c, true, &mut out2);
         assert_eq!(out2, "FF");
 
         let s3 = AtomicU64::new(256);
-        let out3 = render_payload("${seq}", &s3, 0, &mut c, true);
+        let mut out3 = String::new();
+        CompiledTemplate::new("${seq}").render(&s3, 0, &mut c, true, &mut out3);
         assert_eq!(out3, "0100"); // 偶数长度
     }
 
@@ -282,7 +270,8 @@ mod tests {
         let s = seq();
         let mut c = 0u64;
         for _ in 0..100 {
-            let out = render_payload("${random:0:255}", &s, 0, &mut c, true);
+            let mut out = String::new();
+            CompiledTemplate::new("${random:0:255}").render(&s, 0, &mut c, true, &mut out);
             assert_eq!(out.len(), 2, "0-255 hex 应为 2 字符: {}", out);
             assert!(out.chars().all(|c| c.is_ascii_hexdigit()));
         }

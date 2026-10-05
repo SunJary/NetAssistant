@@ -62,15 +62,6 @@ impl StressTestEngine {
         }
     }
 
-    /// 是否仍在运行
-    #[allow(dead_code)]
-    pub fn is_running(&self) -> bool {
-        match &self.orchestrator {
-            Some(h) => !h.is_finished(),
-            None => false,
-        }
-    }
-
     async fn run(
         config: StressTestConfig,
         tab_id: String,

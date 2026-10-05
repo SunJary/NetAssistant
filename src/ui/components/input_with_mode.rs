@@ -547,18 +547,14 @@ mod repro_tests {
     use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
 
     struct Host {
-        /// 保留字段以对齐真实 app 的键位
-        #[allow(dead_code)]
-        is_server: bool,
         message_input: Option<Entity<EditorState>>,
         message_editor: Option<Entity<HexEditorState>>,
         mode: &'static str,
     }
 
     impl Host {
-        fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
             Self {
-                is_server: true,
                 message_input: None,
                 message_editor: None,
                 mode: "text",
@@ -701,7 +697,7 @@ mod repro_tests {
             let host = cx.new(|cx| Host::new(window, cx));
             Root::new(host, window, cx)
         });
-        let mut draw = |cx: &mut gpui_kit::VisualTestContext| {
+        let draw = |cx: &mut gpui_kit::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| {
                 _ = window.draw(cx);
@@ -758,7 +754,7 @@ mod repro_tests {
             let host = cx.new(|cx| Host::new(window, cx));
             Root::new(host, window, cx)
         });
-        let mut draw = |cx: &mut gpui_kit::VisualTestContext| {
+        let draw = |cx: &mut gpui_kit::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| {
                 _ = window.draw(cx);
@@ -826,7 +822,7 @@ mod repro_tests {
             let host = cx.new(|cx| Host::new(window, cx));
             Root::new(host, window, cx)
         });
-        let mut draw = |cx: &mut gpui_kit::VisualTestContext| {
+        let draw = |cx: &mut gpui_kit::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| {
                 _ = window.draw(cx);

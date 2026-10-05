@@ -939,7 +939,7 @@ mod visual_tests {
     fn focus_before_mount_then_type(cx: &mut TestAppContext) {
         cx.update(gpui_kit::component::init);
         let editor = seed(cx, 4);
-        let (host, mut cx) = cx.add_window_view(|window, cx| {
+        let (_host, mut cx) = cx.add_window_view(|window, cx| {
             let editor = editor.clone();
             let host = cx.new(|_| HexHost {
                 editor,

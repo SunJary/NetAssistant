@@ -927,33 +927,6 @@ pub fn validate_payload(payload: &ReplyPayload, path: &str, issues: &mut Vec<Iss
     }
 }
 
-/// 校验整个规则集（含跨规则问题）
-///
-/// 按连接逐组校验：id 重复只在同一连接内视为冲突（不同连接的规则互不影响）。
-pub fn validate_rules_config(config: &ReplyRulesConfig) -> Vec<Issue> {
-    let mut issues = Vec::new();
-    for (conn_id, rules) in &config.connections {
-        let mut seen_ids: Vec<&str> = Vec::new();
-        for (i, rule) in rules.iter().enumerate() {
-            if seen_ids.contains(&rule.id.as_str()) {
-                issues.push(Issue::error(
-                    format!("connections[{}].rules[{}].id", conn_id, i),
-                    format!("规则 id 重复: {}", rule.id),
-                ));
-            }
-            seen_ids.push(&rule.id);
-            for issue in validate_rule(rule) {
-                issues.push(Issue {
-                    severity: issue.severity,
-                    path: format!("connections[{}].rules[{}].{}", conn_id, i, issue.path),
-                    message: issue.message,
-                });
-            }
-        }
-    }
-    issues
-}
-
 // ============================================================================
 // 条件摘要（规则列表的「一眼看懂」）
 // ============================================================================
@@ -1231,10 +1204,6 @@ mod tests {
         let rules = config.connections.get("3f2a9c14-8b6e-4d21-9f03-7c1e5a4b8d02").unwrap();
         assert_eq!(rules.len(), 2);
         assert!(rules.iter().any(|r| r.enabled));
-        assert!(
-            validate_rules_config(&config).is_empty(),
-            "文档示例必须全部通过校验"
-        );
     }
 
     /// 空 `All{}` 是**合法配置**：恒真，语义即「匹配全部报文」（用户显式留空即兜底）
@@ -1416,68 +1385,6 @@ mod tests {
         );
     }
 
-    /// 合法的完整规则必须零问题，否则 UI 会因为"合法规则被拒"完全不可用
-    #[test]
-    fn test_valid_rules_produce_no_issues() {
-        let mut config = ReplyRulesConfig::default();
-        config.connections.insert(
-            "conn-1".to_string(),
-            vec![
-            ReplyRule {
-                name: "前缀+校验".to_string(),
-                matcher: MatchNode::All {
-                    children: vec![
-                        MatchNode::PrefixRange {
-                            prefix: BytePattern::Hex("01 03".to_string()),
-                            min_len: 8,
-                            max_len: 8,
-                            constraints: vec![Constraint::ByteEq {
-                                offset: 1,
-                                value: 3,
-                            }],
-                        },
-                        MatchNode::ChecksumValid {
-                            algorithm: ChecksumAlgorithm::Crc16Modbus,
-                            at: ChecksumAt::Trailing {
-                                n: 2,
-                                width: Width::U16,
-                            },
-                            range: Some((0, 6)),
-                        },
-                        MatchNode::From {
-                            addrs: vec!["192.168.1.0/24".to_string(), "10.0.0.1".to_string()],
-                        },
-                        MatchNode::Regex {
-                            pattern: "^AT\\+".to_string(),
-                        },
-                        MatchNode::Not {
-                            child: Box::new(MatchNode::Length { min: 0, max: 0 }),
-                        },
-                    ],
-                },
-                payload: ReplyPayload {
-                    text: "01 03 04 00 0A 00 14 ${crc16modbus:0:9:le}".to_string(),
-                    hex_mode: true,
-                    codec: RuleCodec::Raw,
-                },
-                ..ReplyRule::new("占位", 1)
-            },
-            ReplyRule {
-                name: "ECHO".to_string(),
-                matcher: MatchNode::Length { min: 1, max: 65535 },
-                payload: ReplyPayload {
-                    text: "${rx.raw}".to_string(),
-                    hex_mode: true,
-                    codec: RuleCodec::Raw,
-                },
-                ..ReplyRule::new("占位", 2)
-            },
-            ],
-        );
-        let issues = validate_rules_config(&config);
-        assert!(issues.is_empty(), "合法规则不应有问题: {:?}", issues);
-    }
-
     /// hex 模式 + 未选 Raw 时必须给黄字警告（二进制协议继承 CRLF 会静默发错帧）
     #[test]
     fn test_hex_mode_without_raw_warns() {
@@ -1498,25 +1405,6 @@ mod tests {
             issues
                 .iter()
                 .any(|i| i.severity == Severity::Warning && i.path == "payload.codec"),
-            "{:?}",
-            issues
-        );
-    }
-
-    /// 规则集级校验：重复 id 必须被发现（UI 列表按 id 索引，重复会导致编辑错行）
-    #[test]
-    fn test_duplicate_rule_id_detected() {
-        let rule = ReplyRule {
-            matcher: MatchNode::Length { min: 1, max: 8 },
-            ..ReplyRule::new("重复", 1)
-        };
-        let mut config = ReplyRulesConfig::default();
-        config
-            .connections
-            .insert("conn-1".to_string(), vec![rule.clone(), rule]);
-        let issues = validate_rules_config(&config);
-        assert!(
-            issues.iter().any(|i| i.message.contains("规则 id 重复")),
             "{:?}",
             issues
         );

@@ -226,15 +226,6 @@ impl ReplyRulesStore {
         self.seq.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// 全部连接下的启用规则总数
-    pub fn enabled_rule_count(&self) -> usize {
-        self.all_runtimes()
-            .values()
-            .flat_map(|rules| rules.iter())
-            .filter(|r| r.rule.enabled)
-            .count()
-    }
-
     /// 指定连接下的启用规则数（连接页状态文案用）
     pub fn enabled_rule_count_for(&self, connection_id: &str) -> usize {
         self.rules_for(connection_id)
@@ -526,7 +517,7 @@ mod tests {
         assert!(store.rules_for("tab-1").is_empty());
     }
 
-    /// 启用计数：全量 / 按连接
+    /// 启用计数：按连接
     #[test]
     fn test_enabled_rule_count() {
         let store = gated_store(&["tab-1", "tab-2"]);
@@ -534,7 +525,6 @@ mod tests {
         cfg.connections
             .insert("tab-2".to_string(), vec![rule("b", 1, true)]);
         store.replace(&cfg);
-        assert_eq!(store.enabled_rule_count(), 2);
         assert_eq!(store.enabled_rule_count_for("tab-1"), 1);
         assert_eq!(store.enabled_rule_count_for("tab-2"), 1);
         assert_eq!(store.enabled_rule_count_for("tab-x"), 0);
@@ -551,7 +541,6 @@ mod tests {
         assert_eq!(store.enabled_rules().len(), 1);
         // 快照覆盖全部规则（含禁用项），故仍为 2
         assert_eq!(store.hits_snapshot().len(), 2);
-        assert_eq!(store.enabled_rule_count(), 1);
     }
 
     /// 编辑规则不得让命中计数归零（同一 id 继承计数）

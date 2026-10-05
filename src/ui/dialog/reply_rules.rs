@@ -42,8 +42,6 @@ use super::{dialog_content_max_height, dialog_height, open_reply_rule_edit_dialo
 pub struct ReplyRulesDialogState {
     /// 本弹窗所属的连接 id（= tab_id）。规则严格按连接隔离，列表只读该连接的规则。
     pub tab_id: String,
-    /// 连接展示名（如 "127.0.0.1:502"），用于标题/空态文案
-    pub tab_label: String,
     /// 已点击过一次「删除」、等待二次确认的规则 id
     ///
     /// 用"按钮自身变确认态"而不是再开一个确认弹窗: 弹窗栈里再叠弹窗会让
@@ -53,10 +51,9 @@ pub struct ReplyRulesDialogState {
 }
 
 impl ReplyRulesDialogState {
-    pub fn new(tab_id: impl Into<String>, tab_label: impl Into<String>) -> Self {
+    pub fn new(tab_id: impl Into<String>) -> Self {
         Self {
             tab_id: tab_id.into(),
-            tab_label: tab_label.into(),
             confirm_delete: None,
         }
     }
@@ -749,7 +746,7 @@ mod tests {
     /// T-2：删除二次确认状态机 —— 第一次点击只进入确认态，第二次才真正删除。
     #[test]
     fn test_delete_requires_second_click() {
-        let mut state = ReplyRulesDialogState::new("tab-1", "127.0.0.1:502");
+        let mut state = ReplyRulesDialogState::new("tab-1");
         assert!(!state.on_delete_click("rule-a"), "首次点击不得删除");
         assert_eq!(state.confirm_delete.as_deref(), Some("rule-a"));
 
@@ -760,7 +757,7 @@ mod tests {
     /// 确认态具有"排他性"：点另一条规则会把确认态转移过去，且当前点击不删除。
     #[test]
     fn test_delete_confirm_moves_to_other_rule() {
-        let mut state = ReplyRulesDialogState::new("tab-1", "127.0.0.1:502");
+        let mut state = ReplyRulesDialogState::new("tab-1");
         assert!(!state.on_delete_click("rule-a"));
         assert!(!state.on_delete_click("rule-b"), "点别的规则不得删除该规则");
         assert_eq!(state.confirm_delete.as_deref(), Some("rule-b"));

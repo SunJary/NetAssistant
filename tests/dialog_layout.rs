@@ -1,4 +1,3 @@
-use gpui_kit::component::dialog::Dialog;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{Root, WindowExt, v_flex};
 /// 对话框滚动布局的无头测试：复现 Dialog 组件内「auto 高度面板 + max_h 封顶 + 滚动容器」
@@ -40,7 +39,7 @@ struct DialogHost {
 
 impl DialogHost {
     fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        window.open_dialog(cx, |dialog, window, _cx| {
+        window.open_dialog(cx, |dialog, _window, _cx| {
             let content_cap = px(352.);
             dialog
                 .title("Scroll Test")
@@ -94,7 +93,7 @@ impl Render for DialogHost {
 fn dialog_content_with_max_h_clamps_and_scrolls(cx: &mut TestAppContext) {
     cx.update(gpui_kit::component::init);
     let (_, cx) = cx.add_window_view(|window, cx| {
-        let host = cx.new(|cx| DialogHost { opened: false });
+        let host = cx.new(|_cx| DialogHost { opened: false });
         Root::new(host, window, cx)
     });
     let mut cx = cx;
@@ -150,7 +149,7 @@ fn dialog_esc_and_overlay_click_both_close(cx: &mut TestAppContext) {
 
     cx.update(gpui_kit::component::init);
     let (_, mut cx) = cx.add_window_view(|window, cx| {
-        let host = cx.new(|cx| DialogHost { opened: false });
+        let host = cx.new(|_cx| DialogHost { opened: false });
         Root::new(host, window, cx)
     });
     let host = cx.update(|window, cx| {
@@ -265,7 +264,7 @@ impl Render for ReplyRulesDialogHost {
 fn reply_rules_dialog_long_list_clamps_scrolls_and_keeps_footer(cx: &mut TestAppContext) {
     cx.update(gpui_kit::component::init);
     let (_, cx) = cx.add_window_view(|window, cx| {
-        let host = cx.new(|cx| ReplyRulesDialogHost { opened: false });
+        let host = cx.new(|_cx| ReplyRulesDialogHost { opened: false });
         Root::new(host, window, cx)
     });
     let mut cx = cx;

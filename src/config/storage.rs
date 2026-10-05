@@ -348,15 +348,6 @@ impl ConfigStorage {
         }
     }
 
-    /// 删除指定连接的压测配置
-    #[allow(dead_code)]
-    pub fn remove_stress_profile(&mut self, connection_id: &str) {
-        self.config.stress_profiles.remove(connection_id);
-        if self.config.auto_save {
-            let _ = self.save();
-        }
-    }
-
     /// 获取指定连接的定时任务(心跳)配置(回填用)
     pub fn get_timed_profile(&self, connection_id: &str) -> Option<&TimedTaskProfile> {
         self.config.timed_tasks.get(connection_id)

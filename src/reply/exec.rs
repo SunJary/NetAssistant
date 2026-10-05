@@ -715,7 +715,7 @@ mod tests {
         println!(
             "[perf] 探针: 启用={} 规则数={} 应答={:?}",
             store.is_enabled(),
-            store.enabled_rule_count(),
+            store.enabled_rule_count_for("tab"),
             probe.reply.as_ref().map(|r| r.len()),
         );
         let start = Instant::now();

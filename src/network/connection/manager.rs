@@ -86,22 +86,6 @@ impl NetworkConnectionManager {
         self
     }
 
-    /// 创建并启动客户端连接(不注入计数器, 用于回归测试)
-    #[allow(dead_code)]
-    pub async fn create_and_connect_client(
-        &mut self,
-        config: &ClientConfig,
-        event_sender: Option<Sender<ConnectionEvent>>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.create_and_connect_client_with_counters(
-            config,
-            event_sender,
-            None,
-            TrailerSetting::default(),
-        )
-        .await
-    }
-
     /// 创建并启动客户端连接(携带网络层精确计数器)
     pub async fn create_and_connect_client_with_counters(
         &mut self,
@@ -131,22 +115,6 @@ impl NetworkConnectionManager {
         self.clients.insert(config.id.clone(), client);
 
         Ok(())
-    }
-
-    /// 创建并启动服务端(不注入计数器, 用于回归测试)
-    #[allow(dead_code)]
-    pub async fn create_and_start_server(
-        &mut self,
-        config: &ServerConfig,
-        event_sender: Option<Sender<ConnectionEvent>>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.create_and_start_server_with_counters(
-            config,
-            event_sender,
-            None,
-            TrailerSetting::default(),
-        )
-        .await
     }
 
     /// 创建并启动服务器(携带网络层精确计数器)
@@ -231,7 +199,7 @@ mod tests {
     use super::*;
     use crate::config::connection::ConnectionType;
 
-    /// 回归测试: 端口被占用时 create_and_start_server 必须返回错误。
+    /// 回归测试: 端口被占用时 create_and_start_server_with_counters 必须返回错误。
     ///
     /// 此前 start() 的错误被 `let _ =` 吞掉,UI 无任何提示——多实例监听同一
     /// UDP 端口时表现为"两个实例都显示在监听,但都收不到消息"。
@@ -249,7 +217,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = manager.create_and_start_server(&config, None).await;
+        let result = manager.create_and_start_server_with_counters(&config, None, None, TrailerSetting::default()).await;
         assert!(
             result.is_err(),
             "端口被占用时启动服务端应返回错误,实际: {:?}",
@@ -275,7 +243,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = manager.create_and_start_server(&config, None).await;
+        let result = manager.create_and_start_server_with_counters(&config, None, None, TrailerSetting::default()).await;
         assert!(
             result.is_err(),
             "TCP端口被占用时启动服务端应返回错误,实际: {:?}",
@@ -302,7 +270,7 @@ mod tests {
         };
 
         manager
-            .create_and_start_server(&config, None)
+            .create_and_start_server_with_counters(&config, None, None, TrailerSetting::default())
             .await
             .expect("空闲端口启动 TCP 服务端应成功");
 
@@ -340,7 +308,7 @@ mod tests {
             server_port: port,
             ..Default::default()
         };
-        let result = manager.create_and_connect_client(&config, None).await;
+        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
         assert!(result.is_err(), "连接被拒绝时应返回错误,实际: {:?}", result);
     }
 
@@ -370,7 +338,7 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client(&config, None)
+            .create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default())
             .await
             .expect("配置本地绑定后 TCP 连接应成功");
 
@@ -395,7 +363,7 @@ mod tests {
             local_address: Some("::1".to_string()),
             ..Default::default()
         };
-        let result = manager.create_and_connect_client(&config, None).await;
+        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
         let msg = result.expect_err("地址族不一致应返回错误").to_string();
         assert!(
             msg.contains("地址族不一致"),
@@ -426,7 +394,7 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client(&config, Some(tx))
+            .create_and_connect_client_with_counters(&config, Some(tx), None, TrailerSetting::default())
             .await
             .expect("配置本地绑定后 UDP 客户端应启动成功");
 
@@ -469,7 +437,7 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_start_server(&server_config, Some(tx.clone()))
+            .create_and_start_server_with_counters(&server_config, Some(tx.clone()), None, TrailerSetting::default())
             .await
             .expect("服务端应启动成功");
 
@@ -480,12 +448,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client(&client_config, Some(tx))
+            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
             .await
             .expect("客户端应连接成功");
 
         // 等待服务端 accept: ServerClientConnected 携带该客户端的写入发送器
-        let mut write_sender = None;
+        let write_sender;
         loop {
             let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
                 .await
@@ -577,7 +545,7 @@ mod tests {
                         ..Default::default()
                     };
                     manager
-                        .create_and_connect_client(&config, Some(tx))
+                        .create_and_connect_client_with_counters(&config, Some(tx), None, TrailerSetting::default())
                         .await
                         .expect("客户端应连接成功");
 
@@ -647,7 +615,7 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client(&config, Some(tx))
+            .create_and_connect_client_with_counters(&config, Some(tx), None, TrailerSetting::default())
             .await
             .expect("未配置本地绑定时 UDP 客户端应启动成功");
 
@@ -721,7 +689,7 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_start_server(&server_config, Some(tx.clone()))
+            .create_and_start_server_with_counters(&server_config, Some(tx.clone()), None, TrailerSetting::default())
             .await
             .expect("服务端应启动成功");
 
@@ -732,12 +700,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client(&client_config, Some(tx))
+            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
             .await
             .expect("客户端应连接成功");
 
         // 等 accept 拿到写入发送器（服务端侧）
-        let mut server_write = None;
+        let server_write;
         loop {
             let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
                 .await
@@ -803,7 +771,7 @@ mod tests {
         let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
         let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
         manager
-            .create_and_connect_client(&client_config, Some(tx))
+            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
             .await
             .expect("客户端应连接成功");
 
@@ -881,7 +849,7 @@ mod tests {
         let (tx, _rx) = smol::channel::unbounded::<ConnectionEvent>();
         let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
         manager
-            .create_and_connect_client(&client_config, Some(tx))
+            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
             .await
             .expect("UDP 客户端应启动成功");
 

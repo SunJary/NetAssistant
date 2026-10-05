@@ -148,12 +148,6 @@ impl BucketHistogram {
             Some(self.max),
         )
     }
-
-    /// 样本数
-    #[allow(dead_code)]
-    pub fn sample_count(&self) -> u64 {
-        self.count
-    }
 }
 
 impl Default for BucketHistogram {
@@ -416,7 +410,6 @@ mod tests {
         for i in 0..1_000_000u64 {
             h.record(i % 10_000);
         }
-        assert_eq!(h.sample_count(), 1_000_000);
         let (p50, _, _, avg, max) = h.percentiles();
         let p50 = p50.unwrap();
         assert!(p50 > 4000 && p50 < 6000, "p50={}", p50);
@@ -431,7 +424,6 @@ mod tests {
         a.record(100);
         b.record(900);
         a.merge(&b);
-        assert_eq!(a.sample_count(), 2);
         let (_, _, _, avg, max) = a.percentiles();
         assert_eq!(avg.unwrap(), 500);
         assert_eq!(max.unwrap(), 900);

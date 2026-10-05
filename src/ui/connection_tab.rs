@@ -1275,7 +1275,6 @@ impl<'a> ConnectionTab<'a> {
         let switch_tab_id = self.tab_id.clone();
         // 「管理规则」弹窗的所属连接: 规则严格隔离, 弹窗只展示/编辑该连接的规则
         let dialog_tab_id = self.tab_id.clone();
-        let dialog_tab_label = self.tab_state.connection_config.address_label();
 
         div()
             .flex()
@@ -1361,7 +1360,6 @@ impl<'a> ConnectionTab<'a> {
                                 // 此处直接改字段而非 app.update, 避免在已持有租约时重入 update。
                                 app.reply_rules_dialog = Some(ReplyRulesDialogState::new(
                                     dialog_tab_id.clone(),
-                                    dialog_tab_label.clone(),
                                 ));
                                 open_reply_rules_dialog(
                                     cx.entity().downgrade(),

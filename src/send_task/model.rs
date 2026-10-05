@@ -307,7 +307,6 @@ pub enum TaskStatus {
     Stopped,
     /// 预留: `TaskEndReason::Failed` 的信源(心跳探活/运行期编码错误等确定性失败时构造);
     /// 当前引擎对发送失败一律走「暂停保留」, 故尚未有构造点
-    #[allow(dead_code)]
     Failed(String),
 }
 
