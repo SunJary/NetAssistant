@@ -7,6 +7,24 @@ description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast de
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## v1.3.0 <Badge type="tip" text="2026-10-05" />
+
+- **Custom reply rules**: the old fixed "auto-reply" is now a rule engine — each rule is a match condition plus a reply action, matching incoming frames and answering automatically
+  - **Match conditions**: arbitrary nesting of "all of / any of / not", plus a range of atomic predicates — contains bytes, fixed exact, fixed masked, prefix + length range (with optional positional constraints), frame length range, byte at offset, integer at offset, suffix, regex, source address (CIDR allowed), field value, and checksum validation
+  - **Reply action**: content may use received-frame variables `${rx.*}` and general variables; each rule can set its own encoding (Raw / append LF / append CRLF / inherit from the connection) — pick "Raw" for binary protocols so no line ending is appended and the checksum stays valid
+  - **Scoped per connection**: a rule only applies to its own connection, and the connection page's "Auto Reply" switch is that connection's single master gate; supports enable/disable, duplicate, drag-to-reorder (top to bottom, first hit wins), trigger counts and reset
+  - **Inline test run**: enter a test frame in the editor to immediately see whether it hits, the first unmet condition, the rendered reply, and the received-frame variables it uses
+  - Legacy fixed auto-reply content can be migrated into an equivalent rule in one click
+- **Message variables**: the send box, timed tasks and reply rules all support variables — beyond the existing `${seq}` / `${timestamp}` / `${uuid}` / `${random:min:max}`, new received-frame variables `${rx.*}` (`raw` / `hex` / `ascii` / `base64` and integer accessors such as `u8` / `u16be` / `i32le`), checksums generated at send time (`${crc16modbus:off:len}` and others), and `${= expression }`; in Hex mode numeric variables are converted to hexadecimal automatically
+- **Send tasks (line-by-line)**: import a file or paste multiple lines to send them one per line, with a per-line interval, looping and a maximum round count; the task panel shows live progress and supports pause / resume / stop / delete
+- **Timed tasks (heartbeat)**: each connection supports one timed task that loops a single message at a fixed interval, optionally auto-starting with the connection; visible in the task panel, with an interval you can edit and apply immediately
+- **Trailing character (LF / CRLF)**: a new "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message, and also to line-send tasks and auto reply
+- **Hex input context menu**: added cut / copy / paste / select all, plus checksum tools that compute XOR, Sum8, Modbus LRC, CRC16-Modbus, CRC16-CCITT-FALSE and CRC32 directly on the input
+
+Fixes and improvements:
+
+- Dependencies migrated to gpui-kit
+
 ## v1.2.0 <Badge type="tip" text="2026-09-23" />
 
 - **Keyboard shortcuts**: new application-level shortcuts — `Ctrl+Enter` to send, `Ctrl+Tab` / `Ctrl+Shift+Tab` and `Ctrl+PageDown/PageUp` to cycle tabs, `Ctrl+1..9` to jump to a tab, `Ctrl+W` to close a tab, `Ctrl+N` for a new connection, `Ctrl+K` to focus the message input, `Ctrl+F` for message search; they work whether the focus is in an input or on empty space

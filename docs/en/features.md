@@ -41,8 +41,10 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 
 ## Automated Testing
 
-- **Auto-reply**: automatic replies for testing, simulating server or client responses
-- **Periodic send**: send messages on a schedule for stress testing or long-run stability testing
+- **Reply rules**: a per-connection rule engine that matches incoming frames by byte-level conditions (contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address, checksum validation, and more, arbitrarily nested with all/any/not) and replies automatically; replies support received-frame and dynamic variables and can set their own encoding; rules are scoped per connection with enable/disable, drag-to-reorder, trigger counts and an inline test run
+- **Message variables**: the send box, timed tasks and reply rules all share general variables such as `${seq}`, time, `${uuid}` and `${random:min:max}`, plus received-frame variables `${rx.*}`, checksums generated at send time and `${= expression }`
+- **Send tasks and timed tasks**: send imported files or pasted lines one per line (with interval, looping and round limits); each connection can add a timed task to send a heartbeat at a fixed interval — both show progress in the task panel with pause/resume/stop
+- **Periodic send**: repeat the current send-box content at a set interval for long-run stability testing or device heartbeat simulation
 - **Stress testing**: built-in TCP/UDP high-concurrency stress test engine, see the [Stress Testing Guide](/en/guide/stress)
 
 ## Modern Interface
