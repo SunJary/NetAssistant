@@ -206,6 +206,58 @@ jobs:
           name: ${{ matrix.asset_name }}-appimage
           path: ${{ matrix.asset_name }}.AppImage
 
+      - name: Build .deb package
+        if: runner.os == 'Linux'
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          VER="${VERSION#v}"
+          case "$(uname -m)" in
+            x86_64)  DEB_ARCH=amd64 ;;
+            aarch64) DEB_ARCH=arm64 ;;
+            *)       DEB_ARCH="$(uname -m)" ;;
+          esac
+          HOMEPAGE="$(git config --get remote.origin.url | sed 's/\.git$//')"
+
+          PKG=deb-pkg
+          mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin" \
+                   "$PKG/usr/share/applications" \
+                   "$PKG/usr/share/icons/hicolor/256x256/apps"
+          install -m 755 target/${{ matrix.target }}/release/netassistant "$PKG/usr/bin/netassistant"
+          # 复用 AppImage 步骤生成的 .desktop（Exec/Icon 与系统安装路径一致）
+          cp AppDir/usr/share/applications/netassistant.desktop "$PKG/usr/share/applications/"
+          cp assets/icon/icon_256x256.png "$PKG/usr/share/icons/hicolor/256x256/apps/netassistant.png"
+
+          cat > "$PKG/DEBIAN/control" <<EOF
+          Package: netassistant
+          Version: $VER
+          Architecture: $DEB_ARCH
+          Maintainer: Jary <Jarysun@outlook.com>
+          Installed-Size: $(du -sk "$PKG/usr" | cut -f1)
+          Depends: libc6 (>= 2.35), libxkbcommon0, libxkbcommon-x11-0, libxcb1, libwayland-client0, libfreetype6, libvulkan1
+          Recommends: mesa-vulkan-drivers
+          Section: net
+          Priority: optional
+          Homepage: $HOMEPAGE
+          Description: NetAssistant - 多协议网络调试工具
+           跨平台网络调试工具，支持 Windows、macOS 与 Linux。
+          EOF
+
+          dpkg-deb --build --root-owner-group "$PKG" "${{ matrix.asset_name }}.deb"
+          # 校验：控制字段与包内文件清单
+          dpkg-deb --info "${{ matrix.asset_name }}.deb"
+          dpkg-deb --contents "${{ matrix.asset_name }}.deb"
+          # 信息项：核对二进制实际链接的动态库，便于日后调整 Depends
+          echo "== ldd =="
+          ldd target/${{ matrix.target }}/release/netassistant || true
+
+      - name: Upload deb artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-deb
+          path: ${{ matrix.asset_name }}.deb
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -464,6 +516,8 @@ jobs:
             - **Linux (AppImage, x86_64)**: 下载 `netassistant-linux-x86_64.AppImage`（推荐，开箱即用）
             - **Linux (AppImage, ARM64)**: 下载 `netassistant-linux-aarch64.AppImage`（树莓派 5 / ARM 服务器等 ARM 设备）
             - **Linux (tar.gz)**: 下载 `netassistant-linux-x86_64.tar.gz` / `netassistant-linux-aarch64.tar.gz`（轻量，需自行安装依赖）
+            - **Linux (deb, x86_64)**: 下载 `netassistant-linux-x86_64.deb`（Debian/Ubuntu 及衍生版，apt 安装自动解决依赖）
+            - **Linux (deb, ARM64)**: 下载 `netassistant-linux-aarch64.deb`（ARM 设备 Debian/Ubuntu）
             - **macOS (通用 Universal)**: 下载 `netassistant-macos-universal.dmg`（推荐，拖入 Applications 安装）或 `netassistant-macos-universal.zip`（解压即用）
             - **macOS (裸二进制)**: `netassistant-macos-x86_64.tar.gz`（Intel）/ `netassistant-macos-aarch64.tar.gz`（Apple Silicon）
 
@@ -482,6 +536,11 @@ jobs:
             2. 添加执行权限：`chmod +x netassistant-linux-*.AppImage`
             3. 运行：`./netassistant-linux-x86_64.AppImage`
             4. 首次运行需安装 libfuse2：`sudo apt install libfuse2`
+
+            #### Linux (deb)
+            1. 下载对应架构的 `netassistant-linux-x86_64.deb` 或 `netassistant-linux-aarch64.deb`
+            2. 安装（自动解析依赖）：`sudo apt install ./netassistant-linux-x86_64.deb`
+            3. 从应用菜单启动，或终端运行：`netassistant`
 
             #### Linux (tar.gz)
             1. 下载并解压 `netassistant-linux-x86_64.tar.gz`（或 `netassistant-linux-aarch64.tar.gz`）
