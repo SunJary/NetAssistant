@@ -1,5 +1,5 @@
 ---
-title: 同类工具对比
+title: 同类工具对比 - NetAssistant vs NetAssist、Packet Sender
 description: NetAssistant 与网络调试助手（NetAssist）、SocketTool、Packet Sender、Wireshark 等 TCP/UDP 网络调试工具对比：跨平台（Windows / Linux / macOS，x64 与 ARM64 原生构建）、开源免费、内置压力测试，为什么选择 NetAssistant。
 ---
 

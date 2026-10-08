@@ -1,5 +1,5 @@
 ---
-title: Comparison with Similar Tools
+title: NetAssistant vs NetAssist, Packet Sender & Similar Tools
 description: "NetAssistant vs NetAssist, SocketTool, Packet Sender and Wireshark — a comparison of TCP/UDP network debugging tools: cross-platform (Windows / Linux / macOS, native x64 and ARM64 builds), open source, built-in stress testing, and why choose NetAssistant."
 ---
 

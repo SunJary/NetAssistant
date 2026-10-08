@@ -1,5 +1,5 @@
 ---
-title: 快速上手
+title: 快速上手 - 安装与第一条 TCP/UDP 报文
 description: NetAssistant 安装与快速上手教程：Windows（winget）、Linux（AppImage）、macOS 三种安装方式，x64 与 ARM64 均有原生构建，三步完成第一次 TCP/UDP 调试。
 ---
 
@@ -31,20 +31,16 @@ winget upgrade SunJary.NetAssistant
 
 ### Linux
 
-1. 从 [GitHub Release](https://github.com/sunjary/netassistant/releases) 页面下载最新版本的 Linux 压缩包（推荐 AppImage，开箱即用）
-2. 解压安装包：
+1. 从 [GitHub Release](https://github.com/sunjary/netassistant/releases) 页面下载最新版本的 deb 包（推荐，Debian/Ubuntu 及衍生版，Ubuntu 22.04 及以上均可）
+2. 安装（自动解析依赖）：
 
 ```bash
-tar -xzf netassistant-linux-x86_64.tar.gz
+sudo apt install ./netassistant-linux-x86_64.deb
 ```
 
-3. 运行可执行文件：
+3. 从应用菜单启动，或终端运行 `netassistant`
 
-```bash
-./netassistant
-```
-
-AppImage 方式首次运行需安装 libfuse2：`sudo apt install libfuse2`。
+其他发行版可用 AppImage（免安装，首次运行需 `sudo apt install libfuse2`）或 tar.gz 解压运行。
 
 ARM64 设备（树莓派 5、ARM 服务器等）请将上述文件名中的 `x86_64` 替换为 `aarch64`。
 

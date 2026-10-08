@@ -1,13 +1,16 @@
-# NetAssistant
+# NetAssistant - 网络调试助手
 
 <div align="center">
 
 **一个基于 Rust 构建的高性能、现代化的网络调试工具**
 
 [![Rust](https://img.shields.io/badge/Rust-2024-orange.svg)](https://www.rust-lang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/v/release/sunjary/netassistant)](https://github.com/sunjary/netassistant/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/sunjary/netassistant/total)](https://github.com/sunjary/netassistant/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/sunjary/netassistant/releases)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-[English](README-en.md) | 中文
+[English](README-en.md) | 中文 | [📖 官网 / 在线文档](https://netassistant.trydo.top/)
 
 </div>
 
@@ -16,6 +19,8 @@
 ## 简介
 
 NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**网络调试工具，专为开发者设计，**支持 Windows、Linux 和 macOS 系统**。它提供了直观的界面，用于测试和调试网络通信，支持 TCP/UDP 协议的客户端和服务端模式，帮助开发者快速验证网络通信逻辑和数据格式，是网络应用开发、硬件调试和嵌入式系统开发的得力助手。
+
+> 🌐 官网与在线文档：[https://netassistant.trydo.top/](https://netassistant.trydo.top/)（功能特性、使用指南、压力测试教程与更新日志）
 
 ## ✨ 功能特性
 
@@ -27,7 +32,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **聊天式报文记录**：直观展示报文交互过程，便于调试和分析
 - **配置持久化**：自动保存连接配置，下次启动直接使用
 - **多语言界面**：内置中文与 English 界面，可在主窗口菜单中切换并记住选择
-- **十六进制编辑器**：HEX 编辑器支持十六进制与文本双视图编辑报文
+- **十六进制编辑器**：HEX 编辑器支持十六进制与文本双视图编辑报文；输入框右键菜单支持剪切 / 复制 / 粘贴 / 全选，并可对输入内容直接计算 XOR、累加和 Sum8、LRC、CRC16-Modbus、CRC16-CCITT-FALSE、CRC32 校验值
 - **文件数据源**：从本地文件读取内容作为报文填入发送框，支持 UTF-8 / GBK / ANSI 编码选择与内容预览，上限 1 MiB
 - **ASCII ↔ Hex 双向互转**：文本/十六进制模式切换时按 UTF-8 整体互转；右键菜单「转换为 Hex / 转换为文本」在只读窗口中展示结果并可一键复制，不可打印字节以 `\xNN` 转义，往返转换字节级一致
 - **客户端本地地址绑定**：新建/编辑连接「更多设置」中可指定本地 IP 与本地端口，适配多网卡及对端按源地址过滤的场景；连接成功后信息面板显示实际生效的本地端点
@@ -43,7 +48,10 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 - **消息条数上限**：可设置「保留最后 N 条」（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息以控制内存占用；与自动滚动联动，关闭自动滚动时停止淘汰（此时消息持续累积、内存随消息量增长，清空或重新设置条数上限后释放）
 
 ### 自动化测试功能
-- **自动回复功能**：支持测试用的自动回复，模拟服务端或客户端响应
+- **回复规则**：按连接的规则引擎，用字节级条件（包含字节、定长精确/掩码匹配、前缀+长度区间、偏移字节/整数、帧尾、正则、来源地址（支持 CIDR）、校验值验算等，可「全部/任一/取反」任意嵌套）匹配收到的报文并自动应答；应答支持接收帧变量与动态变量，可单独设置编码方式；规则按连接隔离，支持启用/停用、复制、拖拽排序（自上而下、命中即停）、触发统计与编辑内联试跑，旧版固定自动回复内容可一键迁移为等价规则
+- **消息变量**：发送框、定时任务与回复规则统一支持 `${seq}`、`${timestamp}`、`${uuid}`、`${random:min:max}` 等通用变量，以及 `${rx.*}` 接收帧变量（`raw` / `hex` / `ascii` / `base64` 与 `u8` / `u16be` / `i32le` 等整数取值）、发送时生成的校验值（如 `${crc16modbus:off:len}`）与 `${= 表达式 }`；Hex 模式下数值变量自动转为十六进制
+- **发送任务与定时任务**：导入文件或粘贴多行后可逐行发送（可设间隔、循环与轮次）；每个连接可添加定时任务按固定间隔循环发送心跳，两者均可在任务面板查看进度、暂停/继续/停止
+- **结尾字符（LF / CRLF）**：发送区可选「无 / LF / CRLF」，对所有发出的消息生效，并同时作用于逐行发送任务与回复规则；压力测试配置中可独立设置「结尾字符」（继承 / 无 / LF / CRLF）
 - **周期发送功能**：支持定时周期性发送消息，用于压力测试或长时间稳定性测试
 - **压力测试功能**：内置 TCP/UDP 高并发压力测试引擎，实时展示 QPS（当前/峰值）、总发送/成功/失败、活跃连接（当前/峰值）、断连/重连、收发字节统计；p50/p95/p99/平均/最大延迟分位数**仅在 Ping-Pong（往返）模式下显示**（该模式发送后等待响应，可统计 RTT 延迟）；支持失败原因分类（连接失败/发送失败/接收超时/对端关闭/校验失败），帮助快速定位瓶颈；支持变量模板（`${seq}` 全局序号、`${worker_id}` 线程ID、`${counter}` 本地计数、`${timestamp}` 时间戳、`${uuid}` 随机UUID、`${random:min:max}` 随机整数）、配置自动保存复用和 CSV 报告导出
 
@@ -88,6 +96,9 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 
 ### 消息搜索
 ![消息搜索截图](assets/screenshots/zh/screenshot_search.png)
+
+### 回复规则
+![回复规则截图](assets/screenshots/zh/screenshot_reply_rule.png)
 
 ### 从文件导入内容（文件数据源）
 ![文件数据源截图](assets/screenshots/zh/screenshot_file_source.png)
@@ -138,7 +149,15 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本（Windows 提供安装程序 `netassistant-windows-x86_64-setup.exe` 与便携版 zip）。
 
 #### Linux
-**推荐方法：从 GitHub Release 下载**
+**推荐方法：安装 deb 包（Debian/Ubuntu 及衍生版）**
+- 步骤：
+  1. 请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载对应架构（x86_64 / ARM64）的 deb 包
+  2. 安装并自动解决依赖：
+     ```bash
+     sudo apt install ./netassistant-*.deb
+     ```
+
+**备选方法：从 GitHub Release 下载压缩包**
 - 步骤：
   1. 请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本的 Linux 压缩包
   2. 解压安装包：
@@ -180,10 +199,13 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
    - 文本模式：直接输入字符串消息
    - 十六进制模式：输入十六进制格式数据，如 "0A0B0C"
    - 切换模式时输入框内容会按 UTF-8 自动互转（文本 ⇄ Hex），无需手工改写；也可在输入框内右键选择「转换为 Hex / 转换为文本」，结果在只读窗口中展示并可复制，不会改写输入框内容
+   - 输入框内右键还可剪切 / 复制 / 粘贴 / 全选，并对输入内容直接计算 XOR、累加和 Sum8、LRC、CRC16-Modbus、CRC16-CCITT-FALSE、CRC32 校验值
 
 4. **发送消息**
    - 在底部输入框输入消息内容
    - 点击 `[发送]` 按钮或按 Enter 键发送
+   - 可在发送区选择「结尾」（无 / LF / CRLF），发送时自动在消息末尾追加
+   - 支持变量：`${seq}`、`${timestamp}`、`${uuid}`、`${random:min:max}` 等通用变量，接收帧变量 `${rx.*}`，校验值 `${crc16modbus:off:len}` 等，以及 `${= 表达式 }`；Hex 模式下数值变量自动转为十六进制
 
 5. **周期发送**
    - 在连接标签页中启用周期发送功能
@@ -191,12 +213,19 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
    - 点击 `[发送]` 按钮开始周期发送
    - 取消勾选周期发送可停止发送任务
 
-6. **自动回复**
-   - 在连接标签页中启用自动回复功能
-   - 设置自动回复内容
-   - 收到消息时自动回复
+6. **自动回复（回复规则）**
+   - 在连接标签页点击 `[管理规则]`，新建或编辑规则；每条规则由**条件**与**动作**组成
+   - 条件支持「全部满足 / 任一满足 / 取反」嵌套，以及包含字节、定长精确/掩码、前缀+长度区间、偏移字节/整数、帧尾、正则、来源地址（支持 CIDR）、校验值验算等多种谓词
+   - 动作为命中后发送的应答内容，可引用 `${rx.*}` 等接收帧变量，并可单独设置编码方式（原样 / 追加 LF / 追加 CRLF / 继承连接）
+   - 连接页的「自动回复」开关是该连接唯一总闸；规则自上而下求值、命中即停，支持启用/停用、复制、拖拽排序与触发次数统计
+   - 编辑弹窗内可「内联试跑」：填入测试报文即时查看是否命中、首个未满足的条件与实际渲染出的应答；旧版固定自动回复内容可一键迁移为等价规则
 
-7. **消息管理**
+7. **发送任务与定时任务**
+   - **逐行发送**：导入文件或粘贴多行内容后按行逐条发送，可设置每条间隔、循环发送与最大轮次
+   - **定时任务（心跳）**：每个连接可添加 1 个定时任务，按固定间隔循环发送单条消息（支持 `${...}` 变量），可设置随连接自动启动，间隔修改立即生效
+   - 两者均可在任务面板查看进度，并支持暂停 / 继续 / 停止 / 删除
+
+8. **消息管理**
    - **复制消息**：点击消息项上的复制按钮，将内容复制到剪贴板
    - **收藏消息**：点击消息项上的收藏按钮，可将消息加入收藏夹；可在弹窗中为收藏项填写备注，并通过关键字搜索快速定位
    - **JSON 格式化**：
@@ -208,49 +237,50 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
    - **消息搜索**：按 `Ctrl+F` 或点击工具栏的放大镜打开搜索浮层，输入关键字即可看到命中计数 `i/n`，用 Enter / Shift+Enter（或点击上/下按钮）环形跳转，命中行会高亮并滚动到视口，按 Esc 关闭
    - **消息条数上限**：在工具栏「自动滚动」旁设置「保留最后 N 条」（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息以控制内存；关闭自动滚动时该值自动置 0 且不淘汰任何消息（大量收发下内存会持续增长，点击清空或重新设置条数上限即可释放）
 
-8. **编辑连接配置**
+9. **编辑连接配置**
    - 对于已保存的连接配置，右键点击连接选择编辑，或点击编辑按钮
    - 可修改协议类型、地址、端口等配置，无需删除重建
 
-9. **UDP 手动添加客户端**
+10. **UDP 手动添加客户端**
    - 在 UDP 服务端模式下，点击 `[+添加客户端]` 按钮
    - 输入目标客户端的 IP 和端口
    - 添加完成后即可主动向该地址发送消息
 
-10. **UDP 设备发现场景（上位机/物联网调试）**
+11. **UDP 设备发现场景（上位机/物联网调试）**
     - 当需要发现局域网内的物联网/嵌入式设备时，向广播地址（如 `192.168.1.255`）发送 discovery 指令
     - 所有设备的回复都会正常显示（不会被源地址过滤）
     - 来自非目标地址的设备回复，源地址会用**浅红色高亮**标识，鼠标悬停显示「非预期地址的回复」提示，帮助你识别哪些设备做出了响应
     - 既不丢失重要的设备响应，又能清晰区分广播回复与目标地址正常回复
 
-11. **压力测试**
+12. **压力测试**
     - 通过标签页上的'压测'入口切换到压力测试页面
     - 填写目标地址、端口、并发客户端数、发送速率、消息内容及变量模板（支持 `${seq}`、`${worker_id}`、`${counter}`、`${timestamp}`、`${uuid}`、`${random:min:max}`）
     - 压测模式支持：
       - **Ping-Pong（往返）模式**：发送后等待响应，会统计 RTT 延迟（p50/p95/p99/平均/最大），适合接口性能测试
       - **吞吐模式**：只发送不等待响应，不统计延迟，适合最大吞吐量测试
     - 连接模式支持：短连接（每次请求新建连接）、长连接
+    - 压测配置中可独立设置「结尾字符」（继承 / 无 / LF / CRLF），发送时在每包末尾追加，「继承」跟随消息面板的结尾设置
     - 点击开始后，在压力测试面板实时查看 QPS（当前/峰值）、总发送/成功/失败、活跃连接（当前/峰值）、断连/重连、收发字节统计；有失败时会自动显示失败原因分类（连接失败/发送失败/接收超时/对端关闭/校验失败）
     - 压测配置自动保存，下次打开自动回填
     - 测试结束后可导出 CSV 报告，点击停止按钮可随时终止测试
 
-12. **管理连接**
+13. **管理连接**
     - 使用标签页切换不同连接
     - 点击标签页上的 `×` 关闭连接
     - 右键点击连接可以删除或编辑保存的配置
 
-13. **客户端消息查看**
+14. **客户端消息查看**
     - 在服务端模式下，左侧面板会显示连接的客户端列表
     - 点击单个客户端地址可以选中该客户端，右侧消息列表会只显示该客户端的消息
     - 再次点击已选中的客户端可以取消选择，恢复显示所有消息
     - 服务端回复给该客户端的消息也会包含在查看结果中
 
-14. **从文件导入内容（文件数据源）**
+15. **从文件导入内容（文件数据源）**
     - 点击工具栏的「打开文件」按钮
     - 选择文件（上限 1 MiB）与文件编码（UTF-8 / GBK / ANSI），在预览区确认内容
     - 点击确定后，文件内容会作为一条完整报文填入发送框；十六进制模式下按原始字节导入
 
-15. **键盘快捷键**
+16. **键盘快捷键**
     - `Ctrl+Enter` 发送当前消息，`Ctrl+F` 打开消息搜索，`Esc` 关闭搜索浮层
     - `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Ctrl+PageDown` / `Ctrl+PageUp` 循环切换标签页，`Ctrl+1..9` 直接跳转到第 N 个标签页，`Ctrl+W` 关闭当前标签页
     - `Ctrl+N` 新建连接，`Ctrl+K` 聚焦消息输入框；macOS 上使用 `Cmd` 代替 `Ctrl`
@@ -313,7 +343,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
   - 现代化的组件模型
   - 响应式状态管理
 
-- [gpui-component](https://github.com/longbridge/gpui-component) - 现代 UI 组件库
+- [gpui-kit](https://crates.io/crates/gpui-kit) - 基于 GPUI 的现代 UI 组件库
   - 丰富的 UI 组件
   - 统一的设计语言
   - 易于定制和扩展
@@ -366,7 +396,23 @@ netassistant/
 │   │   ├── app_stats.rs       # 应用统计数据
 │   │   └── mod.rs             # 配置模块导出
 │   ├── core/                  # 核心逻辑：与 UI 解耦的纯逻辑层
-│   │   └── message_processor.rs # 消息处理器
+│   │   ├── message_processor.rs # 消息处理器
+│   │   ├── crc.rs             # CRC 校验算法（CRC16-Modbus / CRC16-CCITT / CRC32）
+│   │   ├── checksum.rs        # 校验和算法（XOR / Sum8 / LRC）
+│   │   └── toolbox.rs         # 选区工具注册表：转换与校验工具（右键菜单）
+│   ├── reply/                 # 回复规则引擎：条件匹配与自动应答（零 GPUI 依赖）
+│   │   ├── model.rs           # 规则数据模型（ReplyRule / MatchNode / ReplyPayload）
+│   │   ├── frame.rs           # 接收帧快照与 `${rx.*}` 取值层
+│   │   ├── matcher.rs         # 纯函数条件匹配器与匹配轨迹
+│   │   ├── store.rs           # 规则运行期状态（按连接隔离、命中计数）
+│   │   ├── exec.rs            # 规则执行：帧处理与应答渲染
+│   │   ├── expr.rs            # `${= 表达式 }` 单表达式引擎
+│   │   └── mod.rs             # 回复规则模块导出
+│   ├── send_task/             # 发送任务体系：逐行发送与定时任务（零 GPUI 依赖）
+│   │   ├── model.rs           # 任务数据模型（逐行发送 / 定时心跳 / 周期发送）
+│   │   ├── parse.rs           # 多行内容行解析（纯逻辑 + 单测）
+│   │   ├── engine.rs          # 任务调度引擎（发送节拍直连网络写通道）
+│   │   └── mod.rs             # 发送任务模块导出
 │   ├── network/               # 网络通信：TCP/UDP 协议、编解码、连接管理
 │   │   ├── connection/        # 连接管理：客户端和服务端连接
 │   │   │   └── manager.rs     # 连接管理器
@@ -374,6 +420,7 @@ netassistant/
 │   │   │   ├── tcp.rs         # TCP 协议
 │   │   │   ├── udp.rs         # UDP 协议
 │   │   │   └── decoder.rs     # 解码器（原始/行/长度前缀/JSON）
+│   │   ├── bind.rs            # 客户端本地绑定地址解析
 │   │   ├── events.rs          # 网络事件定义
 │   │   └── interfaces.rs      # 网络接口抽象
 │   ├── stress/                # 压力测试模块：零 GPUI 依赖的引擎层
@@ -391,6 +438,7 @@ netassistant/
 │   │   ├── connection_panel.rs# 连接面板：显示和管理连接
 │   │   ├── connection_tab.rs  # 连接标签页：每个标签页对应一个连接
 │   │   ├── stress_panel.rs    # 压力测试面板：实时展示压测指标
+│   │   ├── send_task_panel.rs # 发送任务面板：逐行发送/定时任务进度与控制
 │   │   ├── tab_container.rs   # 标签页容器
 │   │   ├── components/        # 通用 UI 组件
 │   │   │   ├── input_with_mode.rs # 带模式切换的输入框（文本/十六进制）
@@ -399,6 +447,9 @@ netassistant/
 │   │       ├── new_connection.rs   # 新建/编辑连接对话框
 │   │       ├── add_client.rs       # UDP 手动添加客户端对话框
 │   │       ├── decoder_selection.rs# 解码器选择对话框
+│   │       ├── reply_rules.rs      # 回复规则管理对话框
+│   │       ├── reply_rule_edit.rs  # 回复规则编辑对话框（含内联试跑）
+│   │       ├── timed_task.rs       # 定时任务（心跳）对话框
 │   │       ├── favorite_list.rs    # 收藏列表对话框
 │   │       ├── favorite_remark.rs  # 收藏备注对话框
 │   │       ├── port_limit_help.rs  # 端口限制帮助对话框
@@ -408,17 +459,25 @@ netassistant/
 │   └── utils/                 # 工具函数：通用工具和辅助功能
 │       ├── hex.rs             # 十六进制数据处理
 │       ├── file_source.rs     # 文件读取、编码解码与文件大小格式化
+│       ├── message_vars.rs    # 通用消息变量引擎（`${...}` 解析与渲染）
 │       └── text_measurement.rs# 文本测量
 ├── assets/                    # 资源文件：图标、字体和截图
 │   ├── icon/                  # 应用图标文件
 │   ├── icons/                 # SVG 矢量图标
 │   ├── fonts/                 # 内嵌字体（JetBrains Mono）
-│   └── screenshots/           # 应用截图
+│   └── screenshots/           # 应用截图（zh / en）
+├── examples/                  # 使用示例：UDP 客户端本地多地址绑定
+├── packaging/                 # 打包资源：Windows Inno Setup 安装包脚本与图标
+├── plans/                     # 设计与规划文档：功能方案与决策记录
+├── skills/                    # 开发辅助技能：gpui-event / gpui-scroll / release-changelog
+├── tests/                     # 集成测试：UI 布局与压测滚动布局
 ├── locales/                   # 多语言资源：rust-i18n YAML（中文/English）
 ├── docs/                      # 文档站点源码（VitePress）
 ├── themes/                    # 主题配置文件
 ├── .cargo/                    # Cargo 配置：Rust 构建工具配置
 ├── .github/                   # GitHub 配置：CI/CD 工作流
+├── rust-i18n.yml              # rust-i18n 多语言加载配置
+├── package.json               # 文档站点（VitePress）构建配置
 ├── Cargo.toml                 # 项目配置：依赖管理和项目元数据
 ├── Cargo.lock                 # 依赖锁文件：固定依赖版本
 ├── README.md                  # 项目文档：中文说明
@@ -445,6 +504,9 @@ A: 理论上没有限制，取决于系统资源。实际使用中同时管理 1
 
 **Q: UDP 模式下为什么有的消息地址是红色的？**  
 A: 红色地址表示这条消息来自「非预期地址」，这是专门为**上位机/物联网设备发现场景**设计的功能。当你向广播地址（如 `192.168.1.255`）发送发现指令时，局域网内的多个设备会从各自不同的 IP 回复响应。这些回复会正常显示，但源地址用红色高亮标识，既不丢失设备响应，又能帮你区分广播回复和正常回复。
+
+**Q: 自动回复能按条件匹配吗？旧版的固定自动回复还在吗？**  
+A: v1.3.0 起「固定自动回复」已升级为**回复规则**引擎：每条规则由「匹配条件 + 应答动作」组成，支持包含字节、掩码、前缀+长度区间、偏移取值、正则、来源地址（CIDR）、校验值验算等条件的任意嵌套；旧版固定自动回复内容可在规则管理中一键迁移为等价规则。
 
 **Q: 压力测试支持哪些协议？**  
 A: 支持 TCP 和 UDP 协议压测，可配置并发数、发送速率、变量模板等。
@@ -504,6 +566,7 @@ cargo build --release
 
 ## 📮 联系方式
 
+- 官网：[https://netassistant.trydo.top/](https://netassistant.trydo.top/)
 - 项目主页：[https://github.com/sunjary/netassistant](https://github.com/sunjary/netassistant)
 - 问题反馈：[https://github.com/sunjary/netassistant/issues](https://github.com/sunjary/netassistant/issues)
 
@@ -512,7 +575,7 @@ cargo build --release
 感谢以下开源项目的贡献：
 
 - [GPUI](https://github.com/zed-industries/zed)
-- [gpui-component](https://github.com/longbridge/gpui-component)
+- [gpui-kit](https://crates.io/crates/gpui-kit)
 - [Tokio](https://tokio.rs/)
 - [Rust](https://www.rust-lang.org/)
 

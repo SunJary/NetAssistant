@@ -1,5 +1,5 @@
 ---
-title: 功能特性
+title: 功能特性 - TCP/UDP 调试、解码器与压力测试
 description: NetAssistant 网络调试助手功能特性一览：TCP/UDP 客户端与服务端、IPv4/IPv6 双栈、四种解码器解决 TCP 粘包、消息收藏与导出、自动回复、周期发送与高并发压力测试；支持 Windows、Linux、macOS 的 x64 与 ARM64。
 ---
 

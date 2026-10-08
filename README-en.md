@@ -1,13 +1,16 @@
-# NetAssistant
+# NetAssistant - Network Debugging Assistant
 
 <div align="center">
 
 **A high-performance, modern network debugging tool built with Rust**
 
 [![Rust](https://img.shields.io/badge/Rust-2024-orange.svg)](https://www.rust-lang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/v/release/sunjary/netassistant)](https://github.com/sunjary/netassistant/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/sunjary/netassistant/total)](https://github.com/sunjary/netassistant/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/sunjary/netassistant/releases)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-English | [中文](README.md)
+English | [中文](README.md) | [📖 Website / Docs](https://netassistant.trydo.top/en/)
 
 </div>
 
@@ -16,6 +19,8 @@ English | [中文](README.md)
 ## Introduction
 
 NetAssistant is a high-performance, modern **cross-platform** network debugging tool built with Rust, **supporting Windows, Linux, and macOS systems**. It provides an intuitive interface for testing and debugging network communications, supporting TCP/UDP client and server modes, helping developers quickly verify network communication logic and data formats. It is a powerful assistant for network application development, hardware debugging, and embedded system development.
+
+> 🌐 Website & online docs: [https://netassistant.trydo.top/en/](https://netassistant.trydo.top/en/) (features, guides, stress-testing tutorial and changelog)
 
 ## ✨ Features
 
@@ -28,7 +33,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Configuration persistence**: Automatically saves connection configurations for direct use next time
 - **Connection editing**: Saved connection configurations can be directly edited and modified without deleting and recreating
 - **Multilingual interface**: Built-in Chinese and English interfaces, switchable from a main-window menu and remembered across launches
-- **Hex editor**: A HEX editor with dual hex/text views for editing payloads
+- **Hex editor**: A HEX editor with dual hex/text views for editing payloads; the input context menu adds cut/copy/paste/select-all plus checksum tools that compute XOR, Sum8, LRC, CRC16-Modbus, CRC16-CCITT-FALSE and CRC32 over the input directly
 - **File data source**: Read a local file into the send box as a payload, with UTF-8 / GBK / ANSI encoding selection and content preview, up to 1 MiB
 - **ASCII ↔ Hex conversion**: Switching between text and hex mode converts the content as UTF-8; the context menu's "Convert to Hex / Convert to Text" shows the result in a read-only window you can copy from, with non-printable bytes escaped as `\xNN` so round-tripping is byte-for-byte
 - **Client local address binding**: Specify a local IP and local port under "More Settings" when creating/editing a connection — useful for multi-NIC hosts and peers that filter by source address; the info panel shows the effective local endpoints after connecting
@@ -43,7 +48,10 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Message count cap**: Configure "Keep last N" messages (default 10000, `0` = unlimited); once exceeded the oldest messages are dropped to bound memory usage. It is linked to auto-scroll — with auto-scroll off nothing is dropped, so messages keep accumulating and memory grows until you clear them or set a cap again
 
 ### Automated Testing Features
-- **Auto-reply functionality**: Supports test auto-replies, simulating server or client responses
+- **Reply rules**: a per-connection rule engine that matches incoming frames by byte-level conditions (contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address with CIDR, checksum validation, and more, arbitrarily nested with all/any/not) and replies automatically; replies support received-frame and dynamic variables and can set their own encoding; rules are scoped per connection with enable/disable, duplicate, drag-to-reorder (top-down, first hit wins), trigger counts and an inline test run — old fixed auto-reply content can be migrated to an equivalent rule in one click
+- **Message variables**: the send box, timed tasks and reply rules all share general variables such as `${seq}`, `${timestamp}`, `${uuid}` and `${random:min:max}`, plus received-frame variables `${rx.*}` (`raw` / `hex` / `ascii` / `base64` and integer accessors such as `u8` / `u16be` / `i32le`), checksums generated at send time (e.g. `${crc16modbus:off:len}`) and `${= expression }`; in Hex mode numeric variables are converted to hexadecimal automatically
+- **Send tasks and timed tasks**: send imported files or pasted lines one by one (with per-line interval, looping and round limits); each connection can add a timed task to send a heartbeat at a fixed interval — both show progress in the task panel with pause/resume/stop
+- **Suffix (LF / CRLF)**: a "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message as well as line-send tasks and reply rules; the stress test configuration can set its own suffix (Inherit / None / LF / CRLF)
 - **Periodic send functionality**: Supports timed periodic message sending for stress testing or long-term stability testing
 - **Stress testing**: Built-in TCP/UDP high-concurrency stress testing engine, real-time display of QPS (current/peak), total sent/success/failure, active connections (current/peak), disconnects/reconnects, bytes sent/received statistics; p50/p95/p99/avg/max latency percentiles **only shown in Ping-Pong (round-trip) mode** (this mode waits for response to measure RTT latency); supports failure breakdown (connect failed/send failed/recv timeout/peer closed/validate failed) to help quickly identify bottlenecks, supports variable templates (`${seq}` global sequence, `${worker_id}` thread ID, `${counter}` local counter, `${timestamp}` timestamp, `${uuid}` random UUID, `${random:min:max}` random integer), auto-save configs for reuse, and CSV report export
 
@@ -88,6 +96,9 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 
 ### Message Search
 ![Message Search Screenshot](assets/screenshots/en/screenshot_search.png)
+
+### Reply Rules
+![Reply Rules Screenshot](assets/screenshots/en/screenshot_reply_rule.png)
 
 ### Import from File (File Data Source)
 ![File Data Source Screenshot](assets/screenshots/en/screenshot_file_source.png)
@@ -138,7 +149,15 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version (Windows offers an installer `netassistant-windows-x86_64-setup.exe` as well as a portable zip).
 
 #### Linux
-**Recommended Method: Download from GitHub Release**
+**Recommended Method: Install the deb package (Debian/Ubuntu and derivatives)**
+- Steps:
+  1. Visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the deb package for your architecture (x86_64 / ARM64)
+  2. Install it and resolve dependencies automatically:
+     ```bash
+     sudo apt install ./netassistant-*.deb
+     ```
+
+**Alternative Method: Download from GitHub Release**
 - Steps:
   1. Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest Linux compressed package
   2. Extract the installation package:
@@ -180,10 +199,13 @@ Run the corresponding executable file according to the installation method for d
    - Text mode: Directly enter string messages
    - Hex mode: Enter hexadecimal format data, such as "0A0B0C"
    - Switching modes converts the input content as UTF-8 automatically (Text ⇄ Hex), no manual rewriting needed; you can also right-click inside the input and pick "Convert to Hex / Convert to Text" — the result is shown in a read-only window you can copy from, and the input itself is left untouched
+   - Right-clicking inside the input also offers cut/copy/paste/select-all, plus checksum tools that compute XOR, Sum8, LRC, CRC16-Modbus, CRC16-CCITT-FALSE and CRC32 over the input directly
 
 4. **Send Messages**
    - Enter message content in the bottom input box
    - Click the `[Send]` button or press Enter to send
+   - Pick a "Suffix" in the send area (None / LF / CRLF) to append automatically to each outgoing message
+   - Variables are supported: general ones like `${seq}`, `${timestamp}`, `${uuid}`, `${random:min:max}`, received-frame variables `${rx.*}`, send-time checksums such as `${crc16modbus:off:len}`, and `${= expression }`; in Hex mode numeric variables are converted to hexadecimal automatically
 
 5. **Periodic Send**
    - Enable periodic send functionality in the connection tab
@@ -191,12 +213,19 @@ Run the corresponding executable file according to the installation method for d
    - Click the `[Send]` button to start periodic sending
    - Uncheck periodic send to stop the sending task
 
-6. **Auto-reply**
-   - Enable auto-reply functionality in the connection tab
-   - Set auto-reply content
-   - Auto-reply when receiving messages
+6. **Auto-Reply (Reply Rules)**
+   - Click `[Manage Rules]` on the connection tab to create or edit rules; each rule is a **condition** plus an **action**
+   - Conditions support nesting of "all of / any of / not" and predicates such as contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address (CIDR) and checksum validation
+   - The action is the reply content sent on a hit; it may use received-frame variables such as `${rx.*}` and can set its own encoding (as-is / append LF / append CRLF / inherit connection)
+   - The connection page's "Auto Reply" switch is that connection's single master gate; rules are evaluated top-down with first hit winning, and support enable/disable, duplicate, drag-to-reorder and trigger counts
+   - The editor offers an "inline test run": enter a test frame to immediately see whether it hits, the first unmet condition and the rendered reply; old fixed auto-reply content can be migrated to an equivalent rule in one click
 
-7. **Message Management**
+7. **Send Tasks and Timed Tasks**
+   - **Line-by-line send**: import a file or paste multiple lines and send them line by line, with per-line interval, looping and round limits
+   - **Timed task (heartbeat)**: each connection supports one timed task that loops a single message (with `${...}` variables) at a fixed interval, optionally auto-starting with the connection; interval edits apply immediately
+   - Both show progress in the task panel and support pause / resume / stop / delete
+
+8. **Message Management**
    - **Copy message**: Click the copy button on a message item to copy its content to the clipboard
    - **Favorite message**: Click the favorite button on a message item to add it to favorites; you can add remarks to favorite items in the popup and quickly locate them via keyword search
    - **JSON formatting**:
@@ -208,49 +237,50 @@ Run the corresponding executable file according to the installation method for d
    - **Message search**: press `Ctrl+F` or click the toolbar magnifier to open the search overlay; type a keyword to see the live `i/n` match counter, jump ring-wise with Enter / Shift+Enter (or the up/down buttons), and the matching row is highlighted and scrolled into view; press Esc to close
    - **Message count cap**: set "Keep last N" next to auto-scroll in the toolbar (default 10000, `0` = unlimited) to drop the oldest messages once exceeded; turning auto-scroll off sets it to 0 and drops nothing, so messages keep accumulating and memory grows — clear them or set a cap again to reclaim it
 
-8. **Edit Connection Configuration**
+9. **Edit Connection Configuration**
    - For saved connection configurations, right-click the connection and select Edit, or click the edit button
    - Protocol type, address, port and other configurations can be modified without deleting and recreating
 
-9. **UDP Manual Add Client**
+10. **UDP Manual Add Client**
    - In UDP server mode, click the `[+Add Client]` button
    - Enter the target client's IP and port
    - After adding, you can actively send messages to that address
 
-10. **UDP Device Discovery Scenario (IoT/Embedded Debugging)**
+11. **UDP Device Discovery Scenario (IoT/Embedded Debugging)**
     - When discovering IoT/embedded devices on the LAN, send discovery commands to a broadcast address (e.g., `192.168.1.255`)
     - All device replies are displayed normally (not filtered by source address)
     - Replies from unexpected addresses have their source addresses **highlighted in light red**, with a tooltip showing "Reply from unexpected address" on hover, helping you identify which devices responded
     - This ensures no important device responses are lost while clearly distinguishing broadcast replies from normal replies to the target address
 
-11. **Stress Testing**
+12. **Stress Testing**
     - Switch to the stress test page via the "Stress" entry on the connection tab
     - Fill in target address, port, concurrent client count, send rate, message content, and variable templates (supports `${seq}`, `${worker_id}`, `${counter}`, `${timestamp}`, `${uuid}`, `${random:min:max}`)
     - Stress modes:
       - **Ping-Pong (Round-trip) mode**: Waits for response after sending, measures RTT latency (p50/p95/p99/avg/max), suitable for API performance testing
       - **Throughput mode**: Sends without waiting for response, no latency measurement, suitable for maximum throughput testing
     - Connection modes: Short connection (new connection per request), Long connection
+    - The stress configuration can set its own "Suffix" (Inherit / None / LF / CRLF) appended to each packet on send; "Inherit" follows the message panel's suffix setting
     - After clicking start, view QPS (current/peak), total sent/success/failure, active connections (current/peak), disconnects/reconnects, bytes sent/received in real time on the stress test panel; failure breakdown (connect failed/send failed/recv timeout/peer closed/validate failed) is automatically shown when there are failures
     - Stress test configurations are automatically saved and restored next time you open
     - After the test, you can export a CSV report; click the stop button to terminate the test at any time
 
-12. **Manage Connections**
+13. **Manage Connections**
     - Use tabs to switch between different connections
     - Click the `×` on the tab to close the connection
     - Right-click on the connection to delete or edit saved configuration
 
-13. **Client Message Viewing**
+14. **Client Message Viewing**
     - In server mode, the left panel displays the list of connected clients
     - Click a single client address to select it, and the right message list will only show messages from that client
     - Click the selected client again to deselect and restore all messages
     - Server replies to the client will also be included in the viewing results
 
-14. **Import Content from a File (File Data Source)**
+15. **Import Content from a File (File Data Source)**
     - Click the "Open File" button in the toolbar
     - Choose a file (1 MiB limit) and its encoding (UTF-8 / GBK / ANSI), then confirm the content in the preview
     - Click OK and the file content is filled into the send box as a single complete payload; in hex mode it is imported as raw bytes
 
-15. **Keyboard Shortcuts**
+16. **Keyboard Shortcuts**
     - `Ctrl+Enter` sends the current message, `Ctrl+F` opens message search, `Esc` closes the search overlay
     - `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Ctrl+PageDown` / `Ctrl+PageUp` cycle through tabs, `Ctrl+1..9` jumps to the Nth tab, `Ctrl+W` closes the current tab
     - `Ctrl+N` creates a new connection and `Ctrl+K` focuses the message input; use `Cmd` instead of `Ctrl` on macOS
@@ -314,7 +344,7 @@ Run the corresponding executable file according to the installation method for d
   - Modern component model
   - Responsive state management
 
-- [gpui-component](https://github.com/longbridge/gpui-component) - Modern UI component library
+- [gpui-kit](https://crates.io/crates/gpui-kit) - Modern UI component library built on GPUI
   - Rich UI components
   - Unified design language
   - Easy to customize and extend
@@ -367,7 +397,23 @@ netassistant/
 │   │   ├── app_stats.rs       # Application statistics data
 │   │   └── mod.rs             # Configuration module export
 │   ├── core/                  # Core logic: pure logic layer decoupled from UI
-│   │   └── message_processor.rs # Message processor
+│   │   ├── message_processor.rs # Message processor
+│   │   ├── crc.rs             # CRC algorithms (CRC16-Modbus / CRC16-CCITT / CRC32)
+│   │   ├── checksum.rs        # Checksum algorithms (XOR / Sum8 / LRC)
+│   │   └── toolbox.rs         # Selection tool registry: conversion & checksum tools (context menu)
+│   ├── reply/                 # Reply rule engine: condition matching & auto-reply (zero GPUI dependencies)
+│   │   ├── model.rs           # Rule data model (ReplyRule / MatchNode / ReplyPayload)
+│   │   ├── frame.rs           # Received-frame snapshot and `${rx.*}` access layer
+│   │   ├── matcher.rs         # Pure-function condition matcher with match trace
+│   │   ├── store.rs           # Rule runtime state (per-connection scoping, hit counters)
+│   │   ├── exec.rs            # Rule execution: frame handling and reply rendering
+│   │   ├── expr.rs            # `${= expression }` single-expression engine
+│   │   └── mod.rs             # Reply rule module export
+│   ├── send_task/             # Send task system: line-by-line send & timed tasks (zero GPUI dependencies)
+│   │   ├── model.rs           # Task data model (line send / timed heartbeat / periodic send)
+│   │   ├── parse.rs           # Multi-line content parsing (pure logic + unit tests)
+│   │   ├── engine.rs          # Task scheduling engine (send tempo wired to the network write channel)
+│   │   └── mod.rs             # Send task module export
 │   ├── network/               # Network communication: TCP/UDP protocols, encoding/decoding, connection management
 │   │   ├── connection/        # Connection management: client and server connections
 │   │   │   └── manager.rs     # Connection manager
@@ -375,6 +421,7 @@ netassistant/
 │   │   │   ├── tcp.rs         # TCP protocol
 │   │   │   ├── udp.rs         # UDP protocol
 │   │   │   └── decoder.rs     # Decoder (raw/line/length-prefixed/JSON)
+│   │   ├── bind.rs            # Client local bind address resolution
 │   │   ├── events.rs          # Network event definitions
 │   │   └── interfaces.rs      # Network interface abstractions
 │   ├── stress/                # Stress testing module: engine layer with zero GPUI dependencies
@@ -392,6 +439,7 @@ netassistant/
 │   │   ├── connection_panel.rs# Connection panel: display and manage connections
 │   │   ├── connection_tab.rs  # Connection tab: each tab corresponds to one connection
 │   │   ├── stress_panel.rs    # Stress test panel: real-time display of stress metrics
+│   │   ├── send_task_panel.rs # Send task panel: line-send/timed-task progress and control
 │   │   ├── tab_container.rs   # Tab container
 │   │   ├── components/        # Common UI components
 │   │   │   ├── input_with_mode.rs # Input box with mode switching (text/hex)
@@ -400,6 +448,9 @@ netassistant/
 │   │       ├── new_connection.rs   # New/Edit connection dialog
 │   │       ├── add_client.rs       # UDP manual add client dialog
 │   │       ├── decoder_selection.rs# Decoder selection dialog
+│   │       ├── reply_rules.rs      # Reply rules management dialog
+│   │       ├── reply_rule_edit.rs  # Reply rule editor dialog (with inline test run)
+│   │       ├── timed_task.rs       # Timed task (heartbeat) dialog
 │   │       ├── favorite_list.rs    # Favorite list dialog
 │   │       ├── favorite_remark.rs  # Favorite remark dialog
 │   │       ├── port_limit_help.rs  # Port limit help dialog
@@ -409,17 +460,25 @@ netassistant/
 │   └── utils/                 # Utility functions: common tools and helper functions
 │       ├── hex.rs             # Hexadecimal data processing
 │       ├── file_source.rs     # File reading, encoding decode and file size formatting
+│       ├── message_vars.rs    # General message variable engine (`${...}` parsing and rendering)
 │       └── text_measurement.rs# Text measurement
 ├── assets/                    # Resource files: icons, fonts, and screenshots
 │   ├── icon/                  # Application icon files
 │   ├── icons/                 # SVG vector icons
 │   ├── fonts/                 # Embedded fonts (JetBrains Mono)
-│   └── screenshots/           # Application screenshots
+│   └── screenshots/           # Application screenshots (zh / en)
+├── examples/                  # Usage examples: UDP client local multi-address binding
+├── packaging/                 # Packaging resources: Windows Inno Setup installer script and icon
+├── plans/                     # Design & planning docs: feature plans and decision records
+├── skills/                    # Dev helper skills: gpui-event / gpui-scroll / release-changelog
+├── tests/                     # Integration tests: UI layout and stress scroll layout
 ├── locales/                   # Localization resources: rust-i18n YAML (Chinese/English)
 ├── docs/                      # Documentation site source (VitePress)
 ├── themes/                    # Theme configuration files
 ├── .cargo/                    # Cargo configuration: Rust build tool configuration
 ├── .github/                   # GitHub configuration: CI/CD workflows
+├── rust-i18n.yml              # rust-i18n localization loading config
+├── package.json               # Documentation site (VitePress) build config
 ├── Cargo.toml                 # Project configuration: dependency management and project metadata
 ├── Cargo.lock                 # Dependency lock file: fix dependency versions
 ├── README.md                  # Project documentation: Chinese description
@@ -446,6 +505,9 @@ A: There's no theoretical limit, depends on system resources. Managing 10-20 con
 
 **Q: Why are some message addresses red in UDP mode?**  
 A: Red addresses indicate the message came from an "unexpected address" — this is a feature designed specifically for **IoT/embedded device discovery scenarios**. When you send discovery commands to a broadcast address (e.g., `192.168.1.255`), multiple devices on the LAN will reply from their own different IPs. These replies are displayed normally, but the source addresses are highlighted in red, ensuring no device responses are lost while helping you distinguish broadcast replies from normal replies.
+
+**Q: Can auto-reply match by condition? Is the old fixed auto-reply still there?**  
+A: Since v1.3.0 the fixed "auto-reply" has been upgraded to a **reply rules** engine: each rule is a match condition plus a reply action, supporting arbitrary nesting of conditions such as contains bytes, masks, prefix + length range, offset values, regex, source address (CIDR) and checksum validation; old fixed auto-reply content can be migrated to an equivalent rule in one click from the rule manager.
 
 **Q: Which protocols does stress testing support?**  
 A: TCP and UDP protocols, with configurable concurrency, send rate, variable templates, etc.
@@ -505,6 +567,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## 📮 Contact
 
+- Website: [https://netassistant.trydo.top/en/](https://netassistant.trydo.top/en/)
 - Project homepage: [https://github.com/sunjary/netassistant](https://github.com/sunjary/netassistant)
 - Issue feedback: [https://github.com/sunjary/netassistant/issues](https://github.com/sunjary/netassistant/issues)
 
@@ -513,7 +576,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 Thanks to the following open-source projects:
 
 - [GPUI](https://github.com/zed-industries/zed)
-- [gpui-component](https://github.com/longbridge/gpui-component)
+- [gpui-kit](https://crates.io/crates/gpui-kit)
 - [Tokio](https://tokio.rs/)
 - [Rust](https://www.rust-lang.org/)
 

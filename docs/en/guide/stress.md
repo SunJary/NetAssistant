@@ -1,5 +1,5 @@
 ---
-title: Stress Testing
+title: Stress Testing - High-Concurrency QPS & Latency Percentiles
 description: "NetAssistant built-in TCP/UDP high-concurrency stress testing guide: Ping-Pong and throughput modes, variable templates, real-time QPS and latency percentiles (p50/p95/p99), CSV report export."
 ---
 
@@ -12,8 +12,9 @@ NetAssistant ships with a built-in TCP/UDP high-concurrency stress test engine f
 1. Switch to the stress testing page via the "Stress" entry on the tab bar
 2. Fill in the target address, port, number of concurrent clients, send rate and message content
 3. Message content supports variable templates (see below)
-4. Choose the test mode and connection mode
-5. Click start; the stress test config is saved automatically and restored the next time you open it
+4. Optionally set the "Trailer" (Inherit / None / LF / CRLF), appended to each packet on send; "Inherit" follows the message panel's suffix setting
+5. Choose the test mode and connection mode
+6. Click start; the stress test config is saved automatically and restored the next time you open it
 
 ![Configuring a stress test (dark mode)](../../../assets/screenshots/en/screenshot_udp_stress_dark.png)
 

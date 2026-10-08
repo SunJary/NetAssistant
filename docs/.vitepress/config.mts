@@ -21,21 +21,32 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/png', href: `${base}logo.png` }],
     ['meta', { property: 'og:site_name', content: 'NetAssistant' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:title', content: 'NetAssistant - 开源跨平台网络调试助手' }],
+    ['meta', { property: 'og:title', content: 'NetAssistant 官网 - 跨平台 TCP/UDP 网络调试助手，免费下载' }],
     ['meta', { property: 'og:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 Windows、Linux、macOS（x64 / ARM64），涵盖 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
     ['meta', { property: 'og:image', content: `${siteUrl}/logo.png` }],
     ['meta', { name: 'twitter:card', content: 'summary' }],
-    ['meta', { name: 'twitter:title', content: 'NetAssistant - 开源跨平台网络调试助手' }],
+    ['meta', { name: 'twitter:title', content: 'NetAssistant 官网 - 跨平台 TCP/UDP 网络调试助手，免费下载' }],
     ['meta', { name: 'twitter:description', content: '基于 Rust 构建的高性能跨平台网络调试工具，支持 Windows、Linux、macOS（x64 / ARM64），涵盖 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。' }],
     ['meta', { name: 'twitter:image', content: `${siteUrl}/logo.png` }]
   ],
-  // 为每个页面生成指向唯一规范域名的 canonical，避免 GitHub Pages 与正式域名重复内容
+  // 为每个页面生成指向唯一规范域名的 canonical，避免 GitHub Pages 与正式域名重复内容；
+  // 同时输出 zh-CN / en-US 互为翻译的 hreflang alternate，帮助 Bing 归属语言版本
   transformPageData(pageData) {
-    const canonicalUrl = `${siteUrl}/${pageData.relativePath}`
-      .replace(/index\.md$/, '')
-      .replace(/\.md$/, '')
+    const { relativePath } = pageData
+    const toUrl = (path) =>
+      `${siteUrl}/${path}`.replace(/index\.md$/, '').replace(/\.md$/, '')
+    const canonicalUrl = toUrl(relativePath)
+    // 英文页去掉 en/ 前缀得到对应中文页路径
+    const zhPath = relativePath.replace(/^en\//, '')
+    const zhUrl = toUrl(zhPath)
+    const enUrl = toUrl(`en/${zhPath}`)
     pageData.frontmatter.head ??= []
-    pageData.frontmatter.head.push(['link', { rel: 'canonical', href: canonicalUrl }])
+    pageData.frontmatter.head.push(
+      ['link', { rel: 'canonical', href: canonicalUrl }],
+      ['link', { rel: 'alternate', hreflang: 'zh-CN', href: zhUrl }],
+      ['link', { rel: 'alternate', hreflang: 'en-US', href: enUrl }],
+      ['link', { rel: 'alternate', hreflang: 'x-default', href: zhUrl }]
+    )
   },
   locales: {
     root: {
@@ -49,6 +60,7 @@ export default defineConfig({
           { text: '首页', link: '/' },
           { text: '功能特性', link: '/features' },
           { text: '同类对比', link: '/comparison' },
+          { text: '常见问题', link: '/faq' },
           { text: '使用指南', link: '/guide/' },
           { text: '下载', link: '/download' },
           { text: '更新日志', link: '/changelog' }
@@ -101,6 +113,7 @@ export default defineConfig({
           { text: 'Home', link: '/en/' },
           { text: 'Features', link: '/en/features' },
           { text: 'Comparison', link: '/en/comparison' },
+          { text: 'FAQ', link: '/en/faq' },
           { text: 'Guide', link: '/en/guide/' },
           { text: 'Download', link: '/en/download' },
           { text: 'Changelog', link: '/en/changelog' }

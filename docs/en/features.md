@@ -1,5 +1,5 @@
 ---
-title: Features
+title: Features - TCP/UDP Debugging, Decoders & Stress Testing
 description: "NetAssistant network debugging tool features: TCP/UDP client & server, IPv4/IPv6 dual stack, four decoders to solve TCP sticky packets, message favorites & export, auto-reply, periodic send and high-concurrency stress testing; available on Windows, Linux and macOS for both x64 and ARM64."
 ---
 

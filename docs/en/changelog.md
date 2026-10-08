@@ -7,7 +7,7 @@ description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast de
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
-## v1.3.0 <Badge type="tip" text="2026-10-05" />
+## v1.3.0 <Badge type="tip" text="2026-10-08" />
 
 - **Custom reply rules**: the old fixed "auto-reply" is now a rule engine — each rule is a match condition plus a reply action, matching incoming frames and answering automatically
   - **Match conditions**: arbitrary nesting of "all of / any of / not", plus a range of atomic predicates — contains bytes, fixed exact, fixed masked, prefix + length range (with optional positional constraints), frame length range, byte at offset, integer at offset, suffix, regex, source address (CIDR allowed), field value, and checksum validation
@@ -18,8 +18,9 @@ All official release notes are published on the [GitHub Releases](https://github
 - **Message variables**: the send box, timed tasks and reply rules all support variables — beyond the existing `${seq}` / `${timestamp}` / `${uuid}` / `${random:min:max}`, new received-frame variables `${rx.*}` (`raw` / `hex` / `ascii` / `base64` and integer accessors such as `u8` / `u16be` / `i32le`), checksums generated at send time (`${crc16modbus:off:len}` and others), and `${= expression }`; in Hex mode numeric variables are converted to hexadecimal automatically
 - **Send tasks (line-by-line)**: import a file or paste multiple lines to send them one per line, with a per-line interval, looping and a maximum round count; the task panel shows live progress and supports pause / resume / stop / delete
 - **Timed tasks (heartbeat)**: each connection supports one timed task that loops a single message at a fixed interval, optionally auto-starting with the connection; visible in the task panel, with an interval you can edit and apply immediately
-- **Trailing character (LF / CRLF)**: a new "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message, and also to line-send tasks and auto reply
+- **Trailing character (LF / CRLF)**: a new "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message, and also to line-send tasks and auto reply; the stress test config has its own "Trailer" option (Inherit / None / LF / CRLF) appended to each packet on send, where "Inherit" follows the message panel's suffix setting
 - **Hex input context menu**: added cut / copy / paste / select all, plus checksum tools that compute XOR, Sum8, Modbus LRC, CRC16-Modbus, CRC16-CCITT-FALSE and CRC32 directly on the input
+- **Linux deb package**: new deb packaging for x86_64 and ARM64 — Debian/Ubuntu and derivatives can install with `sudo apt install ./netassistant-*.deb`, which resolves dependencies automatically
 
 Fixes and improvements:
 

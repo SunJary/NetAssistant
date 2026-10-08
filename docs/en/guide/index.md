@@ -1,5 +1,5 @@
 ---
-title: Getting Started
+title: Getting Started - Installation & Your First Packet
 description: "NetAssistant installation and getting-started guide: Windows (winget), Linux (AppImage) and macOS install options, with native x64 and ARM64 builds, plus a three-step first TCP/UDP debugging session."
 ---
 
@@ -31,20 +31,16 @@ winget upgrade SunJary.NetAssistant
 
 ### Linux
 
-1. Download the latest Linux archive from the [GitHub Release](https://github.com/sunjary/netassistant/releases) page (AppImage recommended, works out of the box)
-2. Extract the archive:
+1. Download the latest deb package from the [GitHub Release](https://github.com/sunjary/netassistant/releases) page (recommended for Debian/Ubuntu and derivatives, Ubuntu 22.04 and later)
+2. Install (dependencies resolved automatically):
 
 ```bash
-tar -xzf netassistant-linux-x86_64.tar.gz
+sudo apt install ./netassistant-linux-x86_64.deb
 ```
 
-3. Run the executable:
+3. Launch from the application menu, or run `netassistant` in a terminal
 
-```bash
-./netassistant
-```
-
-The AppImage requires libfuse2 on first run: `sudo apt install libfuse2`.
+On other distros, use the AppImage (portable, first run needs `sudo apt install libfuse2`) or extract the tar.gz and run the binary directly.
 
 On ARM64 devices (Raspberry Pi 5, ARM servers, etc.) replace `x86_64` with `aarch64` in the filename above.
 

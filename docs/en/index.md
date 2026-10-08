@@ -1,7 +1,8 @@
 ---
 layout: home
 
-title: NetAssistant - Open Source Cross-Platform Network Debugging Tool
+title: NetAssistant Official Site - Cross-Platform TCP/UDP Network Debugging Tool
+titleTemplate: ':title'
 description: "NetAssistant is an open-source cross-platform network debugging tool built with Rust: TCP/UDP client & server, four decoders, message management and high-concurrency stress testing, for Windows, Linux and macOS with native x64 and ARM64 builds."
 
 hero:

@@ -1,5 +1,5 @@
 ---
-title: TCP/UDP Debugging
+title: TCP/UDP Debugging - Sticky Packets & Four Decoders
 description: "TCP sticky packet and packet fragmentation guide: raw, line-delimited, length-prefix and JSON decoders; hex mode, periodic send, auto-reply, message management, IPv6 and UDP broadcast device discovery."
 ---
 
@@ -68,6 +68,8 @@ A "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoin
 2. Each rule is a **condition** plus an **action**: conditions support nesting of "all of / any of / not" and predicates such as contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address and checksum validation; the action is the reply content sent on a hit, and may use received-frame variables such as `${rx.*}`
 3. The connection page's "Auto Reply" switch is that connection's single master gate, and rules only apply within their own connection (evaluated top to bottom, first hit wins)
 4. The editor offers an "inline test run": enter a test frame to immediately see whether it hits, the first unmet condition, and the rendered reply
+
+![Reply rules screenshot](../../../assets/screenshots/en/screenshot_reply_rule.png)
 
 Suitable for simulating server or client responses and verifying the peer's handling logic.
 
