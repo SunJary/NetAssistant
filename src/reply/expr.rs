@@ -917,13 +917,12 @@ impl From<Cmp> for BinaryOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reply::frame::{FrameMeta, RxFrame};
+    use crate::reply::frame::RxFrame;
     use std::sync::Arc;
     fn frame(bytes: &[u8]) -> Arc<RxFrame> {
         Arc::new(RxFrame::new(
             bytes.to_vec(),
             "127.0.0.1:1234".parse().unwrap(),
-            FrameMeta::decoded(),
         ))
     }
 

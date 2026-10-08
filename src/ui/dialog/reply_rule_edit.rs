@@ -2999,11 +2999,8 @@ fn run_test(app: &mut NetAssistantApp, cx: &mut App) {
         connections,
         ..Default::default()
     });
-    let frame: Arc<crate::reply::RxFrame> = Arc::new(crate::reply::RxFrame::new(
-        bytes,
-        source,
-        crate::reply::FrameMeta::decoded(),
-    ));
+    let frame: Arc<crate::reply::RxFrame> =
+        Arc::new(crate::reply::RxFrame::new(bytes, source));
     let rules = store.enabled_rules();
     let (outcome, rendered) = crate::reply::exec::dry_run(&store, rules.as_slice(), &frame);
 

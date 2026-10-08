@@ -108,13 +108,6 @@ impl RuleOutcome {
 /// 参数用 `&[Arc<RuleRuntime>]` 而非 `&[RuleRuntime]`：规则表本体就是
 /// `Arc<Vec<Arc<RuleRuntime>>>`，直接借用可避免每帧克隆规则（含正则缓存）。
 pub fn evaluate(rules: &[Arc<RuleRuntime>], frame: &RxFrame, collect_trace: bool) -> RuleOutcome {
-    // 残帧（被静默强刷或 EOF 冲刷出来的半包）不参与匹配，直接当作未命中。
-    // 半截数据同样可能"碰巧"命中条件，从而回出一条与真实请求不匹配的应答；
-    // 这里只关掉匹配这一件事 —— 帧本身照常进展示明细。
-    if frame_is_partial(frame) {
-        return RuleOutcome::miss();
-    }
-
     let mut trace = MatchTrace::default();
     let rx = RxContext::new(frame);
 
@@ -754,23 +747,10 @@ fn addr_matches(spec: &str, ip: IpAddr) -> bool {
         .unwrap_or(false)
 }
 
-// ============================================================================
-// 残帧判定
-// ============================================================================
-
-/// 是否为"残帧"：分帧解码器在**静默强刷**或 **EOF 冲刷**时落地的不完整帧。
-///
-/// 残帧不参与规则匹配（见 [`evaluate`]），因为半截数据命中条件后回出的应答
-/// 与对端真实请求并不对应。帧本身仍照常进展示明细，只是不触发规则。
-pub fn frame_is_partial(frame: &RxFrame) -> bool {
-    frame.meta.origin.is_partial()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::checksum::ChecksumAlgorithm;
-    use crate::reply::frame::FrameOrigin;
     use crate::reply::model::{
         BytePattern, ChecksumAt, Cmp, Endian, ReplyPayload, ReplyRule, ReplyRulesConfig, RuleCodec,
         Width,
@@ -1512,50 +1492,5 @@ mod tests {
             })
             .contains("FF 00")
         );
-    }
-
-    /// 帧来源标记（F-21 的语义基础）
-    #[test]
-    fn test_frame_is_partial() {
-        assert!(!frame_is_partial(&frame(&[1])));
-        let partial = RxFrame::new(
-            vec![1],
-            "127.0.0.1:1".parse().unwrap(),
-            crate::reply::frame::FrameMeta {
-                origin: FrameOrigin::ForceFlushed,
-            },
-        );
-        assert!(frame_is_partial(&partial));
-    }
-
-    /// 残帧即便字节完全命中条件，也不得触发规则（半截数据"碰巧"命中会回错应答）
-    #[test]
-    fn test_partial_frame_never_hits() {
-        let rules = one_rule(MatchNode::Contains {
-            bytes: BytePattern::Hex("01 03".to_string()),
-        });
-        // 同样的字节，Decoded 命中
-        assert!(hit(&rules, &[0x01, 0x03]));
-
-        for origin in [FrameOrigin::ForceFlushed, FrameOrigin::EofFlushed] {
-            let partial = RxFrame::new(
-                vec![0x01, 0x03],
-                "127.0.0.1:1".parse().unwrap(),
-                crate::reply::frame::FrameMeta { origin },
-            );
-            // 不命中，且收集轨迹时也不产生任何条目（残帧在遍历规则前就短路）
-            let outcome = evaluate(&rules, &partial, true);
-            assert!(!outcome.is_hit(), "残帧不应命中: {:?}", origin);
-            assert!(
-                outcome.rule_index.is_none(),
-                "残帧不应产生应答: {:?}",
-                origin
-            );
-            assert!(
-                outcome.trace.entries.is_empty(),
-                "残帧不应留下轨迹: {:?}",
-                origin
-            );
-        }
     }
 }

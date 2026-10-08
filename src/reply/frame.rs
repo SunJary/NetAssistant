@@ -12,44 +12,6 @@ use crate::core::checksum::ChecksumAlgorithm;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-/// 帧来自哪条路径（残帧判定直接消费本枚举）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrameOrigin {
-    /// 解码器正常切出的完整帧
-    Decoded,
-    /// 静默超时被 `force_flush` 取走的半帧
-    ForceFlushed,
-    /// 连接结束时最后一次 `force_flush`
-    EofFlushed,
-}
-
-impl FrameOrigin {
-    /// 是否为"可能不完整"的帧 —— 残帧不参与规则匹配（[`crate::reply::matcher::evaluate`]）。
-    /// 半截数据即便"碰巧"命中条件，回出的应答也与对端真实请求不对应。
-    pub fn is_partial(self) -> bool {
-        !matches!(self, FrameOrigin::Decoded)
-    }
-}
-
-/// 帧元信息（目前只有来源标记）
-///
-/// 分帧序位（同一次 read 里的第几帧、一批拆出几帧）曾是 F-21 展示层的预留字段，
-/// 因展示层未落地、也没有任何消费方而删除；F-21 实施时随消费方一起加回。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FrameMeta {
-    /// 帧来自哪条路径 —— 残帧判定依赖它（非 `Decoded` 即不参与规则匹配）
-    pub origin: FrameOrigin,
-}
-
-impl FrameMeta {
-    /// 正常解码出的单帧
-    pub fn decoded() -> Self {
-        Self {
-            origin: FrameOrigin::Decoded,
-        }
-    }
-}
-
 /// 一次解码结果的不可变快照。
 ///
 /// `bytes` 是**解码后**的帧（已按解码器语义切好），规则匹配与 `rx.*` 取值都针对它。
@@ -60,22 +22,16 @@ pub struct RxFrame {
     pub bytes: Arc<[u8]>,
     /// 来源地址（服务端=对端；客户端=远端服务端；UDP=数据报来源）
     pub source: SocketAddr,
-    /// 帧元信息（残帧判定用）
-    pub meta: FrameMeta,
 }
 
 impl RxFrame {
-    pub fn new(bytes: Vec<u8>, source: SocketAddr, meta: FrameMeta) -> Self {
-        Self::from_shared(Arc::from(bytes), source, meta)
+    pub fn new(bytes: Vec<u8>, source: SocketAddr) -> Self {
+        Self::from_shared(Arc::from(bytes), source)
     }
 
     /// 由共享缓冲构造（P-6）：调用方已持有 `Arc<[u8]>` 时不再复制
-    pub fn from_shared(bytes: Arc<[u8]>, source: SocketAddr, meta: FrameMeta) -> Self {
-        Self {
-            bytes,
-            source,
-            meta,
-        }
+    pub fn from_shared(bytes: Arc<[u8]>, source: SocketAddr) -> Self {
+        Self { bytes, source }
     }
 
     /// 正常解码单帧的便捷构造（测试用；`127.0.0.1:0` 作为占位来源）
@@ -84,7 +40,6 @@ impl RxFrame {
         std::sync::Arc::new(Self::new(
             bytes,
             "127.0.0.1:12345".parse().expect("合法测试地址"),
-            FrameMeta::decoded(),
         ))
     }
 }
@@ -517,11 +472,7 @@ mod tests {
     /// 元信息取值
     #[test]
     fn test_meta_accessors() {
-        let f = RxFrame::new(
-            vec![1, 2, 3],
-            "192.168.1.7:5000".parse().unwrap(),
-            FrameMeta::decoded(),
-        );
+        let f = RxFrame::new(vec![1, 2, 3], "192.168.1.7:5000".parse().unwrap());
         let rx = RxContext::new(&f);
         assert_eq!(rx.len(), 3);
         assert_eq!(rx.source(), "192.168.1.7:5000");
@@ -580,14 +531,6 @@ mod tests {
             rx.checksum(ChecksumAlgorithm::Crc16Modbus, 0, 99, false)
                 .is_err()
         );
-    }
-
-    /// 帧来源标记：静默强刷的半帧必须可区分（残帧闸的语义基础）
-    #[test]
-    fn test_frame_origin_partial() {
-        assert!(!FrameOrigin::Decoded.is_partial());
-        assert!(FrameOrigin::ForceFlushed.is_partial());
-        assert!(FrameOrigin::EofFlushed.is_partial());
     }
 
     /// hex 文本格式：默认无分隔、spaced 时空格分隔

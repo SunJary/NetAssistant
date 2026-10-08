@@ -23,5 +23,5 @@ pub mod store;
 /// 其余类型请走完整路径（`crate::reply::model::MatchNode` 等）—— 引擎模块内部
 /// 类型数量多（15 种 `MatchNode` 变体 + 动作 + 约束 + 轨迹…），
 /// 全量再导出会让 `use crate::reply::*` 的读者无法分辨某个名字来自哪一层。
-pub use frame::{FrameMeta, FrameOrigin, RxFrame};
+pub use frame::RxFrame;
 pub use store::ReplyRulesStore;

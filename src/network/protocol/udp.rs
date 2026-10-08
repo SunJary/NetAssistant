@@ -4,7 +4,7 @@ use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch, WireMessage};
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::reply::exec::handle_frame;
-use crate::reply::{FrameMeta, FrameOrigin, ReplyRulesStore, RxFrame};
+use crate::reply::{ReplyRulesStore, RxFrame};
 use log::{debug, error, info, warn};
 use smol::channel::{Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
@@ -93,13 +93,7 @@ fn try_udp_rule_reply(
 
     // P-6：整个数据报只复制一次
     let shared: Arc<[u8]> = Arc::from(raw);
-    let frame = Arc::new(RxFrame::from_shared(
-        shared.clone(),
-        *addr,
-        FrameMeta {
-            origin: FrameOrigin::Decoded,
-        },
-    ));
+    let frame = Arc::new(RxFrame::from_shared(shared.clone(), *addr));
     let outcome = handle_frame(rules, &frame, connection_id);
 
     // 数据报本身照常进明细与计数；规则只可能追加一条应答。

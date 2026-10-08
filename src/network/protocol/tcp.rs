@@ -5,7 +5,7 @@ use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch, WireMe
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::decoder::CodecFactory;
 use crate::reply::exec::handle_frame;
-use crate::reply::{FrameMeta, FrameOrigin, ReplyRulesStore, RxFrame};
+use crate::reply::{ReplyRulesStore, RxFrame};
 use bytes::BytesMut;
 use log::{debug, error, info, warn};
 use smol::channel::{Sender, unbounded as smol_unbounded};
@@ -41,7 +41,6 @@ fn process_frame(
     sender: &Sender<WireMessage>,
     connection_id: &str,
     source: &SocketAddr,
-    meta: FrameMeta,
 ) {
     let raw_len = data.len() as u64;
     // P-6：整帧只复制一次（`BytesMut` → `Arc<[u8]>`），规则引擎的 `RxFrame`
@@ -49,15 +48,7 @@ fn process_frame(
     let raw: Arc<[u8]> = Arc::from(&data[..]);
 
     if rules.is_enabled() {
-        try_rule_reply(
-            rules,
-            sender,
-            batch,
-            connection_id,
-            source,
-            raw.clone(),
-            meta,
-        );
+        try_rule_reply(rules, sender, batch, connection_id, source, raw.clone());
     }
 
     let message = processor.process_received_message(raw, message_type);
@@ -84,7 +75,6 @@ fn process_frame_server(
     sender: &Sender<WireMessage>,
     connection_id: &str,
     source: &SocketAddr,
-    meta: FrameMeta,
 ) {
     process_frame(
         data,
@@ -96,7 +86,6 @@ fn process_frame_server(
         sender,
         connection_id,
         source,
-        meta,
     );
 }
 
@@ -135,14 +124,13 @@ fn try_rule_reply(
     connection_id: &str,
     source: &SocketAddr,
     raw: Arc<[u8]>,
-    meta: FrameMeta,
 ) {
     if !rules.is_enabled() {
         return;
     }
 
     // P-6：`raw` 已由调用方与本帧的 Message 共享，这里不再 `to_vec()`
-    let frame = Arc::new(RxFrame::from_shared(raw, *source, meta));
+    let frame = Arc::new(RxFrame::from_shared(raw, *source));
     let outcome = handle_frame(rules, &frame, connection_id);
 
     if let Some(bytes) = &outcome.reply {
@@ -360,9 +348,6 @@ impl NetworkConnection for TcpClient {
                                                     &client_tx_for_reply,
                                                     &config_clone.id,
                                                     &peer_addr,
-                                                    FrameMeta {
-                                                        origin: FrameOrigin::Decoded,
-                                                    },
                                                 );
                                             },
                                             Ok(None) => {
@@ -401,8 +386,7 @@ impl NetworkConnection for TcpClient {
                         }, if flush_deadline.is_some() => {
                             flush_deadline = None;
                             // 静默到点: 残留被取走并清空缓冲区, 作为一条消息计入统计。
-                            // 半帧同样要过规则（F-21 的认知风险：静默强刷的半帧与完整帧无法
-                            // 区分会误导读用户），因此 origin 标记为 ForceFlushed。
+                            // 半帧同样参与规则匹配（无终止符的文本依赖此路径落地成帧）。
                             if let Some(data) = decoder.force_flush() {
                                 let data: BytesMut = data;
                                 process_frame(
@@ -415,10 +399,7 @@ impl NetworkConnection for TcpClient {
                                     &client_tx_for_reply,
                                     &config_clone.id,
                                     &peer_addr,
-                                    FrameMeta {
-                                        origin: FrameOrigin::ForceFlushed,
-                                    },
-                                                                    );
+                                );
                                 flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                             }
                         }
@@ -453,10 +434,7 @@ impl NetworkConnection for TcpClient {
                                         &client_tx_for_reply,
                                         &config_clone.id,
                                         &peer_addr,
-                                        FrameMeta {
-                                            origin: FrameOrigin::ForceFlushed,
-                                        },
-                                                                            );
+                                    );
                                     flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                                 }
                                 decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
@@ -488,9 +466,6 @@ impl NetworkConnection for TcpClient {
                         &client_tx_for_reply,
                         &config_clone.id,
                         &peer_addr,
-                        FrameMeta {
-                            origin: FrameOrigin::EofFlushed,
-                        },
                     );
                     flush_batch(&event_sender_clone, &config_clone.id, &mut batch);
                 }
@@ -863,10 +838,7 @@ impl NetworkServer for TcpServer {
                                                                             &tx,
                                                                             &client_id_clone,
                                                                             &addr,
-                                                                            FrameMeta {
-                                                                                origin: FrameOrigin::Decoded,
-                                                                            },
-                                                                                                                                                    );
+                                                                        );
                                                                     },
                                                                     Ok(None) => {
                                                                         // 解码器需要更多数据，退出循环
@@ -914,10 +886,7 @@ impl NetworkServer for TcpServer {
                                                             &tx,
                                                             &client_id_clone,
                                                             &addr,
-                                                            FrameMeta {
-                                                                origin: FrameOrigin::ForceFlushed,
-                                                            },
-                                                                                                                    );
+                                                        );
                                                         flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                     }
                                                 }
@@ -949,10 +918,7 @@ impl NetworkServer for TcpServer {
                                                                 &tx,
                                                                 &client_id_clone,
                                                                 &addr,
-                                                                FrameMeta {
-                                                                    origin: FrameOrigin::ForceFlushed,
-                                                                },
-                                                                                                                            );
+                                                            );
                                                             flush_batch(&client_event_sender, &client_id_clone, &mut batch);
                                                         }
                                                         decoder = crate::network::protocol::decoder::CodecFactory::create_decoder(&new_config);
@@ -978,9 +944,6 @@ impl NetworkServer for TcpServer {
                                                 &tx,
                                                 &client_id_clone,
                                                 &addr,
-                                                FrameMeta {
-                                                    origin: FrameOrigin::EofFlushed,
-                                                },
                                             );
                                             flush_batch(
                                                 &client_event_sender,
@@ -1268,7 +1231,6 @@ mod tests {
             &tx,
             "tab",
             &source(),
-            FrameMeta::decoded(),
         );
 
         assert_eq!(batch.count, 1, "帧照常进明细");
@@ -1292,7 +1254,6 @@ mod tests {
             &tx,
             "tab",
             &source(),
-            FrameMeta::decoded(),
         );
 
         assert_eq!(batch.count, 1, "帧照常进明细");
