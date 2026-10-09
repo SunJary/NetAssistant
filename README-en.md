@@ -146,7 +146,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
      ```
 
 **Alternative Method: Download from GitHub Release**
-Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version (Windows offers an installer `netassistant-windows-x86_64-setup.exe` as well as a portable zip).
+Please visit the [GitHub Release page](https://github.com/sunjary/netassistant/releases) to download the latest version (Windows offers an installer `netassistant-windows-x86_64-setup.exe`, which creates shortcuts automatically after installation, or a portable zip — extract it and run `netassistant.exe` directly).
 
 #### Linux
 **Recommended Method: Install the deb package (Debian/Ubuntu and derivatives)**

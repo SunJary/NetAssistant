@@ -7,7 +7,7 @@ description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast de
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
-## v1.3.0 <Badge type="tip" text="2026-10-08" />
+## v1.3.0 <Badge type="tip" text="2026-10-09" />
 
 - **Custom reply rules**: the old fixed "auto-reply" is now a rule engine — each rule is a match condition plus a reply action, matching incoming frames and answering automatically
   - **Match conditions**: arbitrary nesting of "all of / any of / not", plus a range of atomic predicates — contains bytes, fixed exact, fixed masked, prefix + length range (with optional positional constraints), frame length range, byte at offset, integer at offset, suffix, regex, source address (CIDR allowed), field value, and checksum validation

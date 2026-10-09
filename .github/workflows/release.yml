@@ -511,13 +511,13 @@ jobs:
             
             ### 下载说明
 
-            - **Windows (x64)**: 下载 `netassistant-windows-x86_64.zip`，或 `netassistant-windows-x86_64-setup.exe`（安装包，推荐）
+            - **Windows (x64)**: 下载 `netassistant-windows-x86_64-setup.exe`（安装包，推荐，安装后自动创建快捷方式），或 `netassistant-windows-x86_64.zip`（便携版，解压后直接点击 `netassistant.exe` 运行）
             - **Windows (ARM64)**: 下载 `netassistant-windows-aarch64.zip`（Surface Pro X / 骁龙笔记本等 ARM 设备，未经真机完整测试）
+            - **Linux (deb, x86_64)**: 下载 `netassistant-linux-x86_64.deb`（Debian/Ubuntu 及衍生版，apt 安装自动解决依赖）
+            - **Linux (deb, ARM64)**: 下载 `netassistant-linux-aarch64.deb`（ARM 设备 Debian/Ubuntu）
             - **Linux (AppImage, x86_64)**: 下载 `netassistant-linux-x86_64.AppImage`（推荐，开箱即用）
             - **Linux (AppImage, ARM64)**: 下载 `netassistant-linux-aarch64.AppImage`（树莓派 5 / ARM 服务器等 ARM 设备）
             - **Linux (tar.gz)**: 下载 `netassistant-linux-x86_64.tar.gz` / `netassistant-linux-aarch64.tar.gz`（轻量，需自行安装依赖）
-            - **Linux (deb, x86_64)**: 下载 `netassistant-linux-x86_64.deb`（Debian/Ubuntu 及衍生版，apt 安装自动解决依赖）
-            - **Linux (deb, ARM64)**: 下载 `netassistant-linux-aarch64.deb`（ARM 设备 Debian/Ubuntu）
             - **macOS (通用 Universal)**: 下载 `netassistant-macos-universal.dmg`（推荐，拖入 Applications 安装）或 `netassistant-macos-universal.zip`（解压即用）
             - **macOS (裸二进制)**: `netassistant-macos-x86_64.tar.gz`（Intel）/ `netassistant-macos-aarch64.tar.gz`（Apple Silicon）
 
@@ -531,16 +531,16 @@ jobs:
                - 下载并解压 `netassistant-windows-x86_64.zip`（或运行 setup.exe 安装包）
                - 运行 `netassistant.exe`
 
-            #### Linux (AppImage - 推荐)
+            #### Linux (deb - 推荐)
+            1. 下载对应架构的 `netassistant-linux-x86_64.deb` 或 `netassistant-linux-aarch64.deb`
+            2. 安装（自动解析依赖）：`sudo apt install ./netassistant-linux-x86_64.deb`
+            3. 从应用菜单启动，或终端运行：`netassistant`
+
+            #### Linux (AppImage)
             1. 下载对应架构的 `netassistant-linux-x86_64.AppImage` 或 `netassistant-linux-aarch64.AppImage`
             2. 添加执行权限：`chmod +x netassistant-linux-*.AppImage`
             3. 运行：`./netassistant-linux-x86_64.AppImage`
             4. 首次运行需安装 libfuse2：`sudo apt install libfuse2`
-
-            #### Linux (deb)
-            1. 下载对应架构的 `netassistant-linux-x86_64.deb` 或 `netassistant-linux-aarch64.deb`
-            2. 安装（自动解析依赖）：`sudo apt install ./netassistant-linux-x86_64.deb`
-            3. 从应用菜单启动，或终端运行：`netassistant`
 
             #### Linux (tar.gz)
             1. 下载并解压 `netassistant-linux-x86_64.tar.gz`（或 `netassistant-linux-aarch64.tar.gz`）

@@ -146,7 +146,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
      ```
 
 **备选方法：从 GitHub Release 下载**
-请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本（Windows 提供安装程序 `netassistant-windows-x86_64-setup.exe` 与便携版 zip）。
+请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本（Windows 提供安装程序 `netassistant-windows-x86_64-setup.exe`，安装后自动创建快捷方式；或便携版 zip，解压后直接点击 `netassistant.exe` 运行）。
 
 #### Linux
 **推荐方法：安装 deb 包（Debian/Ubuntu 及衍生版）**
