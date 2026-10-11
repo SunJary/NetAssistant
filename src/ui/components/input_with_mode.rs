@@ -4,8 +4,9 @@ use crate::message::{MessageDisplayMode, format_json_text};
 use crate::ui::dialog::{dialog_content_max_height, dialog_height};
 use crate::utils::hex::validate_hex_input;
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, StyledExt, Theme, WindowExt as _,
+    ActiveTheme as _, Icon, IconName, StyledExt, Theme, WindowExt as _,
     button::{Button, ButtonVariants as _},
+    clipboard::Clipboard,
     dialog::DialogFooter,
     input::{
         Copy as CopyAction, Cut as CutAction, Editor, EditorState, Paste as PasteAction,
@@ -104,6 +105,8 @@ impl InputWithMode {
             // ---- 文本模式（与旧行为一致）----
             let pretty_entity = input_state.clone();
             let minify_entity = input_state.clone();
+            let clear_entity = input_state.clone();
+            let has_content = !input_state.read(cx).value().is_empty();
             let container = text_input_container(input_state, theme, true, cx).child(
                 div()
                     .absolute()
@@ -165,6 +168,31 @@ impl InputWithMode {
                                     );
                                     minify_entity.update(cx, |input, cx| {
                                         input.set_value(formatted, window, cx);
+                                    });
+                                },
+                            ),
+                    )
+                    // 清空按钮常驻：有内容较明显，空时弱显（点击为无害 no-op），保证功能可发现
+                    .child(
+                        div()
+                            .id("input-clear-btn")
+                            .p_1()
+                            .text_color(theme.muted_foreground)
+                            .opacity(if has_content { 0.6 } else { 0.2 })
+                            .hover(|s| s.opacity(1.0))
+                            .cursor_pointer()
+                            .child(Icon::new(IconName::Close).size(px(14.0)))
+                            .tooltip(|window, cx| {
+                                Tooltip::new(t!("input_mode.clear").to_string())
+                                    .build(window, cx)
+                            })
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                move |_event: &MouseDownEvent,
+                                      window: &mut Window,
+                                      cx: &mut App| {
+                                    clear_entity.update(cx, |input, cx| {
+                                        input.replace_all("", window, cx);
                                     });
                                 },
                             ),
@@ -422,7 +450,7 @@ fn tool_menu_item(
         })
 }
 
-/// 打开转换结果对话框：只读展示（多行、可滚动、等宽）+ 复制/关闭按钮。
+/// 打开转换结果对话框：只读展示（多行、可滚动、等宽）+ 复制图标/关闭按钮。
 /// 纯展示，不回写输入框。
 fn open_convert_result_dialog(title: String, text: String, window: &mut Window, cx: &mut App) {
     window.open_dialog(cx, move |dialog, window, _cx| {
@@ -432,22 +460,24 @@ fn open_convert_result_dialog(title: String, text: String, window: &mut Window, 
             .title(title.clone())
             .w(px(480.0))
             .max_h(dialog_height(window))
-            // ESC / 蒙层可关闭；复制后自动关闭（无独立「关闭」按钮）
+            // ESC / 蒙层 / 「关闭」按钮可关闭；复制用图标按钮（点击变 ✓，不关窗）
             .keyboard(true)
             .on_ok(|_, _, _| true)
             .footer(
-                DialogFooter::new().child(
-                    Button::new("convert-result-copy")
-                        .primary()
-                        .label(t!("input_mode.copy").to_string())
-                        .on_click(move |_, window, cx| {
-                            let value = copy_value.clone();
-                            if !value.is_empty() {
-                                cx.write_to_clipboard(ClipboardItem::new_string(value));
-                            }
-                            window.close_dialog(cx);
-                        }),
-                ),
+                DialogFooter::new()
+                    .child(
+                        Clipboard::new("convert-result-copy")
+                            .value(copy_value)
+                            .tooltip(t!("input_mode.copy").to_string()),
+                    )
+                    .child(
+                        Button::new("convert-result-close")
+                            .primary()
+                            .label(t!("input_mode.close").to_string())
+                            .on_click(|_, window, cx| {
+                                window.close_dialog(cx);
+                            }),
+                    ),
             )
             .content(move |content, window, cx| {
                 let theme = cx.theme().clone();

@@ -6,3 +6,4 @@ pub mod main_window;
 pub mod send_task_panel;
 pub mod stress_panel;
 pub mod tab_container;
+pub mod toolbox_panel;

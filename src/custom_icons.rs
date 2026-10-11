@@ -8,6 +8,8 @@ pub enum CustomIconName {
     IconName(IconName),
     // 添加自定义图标
     FilePlusCorner,
+    /// 普通文件（Hash 块文件条）
+    File,
     Pencil,
     Braces,
     Minimize2,
@@ -19,6 +21,8 @@ pub enum CustomIconName {
     CircleStop,
     Repeat,
     Trash2,
+    /// 工具箱入口
+    Wrench,
 }
 
 impl From<IconName> for CustomIconName {
@@ -34,6 +38,7 @@ impl IconNamed for CustomIconName {
             CustomIconName::IconName(icon_name) => icon_name.path(),
             // 自定义图标路径（使用与内置图标相同的格式）
             CustomIconName::FilePlusCorner => "icons/file-plus-corner.svg".into(),
+            CustomIconName::File => "icons/file.svg".into(),
             CustomIconName::Pencil => "icons/pencil.svg".into(),
             CustomIconName::Braces => "icons/braces.svg".into(),
             CustomIconName::Minimize2 => "icons/minimize-2.svg".into(),
@@ -44,6 +49,7 @@ impl IconNamed for CustomIconName {
             CustomIconName::CircleStop => "icons/circle-stop.svg".into(),
             CustomIconName::Repeat => "icons/repeat.svg".into(),
             CustomIconName::Trash2 => "icons/trash-2.svg".into(),
+            CustomIconName::Wrench => "icons/wrench.svg".into(),
         }
     }
 }

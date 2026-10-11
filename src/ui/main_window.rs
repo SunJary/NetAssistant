@@ -127,9 +127,9 @@ impl<'a> MainWindow<'a> {
                     return;
                 }
 
-                // Ctrl+Enter 发送当前标签页消息
+                // Ctrl+Enter 发送当前标签页消息（工具箱标签页不是连接, 不响应发送）
                 if key == "enter" {
-                    if !app.active_tab.is_empty() {
+                    if app.connection_tabs.contains_key(&app.active_tab) {
                         let active_tab = app.active_tab.clone();
                         app.send_message_from_tab(&active_tab, window, cx);
                     }
@@ -532,7 +532,8 @@ impl<'a> MainWindow<'a> {
                         })),
                 )
             })
-            // 自动显示的更新提示（10 秒后消失，放在最后确保不被遮挡）
+            // 自动显示的更新提示（5 秒后消失；鼠标移入即隐藏为下方控件让路；
+            // 放在最后确保不被遮挡）
             .when(self.app.show_update_tooltip, |this_div| {
                 let version_text = self
                     .app
@@ -542,6 +543,7 @@ impl<'a> MainWindow<'a> {
                     .unwrap_or_else(|| t!("title_bar.update_found_generic").to_string());
                 this_div.child(
                     div()
+                        .id("update-tooltip")
                         .absolute()
                         .top(px(40.0))
                         .right(px(16.0))
@@ -554,6 +556,18 @@ impl<'a> MainWindow<'a> {
                         .border_color(theme.border)
                         .text_sm()
                         .text_color(theme.foreground)
+                        // hover 即隐藏：鼠标移入说明想操作下方区域
+                        .on_mouse_move(
+                            cx.listener(|app: &mut NetAssistantApp,
+                                         _event: &MouseMoveEvent,
+                                         _window: &mut Window,
+                                         cx: &mut Context<NetAssistantApp>| {
+                                if app.show_update_tooltip {
+                                    app.show_update_tooltip = false;
+                                    cx.notify();
+                                }
+                            }),
+                        )
                         .child(version_text),
                 )
             })

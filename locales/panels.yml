@@ -14,6 +14,194 @@ tab_container:
     zh-CN: 请先创建连接
     en: Create a connection first
 
+toolbox:
+  title:
+    zh-CN: 工具箱
+    en: Toolbox
+  checksum_title:
+    zh-CN: 校验计算
+    en: Checksum
+  result:
+    zh-CN: 结果
+    en: Result
+  convert_text_placeholder:
+    zh-CN: 输入文本，自动转换为 Hex
+    en: Type text to convert to hex
+  convert_hex_placeholder:
+    zh-CN: 输入 Hex，自动转换为文本
+    en: Type hex to convert to text
+  checksum_placeholder:
+    zh-CN: 输入 Hex 字节序列，即时计算各校验值
+    en: Type hex bytes to compute checksums
+  output_empty:
+    zh-CN: 输入内容后即时显示结果
+    en: Results appear here as you type
+  category_convert:
+    zh-CN: 转换
+    en: Convert
+  category_checksum:
+    zh-CN: 校验
+    en: Checksum
+  category_hash:
+    zh-CN: 哈希
+    en: Hash
+  hash_title:
+    zh-CN: 哈希
+    en: Hash
+  hash_placeholder:
+    zh-CN: 输入文本，即时计算 MD5 / SHA 摘要与密码哈希
+    en: Type text to compute MD5 / SHA digests and password hashes
+  hash_compare_placeholder:
+    zh-CN: 对比哈希值，粘贴后自动比对…
+    en: Paste a hash to compare…
+  hash_match_badge:
+    zh-CN: 匹配
+    en: Match
+  hash_file_button:
+    zh-CN: 文件
+    en: File
+  hash_file_pending:
+    zh-CN: 计算中…
+    en: Computing…
+  hash_file_failed:
+    zh-CN: 读取失败
+    en: Failed to read file
+  hash_file_algos:
+    zh-CN: 算法
+    en: Algorithms
+  passhash_group:
+    zh-CN: 密码哈希（随机盐，输入变化时重新生成）
+    en: Password hashes (random salt, regenerates on input)
+  passhash_failed:
+    zh-CN: 生成失败
+    en: Failed to generate
+  category_time:
+    zh-CN: 时间
+    en: Time
+  category_json:
+    zh-CN: JSON
+    en: JSON
+  category_encoding:
+    zh-CN: 编码
+    en: Encoding
+  time_ts_to_date:
+    zh-CN: 时间戳 → 日期
+    en: Timestamp → Date
+  time_date_to_ts:
+    zh-CN: 日期 → 时间戳
+    en: Date → Timestamp
+  time_fill_now:
+    zh-CN: 填入当前
+    en: Fill now
+  time_ts_placeholder:
+    zh-CN: 秒或毫秒时间戳，如 1791714600
+    en: Epoch seconds or milliseconds, e.g. 1791714600
+  time_date_placeholder:
+    zh-CN: 日期，如 2026-10-11 18:30:00 或 ISO 8601
+    en: Date, e.g. 2026-10-11 18:30:00 or ISO 8601
+  time_local:
+    zh-CN: 本地时间
+    en: Local time
+  time_utc:
+    zh-CN: UTC 时间
+    en: UTC time
+  time_ts_sec:
+    zh-CN: 秒级
+    en: Seconds
+  time_ts_ms:
+    zh-CN: 毫秒级
+    en: Milliseconds
+  weekday_mon:
+    zh-CN: 星期一
+    en: Monday
+  weekday_tue:
+    zh-CN: 星期二
+    en: Tuesday
+  weekday_wed:
+    zh-CN: 星期三
+    en: Wednesday
+  weekday_thu:
+    zh-CN: 星期四
+    en: Thursday
+  weekday_fri:
+    zh-CN: 星期五
+    en: Friday
+  weekday_sat:
+    zh-CN: 星期六
+    en: Saturday
+  weekday_sun:
+    zh-CN: 星期日
+    en: Sunday
+  time_rel_now:
+    zh-CN: 刚刚
+    en: just now
+  time_rel_min_ago:
+    zh-CN: "%{n} 分钟前"
+    en: "%{n} minutes ago"
+  time_rel_min_later:
+    zh-CN: "%{n} 分钟后"
+    en: "in %{n} minutes"
+  time_rel_hour_ago:
+    zh-CN: "%{n} 小时前"
+    en: "%{n} hours ago"
+  time_rel_hour_later:
+    zh-CN: "%{n} 小时后"
+    en: "in %{n} hours"
+  time_rel_day_ago:
+    zh-CN: "%{n} 天前"
+    en: "%{n} days ago"
+  time_rel_day_later:
+    zh-CN: "%{n} 天后"
+    en: "in %{n} days"
+  time_invalid:
+    zh-CN: 无法识别的时间格式
+    en: Unrecognized time format
+  json_title:
+    zh-CN: JSON 格式化
+    en: JSON Formatter
+  json_input:
+    zh-CN: 输入
+    en: Input
+  json_invalid:
+    zh-CN: 无效的 JSON 输入
+    en: Invalid JSON input
+  json_placeholder:
+    zh-CN: 输入 JSON，即时美化与压缩
+    en: Type JSON to pretty-print or minify
+  b64_title:
+    zh-CN: Base64 编解码
+    en: Base64 Codec
+  b64_invalid:
+    zh-CN: 无效的 Base64 输入
+    en: Invalid Base64 input
+  b64_placeholder:
+    zh-CN: 输入文本或 Base64，同时给出编解码结果
+    en: Type text or Base64, both directions shown
+  url_title:
+    zh-CN: URL 编解码
+    en: URL Codec
+  url_invalid:
+    zh-CN: 无效的 URL 编码输入
+    en: Invalid URL-encoded input
+  url_placeholder:
+    zh-CN: 输入文本或 URL 编码，同时给出编解码结果
+    en: Type text or URL-encoded string, both directions shown
+  enc_encode:
+    zh-CN: 编码
+    en: Encode
+  enc_decode:
+    zh-CN: 解码
+    en: Decode
+  mode_text:
+    zh-CN: 文本
+    en: Text
+  mode_hex:
+    zh-CN: Hex
+    en: Hex
+  mode_file:
+    zh-CN: 文件
+    en: File
+
 input_mode:
   json_pretty:
     zh-CN: JSON 美化
@@ -69,6 +257,12 @@ input_mode:
   select_all:
     zh-CN: 全选
     en: Select All
+  clear:
+    zh-CN: 清空
+    en: Clear
+  close:
+    zh-CN: 关闭
+    en: Close
 
 hex_editor:
   bytes:

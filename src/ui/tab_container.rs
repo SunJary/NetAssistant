@@ -1,12 +1,16 @@
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::Icon;
 use gpui_kit::component::IconName;
 use gpui_kit::component::StyledExt;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
 
-use crate::app::NetAssistantApp;
+use crate::app::{NetAssistantApp, TOOLBOX_TAB_ID};
+use crate::custom_icons::CustomIconName;
 use crate::ui::connection_tab::ConnectionTab;
+use crate::ui::toolbox_panel::ToolboxPanel;
 
 /// 标签页信息
 #[derive(Debug, Clone)]
@@ -45,7 +49,7 @@ impl<'a> TabContainer<'a> {
             .child(self.render_tab_content(window, cx))
     }
 
-    /// 获取所有标签页（只显示已创建的标签页）
+    /// 获取所有标签页（只显示已创建的连接标签页；工具箱入口为 Tab 栏右侧固定按钮）
     fn get_tabs(&self) -> Vec<TabInfo> {
         let mut tabs = Vec::new();
 
@@ -166,54 +170,89 @@ impl<'a> TabContainer<'a> {
                             .on_mouse_down(MouseButton::Left, {
                                 let tab_id_clone = tab_id.clone();
                                 cx.listener(move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                    app.close_tab(tab_id_clone.clone(), cx);
-
-                                    if app.active_tab == tab_id_clone {
-                                        if let Some(first_tab_id) = app.connection_tabs.keys().next() {
-                                            app.active_tab = (*first_tab_id).to_string();
-                                        } else {
-                                            app.active_tab = String::new();
-                                        }
-                                    }
-                                    cx.notify();
+                                    // 统一关闭入口：工具箱标签页与连接标签页各自处理关闭与激活态修正
+                                    app.close_tab_and_fix_active(tab_id_clone.clone(), cx);
                                 })
                             }),
                     ),
             );
         }
 
-        // 构建完整的头部，添加固定在右侧的展开/折叠按钮
-        header_div.child(tabs_container).child(
-            div()
-                .flex()
-                .items_center()
-                .justify_center()
-                .flex_shrink_0() // 只防止被压缩，不设置固定宽度
-                .h_8() // 设置固定高度
-                .px_2()
-                .py_1()
-                .cursor_pointer()
-                .bg(theme.secondary)
-                .border_1()
-                .border_color(theme.border)
-                .hover(|style| style.bg(theme.border))
-                .on_mouse_down(MouseButton::Left, {
-                    cx.listener(
-                        move |app: &mut NetAssistantApp,
-                              _event: &MouseDownEvent,
-                              _window: &mut Window,
-                              cx: &mut Context<NetAssistantApp>| {
-                            app.tab_multiline = !app.tab_multiline;
-                            cx.notify();
-                        },
+        // 构建完整的头部，右侧固定放两个按钮：工具箱入口（开关切换）与展开/折叠切换
+        let toolbox_active = self.app.active_tab == TOOLBOX_TAB_ID;
+        header_div
+            .child(tabs_container)
+            .child(
+                div()
+                    .id("toolbox-entry")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .flex_shrink_0()
+                    .h_8()
+                    .px_2()
+                    .py_1()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(theme.border)
+                    .when(toolbox_active, |btn| {
+                        btn.bg(theme.primary)
+                            .text_color(theme.primary_foreground)
+                            .border_color(theme.primary)
+                    })
+                    .when(!toolbox_active, |btn| {
+                        btn.bg(theme.secondary)
+                            .text_color(theme.muted_foreground)
+                            .hover(|style| style.bg(theme.border))
+                    })
+                    .tooltip(|window, cx| {
+                        Tooltip::new(t!("toolbox.title").to_string()).build(window, cx)
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(
+                            move |app: &mut NetAssistantApp,
+                                  _event: &MouseDownEvent,
+                                  _window: &mut Window,
+                                  cx: &mut Context<NetAssistantApp>| {
+                                // 开关语义：未激活则打开工具箱，已激活则关闭回到连接标签页
+                                app.toggle_toolbox(cx);
+                            },
+                        ),
                     )
-                })
-                .child(if is_tab_multiline {
-                    IconName::ChevronUp
-                } else {
-                    IconName::ChevronDown
-                }),
-        )
+                    .child(Icon::new(CustomIconName::Wrench).size(px(14.0))),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .flex_shrink_0() // 只防止被压缩，不设置固定宽度
+                    .h_8() // 设置固定高度
+                    .px_2()
+                    .py_1()
+                    .cursor_pointer()
+                    .bg(theme.secondary)
+                    .border_1()
+                    .border_color(theme.border)
+                    .hover(|style| style.bg(theme.border))
+                    .on_mouse_down(MouseButton::Left, {
+                        cx.listener(
+                            move |app: &mut NetAssistantApp,
+                                  _event: &MouseDownEvent,
+                                  _window: &mut Window,
+                                  cx: &mut Context<NetAssistantApp>| {
+                                app.tab_multiline = !app.tab_multiline;
+                                cx.notify();
+                            },
+                        )
+                    })
+                    .child(if is_tab_multiline {
+                        IconName::ChevronUp
+                    } else {
+                        IconName::ChevronDown
+                    }),
+            )
     }
 
     /// 渲染标签页内容区域
@@ -222,6 +261,13 @@ impl<'a> TabContainer<'a> {
         window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
+        // 工具箱标签页：特殊 id，不走 connection_tabs
+        if self.app.active_tab == TOOLBOX_TAB_ID {
+            return div().flex().flex_col().flex_1().min_h_0().child(
+                ToolboxPanel::new(self.app).render(cx),
+            );
+        }
+
         if let Some((tab_id, tab_state)) =
             self.app.connection_tabs.get_key_value(&self.app.active_tab)
         {

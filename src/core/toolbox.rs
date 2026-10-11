@@ -12,6 +12,14 @@ use crate::utils::hex::{hex_to_bytes, hex_to_text, text_to_hex, validate_hex_inp
 pub enum ToolCategory {
     Convert,
     Checksum,
+    /// 哈希摘要：MD5 / SHA-1 / SHA-2 系列（计算逻辑见 `core/toolbox_extra.rs`）
+    Hash,
+    /// 时间戳 ⇄ 日期（计算逻辑见 `core/toolbox_extra.rs`）
+    Time,
+    /// JSON 美化/压缩（计算逻辑见 `core/toolbox_extra.rs`）
+    Json,
+    /// Base64 / URL 编解码（计算逻辑见 `core/toolbox_extra.rs`）
+    Encoding,
 }
 
 /// 一个选区工具（静态描述，无运行时状态）。
@@ -40,6 +48,8 @@ impl SelectionTool {
                 let algo = self.algo.expect("校验工具必须携带算法");
                 format_bytes(&algo.compute(&hex_to_bytes(source)))
             }
+            // 时间 / JSON / 编码组不在 SelectionTool 注册表内（见 core/toolbox_extra.rs）
+            _ => unreachable!("SelectionTool 注册表只包含转换与校验工具"),
         }
     }
 }
@@ -136,8 +146,10 @@ fn enabled(tool: &SelectionTool, source: &str) -> Result<(), &'static str> {
             }
             Ok(())
         }
+        // 时间 / JSON / 编码组不在 SelectionTool 注册表内（见 core/toolbox_extra.rs）
+        _ => unreachable!("SelectionTool 注册表只包含转换与校验工具"),
+        }
     }
-}
 
 /// 按 mode / source / category 求值生成可用态列表（已按 mode 过滤适用工具）。
 pub fn resolve_tools(mode: &str, source: &str, category: ToolCategory) -> Vec<ToolState> {
@@ -198,6 +210,35 @@ mod tests {
             .find(|t| t.id == "to_text")
             .unwrap();
         assert_eq!(to_text.compute("6F 6B"), "ok");
+    }
+
+    #[test]
+    fn test_convert_roundtrip_unicode() {
+        // 文本 → Hex → 文本 双向往返（含多字节 UTF-8 与空白）
+        let to_hex = selection_tools().iter().find(|t| t.id == "to_hex").unwrap();
+        let to_text = selection_tools()
+            .iter()
+            .find(|t| t.id == "to_text")
+            .unwrap();
+        let source = "你好，网络调试! mixed 中文ABC 0123";
+        let hex = to_hex.compute(source);
+        assert_eq!(to_text.compute(&hex), source);
+    }
+
+    #[test]
+    fn test_convert_disabled_reason() {
+        // Hex → 文本：非法字符与奇数长度均禁用并给出原因
+        let bad = resolve_tools("hex", "ZZ", ToolCategory::Convert);
+        assert_eq!(bad.len(), 1);
+        assert!(!bad[0].enabled);
+        assert_eq!(bad[0].disabled_reason, Some("input_mode.hex_invalid"));
+        let odd = resolve_tools("hex", "6F6", ToolCategory::Convert);
+        assert_eq!(odd[0].disabled_reason, Some("input_mode.hex_invalid"));
+
+        // 文本 → Hex：任意文本（含空串）恒可用
+        let text = resolve_tools("text", "", ToolCategory::Convert);
+        assert!(text[0].enabled);
+        assert!(text[0].disabled_reason.is_none());
     }
 
     #[test]

@@ -9,6 +9,11 @@ use crate::config::connection::{
     ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, TrailerKind,
 };
 use crate::config::storage::ConfigStorage;
+use crate::core::toolbox::ToolCategory;
+use crate::core::toolbox_extra::{
+    file_digest_set, file_hash_algo_by_hex_len, now_local_string, now_millis_string,
+    password_argon2id, password_bcrypt, password_pbkdf2_sha256, FILE_HASH_ALGOS,
+};
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
 use crate::message::{MAX_KEEP_LAST, Message, MessageDirection, MessageType};
@@ -42,6 +47,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// 工具箱标签页的特殊 id：不占据 connection_tabs（连接体系），仅占据一个标签栏位置
+pub const TOOLBOX_TAB_ID: &str = "__toolbox__";
+
 /// 发送投递失败原因(由 `send_dispatch_with_errors` 映射为既有错误文案)
 enum SendDispatchError {
     /// 标签页不存在
@@ -52,6 +60,23 @@ enum SendDispatchError {
     ClientWriteUnavailable,
     /// 投递到写通道失败
     SendFailed,
+}
+
+/// Hash 块文件摘要任务：Some=已选过文件（active=false 时处于文本模式，任务保留可秒恢复）
+pub struct FileHashJob {
+    pub path: std::path::PathBuf,
+    pub file_name: String,
+    pub size_bytes: u64,
+    /// 是否处于文件模式（false=用户切回文本，任务与结果缓存保留）
+    pub active: bool,
+    /// 勾选的算法 id（FILE_HASH_ALGOS 顺序 = 行序）
+    pub selected: Vec<&'static str>,
+    /// 已完成结果：算法 id → hex（勾选变化只补算缺失项）
+    pub done: std::collections::HashMap<&'static str, String>,
+    /// 后台补算中的算法 id
+    pub computing: Vec<&'static str>,
+    /// 读取失败原因（OS 错误文案），Some 时行区显示 error 行
+    pub error: Option<String>,
 }
 
 pub struct NetAssistantApp {
@@ -203,6 +228,39 @@ pub struct NetAssistantApp {
     pub search_subscriptions: HashMap<String, Subscription>,
     // 周期发送实时同步订阅(发送框内容 / 间隔变化, 每个标签页一份, 随关闭清理)
     pub periodic_sync_subscriptions: HashMap<String, Vec<Subscription>>,
+
+    // 工具箱标签页（Tab 栏固定成员，常驻不可关闭；不属于连接体系）
+    // 当前分组（左导航纯切换；各组输入互相独立、随 Tab 常驻保留）
+    pub toolbox_active_group: ToolCategory,
+    // 转换组「文本 → Hex」输入框（随应用创建；多行 Editor，与消息输入一致）
+    pub toolbox_convert_text_input: Entity<EditorState>,
+    // 转换组「Hex → 文本」输入框
+    pub toolbox_convert_hex_input: Entity<EditorState>,
+    // 校验组输入框（hex 输入 → 六种算法即时输出）
+    pub toolbox_checksum_input: Entity<EditorState>,
+    // 哈希组输入框（单输入 → 摘要 6 行 + 密码哈希 3 行）
+    pub toolbox_hash_input: Entity<EditorState>,
+    // 哈希组 KDF 输出缓存：(触发时的输入文本, [bcrypt, Argon2id, PBKDF2] 结果)
+    // 随机盐只在哈希输入变化时重新生成，无关重绘不刷新，保证展示值与复制值一致
+    pub toolbox_kdf_cache: Option<(String, Vec<Result<String, ()>>)>,
+    // 时间组双单行输入（tool.lu 式双块布局）：块①时间戳→日期、块②日期→时间戳，
+    // 两块输入独立无联动
+    pub toolbox_ts_input: Entity<InputState>,
+    /// Hash 块「对比哈希值」输入（与摘要行逐行比对）
+    pub toolbox_hash_compare_input: Entity<InputState>,
+    /// Hash 块文件摘要任务：Some=文件模式（文本输入保留，✕ 后恢复）
+    pub toolbox_file_hash: Option<FileHashJob>,
+    pub toolbox_date_input: Entity<InputState>,
+    // JSON 组输入框（美化/压缩）
+    pub toolbox_json_input: Entity<EditorState>,
+    // JSON 组右栏显示模式：true=美化 / false=压缩（chip 切换）
+    pub toolbox_json_pretty: bool,
+    // 编码组「Base64」输入框
+    pub toolbox_base64_input: Entity<EditorState>,
+    // 编码组「URL」输入框
+    pub toolbox_url_input: Entity<EditorState>,
+    // 工具箱输入变化订阅：内容变化即重绘以刷新输出区
+    pub toolbox_input_subscriptions: Vec<Subscription>,
 }
 
 impl NetAssistantApp {
@@ -224,6 +282,68 @@ impl NetAssistantApp {
         // 初始化空的连接标签页状态（不预先创建）
         let connection_tabs = IndexMap::new();
         let active_tab = String::new();
+
+        // 工具箱输入框：各组独立（转换文本 / 转换 Hex / 校验），随应用创建；
+        // 内容变化订阅在构造完成后统一挂接
+        let toolbox_convert_text_input = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .line_number(false)
+                .folding(false)
+                .placeholder(t!("toolbox.convert_text_placeholder"))
+        });
+        let toolbox_convert_hex_input = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .line_number(false)
+                .folding(false)
+                .placeholder(t!("toolbox.convert_hex_placeholder"))
+        });
+        let toolbox_checksum_input = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .line_number(false)
+                .folding(false)
+                .placeholder(t!("toolbox.checksum_placeholder"))
+        });
+        let toolbox_hash_input = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .line_number(false)
+                .folding(false)
+                .placeholder(t!("toolbox.hash_placeholder"))
+        });
+        // 时间组两块输入默认预填当前时刻（此后由「填入当前」按钮随时刷新）
+        let toolbox_ts_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("toolbox.time_ts_placeholder").to_string());
+            state.set_value(now_millis_string(), window, cx);
+            state
+        });
+        // Hash 块对比输入：粘贴待比对的哈希值（单行，输入即与摘要行比对）
+        let toolbox_hash_compare_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t!("toolbox.hash_compare_placeholder").to_string())
+        });
+        let toolbox_date_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("toolbox.time_date_placeholder").to_string());
+            state.set_value(now_local_string(), window, cx);
+            state
+        });
+        let toolbox_json_input = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .line_number(false)
+                .folding(false)
+                .placeholder(t!("toolbox.json_placeholder"))
+        });
+        let toolbox_base64_input = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .line_number(false)
+                .folding(false)
+                .placeholder(t!("toolbox.b64_placeholder"))
+        });
+        let toolbox_url_input = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .line_number(false)
+                .folding(false)
+                .placeholder(t!("toolbox.url_placeholder"))
+        });
 
         // 创建连接事件通道 - 使用smol channel与GPUI兼容
         let (connection_event_sender, connection_event_receiver) =
@@ -342,10 +462,96 @@ impl NetAssistantApp {
             keep_last_subscriptions: HashMap::new(),
             search_subscriptions: HashMap::new(),
             periodic_sync_subscriptions: HashMap::new(),
+            // 工具箱（Tab 栏固定成员；默认落在转换组）
+            toolbox_active_group: ToolCategory::Convert,
+            toolbox_convert_text_input,
+            toolbox_convert_hex_input,
+            toolbox_checksum_input,
+            toolbox_hash_input,
+            toolbox_kdf_cache: None,
+            toolbox_file_hash: None,
+            toolbox_ts_input,
+            toolbox_hash_compare_input,
+            toolbox_date_input,
+            toolbox_json_input,
+            toolbox_json_pretty: true,
+            toolbox_base64_input,
+            toolbox_url_input,
+            toolbox_input_subscriptions: Vec::new(),
         };
 
         // 启动时聚焦根元素, 保证未点击任何输入框时快捷键也全局生效
         app.root_focus.focus(window, cx);
+
+        // 工具箱输入变化 → 重绘以即时刷新输出区（输入 → 即时输出骨架）
+        let toolbox_inputs = [
+            app.toolbox_convert_text_input.clone(),
+            app.toolbox_convert_hex_input.clone(),
+            app.toolbox_checksum_input.clone(),
+            app.toolbox_json_input.clone(),
+            app.toolbox_base64_input.clone(),
+            app.toolbox_url_input.clone(),
+        ];
+        for input in toolbox_inputs {
+            app.toolbox_input_subscriptions.push(cx.subscribe(
+                &input,
+                move |_app, _input, event, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        cx.notify();
+                    }
+                },
+            ));
+        }
+
+        // 单行输入（时间组两块）：内容变化即重绘（输出行渲染现算，独立无联动）
+        for input in [app.toolbox_ts_input.clone(), app.toolbox_date_input.clone()] {
+            app.toolbox_input_subscriptions.push(cx.subscribe(
+                &input,
+                move |_app, _input, event, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        cx.notify();
+                    }
+                },
+            ));
+        }
+
+        // Hash 对比框单独订阅：除重绘外，文件模式下按对比值 digest 长度自动勾选
+        // 对应算法并补算（粘贴官网哈希 → 无需手动勾选即可命中）
+        app.toolbox_input_subscriptions.push(cx.subscribe(
+            &app.toolbox_hash_compare_input,
+            move |app, _input, event, cx| {
+                if !matches!(event, InputEvent::Change) {
+                    return;
+                }
+                app.ensure_hash_algo_for_compare(cx);
+                cx.notify();
+            },
+        ));
+
+        // 哈希组输入单独订阅：KDF 三行（随机盐每次生成唯一）在输入变化时重新生成
+        // 并缓存，渲染层只读缓存，其余重绘不刷新
+        app.toolbox_input_subscriptions.push(cx.subscribe(
+            &app.toolbox_hash_input,
+            move |app, input, event, cx| {
+                if !matches!(event, InputEvent::Change) {
+                    return;
+                }
+                let password = input.read(cx).value().to_string();
+                app.toolbox_kdf_cache = if password.trim().is_empty() {
+                    None
+                } else {
+                    Some((
+                        password.clone(),
+                        vec![
+                            password_bcrypt(&password),
+                            password_argon2id(&password),
+                            password_pbkdf2_sha256(&password),
+                        ],
+                    ))
+                };
+                cx.notify();
+            },
+        ));
 
         // 创建专门的异步任务来处理连接事件
         // 驱动源: GPUI BackgroundExecutor::timer (Windows ThreadPoolTimer)
@@ -490,7 +696,7 @@ impl NetAssistantApp {
 
             // 10 秒后自动隐藏 tooltip
             if has_update {
-                smol::Timer::after(std::time::Duration::from_secs(10)).await;
+                smol::Timer::after(std::time::Duration::from_secs(5)).await;
                 if let Some(app) = weak_app_update.upgrade() {
                     let _ = app.update(async_app, |app, cx| {
                         app.show_update_tooltip = false;
@@ -1604,8 +1810,29 @@ impl NetAssistantApp {
     // ============== 快捷键相关方法 ==============
 
     /// 返回按插入顺序排列的标签页 id 列表(序号即快捷键 Ctrl+1..9 的定位)
+    /// 工具箱由 Tab 栏右侧入口按钮进入，排在连接标签页之后参与循环切换
     pub fn tab_ids_in_order(&self) -> Vec<String> {
-        self.connection_tabs.keys().cloned().collect()
+        let mut ids: Vec<String> = self.connection_tabs.keys().cloned().collect();
+        ids.push(TOOLBOX_TAB_ID.to_string());
+        ids
+    }
+
+    // ============== 工具箱相关方法 ==============
+
+    /// 工具箱入口按钮（Tab 栏右侧固定图标）：未激活则打开，已激活则关闭
+    /// 关闭后回到第一个连接标签页（无连接标签页则保持空白）
+    pub fn toggle_toolbox(&mut self, cx: &mut Context<Self>) {
+        if self.active_tab == TOOLBOX_TAB_ID {
+            self.active_tab = self
+                .connection_tabs
+                .keys()
+                .next()
+                .map(|id| id.to_string())
+                .unwrap_or_default();
+        } else {
+            self.active_tab = TOOLBOX_TAB_ID.to_string();
+        }
+        cx.notify();
     }
 
     /// 按偏移量循环切换标签页(step>0 向后, step<0 向前)
@@ -1643,12 +1870,23 @@ impl NetAssistantApp {
             return;
         }
         let tab_id = self.active_tab.clone();
+        self.close_tab_and_fix_active(tab_id, cx);
+    }
+
+    /// 关闭标签页并修正激活态（供标签栏 × 与 Ctrl+W 复用的统一关闭入口）
+    pub fn close_tab_and_fix_active(&mut self, tab_id: String, cx: &mut Context<Self>) {
+        // 工具箱为常驻标签页：不可关闭（× 与 Ctrl+W 对其无效）
+        if tab_id == TOOLBOX_TAB_ID {
+            return;
+        }
         self.close_tab(tab_id.clone(), cx);
-        // 关闭后自动切换到剩余第一个标签页
-        if let Some(first_tab_id) = self.connection_tabs.keys().next() {
-            self.active_tab = (*first_tab_id).to_string();
-        } else {
-            self.active_tab = String::new();
+        // 关闭后自动切换到剩余第一个标签页；无连接标签页则保持空白（工具箱需显式点击进入）
+        if self.active_tab == tab_id {
+            if let Some(first_tab_id) = self.connection_tabs.keys().next() {
+                self.active_tab = (*first_tab_id).to_string();
+            } else {
+                self.active_tab = String::new();
+            }
         }
         cx.notify();
     }
@@ -1773,6 +2011,171 @@ impl NetAssistantApp {
             .unwrap_or(false);
         self.import_file_dialog = Some(ImportFileDialogState::new(tab_id, hex_mode, window, cx));
         open_import_file_dialog(cx.entity().downgrade(), window, cx);
+    }
+
+    /// Hash 块头「文件」段：文件模式再点 = 重新选文件；文本模式有点且有
+    /// 保留任务 = 秒恢复（缓存命中不重算）；从未选过 = 弹窗
+    pub fn on_hash_file_button(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let file_mode_active = self
+            .toolbox_file_hash
+            .as_ref()
+            .is_some_and(|job| job.active);
+        if file_mode_active {
+            self.pick_hash_file(window, cx);
+        } else if self.toolbox_file_hash.is_some() {
+            if let Some(job) = self.toolbox_file_hash.as_mut() {
+                job.active = true;
+            }
+            cx.notify();
+        } else {
+            self.pick_hash_file(window, cx);
+        }
+    }
+
+    /// Hash 块头「文本」段：切回文本模式，文件任务与结果缓存保留（再点「文件」秒恢复）
+    pub fn hide_hash_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(job) = self.toolbox_file_hash.as_mut() {
+            job.active = false;
+        }
+        cx.notify();
+    }
+
+    /// Hash 块：选择文件计算摘要（默认仅勾选 SHA-256，算法 chips 可加选）
+    pub fn pick_hash_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        log::info!("[文件哈希] pick_hash_file 触发");
+        cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+            log::info!("[文件哈希] 请求 rfd 文件对话框");
+            let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
+                log::info!("[文件哈希] rfd 返回：用户取消");
+                return; // 用户取消：保持现状
+            };
+            let path = file.path().to_path_buf();
+            log::info!("[文件哈希] rfd 返回：{}", path.display());
+            // 元数据（大小）后台线程获取
+            let meta_path = path.clone();
+            let meta =
+                smol::unblock(move || std::fs::metadata(&meta_path).map(|m| m.len())).await;
+            let _ = this.update(async_cx, |app, cx| {
+                let (size_bytes, error) = match &meta {
+                    Ok(size) => (*size, None),
+                    Err(err) => (0, Some(err.to_string())),
+                };
+                let file_name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.display().to_string());
+                app.toolbox_file_hash = Some(FileHashJob {
+                    path,
+                    file_name,
+                    size_bytes,
+                    active: true,
+                    selected: vec!["sha256"],
+                    done: Default::default(),
+                    computing: Vec::new(),
+                    error,
+                });
+                app.spawn_file_hash_compute(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// 对 selected−done 集合后台补算（256KB 固定块 · 单遍喂全部缺失算法，
+    /// 磁盘只读一遍）。完成后回写缓存并通知重绘。
+    fn spawn_file_hash_compute(&mut self, cx: &mut Context<Self>) {
+        let Some(job) = self.toolbox_file_hash.as_mut() else {
+            return;
+        };
+        if job.error.is_some() {
+            return; // 文件不可读：error 行已展示原因，不空转
+        }
+        let missing: Vec<&'static str> = job
+            .selected
+            .iter()
+            .filter(|id| !job.done.contains_key(*id) && !job.computing.contains(id))
+            .copied()
+            .collect();
+        if missing.is_empty() {
+            return;
+        }
+        job.computing.extend(missing.iter().copied());
+        let path = job.path.clone();
+
+        cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+            let results = async_cx
+                .background_executor()
+                .spawn(async move { file_digest_set(&path, &missing) })
+                .await;
+            let _ = this.update(async_cx, |app, cx| {
+                if let Some(job) = app.toolbox_file_hash.as_mut() {
+                    match results {
+                        Ok(list) => {
+                            job.error = None;
+                            for result in list {
+                                job.done.insert(result.id, result.hex);
+                            }
+                            job.computing.retain(|id| !job.done.contains_key(id));
+                        }
+                        Err(err) => {
+                            job.error = Some(err.to_string());
+                            job.computing.clear();
+                        }
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// 勾选/取消算法。取消仅影响展示（缓存不删，重新勾选零成本）；
+    /// 勾选触发缺失项补算。行序固定按 FILE_HASH_ALGOS 顺序。
+    pub fn toggle_hash_algo(&mut self, id: &'static str, cx: &mut Context<Self>) {
+        let Some(job) = self.toolbox_file_hash.as_mut() else {
+            return;
+        };
+        if let Some(pos) = job.selected.iter().position(|s| *s == id) {
+            job.selected.remove(pos);
+        } else {
+            job.selected.push(id);
+            job.selected.sort_by_key(|sel| {
+                FILE_HASH_ALGOS
+                    .iter()
+                    .position(|a| a.id == *sel)
+                    .unwrap_or(usize::MAX)
+            });
+            self.spawn_file_hash_compute(cx);
+        }
+        cx.notify();
+    }
+
+    /// 对比值中 hex 字符数命中某算法 digest 长度且该算法未勾选 →
+    /// 自动勾选并补算（文件模式专用：粘贴官网哈希无需手动勾选即可命中）
+    pub fn ensure_hash_algo_for_compare(&mut self, cx: &mut Context<Self>) {
+        let Some(job) = self.toolbox_file_hash.as_ref() else {
+            return;
+        };
+        let hex_len = self
+            .toolbox_hash_compare_input
+            .read(cx)
+            .value()
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .count();
+        let Some(algo) = file_hash_algo_by_hex_len(hex_len) else {
+            return;
+        };
+        if job.selected.contains(&algo.id) || job.done.contains_key(&algo.id) {
+            return;
+        }
+        self.toggle_hash_algo(algo.id, cx);
+    }
+
+    /// 移除文件条 → 回文本模式（文本输入与 KDF 缓存原样保留）
+    pub fn clear_hash_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.toolbox_file_hash = None;
+        cx.notify();
     }
 
     /// 弹出系统文件对话框并读入所选文件
