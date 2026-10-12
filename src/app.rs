@@ -50,6 +50,9 @@ use std::time::{Duration, Instant};
 /// 工具箱标签页的特殊 id：不占据 connection_tabs（连接体系），仅占据一个标签栏位置
 pub const TOOLBOX_TAB_ID: &str = "__toolbox__";
 
+/// 文件哈希任务代数计数器：每次选新文件递增，后台结果回写时校验
+static TOOLBOX_HASH_JOB_SEQ: AtomicU64 = AtomicU64::new(0);
+
 /// 发送投递失败原因(由 `send_dispatch_with_errors` 映射为既有错误文案)
 enum SendDispatchError {
     /// 标签页不存在
@@ -67,6 +70,8 @@ pub struct FileHashJob {
     pub path: std::path::PathBuf,
     pub file_name: String,
     pub size_bytes: u64,
+    /// 任务代数：每次选新文件递增。后台结果回写前校验，防止旧文件的计算结果串入新任务
+    pub generation: u64,
     /// 是否处于文件模式（false=用户切回文本，任务与结果缓存保留）
     pub active: bool,
     /// 勾选的算法 id（FILE_HASH_ALGOS 顺序 = 行序）
@@ -241,7 +246,8 @@ pub struct NetAssistantApp {
     // 哈希组输入框（单输入 → 摘要 6 行 + 密码哈希 3 行）
     pub toolbox_hash_input: Entity<EditorState>,
     // 哈希组 KDF 输出缓存：(触发时的输入文本, [bcrypt, Argon2id, PBKDF2] 结果)
-    // 随机盐只在哈希输入变化时重新生成，无关重绘不刷新，保证展示值与复制值一致
+    // 随机盐只在哈希输入变化时重新生成（防抖 300ms 后台计算，见订阅），无关重绘
+    // 不刷新，保证展示值与复制值一致
     pub toolbox_kdf_cache: Option<(String, Vec<Result<String, ()>>)>,
     // 时间组双单行输入（tool.lu 式双块布局）：块①时间戳→日期、块②日期→时间戳，
     // 两块输入独立无联动
@@ -528,28 +534,58 @@ impl NetAssistantApp {
             },
         ));
 
-        // 哈希组输入单独订阅：KDF 三行（随机盐每次生成唯一）在输入变化时重新生成
-        // 并缓存，渲染层只读缓存，其余重绘不刷新
+        // 哈希组输入单独订阅：KDF 三行（随机盐每次生成唯一）防抖 300ms 后丢后台
+        // 线程计算并缓存，打字全程不阻塞主线程；渲染层只读缓存，其余重绘不刷新
         app.toolbox_input_subscriptions.push(cx.subscribe(
             &app.toolbox_hash_input,
-            move |app, input, event, cx| {
+            move |app, _input, event, cx| {
                 if !matches!(event, InputEvent::Change) {
                     return;
                 }
-                let password = input.read(cx).value().to_string();
-                app.toolbox_kdf_cache = if password.trim().is_empty() {
-                    None
-                } else {
-                    Some((
-                        password.clone(),
-                        vec![
-                            password_bcrypt(&password),
-                            password_argon2id(&password),
-                            password_pbkdf2_sha256(&password),
-                        ],
-                    ))
-                };
-                cx.notify();
+                let password = app.toolbox_hash_input.read(cx).value().to_string();
+                if password.trim().is_empty() {
+                    // 清空立即生效：KDF 行渲染要求缓存与输入一致，置 None 即隐藏
+                    app.toolbox_kdf_cache = None;
+                    cx.notify();
+                    return;
+                }
+                // 防抖 300ms + 后台计算：到点后输入已变则本次作废（新按键已排了
+                // 自己的任务）；计算完成回写前再次比对，期间输入变化则丢弃结果。
+                // 随机盐下同密码重复计算无害，无需严格代数，比对文本即可。
+                cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                    async_cx
+                        .background_executor()
+                        .timer(Duration::from_millis(300))
+                        .await;
+                    let unchanged = this
+                        .update(async_cx, |app, cx| {
+                            let current = app.toolbox_hash_input.read(cx).value().to_string();
+                            !current.trim().is_empty() && current == password
+                        })
+                        .unwrap_or(false);
+                    if !unchanged {
+                        return;
+                    }
+                    let pwd = password.clone();
+                    let results = async_cx
+                        .background_executor()
+                        .spawn(async move {
+                            vec![
+                                password_bcrypt(&pwd),
+                                password_argon2id(&pwd),
+                                password_pbkdf2_sha256(&pwd),
+                            ]
+                        })
+                        .await;
+                    let _ = this.update(async_cx, |app, cx| {
+                        let current = app.toolbox_hash_input.read(cx).value().to_string();
+                        if current == password {
+                            app.toolbox_kdf_cache = Some((password, results));
+                            cx.notify();
+                        }
+                    });
+                })
+                .detach();
             },
         ));
 
@@ -2068,6 +2104,7 @@ impl NetAssistantApp {
                     path,
                     file_name,
                     size_bytes,
+                    generation: TOOLBOX_HASH_JOB_SEQ.fetch_add(1, Ordering::Relaxed),
                     active: true,
                     selected: vec!["sha256"],
                     done: Default::default(),
@@ -2101,6 +2138,7 @@ impl NetAssistantApp {
         }
         job.computing.extend(missing.iter().copied());
         let path = job.path.clone();
+        let generation = job.generation;
 
         cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
             let results = async_cx
@@ -2108,7 +2146,13 @@ impl NetAssistantApp {
                 .spawn(async move { file_digest_set(&path, &missing) })
                 .await;
             let _ = this.update(async_cx, |app, cx| {
-                if let Some(job) = app.toolbox_file_hash.as_mut() {
+                // 代数校验：计算期间用户换选了文件（generation 变化）则丢弃过期结果，
+                // 防止旧文件的哈希串写进新任务
+                if let Some(job) = app
+                    .toolbox_file_hash
+                    .as_mut()
+                    .filter(|job| job.generation == generation)
+                {
                     match results {
                         Ok(list) => {
                             job.error = None;

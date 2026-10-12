@@ -451,7 +451,8 @@ impl<'a> ToolboxPanel<'a> {
         );
 
         // 哈希对任意输入都有合法结果，无禁用态；KDF 三行读缓存（随机盐只在输入
-        // 变化时重新生成），缓存与当前输入不一致的瞬间（订阅未触发前）不渲染该组
+        // 变化时由后台重新生成，见 app.rs 订阅），后台计算完成前（缓存与当前输入
+        // 不一致的窗口期）不渲染该组
         let mut rows = Vec::new();
         let mut mid_header = None;
         if source.trim().is_empty() {
