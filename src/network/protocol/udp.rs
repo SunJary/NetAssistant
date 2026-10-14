@@ -133,7 +133,6 @@ fn try_udp_rule_reply(
 /// UDP客户端实现
 pub struct UdpClient {
     config: ClientConfig,
-    server_addr: SocketAddr,
     event_sender: Option<Sender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
     net_counters: Option<NetCounters>,
@@ -153,21 +152,8 @@ impl UdpClient {
         trailer: TrailerSetting,
         reply_rules: Arc<ReplyRulesStore>,
     ) -> Self {
-        // 解析地址，支持IPv4和IPv6
-        let address = if config.server_address.contains(':') && !config.server_address.contains('[')
-        {
-            // IPv6地址需要方括号
-            format!("[{}]:{}", config.server_address, config.server_port)
-        } else {
-            format!("{}:{}", config.server_address, config.server_port)
-        };
-
-        let server_addr =
-            SocketAddr::from_str(&address).expect(&format!("无效的UDP服务器地址: {}", address));
-
         UdpClient {
             config,
-            server_addr,
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
             net_counters,
@@ -188,7 +174,6 @@ impl NetworkConnection for UdpClient {
         }
 
         let config = self.config.clone();
-        let server_addr = self.server_addr;
         let server_host = self.config.server_address.clone();
         let event_sender = self.event_sender.clone();
         let message_processor = self.message_processor.clone();
@@ -202,6 +187,17 @@ impl NetworkConnection for UdpClient {
         self.is_connected = true;
 
         Pin::from(Box::new(async move {
+            // 地址解析放在连接期: 无效地址(非法 IP/域名)返回 Err 并经管理器转为 Error 事件上报,
+            // 而非在构造函数里 expect panic(panic 会被 tokio 捕获吞掉, UI 表现为"无反应")
+            let address = if server_host.contains(':') && !server_host.contains('[') {
+                // IPv6地址需要方括号
+                format!("[{}]:{}", server_host, config.server_port)
+            } else {
+                format!("{}:{}", server_host, config.server_port)
+            };
+            let server_addr = SocketAddr::from_str(&address)
+                .map_err(|e| format!("无效的UDP服务器地址 {}: {}", address, e))?;
+
             info!("UDP客户端连接到地址: {}", server_addr);
 
             // 按配置解析本地绑定; 未配置时按远端地址族使用通配地址+自动端口(与旧行为一致)

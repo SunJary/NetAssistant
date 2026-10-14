@@ -312,6 +312,31 @@ mod tests {
         assert!(result.is_err(), "连接被拒绝时应返回错误,实际: {:?}", result);
     }
 
+    /// 回归测试: UDP 客户端无效地址必须返回错误。
+    /// 此前 `UdpClient::new` 里 expect panic, 被 tokio 捕获吞掉后 UI 表现为"无反应"。
+    #[tokio::test]
+    async fn test_udp_client_invalid_address_returns_error() {
+        let mut manager = NetworkConnectionManager::new();
+        let config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Udp,
+            server_address: "999.1.1.1".to_string(),
+            server_port: 80,
+            ..Default::default()
+        };
+        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
+        assert!(result.is_err(), "无效地址应返回错误,实际: {:?}", result);
+
+        // 域名同样不支持(网络层只做 SocketAddr 解析, 无 DNS)
+        let config = crate::config::connection::ClientConfig {
+            protocol: ConnectionType::Udp,
+            server_address: "example.com".to_string(),
+            server_port: 80,
+            ..Default::default()
+        };
+        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
+        assert!(result.is_err(), "域名地址应返回错误,实际: {:?}", result);
+    }
+
     /// 功能测试: TCP 客户端配置本地绑定后, 连接必须从指定的本地地址与端口发起。
     #[tokio::test]
     async fn test_tcp_client_local_bind_port() {

@@ -106,11 +106,19 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
     let is_client = state.new_connection_is_client;
     let is_edit = state.editing_connection_id.is_some();
     let show_advanced = state.show_connection_advanced;
+    // 校验错误提示(内联红字): confirm_connection_form 校验失败时写入, 打开对话框时清空
+    let form_error = state.connection_form_error.clone();
 
     div()
         .flex()
         .flex_col()
         .gap_4()
+        .children(form_error.map(|err| {
+            div()
+                .text_color(theme.danger)
+                .text_size(px(12.0))
+                .child(err)
+        }))
         // 主机地址（必填）
         .child(
             div()

@@ -68,6 +68,24 @@ new_connection:
   confirm:
     zh-CN: 确定
     en: OK
+  error_empty_host:
+    zh-CN: 主机地址不能为空
+    en: Host address cannot be empty
+  error_bad_host:
+    zh-CN: 主机地址无效（仅支持 IPv4/IPv6 地址，不支持域名）
+    en: Invalid host address (IPv4/IPv6 only, hostnames not supported)
+  error_empty_port:
+    zh-CN: 端口不能为空
+    en: Port cannot be empty
+  error_bad_port:
+    zh-CN: 端口无效（需为 1-65535 的数字）
+    en: Invalid port (a number between 1-65535)
+  error_bad_local_address:
+    zh-CN: 本地地址无效（仅支持本机 IPv4/IPv6 地址）
+    en: Invalid local address (local IPv4/IPv6 only)
+  error_bad_local_port:
+    zh-CN: 本地端口无效（需为 0-65535 的数字）
+    en: Invalid local port (a number between 0-65535)
 
 variable_picker:
   title:

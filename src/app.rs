@@ -98,6 +98,8 @@ pub struct NetAssistantApp {
     /// 本地绑定端口输入(仅客户端, 留空=自动分配临时端口)
     pub local_port_input: Entity<InputState>,
     pub new_connection_protocol: String,
+    /// 连接表单校验错误文案(None=无错误; 校验失败时写入, 打开对话框时清空)
+    pub connection_form_error: Option<String>,
 
     // 连接编辑对话框状态（新建/编辑共用）
     // None=新建模式, Some(id)=编辑模式
@@ -393,6 +395,7 @@ impl NetAssistantApp {
             local_address_input,
             local_port_input,
             new_connection_protocol: String::from("TCP"),
+            connection_form_error: None,
             // 初始化连接编辑对话框状态
             editing_connection_id: None,
             edit_message_input_mode: String::from("text"),
@@ -1536,6 +1539,7 @@ impl NetAssistantApp {
         self.new_connection_is_client = is_client;
         self.new_connection_protocol = String::from("TCP");
         self.show_connection_advanced = false;
+        self.connection_form_error = None;
         self.edit_message_input_mode = String::from("text");
         self.edit_decoder_config = DecoderConfig::default();
 
@@ -1593,6 +1597,7 @@ impl NetAssistantApp {
             ConnectionType::Tcp => "TCP".to_string(),
             ConnectionType::Udp => "UDP".to_string(),
         };
+        self.connection_form_error = None;
 
         let (address, port, message_input_mode, decoder, local_address, local_port) = match &config
         {
@@ -1653,25 +1658,52 @@ impl NetAssistantApp {
     }
 
     /// 确认连接表单（新建或编辑），返回是否成功（成功后由调用方关闭对话框）
+    ///
+    /// 校验失败时把具体原因写入 `connection_form_error`（对话框内联红字提示）
+    /// 并返回 false 让对话框保持打开，不再静默拒绝。
     pub fn confirm_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let host = self.host_input.read(cx).value().to_string();
-        let port_str = self.port_input.read(cx).value().to_string();
-        if host.is_empty() || port_str.is_empty() {
+        self.connection_form_error = None;
+
+        // 统一 trim: 尾随空白(复制粘贴常见)会把看似合法的输入判成非法
+        let host = self.host_input.read(cx).value().trim().to_string();
+        let port_str = self.port_input.read(cx).value().trim().to_string();
+        if host.is_empty() {
+            self.connection_form_error =
+                Some(t!("new_connection.error_empty_host").to_string());
+            cx.notify();
+            return false;
+        }
+        if port_str.is_empty() {
+            self.connection_form_error =
+                Some(t!("new_connection.error_empty_port").to_string());
+            cx.notify();
             return false;
         }
         let Ok(port) = port_str.parse::<u16>() else {
+            self.connection_form_error = Some(t!("new_connection.error_bad_port").to_string());
+            cx.notify();
             return false;
         };
+        // 网络层连接用 SocketAddr::from_str、监听用 bind, 均不支持域名, 提前拦截
+        if host.parse::<std::net::IpAddr>().is_err() {
+            self.connection_form_error = Some(t!("new_connection.error_bad_host").to_string());
+            cx.notify();
+            return false;
+        }
 
         // 本地绑定(仅客户端字段; 服务端忽略): 地址留空=自动选网卡, 端口留空=自动分配。
-        // 校验沿用现有惯例: 非法输入静默拒绝(返回 false, 对话框保持打开)
         let local_addr_str = self.local_address_input.read(cx).value().trim().to_string();
         let local_address = if local_addr_str.is_empty() {
             None
         } else {
             match local_addr_str.parse::<std::net::IpAddr>() {
                 Ok(_) => Some(local_addr_str),
-                Err(_) => return false,
+                Err(_) => {
+                    self.connection_form_error =
+                        Some(t!("new_connection.error_bad_local_address").to_string());
+                    cx.notify();
+                    return false;
+                }
             }
         };
         let local_port_str = self.local_port_input.read(cx).value().trim().to_string();
@@ -1680,7 +1712,12 @@ impl NetAssistantApp {
         } else {
             match local_port_str.parse::<u16>() {
                 Ok(p) => Some(p),
-                Err(_) => return false,
+                Err(_) => {
+                    self.connection_form_error =
+                        Some(t!("new_connection.error_bad_local_port").to_string());
+                    cx.notify();
+                    return false;
+                }
             }
         };
 
