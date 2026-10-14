@@ -211,8 +211,11 @@ pub enum ConnectionEvent {
     Disconnected(String),
     /// 服务端开始监听
     Listening(String),
-    /// 错误事件
+    /// 错误事件(终态: UI 会把连接置为断开)
     Error(String, String),
+    /// 警告事件(非终态: 仅在状态区显示提示, 连接保持不变)。
+    /// 用于"本次操作被拒绝但连接仍可用"的场景, 如发送内容超过 UDP 单包上限。
+    Warning(String, String),
     /// 收到消息
     MessageReceived(String, Message),
     /// 收到一批消息(洪泛压测聚合路径, 高频消息全部走此事件)

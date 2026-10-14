@@ -23,6 +23,17 @@ use tokio_util::sync::CancellationToken;
 /// 表现为「批次内存无界增长 + 永不下发事件 + 无法响应停止信号」。达到上界即先下发一批。
 const UDP_MAX_BATCH_PACKETS: u64 = 1024;
 
+/// 单个 recv 调用的缓冲区大小。
+///
+/// UDP 数据报协议上限为 65507 字节, 缓冲区必须 ≥ 该值: 过小的缓冲在 Windows 下
+/// 触发 `WSAEMSGSIZE`(10040) 使读循环把可恢复的截断错误当致命错误退出,
+/// 在类 Unix 下则静默截断(复现基线 B1)。缓冲区在循环外分配一次并复用。
+const UDP_RECV_BUFFER_SIZE: usize = 65536;
+
+/// UDP 单个数据报的载荷上限(IP 头 20 + UDP 头 8 = 65535 - 28)。
+/// 超过该值的数据报任何协议栈都无法发送, 发送前显式拦截并给出可读提示。
+const UDP_DATAGRAM_MAX: usize = 65507;
+
 /// 给一个"未指定目标"的待发项补上目标地址（UDP 服务端按客户端注册发送通道时使用）。
 ///
 /// 已带目标的项（规则应答）保持原目标不变 —— 规则应答必须回到真实的报文来源。
@@ -261,7 +272,7 @@ impl NetworkConnection for UdpClient {
             let udp_reply_tx = tx.clone();
 
             tokio::spawn(async move {
-                let mut buffer = [0; 1024];
+                let mut buffer = vec![0u8; UDP_RECV_BUFFER_SIZE];
                 let mut batch = ReceivedBatch::with_capacity(32);
                 loop {
                     tokio::select! {
@@ -314,8 +325,20 @@ impl NetworkConnection for UdpClient {
                                 Err(e) => {
                                     error!("UDP读取错误: {:?}", e);
                                     if let Some(sender) = &event_sender_clone {
-                                        if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone.clone())).await {
-                                            error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", e);
+                                        // Windows 特有: 上一次 send_to 的 ICMP 回执会在下一次 recv_from
+                                        // 报 ConnectionReset(10054), 对应"上一条数据报未送达"。此时消息
+                                        // 列表里那条发送记录已存在, 必须先发明确的 Error 事件再断开,
+                                        // 否则用户会误以为它已成功发出(复现基线 B2)。断开语义保留不变。
+                                        let reason = if e.kind() == std::io::ErrorKind::ConnectionReset {
+                                            format!("数据报未送达: 对端端口不可达 ({})", e)
+                                        } else {
+                                            format!("接收数据报失败: {}", e)
+                                        };
+                                        if let Err(se) = sender.send(ConnectionEvent::Error(id_clone.clone(), reason)).await {
+                                            error!("[UDP客户端] 发送 Error 事件失败: {:?}", se);
+                                        }
+                                        if let Err(se) = sender.send(ConnectionEvent::Disconnected(id_clone.clone())).await {
+                                            error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", se);
                                         }
                                     }
                                     break;
@@ -348,11 +371,38 @@ impl NetworkConnection for UdpClient {
                                     // 规则要求"原样输出"时 `bypasses_trailer()` 为真，字节不再改动。
                                     let target = wire.target().unwrap_or(server_addr);
                                     let payload = wire_bytes(&wire, trailer_write.clone());
+                                    if payload.len() > UDP_DATAGRAM_MAX {
+                                        // 超限数据报发不出去, 与其让 send_to 报 WSAEMSGSIZE 后断开,
+                                        // 不如提前拦截: 明确提示字节数与上限, 连接保持, 用户缩短内容后可直接重发。
+                                        // ("别的软件截断发送"实为静默丢弃用户数据, 调试工具不做这种事)
+                                        warn!(
+                                            "[UDP客户端] 消息 {} 字节超过 UDP 单包上限 {} 字节, 已跳过",
+                                            payload.len(),
+                                            UDP_DATAGRAM_MAX
+                                        );
+                                        if let Some(sender) = &event_sender_clone_write {
+                                            let _ = sender.try_send(ConnectionEvent::Warning(
+                                                id_clone_write.clone(),
+                                                format!(
+                                                    "消息 {} 字节超过 UDP 单包上限 {} 字节, 未发送",
+                                                    payload.len(),
+                                                    UDP_DATAGRAM_MAX
+                                                ),
+                                            ));
+                                        }
+                                        continue;
+                                    }
                                     if let Err(e) = socket_write.send_to(&payload, target).await {
                                         error!("UDP发送错误: {:?}", e);
                                         if let Some(sender) = &event_sender_clone_write {
-                                            if let Err(e) = sender.send(ConnectionEvent::Disconnected(id_clone_write.clone())).await {
-                                                error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", e);
+                                            // 发送失败同样先报具体原因再断开, 让列表里那条发送记录
+                                            // 有明确的失败反馈, 而非"看似成功后莫名断开"
+                                            let reason = format!("发送数据报失败: {}", e);
+                                            if let Err(se) = sender.send(ConnectionEvent::Error(id_clone_write.clone(), reason)).await {
+                                                error!("[UDP客户端] 发送 Error 事件失败: {:?}", se);
+                                            }
+                                            if let Err(se) = sender.send(ConnectionEvent::Disconnected(id_clone_write.clone())).await {
+                                                error!("[UDP客户端] 发送 Disconnected 事件失败: {:?}", se);
                                             }
                                         }
                                         break;
@@ -410,9 +460,13 @@ pub struct UdpServer {
     message_processor: Arc<dyn MessageProcessor>,
     net_counters: Option<NetCounters>,
     is_running: bool,
-    /// 取消令牌：stop() 时取消,收/发 task 通过 select! 感知并退出,
-    /// 两个 task 退出后 socket 的 Arc 引用计数归零,端口随之释放
+    /// 父取消令牌: 仅作"实例总闸"(Drop 兜底/紧急全停)。
+    /// CancellationToken 一旦取消不可恢复, 因此正常 stop() 不取消它 ——
+    /// 否则同一实例再次 start() 派生的子令牌出生即取消, 服务端静默失效。
     stop_token: CancellationToken,
+    /// 本轮运行的子令牌: start() 生成并记录, stop() 只取消它。
+    /// 支持同一实例反复 stop→start 复用。
+    current_run_token: Option<CancellationToken>,
     /// 主发送通道，用于手动添加客户端时接入发送链路
     ///
     /// 通道携带 `WireMessage` 而非裸字节：规则要求"原样输出"时必须能绕过连接
@@ -439,6 +493,7 @@ impl UdpServer {
             net_counters,
             is_running: false,
             stop_token: CancellationToken::new(),
+            current_run_token: None,
             main_send_tx: Arc::new(Mutex::new(None)),
             reply_rules: ReplyRulesStore::new(),
             trailer,
@@ -553,8 +608,10 @@ impl NetworkServer for UdpServer {
         let clients = self.clients.clone();
         // 保存主发送通道，用于手动添加客户端
         let main_send_tx = self.main_send_tx.clone();
-        // 每次启动派生子令牌:支持反复启停,stop() 取消父令牌即可终止当前这轮任务
+        // 每次启动生成新的本轮子令牌并记录到 self: stop() 只取消本轮令牌,
+        // 父令牌保持未取消, 支持同一实例反复 stop→start
         let stop_token = self.stop_token.child_token();
+        self.current_run_token = Some(stop_token.clone());
 
         Pin::from(Box::new(async move {
             // 绑定地址，支持IPv4和IPv6
@@ -630,7 +687,7 @@ impl NetworkServer for UdpServer {
             let recv_stop_token = stop_token.clone();
 
             tokio::spawn(async move {
-                let mut buffer = [0; 1024];
+                let mut buffer = vec![0u8; UDP_RECV_BUFFER_SIZE];
                 let mut batch = ReceivedBatch::with_capacity(32);
                 loop {
                     tokio::select! {
@@ -762,8 +819,22 @@ impl NetworkServer for UdpServer {
                             }
                         }
                         Err(e) => {
-                            // 处理读取错误
+                            // 瞬态错误(WouldBlock/TimedOut)可重试, 不终止服务
+                            if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) {
+                                continue;
+                            }
+                            // 致命错误: 读任务退出后服务端将收不到任何数据报, 若不上报事件,
+                            // UI 仍显示"监听中"而实际已成僵尸(复现基线 B1)。先报原因再报断开。
                             error!("UDP服务器读取消息时发生错误: {:?}", e);
+                            if let Some(sender) = &event_sender_clone {
+                                let reason = format!("接收数据报失败, 服务端已停止: {}", e);
+                                if let Err(se) = sender.send(ConnectionEvent::Error(id_clone.clone(), reason)).await {
+                                    error!("[UDP服务器] 发送 Error 事件失败: {:?}", se);
+                                }
+                                if let Err(se) = sender.send(ConnectionEvent::Disconnected(id_clone.clone())).await {
+                                    error!("[UDP服务器] 发送 Disconnected 事件失败: {:?}", se);
+                                }
+                            }
                             break;
                         }
                         }
@@ -782,6 +853,9 @@ impl NetworkServer for UdpServer {
             // 运行期结尾追加字符设置: 每包读取当前值, 下拉改动即时生效; 广播与定向均经此任务回发
             let trailer_write = trailer.clone();
             let write_stop_token = stop_token;
+            // 超限拦截需要上报 Warning 事件
+            let event_sender_clone_write = event_sender.clone();
+            let id_clone_write = config.id.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::select! {
@@ -797,6 +871,25 @@ impl NetworkServer for UdpServer {
                                         continue;
                                     };
                                     let payload = wire_bytes(&wire, trailer_write.clone());
+                                    if payload.len() > UDP_DATAGRAM_MAX {
+                                        // 与客户端写任务同一策略: 超限提前拦截, 提示后连接保持
+                                        warn!(
+                                            "[UDP服务器] 消息 {} 字节超过 UDP 单包上限 {} 字节, 已跳过",
+                                            payload.len(),
+                                            UDP_DATAGRAM_MAX
+                                        );
+                                        if let Some(sender) = &event_sender_clone_write {
+                                            let _ = sender.try_send(ConnectionEvent::Warning(
+                                                id_clone_write.clone(),
+                                                format!(
+                                                    "消息 {} 字节超过 UDP 单包上限 {} 字节, 未发送",
+                                                    payload.len(),
+                                                    UDP_DATAGRAM_MAX
+                                                ),
+                                            ));
+                                        }
+                                        continue;
+                                    }
                                     if let Err(e) = socket_write.send_to(&payload, target).await {
                                         error!("UDP服务器发送消息时发生错误: {:?}", e);
                                     } else if let Some(c) = &net_counters_clone_write {
@@ -831,8 +924,11 @@ impl NetworkServer for UdpServer {
         let clients = self.clients.clone();
         let main_send_tx = self.main_send_tx.clone();
 
-        // 取消收/发任务(select! 分支感知,退出后释放 socket 的 Arc 引用,端口随之关闭)
-        self.stop_token.cancel();
+        // 只取消本轮子令牌(收/发 task 经 select! 感知,退出后释放 socket 的 Arc 引用,端口随之关闭)。
+        // 不取消父令牌: 父令牌取消后不可恢复, 会让同一实例的下一次 start() 出生即失效。
+        if let Some(run_token) = self.current_run_token.take() {
+            run_token.cancel();
+        }
         debug!("UDP服务器已发送停止信号");
 
         // 更新状态为停止
@@ -923,6 +1019,134 @@ mod tests {
             .iter()
             .map(|m| m.raw_data.to_vec())
             .collect()
+    }
+
+    /// 取一个当前空闲的 UDP 端口(探测后释放, 存在极小竞态, 测试可接受)
+    fn free_udp_port() -> u16 {
+        std::net::UdpSocket::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    fn udp_server_config(port: u16) -> ServerConfig {
+        ServerConfig {
+            id: "srv".to_string(),
+            protocol: crate::config::connection::ConnectionType::Udp,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: port,
+            decoder_config: crate::config::connection::DecoderConfig::default(),
+            message_input_mode: "text".to_string(),
+            send_trailer: crate::config::connection::TrailerKind::default(),
+        }
+    }
+
+    /// 回归测试(B1): >1024B(此处 8KB)数据报必须完整到达服务端, 不截断、读循环不断开。
+    /// 旧实现读缓冲区仅 1024 字节: Windows 下触发 WSAEMSGSIZE(10040) 使读循环把
+    /// 可恢复的截断当致命错误退出, 服务端成为"显示监听中但收不到包"的僵尸。
+    #[tokio::test]
+    async fn test_udp_server_receives_large_datagram() {
+        use crate::network::events::ConnectionEvent;
+        use std::time::Duration;
+
+        let port = free_udp_port();
+        let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let mut server = UdpServer::new(udp_server_config(port), Some(tx), None, TrailerSetting::default());
+        server.start().await.expect("服务端应启动成功");
+
+        let payload = vec![0xABu8; 8192];
+        let client = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        client.connect(("127.0.0.1", port)).await.unwrap();
+        client.send(&payload).await.unwrap();
+
+        let mut verified = false;
+        while let Ok(event) = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("等待事件超时")
+        {
+            match event {
+                ConnectionEvent::MessagesReceived(_, batch) => {
+                    assert_eq!(batch.count, 1, "应恰好收到 1 个数据报");
+                    assert_eq!(batch.bytes, payload.len() as u64, "数据报应完整无截断");
+                    let raw = batch
+                        .messages
+                        .first()
+                        .expect("全量模式明细不应为空")
+                        .raw_data
+                        .to_vec();
+                    assert_eq!(raw, payload, "数据报内容应逐字节一致");
+                    verified = true;
+                    break;
+                }
+                _ => continue,
+            }
+        }
+        assert!(verified, "5 秒内未收到完整大包的 MessagesReceived 事件");
+        server.stop().await.unwrap();
+    }
+
+    /// 回归测试(P2-2): 同一 UdpServer 实例 stop→start 复用后必须仍能收包。
+    /// 旧实现 stop() 取消父令牌(CancellationToken 取消不可恢复), 同实例再次 start()
+    /// 派生的子令牌出生即取消, 服务端静默失效 —— 第二条消息永远收不到。
+    #[tokio::test]
+    async fn test_udp_server_restart_same_instance() {
+        use crate::network::events::ConnectionEvent;
+        use std::time::Duration;
+
+        let port = free_udp_port();
+        let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let mut server = UdpServer::new(udp_server_config(port), Some(tx), None, TrailerSetting::default());
+        server.start().await.expect("首次启动应成功");
+
+        let client = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        client.connect(("127.0.0.1", port)).await.unwrap();
+
+        // 第一轮: 收到 ping1
+        client.send(b"ping1").await.unwrap();
+        let mut first = false;
+        while let Ok(event) = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("等待事件超时")
+        {
+            if let ConnectionEvent::MessagesReceived(_, batch) = event {
+                assert_eq!(batch.bytes, 5);
+                first = true;
+                break;
+            }
+        }
+        assert!(first, "首轮未收到 ping1");
+
+        server.stop().await.unwrap();
+
+        // 同实例重启: stop 只取消了本轮子令牌, 父令牌未动, 新一轮任务应正常存活。
+        // 旧端口释放与任务退出存在毫秒级时差, 绑定失败时短暂重试。
+        let mut restarted = false;
+        for _ in 0..50 {
+            if server.start().await.is_ok() {
+                restarted = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(restarted, "同实例重启绑定端口失败");
+
+        client.send(b"ping2").await.unwrap();
+        let mut second = false;
+        while let Ok(event) = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("等待事件超时")
+        {
+            if let ConnectionEvent::MessagesReceived(_, batch) = event {
+                assert_eq!(batch.bytes, 5);
+                let raw = batch.messages.first().unwrap().raw_data.to_vec();
+                assert_eq!(raw, b"ping2".to_vec());
+                second = true;
+                break;
+            }
+        }
+        assert!(second, "重启后未收到 ping2 —— 令牌复用修复未生效");
+        server.stop().await.unwrap();
     }
 
     /// T-3 ①（UDP 侧）：规则全禁用 → 不产生任何应答

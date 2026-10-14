@@ -3878,6 +3878,13 @@ impl NetAssistantApp {
                 // 开始监听: 若有持久化的定时任务(心跳)则创建
                 self.ensure_timed_task(&tab_id, cx);
             }
+            ConnectionEvent::Warning(tab_id, warning) => {
+                // 非终态: 只显示提示文案, 不动连接状态/发送通道(区别于 Error)
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state.error_message = Some(warning);
+                    cx.notify();
+                }
+            }
             ConnectionEvent::Error(tab_id, error) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     tab_state.is_connected = false;
