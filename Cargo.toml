@@ -5,9 +5,9 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
-gpui-kit = { version = "0.7", features = ["tree-sitter"] }
-# 平台 feature 透传（对应原 gpui_platform 的 features，触发底层 gpui-pre-platform 启用）
-gpui-pre-platform = { version = "0.3.7", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+# gpui-fast: longbridge 优化的 GPUI 渲染/布局实现（Windows 走 DirectX 快速路径），
+# gpui-kit 自带 gpui-pre-platform =0.3.9（font-kit/x11/wayland/runtime_shaders），无需再透传
+gpui-kit = { version = "0.7", features = ["tree-sitter", "gpui-fast"] }
 anyhow = "1.0"
 indexmap = "2"
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -24,10 +24,10 @@ hex = "0.4"
 md-5 = "0.11"
 sha1 = "0.11"
 sha2 = "0.11"
-argon2 = "0.5"
-bcrypt = "0.15"
+argon2 = "0.6"
+bcrypt = "0.19"
 pbkdf2 = "0.13"
-getrandom = "0.2"
+getrandom = "0.4"
 regex = "1.10"
 log = "0.4"
 simple_logger = "5.0"

@@ -180,8 +180,9 @@ fn dialog_esc_and_overlay_click_both_close(cx: &mut TestAppContext) {
     draw(&mut cx);
     assert!(!is_open(&mut cx), "overlay click should close the dialog");
 
-    // 重开对话框, 验证 ESC 关闭(keyboard 默认开启, 打开时自动聚焦)
-    cx.update(|_, cx| host.update(cx, |h, _| h.opened = false));
+    // 重开对话框, 验证 ESC 关闭(keyboard 默认开启, 打开时自动聚焦)。
+    // 必须显式 notify：gpui-fast 按实体脏标记复用子树，不通知则 render 不重跑、弹窗不会重开
+    cx.update(|_, cx| host.update(cx, |h, cx| { h.opened = false; cx.notify(); }));
     draw(&mut cx);
     assert!(is_open(&mut cx), "dialog should reopen");
     cx.simulate_keystrokes("escape");

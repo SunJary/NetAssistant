@@ -311,7 +311,6 @@ use sha1::Sha1;
 use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
 
 use argon2::{Algorithm, Argon2, Params, Version};
-use argon2::password_hash::SaltString;
 
 /// 任意文本 → 小写 hex 摘要
 fn digest_hex<D: Digest>(text: &str) -> String {
@@ -362,10 +361,9 @@ pub fn password_bcrypt(password: &str) -> Result<String, ()> {
 pub fn password_argon2id(password: &str) -> Result<String, ()> {
     use argon2::password_hash::PasswordHasher;
     let salt_bytes = random_salt_bytes();
-    let salt = SaltString::encode_b64(&salt_bytes).map_err(|_| ())?;
     let params = Params::new(8192, 1, 1, Some(32)).map_err(|_| ())?;
     let ctx = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    ctx.hash_password(password.as_bytes(), &salt)
+    ctx.hash_password_with_salt(password.as_bytes(), &salt_bytes)
         .map(|hash| hash.to_string())
         .map_err(|_| ())
 }
@@ -392,7 +390,7 @@ fn b64_nopad(bytes: &[u8]) -> String {
 /// 16 字节系统熵（密码哈希随机盐）
 fn random_salt_bytes() -> [u8; 16] {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).expect("系统熵源不可用");
+    getrandom::fill(&mut bytes).expect("系统熵源不可用");
     bytes
 }
 
@@ -767,7 +765,8 @@ mod tests {
         let bcrypt_hash = password_bcrypt("p@ss").unwrap();
         assert!(bcrypt::verify("p@ss", &bcrypt_hash).unwrap());
 
-        use argon2::password_hash::{PasswordHash as Ph, PasswordVerifier};
+        use argon2::password_hash::phc::PasswordHash as Ph;
+        use argon2::password_hash::PasswordVerifier;
         let argon2_hash = password_argon2id("p@ss").unwrap();
         let parsed = Ph::new(&argon2_hash).unwrap();
         assert!(Argon2::default().verify_password("p@ss".as_bytes(), &parsed).is_ok());

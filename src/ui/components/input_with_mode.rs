@@ -794,11 +794,16 @@ mod repro_tests {
         draw(&mut cx);
 
         // 切 hex：message 输入内容 "11 22 22 33 44 55 11 22" 本身是合法 hex，
-        // 直接设模式即可走 hex 网格（无需 convert）
+        // 直接设模式即可走 hex 网格（无需 convert）。
+        // 必须显式 notify：gpui-fast 按实体脏标记复用子树，不改通知会整树沿用
+        // 首帧（text 模式）的右键菜单闭包，弹出的还是文本模式菜单
         cx.update(|window, cx| {
             let root = window.root::<Root>().unwrap().unwrap();
             let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
-            host.update(cx, |host, _cx| host.mode = "hex");
+            host.update(cx, |host, cx| {
+                host.mode = "hex";
+                cx.notify();
+            });
         });
         for _ in 0..4 {
             draw(&mut cx);
@@ -861,11 +866,16 @@ mod repro_tests {
         draw(&mut cx);
         draw(&mut cx);
 
-        // 切 hex：message 内容 "11 22 ..." 本身合法，直接走网格分支
+        // 切 hex：message 内容 "11 22 ..." 本身合法，直接走网格分支。
+        // 必须显式 notify：gpui-fast 按实体脏标记复用子树，不改通知会整树沿用
+        // 首帧（text 模式）的右键菜单闭包，弹出的还是文本模式菜单
         cx.update(|window, cx| {
             let root = window.root::<Root>().unwrap().unwrap();
             let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
-            host.update(cx, |host, _cx| host.mode = "hex");
+            host.update(cx, |host, cx| {
+                host.mode = "hex";
+                cx.notify();
+            });
         });
         for _ in 0..4 {
             draw(&mut cx);
