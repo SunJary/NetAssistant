@@ -181,6 +181,92 @@ impl Cmp {
     }
 }
 
+/// JSON 字段比较运算符（`MatchNode::JsonEq` 用，决策 D-6）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JsonCmp {
+    /// 相等（number↔number 数值比较，其余按文本）
+    Eq,
+    /// 不等
+    Ne,
+    /// 数值大于（仅 number 路径生效，非 number 恒不成立）
+    Gt,
+    /// 数值大于等于
+    Ge,
+    /// 数值小于
+    Lt,
+    /// 数值小于等于
+    Le,
+    /// 文本包含（string 的子串匹配；array/object 取紧凑 JSON 文本）
+    Contains,
+    /// 路径存在即命中（value 忽略）
+    Exists,
+}
+
+impl JsonCmp {
+    /// 运算符符号（摘要展示用；Contains/Exists 用中文词更直白）
+    pub fn symbol(self) -> &'static str {
+        match self {
+            JsonCmp::Eq => "==",
+            JsonCmp::Ne => "!=",
+            JsonCmp::Gt => ">",
+            JsonCmp::Ge => ">=",
+            JsonCmp::Lt => "<",
+            JsonCmp::Le => "<=",
+            JsonCmp::Contains => "包含",
+            JsonCmp::Exists => "存在",
+        }
+    }
+
+    /// 判定"路径取出的 JSON 值"是否满足本运算符（决策 D-6 语义，集中在此一处）
+    ///
+    /// - number 且期望值是有限数字 → f64 数值比较（六种比较运算符全部生效）；
+    /// - number 但期望值不是数字 → 仅 Eq/Ne 按"数值规范文本 == 期望文本"；
+    /// - string → Eq/Ne 全文比较；Contains 为子串匹配；
+    /// - bool / null → 与 `true` / `false` / `null` 规范文本比较（Eq/Ne）；
+    /// - array / object → 紧凑 JSON 文本比较（Eq/Ne/Contains）；
+    /// - 数值比较（Gt/Ge/Lt/Le）作用于非 number → 恒 false。
+    pub fn test_json(self, actual: &serde_json::Value, expected: &str) -> bool {
+        use serde_json::Value;
+        // 规范文本：string 原样，其余用 serde 的序列化形式（true/null/3.5/紧凑 JSON）
+        let text = |v: &Value| match v {
+            Value::String(s) => s.as_str().to_string(),
+            other => other.to_string(),
+        };
+        match self {
+            // 路径存在由调用方（json_at 返回 Some）保证
+            JsonCmp::Exists => true,
+            JsonCmp::Contains => match actual {
+                Value::String(s) => s.contains(expected),
+                Value::Array(_) | Value::Object(_) => text(actual).contains(expected),
+                _ => false,
+            },
+            JsonCmp::Eq | JsonCmp::Ne => {
+                let hit = match actual {
+                    Value::Number(n) => match (n.as_f64(), expected.trim().parse::<f64>()) {
+                        // 数值优先：3 == 3.0 命中（JSON number 对用户无整型/浮点之分）
+                        (Some(a), Ok(e)) if e.is_finite() => a == e,
+                        _ => text(actual) == expected,
+                    },
+                    _ => text(actual) == expected,
+                };
+                hit == matches!(self, JsonCmp::Eq)
+            }
+            JsonCmp::Gt | JsonCmp::Ge | JsonCmp::Lt | JsonCmp::Le => {
+                match (actual.as_f64(), expected.trim().parse::<f64>()) {
+                    (Some(a), Ok(e)) if e.is_finite() => match self {
+                        JsonCmp::Gt => a > e,
+                        JsonCmp::Ge => a >= e,
+                        JsonCmp::Lt => a < e,
+                        _ => a <= e,
+                    },
+                    _ => false,
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ByteOp {
@@ -396,6 +482,18 @@ pub enum MatchNode {
         offset: usize,
         cmp: Cmp,
         value: i64,
+    },
+
+    /// 【JSON 字段匹配】按 `a.b[0].c` 路径取 JSON 值与期望比较（决策 D-1/D-6）
+    ///
+    /// 帧 JSON 解析失败（非 JSON / 超过 `MAX_JSON_PARSE_SIZE`）时本谓词不成立。
+    /// 比较语义见 [`JsonCmp::test_json`]：number 走 f64 数值比较，其余走文本。
+    JsonEq {
+        /// JSON 字段路径（保存期经 `parse_json_path` 静态校验）
+        path: String,
+        cmp: JsonCmp,
+        /// 期望值：数字可解析时按数值比较，否则文本
+        value: String,
     },
 
     /// 校验值验算通过
@@ -644,6 +742,10 @@ impl Issue {
 pub const MAX_MATCH_DEPTH: usize = 8;
 /// 正则最大长度（安全边界，见 plan-reply-rules.md §9.2）
 pub const MAX_REGEX_LEN: usize = 256;
+/// JSON 字段路径最大长度
+pub const MAX_JSON_PATH_LEN: usize = 256;
+/// JSON 期望值最大长度
+pub const MAX_JSON_VALUE_LEN: usize = 256;
 /// 规则名最大长度
 pub const MAX_RULE_NAME_LEN: usize = 64;
 /// 备注最大长度
@@ -865,6 +967,44 @@ pub fn validate_match_node(node: &MatchNode, path: &str, issues: &mut Vec<Issue>
                 ));
             }
         }
+        MatchNode::JsonEq {
+            path: json_path,
+            cmp,
+            value,
+        } => {
+            if json_path.chars().count() > MAX_JSON_PATH_LEN {
+                issues.push(Issue::error(
+                    format!("{}.path", path),
+                    format!("JSON 路径不能超过 {} 个字符", MAX_JSON_PATH_LEN),
+                ));
+            } else if crate::reply::frame::parse_json_path(json_path).is_none() {
+                issues.push(Issue::error(
+                    format!("{}.path", path),
+                    format!("非法 JSON 路径语法: {}（如 data.items[0].temp）", json_path),
+                ));
+            }
+            if value.chars().count() > MAX_JSON_VALUE_LEN {
+                issues.push(Issue::error(
+                    format!("{}.value", path),
+                    format!("期望值不能超过 {} 个字符", MAX_JSON_VALUE_LEN),
+                ));
+            }
+            // 数值比较的期望值必须可解析为有限数字，否则规则永不命中（当场指出）
+            if matches!(
+                cmp,
+                JsonCmp::Gt | JsonCmp::Ge | JsonCmp::Lt | JsonCmp::Le
+            ) && value
+                .trim()
+                .parse::<f64>()
+                .map(|f| !f.is_finite())
+                .unwrap_or(true)
+            {
+                issues.push(Issue::error(
+                    format!("{}.value", path),
+                    "数值比较的期望值必须是有限数字（如 30 或 3.5）",
+                ));
+            }
+        }
         MatchNode::ChecksumValid { at, range, .. } => {
             if let Some((offset, len)) = range {
                 if len == &0 {
@@ -1031,6 +1171,13 @@ pub fn format_matcher_summary(node: &MatchNode) -> Vec<String> {
             cmp.symbol(),
             value
         )],
+        MatchNode::JsonEq { path, cmp, value } => {
+            if matches!(cmp, JsonCmp::Exists) {
+                vec![format!("JSON($.{}) 存在", path)]
+            } else {
+                vec![format!("JSON($.{}) {} {}", path, cmp.symbol(), value)]
+            }
+        }
         MatchNode::ChecksumValid { algorithm, at, .. } => {
             vec![format!("{} 校验有效（{}）", algorithm.name(), at.summary())]
         }
@@ -1383,6 +1530,90 @@ mod tests {
             "{:?}",
             issues
         );
+
+        // 非法 JSON 路径
+        let issues = validate_rule(&rule_with(MatchNode::JsonEq {
+            path: "a..b".to_string(),
+            cmp: JsonCmp::Eq,
+            value: "x".to_string(),
+        }));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.path == "matcher.path" && i.severity == Severity::Error),
+            "{:?}",
+            issues
+        );
+
+        // 数值比较的期望值必须是数字
+        let issues = validate_rule(&rule_with(MatchNode::JsonEq {
+            path: "a.b".to_string(),
+            cmp: JsonCmp::Gt,
+            value: "abc".to_string(),
+        }));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.path == "matcher.value" && i.severity == Severity::Error),
+            "{:?}",
+            issues
+        );
+    }
+
+    /// JsonCmp::test_json 的比较语义矩阵（决策 D-6）
+    #[test]
+    fn test_json_cmp_semantics() {
+        use serde_json::json;
+        // number：f64 数值比较，3 == 3.0 命中
+        let n = json!(3);
+        assert!(JsonCmp::Eq.test_json(&n, "3"));
+        assert!(JsonCmp::Eq.test_json(&n, "3.0"));
+        assert!(!JsonCmp::Eq.test_json(&n, "4"));
+        assert!(JsonCmp::Ne.test_json(&n, "4"));
+        assert!(JsonCmp::Gt.test_json(&n, "2"));
+        assert!(JsonCmp::Ge.test_json(&n, "3"));
+        assert!(JsonCmp::Lt.test_json(&n, "4"));
+        assert!(JsonCmp::Le.test_json(&n, "3"));
+        // 小数
+        let f = json!(36.5);
+        assert!(JsonCmp::Ge.test_json(&f, "36.5"));
+        assert!(JsonCmp::Lt.test_json(&f, "37"));
+        // number 上做 Contains / 文本期望非数字
+        assert!(!JsonCmp::Contains.test_json(&n, "3"));
+        assert!(!JsonCmp::Eq.test_json(&n, "abc"));
+        // string：全文 / 子串
+        let s = json!("login");
+        assert!(JsonCmp::Eq.test_json(&s, "login"));
+        assert!(JsonCmp::Ne.test_json(&s, "logout"));
+        assert!(JsonCmp::Contains.test_json(&s, "ogi"));
+        assert!(!JsonCmp::Contains.test_json(&s, "xyz"));
+        // Gt 作用于 string 恒 false
+        assert!(!JsonCmp::Gt.test_json(&s, "a"));
+        // bool / null：规范文本
+        assert!(JsonCmp::Eq.test_json(&json!(true), "true"));
+        assert!(!JsonCmp::Eq.test_json(&json!(true), "1"));
+        assert!(JsonCmp::Eq.test_json(&serde_json::Value::Null, "null"));
+        // array / object：紧凑 JSON 文本
+        let arr = json!([1, 2]);
+        assert!(JsonCmp::Eq.test_json(&arr, "[1,2]"));
+        assert!(JsonCmp::Contains.test_json(&arr, "1,2"));
+        // Exists 恒 true（路径存在由 json_at 保证）
+        assert!(JsonCmp::Exists.test_json(&n, ""));
+    }
+
+    /// json_eq kind 的 serde 往返（对外契约）
+    #[test]
+    fn test_json_eq_serde_roundtrip() {
+        let rule = rule_with(MatchNode::JsonEq {
+            path: "data.items[0].temp".to_string(),
+            cmp: JsonCmp::Gt,
+            value: "30".to_string(),
+        });
+        let json = serde_json::to_string(&rule).unwrap();
+        assert!(json.contains("\"kind\":\"json_eq\""), "实际: {}", json);
+        assert!(json.contains("\"cmp\":\"gt\""), "实际: {}", json);
+        let back: ReplyRule = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, rule);
     }
 
     /// hex 模式 + 未选 Raw 时必须给黄字警告（二进制协议继承 CRLF 会静默发错帧）
@@ -1522,6 +1753,11 @@ mod tests {
                 cmp: Cmp::Eq,
                 value: 3,
             },
+            MatchNode::JsonEq {
+                path: "device.tags[0]".to_string(),
+                cmp: JsonCmp::Eq,
+                value: "online".to_string(),
+            },
             MatchNode::ChecksumValid {
                 algorithm: ChecksumAlgorithm::Crc16Modbus,
                 at: ChecksumAt::Trailing {
@@ -1531,11 +1767,37 @@ mod tests {
                 range: Some((0, 6)),
             },
         ];
-        assert_eq!(cases.len(), 15, "必须覆盖全部 15 种节点");
+        assert_eq!(cases.len(), 16, "必须覆盖全部 16 种节点");
         for node in cases {
             let summary = format_matcher_summary(&node).join(" 且 ");
             assert!(!summary.trim().is_empty(), "{:?} 的摘要不应为空", node);
         }
+
+        // JSON 谓词文案锁定
+        assert_eq!(
+            format_matcher_summary(&MatchNode::JsonEq {
+                path: "action".to_string(),
+                cmp: JsonCmp::Eq,
+                value: "login".to_string(),
+            }),
+            vec!["JSON($.action) == login"]
+        );
+        assert_eq!(
+            format_matcher_summary(&MatchNode::JsonEq {
+                path: "data.temp".to_string(),
+                cmp: JsonCmp::Gt,
+                value: "30".to_string(),
+            }),
+            vec!["JSON($.data.temp) > 30"]
+        );
+        assert_eq!(
+            format_matcher_summary(&MatchNode::JsonEq {
+                path: "token".to_string(),
+                cmp: JsonCmp::Exists,
+                value: String::new(),
+            }),
+            vec!["JSON($.token) 存在"]
+        );
 
         // 具体文案锁定（防止 i18n 改造时丢语义）
         assert_eq!(

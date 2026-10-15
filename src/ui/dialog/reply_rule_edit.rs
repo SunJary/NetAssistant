@@ -50,8 +50,8 @@ use crate::app::NetAssistantApp;
 use crate::core::checksum::ChecksumAlgorithm;
 use crate::reply::matcher::PredicateResult;
 use crate::reply::model::{
-    ByteOp, BytePattern, ChecksumAt, Cmp, Constraint, Endian, MatchNode, ReplyPayload, ReplyRule,
-    ReplyRulesConfig, RuleCodec, Severity, Width, format_matcher_summary, validate_rule,
+    ByteOp, BytePattern, ChecksumAt, Cmp, Constraint, Endian, JsonCmp, MatchNode, ReplyPayload,
+    ReplyRule, ReplyRulesConfig, RuleCodec, Severity, Width, format_matcher_summary, validate_rule,
 };
 use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
 use crate::ui::components::input_with_mode::InputWithMode;
@@ -66,7 +66,7 @@ use super::{dialog_content_max_height, dialog_height};
 // 可编辑的条件树（CondDraft）
 // ============================================================================
 
-/// 条件节点种类(与 `MatchNode` 的 15 个变体一一对应)
+/// 条件节点种类(与 `MatchNode` 的 16 个变体一一对应)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CondKind {
     All,
@@ -83,12 +83,13 @@ pub enum CondKind {
     Regex,
     From,
     FieldEq,
+    JsonEq,
     ChecksumValid,
 }
 
 impl CondKind {
     /// 全部种类(添加条件时的候选顺序 = 常用度顺序)
-    pub const ALL: [CondKind; 15] = [
+    pub const ALL: [CondKind; 16] = [
         CondKind::Contains,
         CondKind::Length,
         CondKind::FixedExact,
@@ -96,6 +97,7 @@ impl CondKind {
         CondKind::ByteAt,
         CondKind::ScalarAt,
         CondKind::Suffix,
+        CondKind::JsonEq,
         CondKind::ChecksumValid,
         CondKind::Regex,
         CondKind::From,
@@ -126,6 +128,7 @@ impl CondKind {
             CondKind::Regex => "reply_rule_edit.kind_regex",
             CondKind::From => "reply_rule_edit.kind_from",
             CondKind::FieldEq => "reply_rule_edit.kind_field_eq",
+            CondKind::JsonEq => "reply_rule_edit.kind_json_eq",
             CondKind::ChecksumValid => "reply_rule_edit.kind_checksum_valid",
         };
         t!(key).to_string()
@@ -213,6 +216,8 @@ pub struct CondDraft {
     pub cmp: Cmp,
     pub op: OpKind,
     pub algorithm: ChecksumAlgorithm,
+    /// JSON 比较运算符(JsonEq 用)
+    pub json_cmp: JsonCmp,
     /// 校验位位置: false = Fixed(固定偏移), true = Trailing(末尾倒数)
     pub at_trailing: bool,
 }
@@ -266,6 +271,10 @@ impl CondDraft {
                 values.insert("offset".into(), "0".to_string());
                 values.insert("value".into(), "0".to_string());
             }
+            CondKind::JsonEq => {
+                values.insert("path".into(), "action".to_string());
+                values.insert("value".into(), String::new());
+            }
             CondKind::ChecksumValid => {
                 values.insert("at_offset".into(), "0".to_string());
                 values.insert("at_n".into(), "2".to_string());
@@ -287,6 +296,7 @@ impl CondDraft {
             cmp: Cmp::Eq,
             op: OpKind::Eq,
             algorithm: ChecksumAlgorithm::Crc16Modbus,
+            json_cmp: JsonCmp::Eq,
             at_trailing: true,
         }
     }
@@ -304,6 +314,7 @@ impl CondDraft {
         let mut cmp = Cmp::Eq;
         let mut op = OpKind::Eq;
         let mut algorithm = ChecksumAlgorithm::Crc16Modbus;
+        let mut json_cmp = JsonCmp::Eq;
         let mut at_trailing = true;
 
         let kind = match node {
@@ -436,6 +447,12 @@ impl CondDraft {
                 cmp = *c;
                 CondKind::FieldEq
             }
+            MatchNode::JsonEq { path, cmp: c, value } => {
+                values.insert("path".into(), path.clone());
+                values.insert("value".into(), value.clone());
+                json_cmp = *c;
+                CondKind::JsonEq
+            }
             MatchNode::ChecksumValid {
                 algorithm: a,
                 at,
@@ -479,6 +496,7 @@ impl CondDraft {
             cmp,
             op,
             algorithm,
+            json_cmp,
             at_trailing,
         }
     }
@@ -540,6 +558,7 @@ impl CondDraft {
             CondKind::Regex => vec!["pattern"],
             CondKind::From => vec!["addrs"],
             CondKind::FieldEq => vec!["accessor", "offset", "value"],
+            CondKind::JsonEq => vec!["path", "value"],
             CondKind::ChecksumValid => {
                 if self.at_trailing {
                     vec!["at_n", "range"]
@@ -793,6 +812,11 @@ fn build_node(cd: &CondDraft, values: &HashMap<String, String>) -> MatchNode {
             offset: num(values, cd.uid, "offset", 0),
             cmp: cd.cmp,
             value: num_i64(values, cd.uid, "value", 0),
+        },
+        CondKind::JsonEq => MatchNode::JsonEq {
+            path: val(values, cd.uid, "path").trim().to_string(),
+            cmp: cd.json_cmp,
+            value: val(values, cd.uid, "value"),
         },
         CondKind::ChecksumValid => MatchNode::ChecksumValid {
             algorithm: cd.algorithm,
@@ -2146,6 +2170,19 @@ fn render_leaf_fields(
             ));
             grid = push("value", "reply_rule_edit.field_value", 120.0, grid);
         }
+        CondKind::JsonEq => {
+            grid = push("path", "reply_rule_edit.field_json_path", 160.0, grid);
+            grid = grid.child(enum_chips(
+                app,
+                uid,
+                t!("reply_rule_edit.field_cmp").to_string(),
+                node.json_cmp,
+                &json_cmp_options(),
+                |n, v| n.json_cmp = v,
+                theme,
+            ));
+            grid = push("value", "reply_rule_edit.field_json_value", 120.0, grid);
+        }
         CondKind::ChecksumValid => {
             grid = grid.child(enum_chips(
                 app,
@@ -2461,6 +2498,20 @@ fn cmp_options() -> [(Cmp, String); 6] {
         (Cmp::Ge, ">=".to_string()),
         (Cmp::Lt, "<".to_string()),
         (Cmp::Le, "<=".to_string()),
+    ]
+}
+
+/// JSON 比较运算符候选(JsonEq 用, 符号与摘要文案一致)
+fn json_cmp_options() -> [(JsonCmp, String); 8] {
+    [
+        (JsonCmp::Eq, "==".to_string()),
+        (JsonCmp::Ne, "!=".to_string()),
+        (JsonCmp::Gt, ">".to_string()),
+        (JsonCmp::Ge, ">=".to_string()),
+        (JsonCmp::Lt, "<".to_string()),
+        (JsonCmp::Le, "<=".to_string()),
+        (JsonCmp::Contains, JsonCmp::Contains.symbol().to_string()),
+        (JsonCmp::Exists, JsonCmp::Exists.symbol().to_string()),
     ]
 }
 

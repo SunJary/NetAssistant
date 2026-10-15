@@ -10,7 +10,7 @@
 
 use crate::core::checksum::ChecksumAlgorithm;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// 一次解码结果的不可变快照。
 ///
@@ -22,6 +22,9 @@ pub struct RxFrame {
     pub bytes: Arc<[u8]>,
     /// 来源地址（服务端=对端；客户端=远端服务端；UDP=数据报来源）
     pub source: SocketAddr,
+    /// 惰性 JSON 解析缓存：`Some(None)` = 已解析且不是合法 JSON（失败同样缓存，
+    /// 避免洪泛下对同一批非 JSON 帧反复付出解析失败的代价）。
+    json_cache: OnceLock<Option<Arc<serde_json::Value>>>,
 }
 
 impl RxFrame {
@@ -31,7 +34,11 @@ impl RxFrame {
 
     /// 由共享缓冲构造（P-6）：调用方已持有 `Arc<[u8]>` 时不再复制
     pub fn from_shared(bytes: Arc<[u8]>, source: SocketAddr) -> Self {
-        Self { bytes, source }
+        Self {
+            bytes,
+            source,
+            json_cache: OnceLock::new(),
+        }
     }
 
     /// 正常解码单帧的便捷构造（测试用；`127.0.0.1:0` 作为占位来源）
@@ -42,6 +49,132 @@ impl RxFrame {
             "127.0.0.1:12345".parse().expect("合法测试地址"),
         ))
     }
+
+    /// 帧的 JSON 解析结果（惰性，**每帧至多解析一次**；非 JSON / 超大帧返回 None）。
+    ///
+    /// 命中判定与 `${rx.json:}` 变量渲染共享同一次解析结果 —— N 条 JSON 规则
+    /// 作用在同一帧上时，解析成本只有一份。
+    pub fn json_value(&self) -> Option<&serde_json::Value> {
+        self.json_cache
+            .get_or_init(|| parse_json_bytes(&self.bytes))
+            .as_deref()
+    }
+
+    /// 按 `a.b[0].c` 形式的路径取 JSON 值。
+    ///
+    /// 路径非法 / 中途类型不符 / 数组越界均返回 None —— 与字节取值的越界语义
+    /// 一致（数据问题，由调用方决定渲染空还是不命中）。
+    pub fn json_at(&self, path: &str) -> Option<&serde_json::Value> {
+        let mut cur = self.json_value()?;
+        for seg in parse_json_path(path)? {
+            cur = match (seg, cur) {
+                (JsonPathSeg::Key(k), serde_json::Value::Object(map)) => map.get(k.as_str())?,
+                (JsonPathSeg::Index(i), serde_json::Value::Array(arr)) => arr.get(i)?,
+                _ => return None,
+            };
+        }
+        Some(cur)
+    }
+}
+
+/// JSON 惰性解析的帧长上限：超过则不解析（JSON 谓词不命中、`${rx.json:}` 渲染空）。
+///
+/// 调试工具不应在洪泛下为超大帧做全量解析 —— 与 `REGEX_MAX_FRAME_LEN` 同一量纲。
+pub const MAX_JSON_PARSE_SIZE: usize = 64 * 1024;
+
+/// 解析帧字节为 JSON（失败/超限返回 None）。
+///
+/// 解析策略：优先整帧严格解析（`from_slice` 要求全部字节有效，仅容忍尾部空白）；
+/// 失败时回退"取第一个 JSON 值"，容忍 LineDecoder 场景下帧尾残留的 `\r\n` 等传输尾巴。
+fn parse_json_bytes(bytes: &[u8]) -> Option<Arc<serde_json::Value>> {
+    if bytes.len() > MAX_JSON_PARSE_SIZE {
+        return None;
+    }
+    if let Ok(v) = serde_json::from_slice(bytes) {
+        return Some(Arc::new(v));
+    }
+    serde_json::Deserializer::from_slice(bytes)
+        .into_iter::<serde_json::Value>()
+        .next()?
+        .ok()
+        .map(Arc::new)
+}
+
+/// JSON 路径段
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JsonPathSeg {
+    /// 对象 key（不允许含 `.` `[` `]` —— 无引号语法的边界，文档明示）
+    Key(String),
+    /// 数组下标
+    Index(usize),
+}
+
+/// 解析 JSON 字段路径：`a.b.c` / `a[0].b` / `[0].x` / `a[0][1]`。
+///
+/// 语法约定（与 Bittly 的 `$request.a.b` / JSONPath 的简化子集对齐）：
+/// - 段之间用 `.` 分隔，数组下标用 `[n]`（紧跟段后，可连续多个）；
+/// - key 不允许含 `.` `[` `]`（含这些字符的 key 无法用本语法表达）；
+/// - 空路径、空段（`a..b` / `a.` / `a[]`）、未闭合 `[` 均非法。
+///
+/// 保存期用本函数做静态校验（非法当场指出），运行期 `RxFrame::json_at` 复用。
+pub fn parse_json_path(path: &str) -> Option<Vec<JsonPathSeg>> {
+    let path = path.trim();
+    if path.is_empty() {
+        return None;
+    }
+    let mut segs = Vec::new();
+    let mut chars = path.chars().peekable();
+    loop {
+        match chars.peek().copied() {
+            None => break,
+            Some('[') => {
+                chars.next();
+                let mut digits = String::new();
+                loop {
+                    match chars.next() {
+                        Some(']') => break,
+                        Some(d) if d.is_ascii_digit() => digits.push(d),
+                        _ => return None,
+                    }
+                }
+                if digits.is_empty() {
+                    return None;
+                }
+                segs.push(JsonPathSeg::Index(digits.parse().ok()?));
+            }
+            // '.' 不能开启新段（`.x` 非法；段间 '.' 由下方分隔符检查消费）
+            Some('.') => return None,
+            Some(_) => {
+                let mut key = String::new();
+                while let Some(&c) = chars.peek() {
+                    match c {
+                        '.' | '[' => break,
+                        ']' => return None,
+                        _ => {
+                            key.push(c);
+                            chars.next();
+                        }
+                    }
+                }
+                segs.push(JsonPathSeg::Key(key));
+            }
+        }
+        // 段后分隔符检查：结尾 / `.`（后必须跟普通字符）/ `[` / 其他
+        match chars.peek() {
+            None => break,
+            Some('.') => {
+                chars.next();
+                match chars.peek() {
+                    None | Some('.') | Some('[') | Some(']') => return None,
+                    _ => {}
+                }
+            }
+            Some('[') => {}
+            // 索引段后直接跟 key 字符（`a[0]b`）非法，必须写 `a[0].b`
+            Some(_) => return None,
+        }
+    }
+    Some(segs)
 }
 
 /// 取值失败的原因（用于 warn 日志与调试面板的"实际值"列）
@@ -211,6 +344,14 @@ impl<'a> RxContext<'a> {
     ) -> Result<Vec<u8>, RxError> {
         let slice = self.slice(offset, Some(len))?;
         Ok(algorithm.compute_with_endian(slice, little))
+    }
+
+    /// 按 JSON 路径取值（转发到帧快照）。
+    ///
+    /// `JsonEq` 谓词与 `${rx.json:}` 变量共用同一入口，保证"匹配器对帧的理解"
+    /// 与"变量渲染对帧的理解"完全一致。
+    pub fn json_at(&self, path: &str) -> Option<&serde_json::Value> {
+        self.frame.json_at(path)
     }
 
     /// 按算法名计算校验（匹配器 `ChecksumValid` 谓词用；未知算法名返回 Err）
@@ -540,5 +681,135 @@ mod tests {
         assert_eq!(format_hex(&[0x01, 0xAB], false), "01AB");
         assert_eq!(format_hex(&[], true), "");
         assert_eq!(ascii_view(&[0x41, 0x00, 0x7F, 0x80]), "A...");
+    }
+
+    // ========================================================================
+    // JSON 路径解析与惰性解析缓存
+    // ========================================================================
+
+    /// 合法路径全部可解析，段序列符合语法直觉
+    #[test]
+    fn test_parse_json_path_valid() {
+        assert_eq!(
+            parse_json_path("a"),
+            Some(vec![JsonPathSeg::Key("a".to_string())])
+        );
+        assert_eq!(
+            parse_json_path("a.b.c"),
+            Some(vec![
+                JsonPathSeg::Key("a".to_string()),
+                JsonPathSeg::Key("b".to_string()),
+                JsonPathSeg::Key("c".to_string()),
+            ])
+        );
+        assert_eq!(
+            parse_json_path("a[0].b"),
+            Some(vec![
+                JsonPathSeg::Key("a".to_string()),
+                JsonPathSeg::Index(0),
+                JsonPathSeg::Key("b".to_string()),
+            ])
+        );
+        // 顶层是数组
+        assert_eq!(
+            parse_json_path("[0].x"),
+            Some(vec![JsonPathSeg::Index(0), JsonPathSeg::Key("x".to_string())])
+        );
+        // 连续索引
+        assert_eq!(
+            parse_json_path("a[0][1]"),
+            Some(vec![
+                JsonPathSeg::Key("a".to_string()),
+                JsonPathSeg::Index(0),
+                JsonPathSeg::Index(1),
+            ])
+        );
+        // 中文 key、前后空白
+        assert_eq!(
+            parse_json_path("  设备.状态  "),
+            Some(vec![
+                JsonPathSeg::Key("设备".to_string()),
+                JsonPathSeg::Key("状态".to_string()),
+            ])
+        );
+    }
+
+    /// 非法路径必须被拒绝（保存期校验的依据）
+    #[test]
+    fn test_parse_json_path_invalid() {
+        for bad in [
+            "", "   ", ".x", "a.", "a..b", "a[]", "a[0", "a[0]b", "a]b", "a[0].", "a[-1]",
+            "a[x]", "]", "[",
+        ] {
+            assert!(
+                parse_json_path(bad).is_none(),
+                "路径 {:?} 应非法",
+                bad
+            );
+        }
+    }
+
+    /// 合法 JSON 帧可解析、非 JSON 帧与空帧返回 None
+    #[test]
+    fn test_json_value() {
+        let f = frame(br#"{"a":1,"b":"x"}"#);
+        assert!(f.json_value().is_some());
+
+        // 尾部传输尾巴（\r\n）可容忍：取第一个 JSON 值
+        let f = frame(b"{\"a\":1}\r\n");
+        assert_eq!(f.json_value().and_then(|v| v.get("a")), Some(&serde_json::json!(1)));
+
+        let non_json = frame(b"AT+CSQ");
+        assert!(non_json.json_value().is_none());
+
+        let empty = frame(b"");
+        assert!(empty.json_value().is_none());
+    }
+
+    /// 惰性缓存：多次调用共享同一次解析结果（同一指针）
+    #[test]
+    fn test_json_value_cached() {
+        let f = frame(br#"{"a":1}"#);
+        let p1 = f.json_value().map(|v| v as *const serde_json::Value);
+        let p2 = f.json_value().map(|v| v as *const serde_json::Value);
+        assert_eq!(p1, p2, "两次调用必须命中同一份缓存");
+
+        // 非 JSON 帧同样缓存（None 稳定）
+        let bad = frame(b"not json");
+        assert!(bad.json_value().is_none());
+        assert!(bad.json_value().is_none());
+    }
+
+    /// `json_at`：嵌套对象 / 数组索引 / 类型不符 / 越界 / 顶层数组
+    #[test]
+    fn test_json_at() {
+        let f = frame(br#"{"device":{"name":"gw","tags":["a","b"]},"n":3.5,"ok":true,"none":null}"#);
+        assert_eq!(
+            f.json_at("device.name"),
+            Some(&serde_json::json!("gw"))
+        );
+        assert_eq!(f.json_at("device.tags[1]"), Some(&serde_json::json!("b")));
+        assert_eq!(f.json_at("n"), Some(&serde_json::json!(3.5)));
+        assert_eq!(f.json_at("ok"), Some(&serde_json::json!(true)));
+        assert_eq!(f.json_at("none"), Some(&serde_json::Value::Null));
+        // 路径不存在 / 类型不符 / 数组越界
+        assert!(f.json_at("device.model").is_none());
+        assert!(f.json_at("device.name.x").is_none(), "对 string 继续下钻应 None");
+        assert!(f.json_at("device.tags[9]").is_none());
+        // 路径本身非法
+        assert!(f.json_at("device..name").is_none());
+        // 非 JSON 帧一律 None
+        assert!(frame(b"AT").json_at("a").is_none());
+    }
+
+    /// 超过 MAX_JSON_PARSE_SIZE 的帧不解析 JSON（防洪泛重解析）
+    #[test]
+    fn test_json_oversized_frame_skipped() {
+        // 构造一个 > 64KB 的合法 JSON 帧
+        let big = format!("{{\"a\":\"{}\"}}", "x".repeat(MAX_JSON_PARSE_SIZE));
+        assert!(big.len() > MAX_JSON_PARSE_SIZE);
+        let f = frame(&big.into_bytes());
+        assert!(f.json_value().is_none());
+        assert!(f.json_at("a").is_none());
     }
 }

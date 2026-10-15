@@ -465,6 +465,15 @@ fn eval_atomic(
             Ok(value_actual) => (cmp.test(value_actual, *value), actual!("{}", value_actual)),
             Err(e) => (false, if record { e.describe() } else { String::new() }),
         },
+        MatchNode::JsonEq { path, cmp, value } => match rx.json_at(path) {
+            // 路径有值：比较语义集中在 JsonCmp::test_json（决策 D-6）
+            Some(v) => (
+                cmp.test_json(v, value),
+                actual!("{}", json_value_preview(v)),
+            ),
+            // 非 JSON / 超大帧 / 路径无值：谓词不成立（决策 D-5）
+            None => (false, actual!("非 JSON 或路径无值")),
+        },
         MatchNode::ChecksumValid {
             algorithm,
             at,
@@ -650,6 +659,13 @@ pub fn atomic_label(node: &MatchNode) -> String {
             cmp,
             value,
         } => format!("{}({}) {} {}", accessor, offset, cmp.symbol(), value),
+        MatchNode::JsonEq { path, cmp, value } => {
+            if matches!(cmp, crate::reply::model::JsonCmp::Exists) {
+                format!("JSON($.{}) 存在", path)
+            } else {
+                format!("JSON($.{}) {} {}", path, cmp.symbol(), value)
+            }
+        }
         MatchNode::ChecksumValid { algorithm, at, .. } => {
             format!("{} 校验有效（{}）", algorithm.name(), at.summary())
         }
@@ -677,6 +693,15 @@ fn preview_text(text: &str) -> String {
     } else {
         escaped
     }
+}
+
+/// JSON 值预览（JsonEq 轨迹里展示"实际取到的值"，string 原样、其余紧凑序列化）
+fn json_value_preview(v: &serde_json::Value) -> String {
+    let text = match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    preview_text(&text)
 }
 
 // ============================================================================
@@ -1125,6 +1150,57 @@ mod tests {
         assert!(!hit(&rules, &[0x01]), "越界 → false");
     }
 
+    // ===== JsonEq =====
+    #[test]
+    fn test_json_eq_action_login() {
+        let rules = one_rule(MatchNode::JsonEq {
+            path: "action".to_string(),
+            cmp: crate::reply::model::JsonCmp::Eq,
+            value: "login".to_string(),
+        });
+        assert!(hit(&rules, br#"{"action":"login"}"#));
+        assert!(!hit(&rules, br#"{"action":"logout"}"#));
+        // 尾部传输尾巴可容忍
+        assert!(hit(&rules, b"{\"action\":\"login\"}\r\n"));
+        // 非 JSON 帧 / 路径无值不命中
+        assert!(!hit(&rules, b"AT+CSQ"));
+        assert!(!hit(&rules, br#"{"type":"login"}"#));
+        assert!(!hit(&rules, &[]));
+    }
+
+    /// 数值比较：number 走 f64，嵌套与数组索引路径
+    #[test]
+    fn test_json_eq_numeric_and_nested() {
+        let rules = one_rule(MatchNode::JsonEq {
+            path: "data.items[1].temp".to_string(),
+            cmp: crate::reply::model::JsonCmp::Gt,
+            value: "30".to_string(),
+        });
+        assert!(hit(&rules, br#"{"data":{"items":[{"temp":1},{"temp":36.5}]}}"#));
+        assert!(!hit(&rules, br#"{"data":{"items":[{"temp":1},{"temp":30}]}}"#));
+        // string 上 Gt 恒 false
+        assert!(!hit(
+            &rules,
+            br#"{"data":{"items":[{"temp":1},{"temp":"36.5"}]}}"#
+        ));
+        // Exists：路径存在即命中
+        let exists = one_rule(MatchNode::JsonEq {
+            path: "token".to_string(),
+            cmp: crate::reply::model::JsonCmp::Exists,
+            value: String::new(),
+        });
+        assert!(hit(&exists, br#"{"token":null}"#));
+        assert!(!hit(&exists, br#"{"tok":1}"#));
+        // Ne：文本不等
+        let ne = one_rule(MatchNode::JsonEq {
+            path: "state".to_string(),
+            cmp: crate::reply::model::JsonCmp::Ne,
+            value: "error".to_string(),
+        });
+        assert!(hit(&ne, br#"{"state":"ok"}"#));
+        assert!(!hit(&ne, br#"{"state":"error"}"#));
+    }
+
     // ===== ChecksumValid =====
     #[test]
     fn test_checksum_valid_modbus() {
@@ -1424,6 +1500,11 @@ mod tests {
                 offset: 99,
                 cmp: Cmp::Eq,
                 value: 0,
+            },
+            MatchNode::JsonEq {
+                path: "a.b[0]".to_string(),
+                cmp: crate::reply::model::JsonCmp::Gt,
+                value: "1".to_string(),
             },
             MatchNode::ChecksumValid {
                 algorithm: ChecksumAlgorithm::Crc32,

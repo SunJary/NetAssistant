@@ -190,6 +190,9 @@ variable_picker:
   desc_rx_crc16modbus:
     zh-CN: 对接收帧某段字节现算 CRC16/MODBUS
     en: Compute CRC16/MODBUS over a byte range of the received frame
+  desc_rx_json:
+    zh-CN: 接收帧 JSON 字段取值（路径如 action / data.items[0].temp）
+    en: JSON field of the received frame (path like action / data.items[0].temp)
   desc_gen_crc16modbus:
     zh-CN: 对**应答内容**现算 CRC16/MODBUS（大端）
     en: Compute CRC16/MODBUS over the reply payload (big-endian)
@@ -410,6 +413,9 @@ reply_rule_edit:
   kind_field_eq:
     zh-CN: 字段等于
     en: Field equals
+  kind_json_eq:
+    zh-CN: JSON 字段条件
+    en: JSON field condition
   kind_checksum_valid:
     zh-CN: 校验值有效
     en: Checksum valid
@@ -464,6 +470,12 @@ reply_rule_edit:
   field_accessor:
     zh-CN: 取值标识
     en: Accessor
+  field_json_path:
+    zh-CN: 字段路径（如 action / data.items[0].temp）
+    en: Field path (e.g. action / data.items[0].temp)
+  field_json_value:
+    zh-CN: 期望值（数字/文本）
+    en: Expected value (number/text)
   field_algorithm:
     zh-CN: 算法
     en: Algorithm

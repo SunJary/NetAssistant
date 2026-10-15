@@ -210,6 +210,11 @@ pub fn rx_variable_items() -> Vec<VariableItem> {
             insert_text: "${rx.ascii:0:4}",
         },
         VariableItem {
+            name: "${rx.json:action}",
+            description: t!("variable_picker.desc_rx_json"),
+            insert_text: "${rx.json:action}",
+        },
+        VariableItem {
             name: "${rx.crc16modbus:0:6}",
             description: t!("variable_picker.desc_rx_crc16modbus"),
             insert_text: "${rx.crc16modbus:0:6}",

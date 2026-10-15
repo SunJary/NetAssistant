@@ -141,6 +141,12 @@ pub enum VarSegment {
         /// 用户看到的"未生效提示"与他写的不一致。
         source: String,
     },
+    /// ${rx.json:<path>} 接收帧 JSON 字段取值(路径语法 `a.b[0].c`)
+    RxJson {
+        path: String,
+        /// 原始变量名(如 `rx.json:action`): 无上下文时按**原样**保留(E-2)
+        source: String,
+    },
     /// ${rx.len} / ${rx.src} / ${rx.src_ip} / ${rx.port}
     RxMeta(RxMetaKind),
     /// ${<算法>:off:len[:le]} 生成型校验, 作用于**模板自身已渲染出的字节**
@@ -261,7 +267,9 @@ impl CompiledTemplate {
     /// 规则在洪泛下完全不付这份成本(决策见 plan-reply-rules-expr.md §4.3)。
     pub fn needs_rx(&self) -> bool {
         self.segments.iter().any(|s| match s {
-            VarSegment::RxAccess { .. } | VarSegment::RxMeta(_) => true,
+            VarSegment::RxAccess { .. } | VarSegment::RxJson { .. } | VarSegment::RxMeta(_) => {
+                true
+            }
             // 表达式可能引用 rx.* 或校验函数（二者都依赖接收帧）
             VarSegment::Expr(expr) => crate::reply::expr::needs_rx(expr),
             _ => false,
@@ -368,6 +376,17 @@ impl CompiledTemplate {
                             Err(e) => warn!("[rx] ${{{}}} 取值失败: {}", source, e.describe()),
                         }
                     }
+                },
+                VarSegment::RxJson { path, source } => match &ctx.rx {
+                    None => out.push_str(&format!("${{{}}}", source)),
+                    Some(frame) => match frame.json_at(path) {
+                        Some(v) => push_json_value(out, v, hex_mode),
+                        // 非 JSON 帧 / 路径无值: 渲染为空 + warn(E-3 同语义 ——
+                        // 帧不是 JSON 或字段缺失是数据问题, 空串保持应答帧结构)
+                        None => {
+                            warn!("[rx] ${{{}}} 取值失败: 非 JSON 帧或路径无值", source)
+                        }
+                    },
                 },
                 VarSegment::RxMeta(kind) => match &ctx.rx {
                     None => out.push_str(&render_source(seg)),
@@ -486,6 +505,7 @@ fn push_bytes(out: &mut String, bytes: &[u8], hex_mode: bool) {
 fn render_source(seg: &VarSegment) -> String {
     match seg {
         VarSegment::RxAccess { source, .. } => format!("${{{}}}", source),
+        VarSegment::RxJson { source, .. } => format!("${{{}}}", source),
         VarSegment::RxMeta(kind) => format!("${{rx.{}}}", kind.name()),
         VarSegment::GenChecksum {
             algorithm,
@@ -508,6 +528,20 @@ fn render_source(seg: &VarSegment) -> String {
 /// 解析 `${rx.<accessor>[:off[:len]]}`
 fn parse_rx_segment(var_name: &str) -> VarSegment {
     let body = &var_name["rx.".len()..];
+
+    // JSON 字段取值: ${rx.json:<path>} —— 路径整体截取, 不按 ':' 切参数
+    // (路径语法 `a.b[0].c` 本身不含 ':'; 非法路径与空路径按未知变量原样保留)
+    if let Some(raw) = body.strip_prefix("json:") {
+        let path = raw.trim();
+        return match crate::reply::frame::parse_json_path(path) {
+            Some(_) => VarSegment::RxJson {
+                path: path.to_string(),
+                source: var_name.to_string(),
+            },
+            None => VarSegment::Unknown(format!("${{{}}}", var_name)),
+        };
+    }
+
     let parts: Vec<&str> = body.split(':').map(|p| p.trim()).collect();
     let accessor = parts[0];
 
@@ -681,6 +715,29 @@ fn parse_segment(var_name: &str) -> VarSegment {
 fn is_valid_strftime(fmt: &str) -> bool {
     use chrono::format::{Item, StrftimeItems};
     !StrftimeItems::new(fmt).any(|item| matches!(item, Item::Error))
+}
+
+/// JSON 值输出(决策 D-9): 整数按数值输出(hex 模式偶数长度大写 hex),
+/// 浮点按 serde 文本; string 原样, bool/null/array/object 用紧凑 JSON 文本
+/// (与 `JsonCmp::test_json` 的规范文本约定一致)。
+fn push_json_value(out: &mut String, v: &serde_json::Value, hex_mode: bool) {
+    match v {
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                push_i64(out, i, hex_mode);
+            } else if let Some(u) = n.as_u64() {
+                push_u64(out, u, hex_mode);
+            } else {
+                push_text(out, &n.to_string(), hex_mode);
+            }
+        }
+        serde_json::Value::String(s) => push_text(out, s, hex_mode),
+        other => push_text(
+            out,
+            &serde_json::to_string(other).unwrap_or_default(),
+            hex_mode,
+        ),
+    }
 }
 
 /// 追加数值: hex 模式输出偶数长度大写十六进制, 否则十进制文本
@@ -1204,5 +1261,87 @@ mod tests {
         assert_eq!(render_text("${rx.u8:0}-${seq}", &ctx), "1-7");
         let compiled = CompiledTemplate::new("${rx.u8:0}");
         assert!(!compiled.needs_seq(), "不含 seq 的模板不得消费序号");
+    }
+
+    // ========================================================================
+    // 本轮新增: ${rx.json:<path>}
+    // ========================================================================
+
+    /// 构造带 JSON 帧的渲染上下文
+    fn json_ctx(json: &str) -> RenderContext {
+        reply_ctx(json.as_bytes(), None)
+    }
+
+    const JSON_FRAME: &str = "{\"action\":\"login\",\"n\":42,\"f\":3.5,\"ok\":true,\"no\":null,\"data\":{\"items\":[{\"temp\":25},{\"temp\":31}]}}";
+
+    /// 基本取值: 文本/整数/浮点/布尔/null/嵌套/数组下标, 及尾部 \r\n 容忍
+    #[test]
+    fn test_rx_json_basic() {
+        let ctx = json_ctx(&format!("{}\r\n", JSON_FRAME));
+        assert_eq!(render_text("${rx.json:action}", &ctx), "login");
+        assert_eq!(render_text("${rx.json:n}", &ctx), "42");
+        assert_eq!(render_text("${rx.json:f}", &ctx), "3.5");
+        assert_eq!(render_text("${rx.json:ok}", &ctx), "true");
+        assert_eq!(render_text("${rx.json:no}", &ctx), "null");
+        // 嵌套路径 + 数组下标
+        assert_eq!(render_text("${rx.json:data.items[1].temp}", &ctx), "31");
+        // array 取紧凑 JSON
+        assert_eq!(
+            render_text("${rx.json:data.items}", &ctx),
+            "[{\"temp\":25},{\"temp\":31}]"
+        );
+        // 模板混排
+        assert_eq!(render_text("ack:${rx.json:action}", &ctx), "ack:login");
+    }
+
+    /// hex 模式: 整数按偶数长度大写 hex(与 ${seq} 同构), 文本按 UTF-8 字节转 hex
+    #[test]
+    fn test_rx_json_hex_mode() {
+        let ctx = json_ctx(JSON_FRAME);
+        assert_eq!(render_hex("${rx.json:n}", &ctx), "2A");
+        assert_eq!(render_hex("${rx.json:action}", &ctx), "6C6F67696E");
+        // 嵌套数值
+        assert_eq!(render_hex("${rx.json:data.items[0].temp}", &ctx), "19");
+    }
+
+    /// E-2: 无接收帧上下文原样保留; E-3: 非 JSON 帧 / 路径无值渲染为空
+    #[test]
+    fn test_rx_json_context_semantics() {
+        // E-2: 无上下文
+        assert_eq!(
+            render_text("${rx.json:action}", &common_ctx()),
+            "${rx.json:action}"
+        );
+        // E-3: 非 JSON 帧 → 渲染空
+        let bin = reply_ctx(&[0x01, 0x03, 0xFF], None);
+        assert_eq!(render_text("A${rx.json:action}B", &bin), "AB");
+        // E-3: 路径中途类型不符 / 数组越界 → 渲染空
+        let ctx = json_ctx(JSON_FRAME);
+        assert_eq!(render_text("[${rx.json:action.x}]", &ctx), "[]");
+        assert_eq!(render_text("[${rx.json:data.items[9].temp}]", &ctx), "[]");
+        // 空帧不是 JSON
+        assert_eq!(render_text("${rx.json:a}", &reply_ctx(&[], None)), "");
+        // needs_rx 探测
+        assert!(CompiledTemplate::new("${rx.json:a}").needs_rx());
+    }
+
+    /// 非法路径按未知变量原样保留(空路径 / 空段 / 未闭合 '[' / 段间缺 '.')
+    #[test]
+    fn test_rx_json_invalid_path_preserved() {
+        for template in [
+            "${rx.json:}",
+            "${rx.json:a..b}",
+            "${rx.json:a[}",
+            "${rx.json:.a}",
+            "${rx.json:a[]}",
+            "${rx.json:a[0]x}",
+        ] {
+            assert_eq!(
+                render_text(template, &json_ctx(JSON_FRAME)),
+                template,
+                "非法路径必须原样保留: {}",
+                template
+            );
+        }
     }
 }

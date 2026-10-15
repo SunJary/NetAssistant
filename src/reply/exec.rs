@@ -638,6 +638,77 @@ mod tests {
     }
 
     // ========================================================================
+    // JSON 谓词端到端：请求 → 规则命中(JsonEq) → 应答引用字段(${rx.json:})
+    // ========================================================================
+
+    /// JSON 请求按字段命中后, 应答模板引用请求里的字段 —— 与调试工具常见的
+    /// "JSON mock 服务"用法一致(Bittly 的核心场景)
+    #[test]
+    fn test_json_request_hit_and_field_reference() {
+        let store = store_with(vec![reply_rule(
+            MatchNode::JsonEq {
+                path: "action".to_string(),
+                cmp: crate::reply::model::JsonCmp::Eq,
+                value: "login".to_string(),
+            },
+            "{\"code\":0,\"user\":\"${rx.json:user}\"}",
+            false,
+            RuleCodec::Raw,
+        )]);
+        let f = frame(b"{\"action\":\"login\",\"user\":\"bob\"}");
+        let outcome = handle_frame(&store, &f, "tab");
+        assert_eq!(
+            outcome.reply.as_deref(),
+            Some(&b"{\"code\":0,\"user\":\"bob\"}"[..]),
+            "应答应引用请求 JSON 中的 user 字段"
+        );
+        assert_eq!(store.hits_snapshot().values().sum::<u64>(), 1);
+    }
+
+    /// 嵌套字段 + 数值比较谓词 + hex 模式应答(数值变量输出偶数长度大写 hex)
+    #[test]
+    fn test_json_nested_numeric_hit_hex_reply() {
+        let store = store_with(vec![reply_rule(
+            MatchNode::JsonEq {
+                path: "data.items[1].temp".to_string(),
+                cmp: crate::reply::model::JsonCmp::Gt,
+                value: "30".to_string(),
+            },
+            "4849${rx.json:data.items[1].temp}",
+            true,
+            RuleCodec::Raw,
+        )]);
+        // temp=31 > 30 → 命中; "HI"=4849, 31 的 hex 是 1F
+        let hit = handle_frame(&store, &frame(b"{\"data\":{\"items\":[{\"temp\":25},{\"temp\":31}]}}"), "tab");
+        assert_eq!(hit.reply.as_deref(), Some(&[0x48, 0x49, 0x1F][..]));
+
+        // temp=25 → Gt 不命中 → 无应答
+        let miss = handle_frame(&store, &frame(b"{\"data\":{\"items\":[{\"temp\":25},{\"temp\":25}]}}"), "tab");
+        assert!(miss.reply.is_none(), "数值比较不满足时不得命中");
+    }
+
+    /// 非 JSON 帧不命中 JSON 谓词(数据问题而非配置问题, 静默跳过该规则)
+    #[test]
+    fn test_json_predicate_skips_non_json_frames() {
+        let store = store_with(vec![reply_rule(
+            MatchNode::JsonEq {
+                path: "action".to_string(),
+                cmp: crate::reply::model::JsonCmp::Exists,
+                value: String::new(),
+            },
+            "6E 6F 74 20 6A 73 6F 6E",
+            true,
+            RuleCodec::Raw,
+        )]);
+        // 二进制帧 → JSON 谓词不命中 → 无应答
+        let outcome = handle_frame(&store, &frame(&[0x01, 0x03, 0xFF]), "tab");
+        assert!(outcome.reply.is_none());
+        // JSON 帧 → Exists 命中(value 忽略)
+        let hit = handle_frame(&store, &frame(b"{\"action\":\"x\"}"), "tab");
+        assert_eq!(hit.reply.as_deref(), Some(&b"not json"[..]));
+    }
+
+    // ========================================================================
     // 性能回归（对应 plan-reply-rules.md §9.1 与 §9.7 的待验证项）
     // ========================================================================
 
