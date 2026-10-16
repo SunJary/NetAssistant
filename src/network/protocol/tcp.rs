@@ -25,7 +25,13 @@ use tokio_util::sync::CancellationToken;
 ///
 /// 行/长度前缀等分帧解码器的残留半包,在该延迟后作为一条消息强制落地,
 /// 避免对端半包后静默时数据长时间滞留。
-const FLUSH_DELAY: Duration = Duration::from_millis(50);
+///
+/// 取值 10ms(原 50ms): 这是"残留半帧 + 对端静默"才触发的兜底定时器,
+/// 完整帧到达即解码(微秒级), 正常流量从不等待。往返(ping-pong)压测下
+/// 对端发包后必然静默, 若请求帧恰好被 read 边界切到半帧, 原值会让 RTT
+/// 直接多出 50ms; 压到 10ms 后误拆风险仍然很低(同一条消息的前后两个
+/// TCP 段到达间隔通常远小于 1ms, 消费式强刷也保证残留不会损坏解码状态)。
+const FLUSH_DELAY: Duration = Duration::from_millis(10);
 
 /// 处理一个解码出的帧(可与回复规则交互)并累加入批。
 ///
@@ -242,6 +248,13 @@ impl NetworkConnection for TcpClient {
                 None => TcpStream::connect(socket_addr).await?,
             };
             let local_addr = socket.local_addr()?;
+            // 低延迟优先: 关闭 Nagle。往返(ping-pong)模式下延迟 ACK 与 Nagle 交互
+            // 会把下一笔小应答扣住直到上一笔被确认(Windows delayed ACK 可达 200ms),
+            // 产生周期性 RTT 尖峰; 网络调试工具参照 NetAssist 等惯例默认关闭。
+            // 失败不影响连接(仅丢失低延迟优化)。
+            if let Err(e) = socket.set_nodelay(true) {
+                debug!("TCP客户端设置 TCP_NODELAY 失败: {}", e);
+            }
             info!(
                 "TCP客户端连接成功: {} (本地端点: {})",
                 socket_addr, local_addr
@@ -721,6 +734,11 @@ impl NetworkServer for TcpServer {
                         match listener_clone.accept().await {
                             Ok((socket, addr)) => {
                                 debug!("TCP服务器接收到来自 {} 的连接", addr);
+                                // 低延迟优先: 关闭 Nagle(理由同 TcpClient 连接处注释),
+                                // 服务端应答是往返链路的关键一端, 必须同样开启。
+                                if let Err(e) = socket.set_nodelay(true) {
+                                    debug!("TCP服务器设置 TCP_NODELAY 失败: {}", e);
+                                }
 
                                 // 创建客户端连接的发送器和接收器
                                 let (tx, rx) = smol_unbounded::<WireMessage>();

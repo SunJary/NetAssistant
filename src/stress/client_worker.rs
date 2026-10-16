@@ -686,7 +686,13 @@ async fn select_connect(
     tokio::select! {
         _ = cancel.cancelled() => ConnectOutcome::Cancelled,
         r = timeout(timeout_dur, TcpStream::connect(target)) => match r {
-            Ok(Ok(s)) => ConnectOutcome::Connected(s),
+            Ok(Ok(s)) => {
+                // 低延迟优先: 关闭 Nagle(理由见 tcp.rs FLUSH_DELAY 附近注释),
+                // 压测往返链路的客户端一端同样需要, 否则请求/应答都会被扣出尖峰。
+                // 失败不影响连接(仅丢失低延迟优化)。
+                let _ = s.set_nodelay(true);
+                ConnectOutcome::Connected(s)
+            }
             Ok(Err(e)) => ConnectOutcome::Failed(format_io_error(&e)),
             Err(_) => ConnectOutcome::Failed("连接超时".to_string()),
         },
