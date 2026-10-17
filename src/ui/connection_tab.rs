@@ -22,7 +22,7 @@ use gpui_kit::*;
 
 use log::{debug, info};
 use rust_i18n::t;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
@@ -51,6 +51,24 @@ use indexmap::IndexMap;
 /// 避免每拍都做一次 O(N) 全量扫描。
 pub const SEARCH_RECALC_MIN_INTERVAL: Duration = Duration::from_millis(250);
 
+/// 新消息「入场动画」时长（上滑 + 淡入）。
+pub const ROW_ANIM_DURATION: Duration = Duration::from_millis(200);
+/// 「新到达」判定时间窗。需大于动画时长，保证动画能完整跑完。
+pub const ROW_RECENT_WINDOW: Duration = Duration::from_millis(400);
+/// `recent_message_ids` 条数上限（高频到达时兜底，防止队列膨胀）。
+pub const ROW_RECENT_CAP: usize = 64;
+/// 单拍批量到达条数超过此值时，该拍整体不播入场动画（压测降级：
+/// 洪泛下「跟手看到最新」优先于「顺滑」）。
+pub const ROW_ANIM_FLOOD_THRESHOLD: usize = 20;
+
+/// 统一行高提示的估算值（单行消息约 88–96px：页眉行 + 气泡 + 按钮行 + gap_1×2）。
+/// 供 `refresh_row_hint` 施加给 ListState，使滚动条拇指从首帧起长度稳定。
+/// 校准：拇指偏长则调小，偏短则调大。
+pub const MESSAGE_ROW_HINT_HEIGHT: Pixels = px(96.0);
+/// 统一行高提示的最小重施间隔。`apply_uniform_item_height` 为 O(N) 重建，
+/// 压测下不可每拍执行，故叠加这层限流（与 `SEARCH_RECALC_MIN_INTERVAL` 同量级）。
+pub const ROW_HINT_MIN_INTERVAL: Duration = Duration::from_millis(250);
+
 /// 连接标签页状态
 #[derive(Clone)]
 pub struct ConnectionTabState {
@@ -62,6 +80,14 @@ pub struct ConnectionTabState {
     /// 实际生效的本地端点(IP:端口, 连接成功后由 Connected 事件上报; UDP 自动分配端口也可见)
     pub local_endpoint: Option<String>,
     pub auto_scroll_enabled: bool,
+    /// 最近到达、仍需播放入场动画的消息 id（含到达时刻，供事件泵按时间窗过期）。
+    ///
+    /// 仅记录**追加的新消息**（淘汰/清空不入队）；洪泛拍整体不入队（见
+    /// `ROW_ANIM_FLOOD_THRESHOLD`）。渲染时按 id 命中即播一次入场动画。
+    pub recent_message_ids: VecDeque<(String, Instant)>,
+    /// 统一行高提示的节流记账：上次施加时的消息条目数与时刻。
+    /// `None` 表示尚未施加过（首条消息到达时立即施加一次）。
+    pub row_hint_applied: Option<(usize, Instant)>,
     pub client_connections: Vec<SocketAddr>,
     pub selected_client: Option<SocketAddr>,
 
@@ -184,6 +210,8 @@ impl ConnectionTabState {
             error_message: None,
             local_endpoint: None,
             auto_scroll_enabled: true,
+            recent_message_ids: VecDeque::new(),
+            row_hint_applied: None,
             client_connections: Vec::new(),
             selected_client: None,
 
@@ -191,7 +219,15 @@ impl ConnectionTabState {
             // 说明: 不使用 measure_all()。该模式会在首次挂载或宽度变化时渲染并测量
             // 全部条目, 压测场景下消息列表满 1 万条时会导致切 tab 卡顿数秒。
             // 使用默认虚拟化按需测量, 仅渲染可见项。
-            message_list_state: ListState::new(0, ListAlignment::Top, px(100.)),
+            message_list_state: {
+                let state = ListState::new(0, ListAlignment::Top, px(100.));
+                // 跟随语义交给引擎：Tail 模式在 layout 阶段自动把滚动位吸附到末尾，
+                // 用户上滚时引擎自行 stop_following，滚回底部再自动 start_following。
+                // 项目侧只通过 is_following_tail() 观察并同步勾选框/淘汰策略，
+                // 因此 add_* 里不再需要显式 scroll_to。
+                state.set_follow_mode(FollowMode::Tail);
+                state
+            },
             client_list_state: ListState::new(0, ListAlignment::Top, px(32.)),
 
             // 消息显示模式默认为原始
@@ -324,25 +360,26 @@ impl ConnectionTabState {
             }
         }
 
+        let msg_id = message.id.clone();
         let old_count = self.message_list.messages.len();
         let dropped = self.message_list.add_message(message);
-        let new_count = self.message_list.messages.len();
         // 命中集合可能变化：只置脏标记，重算交给事件泵限流消费（此处不做 O(N) 扫描）
         self.search_dirty = true;
 
         // 先补尾部、再删头部：每一步都作用在当时的索引空间上
         self.message_list_state.splice(old_count..old_count, 1);
         if dropped > 0 {
-            // 不变式：淘汰只发生在自动滚动开启时，随后的 scroll_to 会覆盖锚点
             self.message_list_state.splice(0..dropped, 0);
         }
 
-        if self.auto_scroll_enabled && new_count > 0 {
-            self.message_list_state.scroll_to(gpui_kit::ListOffset {
-                item_ix: new_count,
-                offset_in_item: px(0.),
-            });
-        }
+        // 统一行高提示（内部节流）：让滚动条拇指从首帧起长度稳定
+        self.refresh_row_hint();
+
+        // 记录为「新到达」，渲染时播放入场动画（过期/上限由事件泵节拍清理）
+        self.recent_message_ids.push_back((msg_id, Instant::now()));
+
+        // 无需显式 scroll_to：跟随时由引擎 Tail 模式在 layout 阶段吸附末尾，
+        // 未跟随时（用户上滚）更不能把视图拉回底部。
     }
 
     /// 批量添加消息：仅触发一次列表状态更新 + 一次滚动，用于高并发消息洪泛场景。
@@ -366,10 +403,16 @@ impl ConnectionTabState {
             }
         }
 
+        // 洪泛降级：单拍到达条数超阈值时整拍不记录，即整拍不播入场动画
+        let recent_ids: Vec<String> = if messages.len() <= ROW_ANIM_FLOOD_THRESHOLD {
+            messages.iter().map(|m| m.id.clone()).collect()
+        } else {
+            Vec::new()
+        };
+
         let old_count = self.message_list.messages.len();
         let added = messages.len();
         let dropped = self.message_list.add_messages_batch(messages);
-        let new_count = self.message_list.messages.len();
         // 命中集合可能变化：只置脏标记，重算交给事件泵限流消费（此处不做 O(N) 扫描）
         self.search_dirty = true;
 
@@ -379,17 +422,52 @@ impl ConnectionTabState {
             self.message_list_state.splice(old_count..old_count, added);
         }
         if dropped > 0 {
-            // 不变式：淘汰只发生在自动滚动开启时，随后的 scroll_to 会覆盖锚点
             self.message_list_state.splice(0..dropped, 0);
         }
 
-        // 批末单次滚动
-        if self.auto_scroll_enabled && new_count > 0 {
-            self.message_list_state.scroll_to(gpui_kit::ListOffset {
-                item_ix: new_count,
-                offset_in_item: px(0.),
-            });
+        // 统一行高提示（内部节流）：让滚动条拇指从首帧起长度稳定
+        self.refresh_row_hint();
+
+        // 记录为「新到达」（同一拍共用一个时间戳，便于按窗口整体过期）
+        let now = Instant::now();
+        for id in recent_ids {
+            self.recent_message_ids.push_back((id, now));
         }
+
+        // 批末不再显式滚动：跟随时由引擎 Tail 模式吸附末尾。
+    }
+
+    /// 给消息列表施加统一行高提示，让滚动条拇指从首帧起长度稳定。
+    ///
+    /// 未测量条目若无 `size_hint`，在 `items.summary().height` 中按 `px(0.)` 计入，
+    /// 于是内容总高被严重低估：拇指初始接近满轨，随滚动被逐渐测量而收缩。
+    /// 施加 hint 后总高≈`count × H`，拇指首帧即稳定；真实高度在渲染时逐项替换
+    /// hint，故不影响布局与命中。
+    ///
+    /// 该操作会把全部条目重建为「带 hint 的未测量项」，代价 O(N)（SumTree 重建），
+    /// 压测下不可每拍执行，故节流：仅在**条目数变化**且距上次施加达到
+    /// [`ROW_HINT_MIN_INTERVAL`] 时才重新施加。
+    fn refresh_row_hint(&mut self) {
+        let count = self.message_list.messages.len();
+        if count == 0 {
+            return;
+        }
+        let due = match self.row_hint_applied {
+            // 尚未施加过：首条消息到达立即施加一次，保证首帧拇指即稳定
+            None => true,
+            Some((last_count, at)) => {
+                last_count != count && at.elapsed() >= ROW_HINT_MIN_INTERVAL
+            }
+        };
+        if !due {
+            return;
+        }
+        // ListState 内部为共享 Rc<RefCell<..>>，clone 后施加对原实例同样生效
+        let _ = self
+            .message_list_state
+            .clone()
+            .with_uniform_item_height(MESSAGE_ROW_HINT_HEIGHT);
+        self.row_hint_applied = Some((count, Instant::now()));
     }
 
     pub fn disconnect(&mut self) {
@@ -1635,39 +1713,17 @@ impl<'a> ConnectionTab<'a> {
                                             .on_mouse_down(MouseButton::Left, cx.listener({
                                                 let tab_id = tab_id.clone();
                                                 move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                    let Some(tab_state) = app.connection_tabs.get_mut(&tab_id) else { return };
-
-                                                    if tab_state.auto_scroll_enabled {
-                                                        // 开 → 关：备份当前 N，置 0（不淘汰），输入框置 0 并禁用
-                                                        tab_state.auto_scroll_enabled = false;
-                                                        tab_state.keep_last_backup = tab_state.message_list.keep_last;
-                                                        // 0 不删任何消息，无需 splice
-                                                        tab_state.message_list.set_keep_last(0);
-                                                        tab_state.keep_last_input.update(cx, |input, cx| {
-                                                            input.set_value("0", window, cx);
-                                                        });
+                                                    let Some(tab_state) = app.connection_tabs.get(&tab_id) else { return };
+                                                    let target = !tab_state.auto_scroll_enabled;
+                                                    // 驱动引擎跟随模式：开 → Tail（立即吸附末尾）；
+                                                    // 关 → Normal（暂停且不随滚到底部自动恢复，与手动开关语义一致）。
+                                                    // 勾选框显示值不再手改，统一由跟随状态派生（见 sync_tab_follow_state）。
+                                                    tab_state.message_list_state.set_follow_mode(if target {
+                                                        FollowMode::Tail
                                                     } else {
-                                                        // 关 → 开：逐字恢复备份值（含 0），立即裁剪，滚到底部
-                                                        tab_state.auto_scroll_enabled = true;
-                                                        let restore = tab_state.keep_last_backup;
-                                                        let dropped = tab_state.message_list.set_keep_last(restore);
-                                                        if dropped > 0 {
-                                                            tab_state.message_list_state.splice(0..dropped, 0);
-                                                            // 头部淘汰会让命中集合失效，置脏交给事件泵限流重算
-                                                            tab_state.search_dirty = true;
-                                                        }
-                                                        tab_state.keep_last_input.update(cx, |input, cx| {
-                                                            input.set_value(restore.to_string(), window, cx);
-                                                        });
-                                                        let new_count = tab_state.message_list.messages.len();
-                                                        if new_count > 0 {
-                                                            tab_state.message_list_state.scroll_to(gpui_kit::ListOffset {
-                                                                item_ix: new_count,
-                                                                offset_in_item: px(0.),
-                                                            });
-                                                        }
-                                                    }
-                                                    cx.notify();
+                                                        FollowMode::Normal
+                                                    });
+                                                    app.sync_tab_follow_state(&tab_id, target, Some(window), cx);
                                                 }
                                             })),
                                     )
@@ -1859,6 +1915,10 @@ impl<'a> ConnectionTab<'a> {
                                                 app.connection_tabs.get_mut(&tab_id_clear).map(|tab_state| {
                                                     tab_state.message_list.clear_messages();
                                                     tab_state.message_list_state.reset(0);
+                                                    // 清空后无「新到达」可言，避免切回时残留入场动画
+                                                    tab_state.recent_message_ids.clear();
+                                                    // 行高提示记账一并复位：下一条消息到达时立即重施一次
+                                                    tab_state.row_hint_applied = None;
                                                     // 消息清空后命中集合必然失效：收起浮层并清空匹配
                                                     tab_state.search_open = false;
                                                     tab_state.search_match_ids.clear();
@@ -2098,7 +2158,14 @@ impl<'a> ConnectionTab<'a> {
                                                 return div().into_any();
                                             }
 
-                                            div()
+                                            // 新到达的行播一次入场动画（洪泛拍已在入队侧整体跳过）
+                                            let is_recent = tab.map_or(false, |t| {
+                                                t.recent_message_ids
+                                                    .iter()
+                                                    .any(|(id, _)| *id == message.id)
+                                            });
+
+                                            let row = div()
                                                 .flex()
                                                 .flex_col()
                                                 .gap_1()
@@ -2270,8 +2337,27 @@ impl<'a> ConnectionTab<'a> {
                                                                         })
                                                                 }),
                                                         ),
+                                                );
+
+                                            if is_recent {
+                                                // 入场动画：上滑 10px + 淡入，200ms ease_out_quint。
+                                                // ID 用 message.id（UUID，跨头部淘汰稳定），不能用下标 ix
+                                                // —— 淘汰会使下标整体前移，动画状态会错位到别的消息。
+                                                // position: relative + top 只做视觉位移，不影响相邻行布局。
+                                                row.with_animation(
+                                                    format!("msg-in-{}", message.id),
+                                                    Animation::new(ROW_ANIM_DURATION)
+                                                        .with_easing(ease_out_quint()),
+                                                    |el, t| {
+                                                        el.relative()
+                                                            .top(px(10.0) * (1.0 - t))
+                                                            .opacity(t)
+                                                    },
                                                 )
                                                 .into_any()
+                                            } else {
+                                                row.into_any()
+                                            }
                                         } else {
                                             div().into_any()
                                         }

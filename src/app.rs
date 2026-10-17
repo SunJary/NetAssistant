@@ -31,7 +31,9 @@ use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 use crate::utils::file_source::{FileSourceError, validate_len};
 use crate::utils::hex::convert_value;
 
-use crate::ui::connection_tab::{ConnectionTabState, SEARCH_RECALC_MIN_INTERVAL};
+use crate::ui::connection_tab::{
+    ConnectionTabState, ROW_RECENT_CAP, ROW_RECENT_WINDOW, SEARCH_RECALC_MIN_INTERVAL,
+};
 use crate::ui::dialog::{
     DecoderSelectionDialogState, ImportFileDialogState, ReplyRuleEditDialogState,
     ReplyRulesDialogState, StressConfigDialogState, TimedTaskDialogState, open_import_file_dialog,
@@ -631,6 +633,11 @@ impl NetAssistantApp {
                     if has_events {
                         app.handle_connection_events_batch(batch, cx);
                     }
+                    // 跟随态派生同步：勾选框显示值取引擎 is_following_tail() 的反相，
+                    // 覆盖滚轮/拖拽滚动条/layout 自动重新吸附等全部路径（内部按需 notify）。
+                    app.sync_tab_follow_states(cx);
+                    // 入场动画「新到达」记录的过期清理（不触发重绘）
+                    app.sweep_recent_message_ids();
                     // 搜索匹配重算挂在同一节拍上并做下限流：消息洪泛时只置 search_dirty，
                     // 由这里最多 4 次/秒地重算，避免每拍做一次 O(N) 全量扫描。
                     let searches_changed = app.throttled_recalc_searches();
@@ -3704,6 +3711,109 @@ impl NetAssistantApp {
             }
         }
         changed
+    }
+
+    /// 事件泵节拍上对齐「自动滚动」派生状态：勾选框显示值不再是用户手动开关，
+    /// 而是引擎跟随态 `ListState::is_following_tail()` 的反相镜像。
+    ///
+    /// 覆盖所有会改变跟随态的路径（滚轮上滚 / 滚轮回底 / 拖拽滚动条到底 /
+    /// layout 阶段的自动重新吸附），无需在渲染路径或 ListState 借用期内做任何事。
+    ///
+    /// 返回是否有 tab 的跟随状态发生变化。
+    pub fn sync_tab_follow_states(&mut self, cx: &mut Context<Self>) -> bool {
+        let due: Vec<(String, bool)> = self
+            .connection_tabs
+            .iter()
+            .filter(|(_, tab)| tab.auto_scroll_enabled != tab.message_list_state.is_following_tail())
+            .map(|(tab_id, tab)| (tab_id.clone(), tab.message_list_state.is_following_tail()))
+            .collect();
+        let mut changed = false;
+        for (tab_id, following) in due {
+            changed |= self.sync_tab_follow_state(&tab_id, following, None, cx);
+        }
+        changed
+    }
+
+    /// 将单个 tab 的对齐到目标跟随状态；`following = true` 表示跟随末尾。
+    ///
+    /// 关闭（上滚）：沿用既有不变式 —— `keep_last` 置 0，不淘汰历史。
+    /// 开启（回底恢复）：还原备份值。此处**不做立即裁剪**，避免在 ListState 可能被
+    /// 借用的时机调用 splice；越限部分由下一次追加的滞后淘汰路径自然收敛
+    /// （`evict_with_hysteresis` + 调用方的 splice）。
+    ///
+    /// `window` 为 None 时（事件泵节拍）回填输入框走 `active_window()` 的 defer 路径。
+    pub fn sync_tab_follow_state(
+        &mut self,
+        tab_id: &str,
+        following: bool,
+        window: Option<&mut Window>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let (input, value) = {
+            let Some(tab) = self.connection_tabs.get_mut(tab_id) else {
+                return false;
+            };
+            if tab.auto_scroll_enabled == following {
+                return false;
+            }
+            if following {
+                tab.auto_scroll_enabled = true;
+                tab.message_list.keep_last = tab.keep_last_backup;
+                (tab.keep_last_input.clone(), tab.keep_last_backup.to_string())
+            } else {
+                tab.auto_scroll_enabled = false;
+                tab.keep_last_backup = tab.message_list.keep_last;
+                // 0 不删任何消息，无需 splice
+                tab.message_list.set_keep_last(0);
+                (tab.keep_last_input.clone(), "0".to_string())
+            }
+        };
+        Self::set_input_value_synced(input, value, window, cx);
+        cx.notify();
+        true
+    }
+
+    /// 同步输入框显示值：有窗口时直接写；否则借 `active_window()` defer 到本拍结束后写。
+    fn set_input_value_synced(
+        input: Entity<InputState>,
+        value: String,
+        mut window: Option<&mut Window>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(window) = window.as_deref_mut() {
+            input.update(cx, |i, cx| i.set_value(value, window, cx));
+            return;
+        }
+        let Some(handle) = cx.active_window() else {
+            return;
+        };
+        cx.defer(move |cx: &mut App| {
+            let _ = handle.update(cx, |_view, window, cx| {
+                let _ = input.update(cx, |i, cx| i.set_value(value, window, cx));
+            });
+        });
+    }
+
+    /// 事件泵节拍上清理各 tab 的「新到达」记录：按时间窗过期 + 条数上限截断。
+    ///
+    /// 清理只影响入场动画的触发，不需要重绘（渲染路径只做只读查表）。
+    pub fn sweep_recent_message_ids(&mut self) {
+        let now = Instant::now();
+        for tab in self.connection_tabs.values_mut() {
+            if tab.recent_message_ids.is_empty() {
+                continue;
+            }
+            while let Some((_, at)) = tab.recent_message_ids.front() {
+                if now.duration_since(*at) > ROW_RECENT_WINDOW {
+                    tab.recent_message_ids.pop_front();
+                } else {
+                    break;
+                }
+            }
+            while tab.recent_message_ids.len() > ROW_RECENT_CAP {
+                tab.recent_message_ids.pop_front();
+            }
+        }
     }
 
     /// 清空消息时调用: 网络层计数一并归零, 避免下一拍同步把显示计数覆盖回原值。
