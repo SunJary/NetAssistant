@@ -11,6 +11,9 @@ app_ui:
   send_client_write_unavailable:
     zh-CN: 客户端写入发送器不可用
     en: Client write sender unavailable
+  mqtt_connecting_wait:
+    zh-CN: 连接中（等待 broker 确认），消息尚未发出
+    en: Connecting (awaiting broker confirmation); message not sent yet
   invalid_address_format:
     zh-CN: "无效的地址格式: %{addr}"
     en: "Invalid address format: %{addr}"

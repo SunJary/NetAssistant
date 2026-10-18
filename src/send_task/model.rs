@@ -8,7 +8,7 @@
 //! - `SendTimed`: 定时任务(心跳), 固定单条无限循环(面板可见)
 //! - `SendPeriodic`: 周期发送(行内勾选), 每轮实时取发送框内容(面板隐藏)
 
-use crate::network::events::WireMessage;
+use crate::network::events::{MqttPublishMeta, WireMessage};
 use crate::utils::message_vars::{CompiledTemplate, RenderContext};
 use serde::{Deserialize, Serialize};
 use smol::channel::Sender;
@@ -57,6 +57,8 @@ pub struct PeriodicSource {
     pub hex_mode: AtomicBool,
     /// `${seq}` 用(与手动发送共享同一计数器)
     pub seq: Arc<AtomicU64>,
+    /// MQTT 发布元数据(topic/QoS), 随发送区 topic 变化写入; 非 MQTT 恒 None
+    mqtt_meta: RwLock<Option<MqttPublishMeta>>,
 }
 
 impl PeriodicSource {
@@ -65,6 +67,7 @@ impl PeriodicSource {
             content: RwLock::new(content),
             hex_mode: AtomicBool::new(hex_mode),
             seq,
+            mqtt_meta: RwLock::new(None),
         }
     }
 
@@ -79,6 +82,18 @@ impl PeriodicSource {
     pub fn set_hex_mode(&self, hex_mode: bool) {
         self.hex_mode.store(hex_mode, Ordering::Relaxed);
     }
+
+    /// 写入 MQTT 发布元数据(topic/QoS); 非 MQTT 传 None(规划 D-8: 周期发送跟随当前 topic)
+    pub fn set_mqtt_meta(&self, meta: Option<MqttPublishMeta>) {
+        if let Ok(mut m) = self.mqtt_meta.write() {
+            *m = meta;
+        }
+    }
+
+    /// 读取当前 MQTT 发布元数据
+    pub fn mqtt_meta(&self) -> Option<MqttPublishMeta> {
+        self.mqtt_meta.read().ok().and_then(|m| m.clone())
+    }
 }
 
 /// 单步渲染结果(引擎投递用)。
@@ -87,6 +102,8 @@ pub struct RenderedStep {
     pub bytes: Vec<u8>,
     /// 该步是否为 hex 模式(决定消息展示类型)
     pub hex_mode: bool,
+    /// MQTT 发布元数据(None = 非 MQTT 发布)
+    pub mqtt_meta: Option<MqttPublishMeta>,
 }
 
 /// 任务类型。
@@ -188,11 +205,13 @@ impl SendTaskConfig {
                     Some(RenderedStep {
                         bytes: crate::utils::hex::hex_to_bytes(&out),
                         hex_mode: true,
+                        mqtt_meta: source.mqtt_meta(),
                     })
                 } else {
                     Some(RenderedStep {
                         bytes: out.into_bytes(),
                         hex_mode: false,
+                        mqtt_meta: source.mqtt_meta(),
                     })
                 }
             }
@@ -215,7 +234,11 @@ fn render_item(item: &TaskItem, hex_mode: bool, seq: &AtomicU64) -> RenderedStep
     } else {
         out.into_bytes()
     };
-    RenderedStep { bytes, hex_mode }
+    RenderedStep {
+        bytes,
+        hex_mode,
+        mqtt_meta: None,
+    }
 }
 
 /// 定时任务(心跳)的持久化真源(按 connection_id 索引)。

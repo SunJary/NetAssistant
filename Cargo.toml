@@ -37,6 +37,9 @@ rfd = "0.17"
 dirs = "7"
 encoding_rs = "0.8"
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+# 注意: mqtt.rs 的洪泛批聚合依赖 `EventLoop.state.events`(pub 但非文档化语义),
+# 升级 0.25.x 补丁版本前需回归验证批次边界与断开排空行为。
+rumqttc = "0.25"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

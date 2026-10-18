@@ -11,6 +11,7 @@ use gpui_kit::component::ElementExt as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_kit::component::{
     Icon, IconName, Size, Theme,
+    checkbox::Checkbox,
     clipboard::Clipboard,
     input::{EditorState, Input, InputState},
     scroll::{Scrollbar, ScrollbarMode},
@@ -31,7 +32,7 @@ use tokio::task::JoinHandle;
 
 use crate::app::NetAssistantApp;
 use crate::config::connection::{
-    ConnectionConfig, ConnectionStatus, ConnectionType, TrailerKind, TrailerSetting,
+    ConnectionConfig, ConnectionStatus, ConnectionType, Qos, TrailerKind, TrailerSetting,
 };
 use crate::custom_icons::CustomIconName;
 use crate::log_writer::LogWriter;
@@ -182,6 +183,22 @@ pub struct ConnectionTabState {
 
     /// 运行期「结尾追加字符」设置: 下拉改动即时生效(持久化真源为 connection_config.send_trailer)
     pub send_trailer_setting: TrailerSetting,
+
+    // ===== MQTT 订阅/发布（仅 MQTT 客户端；规划 §8.3）=====
+    /// 订阅输入行：topic（支持 `+`/`#` 通配符）
+    pub mqtt_sub_topic_input: Entity<InputState>,
+    /// 订阅输入行：QoS 选择（0/1/2）
+    pub mqtt_sub_qos: Qos,
+    /// 已订阅列表（乐观维护，D-10；元素 = (topic, qos)）
+    pub mqtt_subscriptions: Vec<(String, Qos)>,
+    /// 发送区：发布 topic 输入（publish 不允许通配符）
+    pub mqtt_publish_topic_input: Entity<InputState>,
+    /// 发送区：发布 QoS
+    pub mqtt_publish_qos: Qos,
+    /// 发送区：发布 retain 标记
+    pub mqtt_publish_retain: bool,
+    /// 发送块内错误红字（topic 为空/含通配符等）
+    pub mqtt_publish_error: Option<String>,
 }
 
 impl ConnectionTabState {
@@ -315,6 +332,21 @@ impl ConnectionTabState {
             send_task_expanded: None,
             send_task_button_bounds: None,
             send_trailer_setting: TrailerSetting::new(send_trailer),
+
+            // MQTT 订阅/发布（仅 MQTT 客户端；输入实体在此创建，列表乐观维护）
+            mqtt_sub_topic_input: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(t!("connection_tab.mqtt_sub_topic_placeholder").to_string())
+            }),
+            mqtt_sub_qos: Qos::AtMostOnce,
+            mqtt_subscriptions: Vec::new(),
+            mqtt_publish_topic_input: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(t!("connection_tab.mqtt_publish_topic_placeholder").to_string())
+            }),
+            mqtt_publish_qos: Qos::AtMostOnce,
+            mqtt_publish_retain: false,
+            mqtt_publish_error: None,
         }
     }
 
@@ -322,6 +354,7 @@ impl ConnectionTabState {
         match self.connection_config.protocol() {
             ConnectionType::Tcp => "TCP",
             ConnectionType::Udp => "UDP",
+            ConnectionType::Mqtt => "MQTT",
         }
     }
 
@@ -673,6 +706,7 @@ impl<'a> ConnectionTab<'a> {
     ) -> AnyElement {
         let theme = cx.theme().clone();
         let is_client = self.tab_state.connection_config.is_client();
+        let is_mqtt = self.tab_state.connection_config.protocol() == ConnectionType::Mqtt;
         let view_mode = self.tab_state.view_mode;
         let tab_id = self.tab_id.clone();
 
@@ -682,8 +716,8 @@ impl<'a> ConnectionTab<'a> {
             .flex_1()
             .min_w_0()
             .min_h_0()
-            // 顶部 tab 切换栏(仅客户端显示压测 tab)
-            .when(is_client, |d| {
+            // 顶部 tab 切换栏(仅客户端且有压测能力时显示; MQTT 隐藏压测 tab, 规划 D-8)
+            .when(is_client && !is_mqtt, |d| {
                 d.child(self.render_view_mode_tabs(&theme, view_mode, tab_id.clone(), cx))
             })
             // 内容区
@@ -799,6 +833,7 @@ impl<'a> ConnectionTab<'a> {
 
         let is_connected = self.tab_state.is_connected;
         let is_client = self.tab_state.connection_config.is_client();
+        let is_mqtt = self.tab_state.connection_config.protocol() == ConnectionType::Mqtt;
 
         div()
             .flex()
@@ -918,8 +953,10 @@ impl<'a> ConnectionTab<'a> {
                                     .child(self.tab_state.address()),
                             ),
                     )
-                    // 实际生效的本地端点(仅客户端; 服务端监听地址本身就是本地地址, 不重复显示)
-                    .when(is_client, |div_builder| {
+                    // 实际生效的本地端点(仅客户端; 服务端监听地址本身就是本地地址, 不重复显示)。
+                    // MQTT 不渲染: Connected 事件上报的是 broker 端点(非本地地址), 且该地址
+                    // 已由上方「地址:」行展示, 显示为「本地地址」会误导。
+                    .when(is_client && !is_mqtt, |div_builder| {
                         div_builder.child(
                             div()
                                 .flex()
@@ -1304,6 +1341,10 @@ impl<'a> ConnectionTab<'a> {
                             ),
                     ),
             )
+            // MQTT 订阅管理块（仅 MQTT 客户端；规划 §8.3.1）
+            .when(is_client && is_mqtt, |this| {
+                this.child(self.render_mqtt_subscriptions(&theme, cx))
+            })
             // 回复规则入口: 客户端与服务端都显示(F-04)。
             .child(self.render_reply_rules_section(window, cx))
             // 服务端专属: 客户端连接列表
@@ -1324,7 +1365,205 @@ impl<'a> ConnectionTab<'a> {
             })
     }
 
-    /// 渲染「自动回复」入口区(客户端与服务端都可见 —— F-04)。
+    /// 渲染 MQTT 订阅管理块（仅 MQTT 客户端; 规划 §8.3.1）。
+    ///
+    /// 已订阅列表乐观维护（D-10）: 点击「订阅」即入列、取消即移除;
+    /// 投递失败由 app 侧回滚并提示（见 `NetAssistantApp::mqtt_subscribe_from_tab`）。
+    fn render_mqtt_subscriptions(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let tab_id = self.tab_id.clone();
+        let subs = self.tab_state.mqtt_subscriptions.clone();
+        let sub_qos = self.tab_state.mqtt_sub_qos;
+        // 断线时订阅操作不可用, 视觉降透明（点击仍给出失败提示）
+        let is_connected = self.tab_state.is_connected;
+
+        let mut block = div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .mt_3()
+            .child(
+                div()
+                    .text_xs()
+                    .font_semibold()
+                    .text_color(theme.foreground)
+                    .child(t!("connection_tab.mqtt_subscriptions_title").to_string()),
+            );
+
+        if subs.is_empty() {
+            block = block.child(
+                div()
+                    .text_xs()
+                    // TODO: 等待主题增加 disabled.foreground 键后迁移
+                    .text_color(gpui_kit::rgb(0x9ca3af))
+                    .child(t!("connection_tab.mqtt_no_subscriptions").to_string()),
+            );
+        } else {
+            for (topic, qos) in subs.iter() {
+                let topic_owned = topic.clone();
+                let tab_id_unsub = tab_id.clone();
+                // QoS 标签移入 hover tooltip, 让 topic 优先占用行宽（规划 §列表项）
+                let qos_tip =
+                    t!("connection_tab.mqtt_sub_qos_tooltip", qos => qos_label(*qos)).to_string();
+                block = block.child(
+                    div()
+                        .id(format!("mqtt-sub-row-{}", topic))
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .text_xs()
+                                .text_color(theme.foreground)
+                                .child(topic.clone()),
+                        )
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .px_2()
+                                .py_0()
+                                .bg(theme.secondary)
+                                .rounded_md()
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme.secondary_hover))
+                                .when(!is_connected, |d| d.opacity(0.5))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_medium()
+                                        .text_color(theme.secondary_foreground)
+                                        .child(t!("connection_tab.mqtt_unsubscribe").to_string()),
+                                )
+                                .on_mouse_down(MouseButton::Left, cx.listener(
+                                    move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                        app.mqtt_unsubscribe(&tab_id_unsub, topic_owned.clone(), cx);
+                                    },
+                                )),
+                        )
+                        .tooltip(move |window, cx| Tooltip::new(qos_tip.clone()).build(window, cx)),
+                );
+            }
+        }
+
+        // 订阅输入行: 第一行 topic 输入框占满整行, 第二行 QoS 芯片 + 订阅按钮
+        let tab_id_sub = tab_id.clone();
+        block.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .mt_1()
+                .child(
+                    div()
+                        .w_full()
+                        .child(Input::new(&self.tab_state.mqtt_sub_topic_input).cleanable(true)),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .w_full()
+                        .child(render_mqtt_qos_chips(theme, cx, &tab_id, sub_qos, false))
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .px_3()
+                                .py_1()
+                                .bg(theme.primary)
+                                .rounded_md()
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme.primary_hover))
+                                .when(!is_connected, |d| d.opacity(0.5))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_medium()
+                                        .text_color(theme.primary_foreground)
+                                        .child(t!("connection_tab.mqtt_subscribe").to_string()),
+                                )
+                                .on_mouse_down(MouseButton::Left, cx.listener(
+                                    move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                        app.mqtt_subscribe_from_tab(&tab_id_sub, cx);
+                                    },
+                                )),
+                        ),
+                ),
+        )
+    }
+
+    /// 渲染 MQTT 发布行: topic 输入 + QoS 芯片 + retain 勾选 + 块内红字（仅 MQTT 客户端; 规划 §8.3.2）。
+    ///
+    /// topic 的空值 / 通配符校验在发送时由 `NetAssistantApp::send_message_from_tab` 完成，
+    /// 失败写入 `mqtt_publish_error` 并在此显示。
+    fn render_mqtt_publish_row(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let tab_id = self.tab_id.clone();
+        let qos = self.tab_state.mqtt_publish_qos;
+        let retain = self.tab_state.mqtt_publish_retain;
+        let error = self.tab_state.mqtt_publish_error.clone();
+
+        let qos_chips = render_mqtt_qos_chips(theme, cx, &tab_id, qos, true);
+
+        // retain 勾选: 仅改变发布元数据, 不改发送逻辑（规划 §8.3.2）
+        let retain_tab_id = tab_id.clone();
+        let entity = cx.entity().clone();
+        let retain_toggle = div().flex_shrink_0().child(
+            Checkbox::new(format!("mqtt-publish-retain-{}", self.tab_id))
+                .label(t!("connection_tab.mqtt_publish_retain_label").to_string())
+                .checked(retain)
+                .on_click(move |checked: &bool, _window, cx| {
+                    let checked = *checked;
+                    let tab_id = retain_tab_id.clone();
+                    entity.update(cx, |app, cx| {
+                        if let Some(tab) = app.connection_tabs.get_mut(&tab_id) {
+                            tab.mqtt_publish_retain = checked;
+                        }
+                        cx.notify();
+                    });
+                }),
+        );
+
+        let mut row = div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div().flex_1().min_w_0().child(
+                            Input::new(&self.tab_state.mqtt_publish_topic_input).cleanable(true),
+                        ),
+                    )
+                    .child(qos_chips)
+                    .child(retain_toggle),
+            );
+        if let Some(err) = error {
+            row = row.child(
+                div()
+                    .text_xs()
+                    .font_medium()
+                    .text_color(theme.danger)
+                    .child(err),
+            );
+        }
+        row
+    }
+
     ///
     /// 单行入口: 标题 + 开关 + 状态 + 「管理规则」按钮; 具体规则在弹窗里维护。
     fn render_reply_rules_section(
@@ -2234,6 +2473,33 @@ impl<'a> ConnectionTab<'a> {
                                                                     this_div
                                                                 }
                                                             },
+                                                        )
+                                                        // MQTT topic pill（复用 source 渲染样式; 规划 §8.3.3）:
+                                                        // topic 非空时展示，retain 为真时旁加小字标记。
+                                                        .when(
+                                                            message.topic.is_some(),
+                                                            |this_div| {
+                                                                if let Some(topic) = &message.topic {
+                                                                    this_div.child(
+                                                                        div()
+                                                                            .id(ElementId::named_usize("topic", ix))
+                                                                            .flex()
+                                                                            .items_center()
+                                                                            .gap_1()
+                                                                            .text_xs()
+                                                                            .text_color(theme.muted_foreground)
+                                                                            .child(format!("[{}]", topic))
+                                                                            .when(message.retain, |d| {
+                                                                                d.child(
+                                                                                    t!("connection_tab.mqtt_retain_mark")
+                                                                                        .to_string(),
+                                                                                )
+                                                                            }),
+                                                                    )
+                                                                } else {
+                                                                    this_div
+                                                                }
+                                                            },
                                                         ),
                                                 )
                                                 .child(
@@ -2395,6 +2661,7 @@ impl<'a> ConnectionTab<'a> {
         let tab_id_send = tab_id.clone();
 
         let is_client = self.tab_state.connection_config.is_client();
+        let is_mqtt = self.tab_state.connection_config.protocol() == ConnectionType::Mqtt;
         let selected_client = &self.tab_state.selected_client;
 
         div()
@@ -2418,6 +2685,11 @@ impl<'a> ConnectionTab<'a> {
                         .child(target_text),
                 )
             })
+            // MQTT 发布行: topic 输入 + QoS 芯片 + 块内红字（仅 MQTT 客户端; 规划 §8.3.2）
+            .when(
+                is_client && self.tab_state.connection_config.protocol() == ConnectionType::Mqtt,
+                |el| el.child(self.render_mqtt_publish_row(&theme, cx)),
+            )
             .child(
                 div()
                     .flex_1()
@@ -2695,6 +2967,9 @@ impl<'a> ConnectionTab<'a> {
                                         )
                                     }),
                             )
+                            // MQTT 隐藏 trailer 下拉(配置层强制 None, 规划 D-7)与发送任务按钮(D-8)
+                            .when(!is_mqtt, |this| {
+                                this
                             // 「结尾」下拉: 无 / LF / CRLF 三态循环, 改动即时生效并持久化
                             .child({
                                 let tab_id_trailer = tab_id.clone();
@@ -2750,7 +3025,8 @@ impl<'a> ConnectionTab<'a> {
                             .child(
                                 SendTaskPanel::new(tab_id.clone(), self.tab_state)
                                     .render_button(&theme, cx),
-                            ),
+                            )
+                            }),
                     )
                     .child(
                         div()
@@ -2825,4 +3101,62 @@ impl<'a> ConnectionTab<'a> {
                     ),
             )
     }
+}
+
+/// QoS 文本标签（订阅列表 / 芯片共用）。
+fn qos_label(qos: Qos) -> String {
+    match qos {
+        Qos::AtMostOnce => t!("connection_tab.mqtt_qos_0").to_string(),
+        Qos::AtLeastOnce => t!("connection_tab.mqtt_qos_1").to_string(),
+        Qos::ExactlyOnce => t!("connection_tab.mqtt_qos_2").to_string(),
+    }
+}
+
+/// QoS 选择芯片行（订阅 / 发布共用）。
+///
+/// `for_publish = true` 时点击写 `mqtt_publish_qos`，否则写 `mqtt_sub_qos`。
+fn render_mqtt_qos_chips(
+    theme: &Theme,
+    cx: &mut Context<NetAssistantApp>,
+    tab_id: &str,
+    selected: Qos,
+    for_publish: bool,
+) -> Div {
+    let mut row = div().flex().items_center().gap_1();
+    for qos in [Qos::AtMostOnce, Qos::AtLeastOnce, Qos::ExactlyOnce] {
+        let is_selected = selected == qos;
+        let tab_id_owned = tab_id.to_string();
+        row = row.child(
+            div()
+                .flex_shrink_0()
+                .px_1p5()
+                .py_0p5()
+                .rounded_md()
+                .cursor_pointer()
+                .when(is_selected, |d| {
+                    d.bg(theme.primary).text_color(theme.primary_foreground)
+                })
+                .when(!is_selected, |d| {
+                    d.bg(theme.secondary)
+                        .text_color(theme.secondary_foreground)
+                })
+                .child(div().text_xs().font_medium().child(qos_label(qos)))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(
+                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                            if let Some(tab) = app.connection_tabs.get_mut(&tab_id_owned) {
+                                if for_publish {
+                                    tab.mqtt_publish_qos = qos;
+                                } else {
+                                    tab.mqtt_sub_qos = qos;
+                                }
+                            }
+                            cx.notify();
+                        },
+                    ),
+                ),
+        );
+    }
+    row
 }

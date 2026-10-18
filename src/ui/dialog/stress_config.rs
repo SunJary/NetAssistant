@@ -398,6 +398,8 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, window: &Window, cx
                             match state.protocol {
                                 ConnectionType::Tcp => "TCP",
                                 ConnectionType::Udp => "UDP",
+                                // 压测对 MQTT 隐藏（规划 D-8），此分支不可达
+                                ConnectionType::Mqtt => "MQTT",
                             }
                         )),
                 ),

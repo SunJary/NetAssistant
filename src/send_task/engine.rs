@@ -10,7 +10,7 @@
 
 use super::model::{SendTaskConfig, TaskEndReason, TaskStatus, TaskTarget};
 use crate::message::{Message, MessageDirection, MessageType};
-use crate::network::events::{ConnectionEvent, WireMessage};
+use crate::network::events::{ConnectionEvent, MqttPublishMeta, WireMessage};
 use log::warn;
 use rust_i18n::t;
 use smol::channel::Sender;
@@ -197,7 +197,7 @@ impl Runner {
                 } else {
                     MessageType::Text
                 };
-                if self.dispatch(&step.bytes, message_type) {
+                if self.dispatch(&step.bytes, message_type, step.mqtt_meta.as_ref()) {
                     // 客户端写通道断开: 暂停并保留任务(不推进 idx, 恢复后重试本条)
                     self.set_paused_disconnected();
                     continue;
@@ -282,17 +282,29 @@ impl Runner {
     ///
     /// 服务端非空列表中个别客户端发送失败只记警告, 不影响整批(由既有
     /// `ServerClientDisconnected` 事件在下一次快照刷新时剔除)。
-    fn dispatch(&self, bytes: &[u8], message_type: MessageType) -> bool {
+    fn dispatch(
+        &self,
+        bytes: &[u8],
+        message_type: MessageType,
+        mqtt_meta: Option<&MqttPublishMeta>,
+    ) -> bool {
         let (delivered, disconnected) = {
             let target = match self.target.read() {
                 Ok(t) => t,
                 Err(_) => return false,
             };
             match &*target {
-                TaskTarget::Client(tx) => match tx.try_send(WireMessage::inherit(bytes.to_vec())) {
-                    Ok(()) => (true, false),
-                    Err(_) => (false, true),
-                },
+                TaskTarget::Client(tx) => {
+                    // MQTT 发布必须携带 topic/QoS(规划 D-2): 有元数据走 inherit_mqtt, 否则继承 trailer
+                    let wire = match mqtt_meta {
+                        Some(meta) => WireMessage::inherit_mqtt(bytes.to_vec(), meta.clone()),
+                        None => WireMessage::inherit(bytes.to_vec()),
+                    };
+                    match tx.try_send(wire) {
+                        Ok(()) => (true, false),
+                        Err(_) => (false, true),
+                    }
+                }
                 TaskTarget::ServerClients(clients) => {
                     if clients.is_empty() {
                         // 空目标 = 服务端暂无可用客户端, 与「未连接」同义, 暂停而非空转推进进度

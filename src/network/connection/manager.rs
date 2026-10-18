@@ -1,6 +1,7 @@
 use crate::config::connection::{ClientConfig, ConnectionType, ServerConfig, TrailerSetting};
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkFactory, NetworkServer};
+use crate::network::protocol::mqtt::{MqttClient, MqttServer};
 use crate::network::protocol::tcp::{TcpClient, TcpServer};
 use crate::network::protocol::udp::{UdpClient, UdpServer};
 use crate::reply::ReplyRulesStore;
@@ -34,6 +35,14 @@ impl NetworkFactory for DefaultNetworkFactory {
                 trailer,
                 reply_rules,
             )),
+            // MQTT 客户端（占位：connect 返回明确错误，规划步骤 4 实现双任务模型）
+            ConnectionType::Mqtt => Box::new(MqttClient::new(
+                config.clone(),
+                event_sender,
+                net_counters,
+                trailer,
+                reply_rules,
+            )),
         }
     }
 
@@ -51,6 +60,13 @@ impl NetworkFactory for DefaultNetworkFactory {
                 trailer,
             )),
             ConnectionType::Udp => Box::new(UdpServer::new(
+                config.clone(),
+                event_sender,
+                net_counters,
+                trailer,
+            )),
+            // MQTT 无服务端角色（规划 D-5）：占位返回错误，不会真正启动
+            ConnectionType::Mqtt => Box::new(MqttServer::new(
                 config.clone(),
                 event_sender,
                 net_counters,
@@ -108,7 +124,14 @@ impl NetworkConnectionManager {
             self.reply_rules.clone(),
         );
 
-        // 连接到服务器(失败直接返回错误,由 UI 层提示;吞掉会导致 tab 永远停在"连接中")
+        // 连接到服务器(失败直接返回错误,由 UI 层提示;吞掉会导致 tab 永远停在"连接中")。
+        //
+        // 契约按协议分层,不要一刀切改成异步:
+        // - 传输层协议(TCP/UDP): connect 覆盖三次握手/绑定等同步确认,返回即代表链路
+        //   可用;失败同步返回 Err,UI 立即提示(即 NetAssist 的直觉模型)。
+        // - 应用层协议(MQTT): TCP 握手只是第一步,业务可用性要等 broker 的 CONNACK,
+        //   该往返由内部事件循环异步完成。故 MQTT 的 connect() 立即返回 Ok,真正的
+        //   失败经 ConnectionEvent::Error 异步上报(MQTTX/Paho/HiveMQ 均为异步确认模型)。
         client.connect().await?;
 
         // 保存客户端连接

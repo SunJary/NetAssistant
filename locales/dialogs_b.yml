@@ -86,6 +86,57 @@ new_connection:
   error_bad_local_port:
     zh-CN: 本地端口无效（需为 0-65535 的数字）
     en: Invalid local port (a number between 0-65535)
+  mqtt_optional_placeholder:
+    zh-CN: 可选
+    en: Optional
+  mqtt_client_id_label:
+    zh-CN: 客户端 ID
+    en: Client ID
+  mqtt_username_label:
+    zh-CN: 用户名
+    en: Username
+  mqtt_password_label:
+    zh-CN: 密码
+    en: Password
+  mqtt_keep_alive_label:
+    zh-CN: 心跳间隔（秒）
+    en: Keep Alive (seconds)
+  mqtt_clean_session_label:
+    zh-CN: 清理会话（Clean Session）
+    en: Clean Session
+  mqtt_will_label:
+    zh-CN: 启用遗嘱消息
+    en: Enable Will Message
+  mqtt_will_topic_label:
+    zh-CN: 遗嘱主题
+    en: Will Topic
+  mqtt_will_payload_label:
+    zh-CN: 遗嘱内容
+    en: Will Payload
+  mqtt_will_qos_label:
+    zh-CN: 遗嘱 QoS
+    en: Will QoS
+  mqtt_will_retain_label:
+    zh-CN: 遗嘱保留消息（Retain）
+    en: Will Retain
+  qos_0:
+    zh-CN: QoS 0
+    en: QoS 0
+  qos_1:
+    zh-CN: QoS 1
+    en: QoS 1
+  qos_2:
+    zh-CN: QoS 2
+    en: QoS 2
+  error_bad_keep_alive:
+    zh-CN: 心跳间隔无效（需为 1-65535 的数字）
+    en: Invalid keep alive (a number between 1-65535)
+  error_empty_will_topic:
+    zh-CN: 启用遗嘱消息时，遗嘱主题不能为空
+    en: Will topic cannot be empty when the will message is enabled
+  error_password_requires_username:
+    zh-CN: 填写密码时用户名不能为空（MQTT 要求密码依附于用户名）
+    en: Username is required when a password is set (MQTT requires a username for a password)
 
 variable_picker:
   title:

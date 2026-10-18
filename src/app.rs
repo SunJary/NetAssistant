@@ -6,7 +6,8 @@ use rust_i18n::t;
 use crate::config;
 use crate::config::app_stats::AppStats;
 use crate::config::connection::{
-    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, TrailerKind,
+    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, MqttSettings, Qos,
+    TrailerKind, WillSettings, generate_mqtt_client_id,
 };
 use crate::config::storage::ConfigStorage;
 use crate::core::toolbox::ToolCategory;
@@ -17,7 +18,9 @@ use crate::core::toolbox_extra::{
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
 use crate::message::{MAX_KEEP_LAST, Message, MessageDirection, MessageType};
-use crate::network::events::{ConnectionEvent, NetCounters, WireMessage};
+use crate::network::events::{
+    ConnectionEvent, MqttCommand, MqttPublishMeta, NetCounters, WireMessage,
+};
 use crate::reply::ReplyRulesStore;
 use crate::reply::model::ReplyRulesConfig;
 use crate::send_task::{
@@ -110,6 +113,21 @@ pub struct NetAssistantApp {
     pub edit_decoder_config: DecoderConfig,
     pub show_connection_advanced: bool,
 
+    // MQTT 表单状态（仅协议为 MQTT 时渲染与回填；规划 §8.1）
+    /// Broker 地址复用 `host_input`，端口复用 `port_input`；以下为 MQTT 专属字段
+    pub mqtt_client_id_input: Entity<InputState>,
+    pub mqtt_username_input: Entity<InputState>,
+    /// 密码输入框（创建时 `.masked(true)`，遮蔽显示）
+    pub mqtt_password_input: Entity<InputState>,
+    pub mqtt_keep_alive_input: Entity<InputState>,
+    pub edit_mqtt_clean_session: bool,
+    /// 遗嘱消息启用开关（关闭时不下发 will）
+    pub mqtt_will_enabled: bool,
+    pub mqtt_will_topic_input: Entity<InputState>,
+    pub mqtt_will_payload_input: Entity<InputState>,
+    pub edit_mqtt_will_qos: Qos,
+    pub mqtt_will_retain: bool,
+
     // 解码器选择对话框状态(打开时创建, 关闭时置 None)
     pub decoder_selection_dialog: Option<DecoderSelectionDialogState>,
 
@@ -170,6 +188,8 @@ pub struct NetAssistantApp {
     // 解码器控制发送器映射（用于运行时下发解码器配置，无需重连）
     pub decoder_control_senders: HashMap<String, Sender<DecoderConfig>>,
     pub server_decoder_controls: HashMap<String, HashMap<SocketAddr, Sender<DecoderConfig>>>,
+    // MQTT 订阅控制发送器映射（用于运行时订阅/取消，无需重连；规划 §5.3）
+    pub mqtt_control_senders: HashMap<String, Sender<MqttCommand>>,
     // 回复规则集共享状态(UI 下发整表 → 网络层按规则求值)
     //
     // 全局唯一：规则是**可分享的知识资产**，不绑定连接（决策 D-2）。
@@ -237,6 +257,8 @@ pub struct NetAssistantApp {
     pub search_subscriptions: HashMap<String, Subscription>,
     // 周期发送实时同步订阅(发送框内容 / 间隔变化, 每个标签页一份, 随关闭清理)
     pub periodic_sync_subscriptions: HashMap<String, Vec<Subscription>>,
+    // MQTT 发布 topic 输入订阅(输入变化即清除发送块内红字, 每个标签页一份, 随关闭清理)
+    pub mqtt_publish_subscriptions: HashMap<String, Vec<Subscription>>,
 
     // 工具箱标签页（Tab 栏固定成员，常驻不可关闭；不属于连接体系）
     // 当前分组（左导航纯切换；各组输入互相独立、随 Tab 常驻保留）
@@ -288,6 +310,20 @@ impl NetAssistantApp {
             InputState::new(window, cx)
                 .placeholder(t!("new_connection.local_port_placeholder").to_string())
         });
+        // MQTT 表单输入框（仅协议为 MQTT 时渲染）
+        let mqtt_client_id_input = cx.new(|cx| InputState::new(window, cx));
+        let mqtt_username_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_optional_placeholder").to_string())
+        });
+        let mqtt_password_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_optional_placeholder").to_string())
+                .masked(true)
+        });
+        let mqtt_keep_alive_input = cx.new(|cx| InputState::new(window, cx));
+        let mqtt_will_topic_input = cx.new(|cx| InputState::new(window, cx));
+        let mqtt_will_payload_input = cx.new(|cx| InputState::new(window, cx));
 
         // 初始化空的连接标签页状态（不预先创建）
         let connection_tabs = IndexMap::new();
@@ -383,6 +419,8 @@ impl NetAssistantApp {
         // 初始化解码器控制发送器映射
         let decoder_control_senders = HashMap::new();
         let server_decoder_controls = HashMap::new();
+        // 初始化 MQTT 订阅控制发送器映射
+        let mqtt_control_senders = HashMap::new();
 
         // 从配置加载侧边栏宽度和折叠状态
         let sidebar_width = storage.load_sidebar_width().map(|w| gpui_kit::px(w as f32));
@@ -403,6 +441,17 @@ impl NetAssistantApp {
             edit_message_input_mode: String::from("text"),
             edit_decoder_config: DecoderConfig::default(),
             show_connection_advanced: false,
+            // 初始化 MQTT 表单状态
+            mqtt_client_id_input,
+            mqtt_username_input,
+            mqtt_password_input,
+            mqtt_keep_alive_input,
+            edit_mqtt_clean_session: true,
+            mqtt_will_enabled: false,
+            mqtt_will_topic_input,
+            mqtt_will_payload_input,
+            edit_mqtt_will_qos: Qos::AtMostOnce,
+            mqtt_will_retain: false,
             // 初始化解码器选择对话框状态
             decoder_selection_dialog: None,
             server_expanded: true,
@@ -427,6 +476,7 @@ impl NetAssistantApp {
             server_clients,
             decoder_control_senders,
             server_decoder_controls,
+            mqtt_control_senders,
             // 回复规则集：从持久化配置构造，并把同一份 store 注入网络管理器，
             // 使客户端连接与 UI 共享同一个规则集（UDP/TCP 客户端构造时注入）
             reply_rules_store,
@@ -473,6 +523,7 @@ impl NetAssistantApp {
             keep_last_subscriptions: HashMap::new(),
             search_subscriptions: HashMap::new(),
             periodic_sync_subscriptions: HashMap::new(),
+            mqtt_publish_subscriptions: HashMap::new(),
             // 工具箱（Tab 栏固定成员；默认落在转换组）
             toolbox_active_group: ToolCategory::Convert,
             toolbox_convert_text_input,
@@ -768,6 +819,12 @@ impl NetAssistantApp {
             } else {
                 // 建立连接
                 if tab_state.connection_config.is_client() {
+                    // MQTT: TCP 握手与 CONNACK 由网络层异步完成, UI 若无中间态会显得
+                    // "点击无反应"。发起连接即置「连接中」(纯展示; 发送准入仍由
+                    // is_connected 控制, 后者要等 CONNACK 到达的 Connected 事件才置位)。
+                    if tab_state.connection_config.protocol() == ConnectionType::Mqtt {
+                        tab_state.connection_status = ConnectionStatus::Connecting;
+                    }
                     self.connect_to_server(tab_id);
                 } else {
                     self.start_server(tab_id, cx);
@@ -813,6 +870,80 @@ impl NetAssistantApp {
                     }
                 }
             }
+        }
+        cx.notify();
+    }
+
+    // ===== MQTT 订阅/取消(乐观维护 + 失败回滚; 规划 D-10/§8.3) =====
+
+    /// 订阅该 tab 订阅输入行中的 topic（乐观入列 + 下发 `MqttCommand::Subscribe`）。
+    ///
+    /// 乐观模型：SUBACK 报文按协议仅含 pkid+返回码、不含 topic，topic↔确认无法关联，
+    /// 故点击即入列；本地投递失败（未连接/通道满）→ 回滚并提示（规划 D-10）。
+    pub fn mqtt_subscribe_from_tab(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        let Some(tab) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        let topic = tab.mqtt_sub_topic_input.read(cx).value().trim().to_string();
+        let qos = tab.mqtt_sub_qos;
+        if topic.is_empty() {
+            if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                tab.error_message = Some(t!("connection_tab.mqtt_topic_empty").to_string());
+            }
+            cx.notify();
+            return;
+        }
+
+        let delivered = self
+            .mqtt_control_senders
+            .get(tab_id)
+            .map(|sender| {
+                sender
+                    .try_send(MqttCommand::Subscribe {
+                        topic: topic.clone(),
+                        qos,
+                    })
+                    .is_ok()
+            })
+            .unwrap_or(false);
+
+        let Some(tab) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        if delivered {
+            // 乐观入列 / 已订阅则更新 QoS（重发订阅幂等）
+            if let Some(entry) = tab.mqtt_subscriptions.iter_mut().find(|(t, _)| *t == topic) {
+                entry.1 = qos;
+            } else {
+                tab.mqtt_subscriptions.push((topic, qos));
+            }
+            tab.error_message = None;
+        } else {
+            tab.error_message = Some(t!("connection_tab.mqtt_subscribe_failed").to_string());
+        }
+        cx.notify();
+    }
+
+    /// 取消订阅：乐观移除 + 下发 `MqttCommand::Unsubscribe`；投递失败回滚提示。
+    pub fn mqtt_unsubscribe(&mut self, tab_id: &str, topic: String, cx: &mut Context<Self>) {
+        let delivered = self
+            .mqtt_control_senders
+            .get(tab_id)
+            .map(|sender| {
+                sender
+                    .try_send(MqttCommand::Unsubscribe { topic: topic.clone() })
+                    .is_ok()
+            })
+            .unwrap_or(false);
+
+        let Some(tab) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        if delivered {
+            tab.mqtt_subscriptions.retain(|(t, _)| *t != topic);
+            tab.error_message = None;
+        } else {
+            tab.error_message = Some(t!("connection_tab.mqtt_unsubscribe_failed").to_string());
         }
         cx.notify();
     }
@@ -1059,6 +1190,7 @@ impl NetAssistantApp {
         self.ensure_keep_last_subscription(&tab_id, cx);
         self.ensure_search_input_subscription(&tab_id, cx);
         self.ensure_periodic_sync_subscription(&tab_id, cx);
+        self.ensure_mqtt_publish_subscription(&tab_id, cx);
     }
 
     /// 订阅消息输入框的 Ctrl+Enter 事件, 复用发送逻辑完成发送。
@@ -1204,6 +1336,33 @@ impl NetAssistantApp {
         }
 
         self.periodic_sync_subscriptions.insert(sub_tab_id, subs);
+    }
+
+    /// 订阅 MQTT 发布 topic 输入框：输入变化即清除发送块内红字。
+    ///
+    /// 避免「发送失败留下红字后，用户改对 topic 仍残留到下次发送」。
+    fn ensure_mqtt_publish_subscription(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        if self.mqtt_publish_subscriptions.contains_key(tab_id) {
+            return;
+        }
+        let Some(tab_state) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        let publish_input = tab_state.mqtt_publish_topic_input.clone();
+        let sub_tab_id = tab_id.to_string();
+        let subscription = cx.subscribe(&publish_input, move |app, _input, event, cx| {
+            if !matches!(event, InputEvent::Change) {
+                return;
+            }
+            if let Some(tab) = app.connection_tabs.get_mut(&sub_tab_id) {
+                if tab.mqtt_publish_error.is_some() {
+                    tab.mqtt_publish_error = None;
+                    cx.notify();
+                }
+            }
+        });
+        self.mqtt_publish_subscriptions
+            .insert(tab_id.to_string(), vec![subscription]);
     }
 
     /// 订阅「保留最后 N 条」输入框：回车 / 失焦时提交。
@@ -1549,6 +1708,23 @@ impl NetAssistantApp {
         self.connection_form_error = None;
         self.edit_message_input_mode = String::from("text");
         self.edit_decoder_config = DecoderConfig::default();
+        // MQTT 表单重置为默认值（Client ID 预填自动生成值，KeepAlive 60，Clean Session 开）
+        self.mqtt_client_id_input
+            .update(cx, |i, cx| i.set_value(generate_mqtt_client_id(), window, cx));
+        self.mqtt_username_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.mqtt_password_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.mqtt_keep_alive_input
+            .update(cx, |i, cx| i.set_value("60".to_string(), window, cx));
+        self.edit_mqtt_clean_session = true;
+        self.mqtt_will_enabled = false;
+        self.mqtt_will_topic_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.mqtt_will_payload_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.edit_mqtt_will_qos = Qos::AtMostOnce;
+        self.mqtt_will_retain = false;
 
         let default_host = if is_client { "127.0.0.1" } else { "0.0.0.0" };
         self.host_input.update(cx, |i, cx| {
@@ -1603,6 +1779,7 @@ impl NetAssistantApp {
         self.new_connection_protocol = match config.protocol() {
             ConnectionType::Tcp => "TCP".to_string(),
             ConnectionType::Udp => "UDP".to_string(),
+            ConnectionType::Mqtt => "MQTT".to_string(),
         };
         self.connection_form_error = None;
 
@@ -1660,6 +1837,45 @@ impl NetAssistantApp {
         self.edit_decoder_config = decoder;
         self.show_connection_advanced = true;
 
+        // MQTT 字段回填（非 MQTT 配置回退为默认值，切到 MQTT 时表单即有合理默认）
+        let settings = match &config {
+            ConnectionConfig::Client(c) => c.mqtt.clone(),
+            ConnectionConfig::Server(_) => None,
+        }
+        .unwrap_or_default();
+        self.mqtt_client_id_input
+            .update(cx, |i, cx| i.set_value(settings.client_id.clone(), window, cx));
+        self.mqtt_username_input.update(cx, |i, cx| {
+            i.set_value(settings.username.clone().unwrap_or_default(), window, cx)
+        });
+        self.mqtt_password_input.update(cx, |i, cx| {
+            i.set_value(settings.password.clone().unwrap_or_default(), window, cx)
+        });
+        self.mqtt_keep_alive_input.update(cx, |i, cx| {
+            i.set_value(settings.keep_alive_secs.to_string(), window, cx)
+        });
+        self.edit_mqtt_clean_session = settings.clean_session;
+        match settings.will {
+            Some(w) => {
+                self.mqtt_will_enabled = true;
+                self.mqtt_will_topic_input
+                    .update(cx, |i, cx| i.set_value(w.topic, window, cx));
+                self.mqtt_will_payload_input
+                    .update(cx, |i, cx| i.set_value(w.payload, window, cx));
+                self.edit_mqtt_will_qos = w.qos;
+                self.mqtt_will_retain = w.retain;
+            }
+            None => {
+                self.mqtt_will_enabled = false;
+                self.mqtt_will_topic_input
+                    .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+                self.mqtt_will_payload_input
+                    .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+                self.edit_mqtt_will_qos = Qos::AtMostOnce;
+                self.mqtt_will_retain = false;
+            }
+        }
+
         // 命令式打开对话框(由 Root 管理层叠)
         open_new_connection_dialog(cx.entity().downgrade(), window, cx);
     }
@@ -1691,51 +1907,137 @@ impl NetAssistantApp {
             cx.notify();
             return false;
         };
-        // 网络层连接用 SocketAddr::from_str、监听用 bind, 均不支持域名, 提前拦截
-        if host.parse::<std::net::IpAddr>().is_err() {
+        let is_mqtt = self.new_connection_protocol == "MQTT";
+        // 网络层连接用 SocketAddr::from_str、监听用 bind, 均不支持域名, 提前拦截;
+        // 例外: MQTT broker 允许域名(如 broker.emqx.io), 由网络层 lookup_host 解析
+        if !is_mqtt && host.parse::<std::net::IpAddr>().is_err() {
             self.connection_form_error = Some(t!("new_connection.error_bad_host").to_string());
             cx.notify();
             return false;
         }
 
         // 本地绑定(仅客户端字段; 服务端忽略): 地址留空=自动选网卡, 端口留空=自动分配。
-        let local_addr_str = self.local_address_input.read(cx).value().trim().to_string();
-        let local_address = if local_addr_str.is_empty() {
-            None
+        // MQTT 无本地绑定语义, 表单不渲染该区, 一律忽略。
+        let (local_address, local_port) = if is_mqtt {
+            (None, None)
         } else {
-            match local_addr_str.parse::<std::net::IpAddr>() {
-                Ok(_) => Some(local_addr_str),
-                Err(_) => {
-                    self.connection_form_error =
-                        Some(t!("new_connection.error_bad_local_address").to_string());
-                    cx.notify();
-                    return false;
+            let local_addr_str = self.local_address_input.read(cx).value().trim().to_string();
+            let local_address = if local_addr_str.is_empty() {
+                None
+            } else {
+                match local_addr_str.parse::<std::net::IpAddr>() {
+                    Ok(_) => Some(local_addr_str),
+                    Err(_) => {
+                        self.connection_form_error =
+                            Some(t!("new_connection.error_bad_local_address").to_string());
+                        cx.notify();
+                        return false;
+                    }
                 }
-            }
-        };
-        let local_port_str = self.local_port_input.read(cx).value().trim().to_string();
-        let local_port = if local_port_str.is_empty() {
-            None
-        } else {
-            match local_port_str.parse::<u16>() {
-                Ok(p) => Some(p),
-                Err(_) => {
-                    self.connection_form_error =
-                        Some(t!("new_connection.error_bad_local_port").to_string());
-                    cx.notify();
-                    return false;
+            };
+            let local_port_str = self.local_port_input.read(cx).value().trim().to_string();
+            let local_port = if local_port_str.is_empty() {
+                None
+            } else {
+                match local_port_str.parse::<u16>() {
+                    Ok(p) => Some(p),
+                    Err(_) => {
+                        self.connection_form_error =
+                            Some(t!("new_connection.error_bad_local_port").to_string());
+                        cx.notify();
+                        return false;
+                    }
                 }
-            }
+            };
+            (local_address, local_port)
         };
 
         let message_input_mode = self.edit_message_input_mode.clone();
         let decoder_config = self.edit_decoder_config.clone();
         let connection_type = if self.new_connection_protocol == "TCP" {
             ConnectionType::Tcp
+        } else if is_mqtt {
+            ConnectionType::Mqtt
         } else {
             ConnectionType::Udp
         };
         let is_client = self.new_connection_is_client;
+
+        // MQTT 设置构造（含校验；仅协议为 MQTT 时；规划 §8.1）
+        let mqtt_settings = if is_mqtt {
+            // Client ID 留空则回退自动生成（Clean Session=false 时 broker 要求非空）
+            let client_id = {
+                let v = self.mqtt_client_id_input.read(cx).value().trim().to_string();
+                if v.is_empty() {
+                    generate_mqtt_client_id()
+                } else {
+                    v
+                }
+            };
+            let username = {
+                let v = self.mqtt_username_input.read(cx).value().trim().to_string();
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v)
+                }
+            };
+            // 密码不做 trim（可能是含空白的合法密码）
+            let password = {
+                let v = self.mqtt_password_input.read(cx).value().to_string();
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v)
+                }
+            };
+            // MQTT 3.1.1 的 Password 标志必须依附 Username（`build_options` 亦按此实现），
+            // 只填密码不填用户名会被静默丢弃 —— 这里显式报错，避免用户输入无声失效。
+            if username.is_none() && password.is_some() {
+                self.connection_form_error = Some(
+                    t!("new_connection.error_password_requires_username").to_string(),
+                );
+                cx.notify();
+                return false;
+            }
+            let keep_alive_str = self.mqtt_keep_alive_input.read(cx).value().trim().to_string();
+            let keep_alive_secs = match keep_alive_str.parse::<u16>() {
+                Ok(v) if v > 0 => v,
+                _ => {
+                    self.connection_form_error =
+                        Some(t!("new_connection.error_bad_keep_alive").to_string());
+                    cx.notify();
+                    return false;
+                }
+            };
+            let will = if self.mqtt_will_enabled {
+                let topic = self.mqtt_will_topic_input.read(cx).value().trim().to_string();
+                if topic.is_empty() {
+                    self.connection_form_error =
+                        Some(t!("new_connection.error_empty_will_topic").to_string());
+                    cx.notify();
+                    return false;
+                }
+                Some(WillSettings {
+                    topic,
+                    payload: self.mqtt_will_payload_input.read(cx).value().to_string(),
+                    qos: self.edit_mqtt_will_qos,
+                    retain: self.mqtt_will_retain,
+                })
+            } else {
+                None
+            };
+            Some(MqttSettings {
+                client_id,
+                username,
+                password,
+                keep_alive_secs,
+                clean_session: self.edit_mqtt_clean_session,
+                will,
+            })
+        } else {
+            None
+        };
 
         if let Some(edit_id) = self.editing_connection_id.take() {
             // 编辑模式：保留 id / 类型 / 协议，更新其余字段
@@ -1756,6 +2058,8 @@ impl NetAssistantApp {
                         c.decoder_config = decoder_config;
                         c.local_address = local_address.clone();
                         c.local_port = local_port;
+                        // MQTT 设置覆盖（非 MQTT 为 None，保持既有 mqtt 字段不变）
+                        c.mqtt = mqtt_settings.clone();
                     }
                     ConnectionConfig::Server(c) => {
                         c.listen_address = host;
@@ -1793,6 +2097,7 @@ impl NetAssistantApp {
                     c.decoder_config = decoder_config;
                     c.local_address = local_address.clone();
                     c.local_port = local_port;
+                    c.mqtt = mqtt_settings.clone();
                 }
                 ConnectionConfig::Server(c) => {
                     c.message_input_mode = message_input_mode;
@@ -1845,6 +2150,7 @@ impl NetAssistantApp {
         self.keep_last_subscriptions.remove(&tab_id);
         self.search_subscriptions.remove(&tab_id);
         self.periodic_sync_subscriptions.remove(&tab_id);
+        self.mqtt_publish_subscriptions.remove(&tab_id);
 
         // 清理客户端连接发送器
         if self.client_write_senders.remove(&tab_id).is_some() {
@@ -1862,6 +2168,8 @@ impl NetAssistantApp {
         // 清理解码器控制通道(此前仅由 Disconnected 事件分支清理, 关闭标签页不走该分支)
         self.decoder_control_senders.remove(&tab_id);
         self.server_decoder_controls.remove(&tab_id);
+        // 清理 MQTT 订阅控制通道(同上, 关闭标签页不走 Disconnected 分支)
+        self.mqtt_control_senders.remove(&tab_id);
 
         // 断开网络层: socket 与监听端口由 NetworkConnectionManager 持有, 不经过这里则
         // 端口不释放、读任务继续把消息投递给已关闭(或被重开复用同一 config.id)的 tab_id
@@ -2768,12 +3076,59 @@ impl NetAssistantApp {
                     content.clone()
                 };
 
+                // MQTT 发布元数据: 读取发送区 topic/QoS; 校验 topic 非空且不含通配符
+                // (规划 §十一 边界: 发布 topic 含 +/# → UI 拦截; 为空 → UI 拦截)。
+                // 校验失败写入发送块内红字, 不发网络层。
+                let mqtt_meta = if connection_config.protocol() == ConnectionType::Mqtt {
+                    let (topic, qos, retain) = match self.connection_tabs.get(tab_id) {
+                        Some(t) => (
+                            t.mqtt_publish_topic_input
+                                .read(cx)
+                                .value()
+                                .trim()
+                                .to_string(),
+                            t.mqtt_publish_qos,
+                            t.mqtt_publish_retain,
+                        ),
+                        None => (String::new(), Qos::AtMostOnce, false),
+                    };
+                    let invalid = if topic.is_empty() {
+                        Some(t!("connection_tab.mqtt_publish_topic_empty").to_string())
+                    } else if topic.contains('+') || topic.contains('#') {
+                        Some(t!("connection_tab.mqtt_publish_topic_invalid").to_string())
+                    } else {
+                        None
+                    };
+                    if let Some(err) = invalid {
+                        if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                            tab.mqtt_publish_error = Some(err);
+                        }
+                        cx.notify();
+                        return;
+                    }
+                    if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                        tab.mqtt_publish_error = None;
+                    }
+                    Some(MqttPublishMeta {
+                        topic,
+                        qos,
+                        retain,
+                    })
+                } else {
+                    None
+                };
+
                 // 发送消息
                 if is_hex_mode {
                     let bytes = crate::utils::hex::hex_to_bytes(&rendered);
-                    self.send_message_bytes(tab_id.to_string(), bytes, rendered.clone());
+                    self.send_message_bytes(
+                        tab_id.to_string(),
+                        bytes,
+                        rendered.clone(),
+                        mqtt_meta.clone(),
+                    );
                 } else {
-                    self.send_message(tab_id.to_string(), rendered.clone());
+                    self.send_message(tab_id.to_string(), rendered.clone(), mqtt_meta.clone());
                 }
 
                 // Clear input ONLY on successful send initiation and if auto_clear_input is true
@@ -2798,6 +3153,8 @@ impl NetAssistantApp {
                         tab_state
                             .periodic_source
                             .set_hex_mode(tab_message_input_mode == "hex");
+                        // MQTT: 周期发送跟随发送区当前 topic/QoS(规划 D-8); 非 MQTT 为 None
+                        tab_state.periodic_source.set_mqtt_meta(mqtt_meta.clone());
                         (
                             tab_state.periodic_interval_handle.clone(),
                             tab_state.periodic_source.clone(),
@@ -2815,7 +3172,16 @@ impl NetAssistantApp {
                 warn!("[发送] 发送失败: 连接未建立或无客户端连接");
                 if let Some(tab_state) = self.connection_tabs.get_mut(tab_id) {
                     tab_state.error_message = Some(if connection_config.is_client() {
-                        t!("app_ui.send_not_connected").to_string()
+                        // MQTT 的 TCP 握手与 CONNACK 由网络层异步完成: 连接发起后到 CONNACK
+                        // 到达前 is_connected 仍为 false, 消息不会发出。此处明确提示「连接中」
+                        // 而非「连接未建立」, 避免用户刚点连接就被告知未连接、以为点击无效。
+                        if connection_config.protocol() == ConnectionType::Mqtt
+                            && tab_state.connection_status == ConnectionStatus::Connecting
+                        {
+                            t!("app_ui.mqtt_connecting_wait").to_string()
+                        } else {
+                            t!("app_ui.send_not_connected").to_string()
+                        }
                     } else {
                         t!("connection_tab.error_no_client_connections").to_string()
                     });
@@ -2862,20 +3228,31 @@ impl NetAssistantApp {
         cx.notify();
     }
 
-    pub fn send_message(&mut self, tab_id: String, content: String) {
+    pub fn send_message(
+        &mut self,
+        tab_id: String,
+        content: String,
+        mqtt_meta: Option<MqttPublishMeta>,
+    ) {
         debug!(
             "[send_message] 开始，tab_id: {}, content: '{}'",
             tab_id, content
         );
-        self.send_dispatch_with_errors(tab_id, content.into_bytes());
+        self.send_dispatch_with_errors(tab_id, content.into_bytes(), mqtt_meta);
     }
 
-    pub fn send_message_bytes(&mut self, tab_id: String, bytes: Vec<u8>, hex_input: String) {
+    pub fn send_message_bytes(
+        &mut self,
+        tab_id: String,
+        bytes: Vec<u8>,
+        hex_input: String,
+        mqtt_meta: Option<MqttPublishMeta>,
+    ) {
         debug!(
             "[send_message_bytes] 开始，tab_id: {}, bytes: {:?}, hex_input: '{}'",
             tab_id, bytes, hex_input
         );
-        self.send_dispatch_with_errors(tab_id, bytes);
+        self.send_dispatch_with_errors(tab_id, bytes, mqtt_meta);
     }
 
     /// 发送一条消息到 tab 的目标(客户端 / 服务端定向 / 服务端广播), 并回传 Sent 簿记事件。
@@ -2884,7 +3261,12 @@ impl NetAssistantApp {
     /// 「目标解析 + try_send 投递 + 造 Sent 消息回传」三步。
     /// 「投递到写通道」与「Sent 消息簿记」必须分两步: 前者是唯一数据通道(网络层负责
     /// 编码 + 结尾追加 + write_all + 计数), 后者走既有 16ms 事件泵(消息列表 + 日志)。
-    fn dispatch_send(&self, tab_id: &str, bytes: Vec<u8>) -> Result<(), SendDispatchError> {
+    fn dispatch_send(
+        &self,
+        tab_id: &str,
+        bytes: Vec<u8>,
+        mqtt_meta: Option<MqttPublishMeta>,
+    ) -> Result<(), SendDispatchError> {
         let tab_state = self
             .connection_tabs
             .get(tab_id)
@@ -2906,15 +3288,22 @@ impl NetAssistantApp {
                 .client_write_senders
                 .get(tab_id)
                 .ok_or(SendDispatchError::ClientWriteUnavailable)?;
-            // `inherit` = 由连接级 trailer 设置决定是否追加结尾（与升级前一致）
-            if write_sender
-                .try_send(WireMessage::inherit(bytes.clone()))
-                .is_err()
-            {
+            // `inherit` = 由连接级 trailer 设置决定是否追加结尾（与升级前一致）;
+            // MQTT 发布携带 topic/QoS 元数据, 走 `inherit_mqtt`(不追加 trailer, 规划 D-2/D-7)
+            let wire = match &mqtt_meta {
+                Some(meta) => WireMessage::inherit_mqtt(bytes.clone(), meta.clone()),
+                None => WireMessage::inherit(bytes.clone()),
+            };
+            if write_sender.try_send(wire).is_err() {
                 return Err(SendDispatchError::SendFailed);
             }
             if let Some(sender) = sender {
-                let message = Message::new(MessageDirection::Sent, bytes, message_type);
+                // MQTT 发布: Sent 消息带上 topic/retain, 供消息列表 topic pill 展示
+                let message = Message::new(MessageDirection::Sent, bytes, message_type)
+                    .with_transport(
+                        mqtt_meta.as_ref().map(|m| m.topic.clone()),
+                        mqtt_meta.as_ref().is_some_and(|m| m.retain),
+                    );
                 let _ = sender.try_send(ConnectionEvent::MessageReceived(
                     tab_id.to_string(),
                     message,
@@ -2990,8 +3379,13 @@ impl NetAssistantApp {
     }
 
     /// 发送入口: 投递失败时回传既有错误事件(手动发送 / 周期发送共用)。
-    fn send_dispatch_with_errors(&self, tab_id: String, bytes: Vec<u8>) {
-        match self.dispatch_send(&tab_id, bytes) {
+    fn send_dispatch_with_errors(
+        &self,
+        tab_id: String,
+        bytes: Vec<u8>,
+        mqtt_meta: Option<MqttPublishMeta>,
+    ) {
+        match self.dispatch_send(&tab_id, bytes, mqtt_meta) {
             Ok(()) => {}
             Err(SendDispatchError::NoTab) => {
                 error!("[发送] 未找到标签页: {}", tab_id);
@@ -3972,6 +4366,8 @@ impl NetAssistantApp {
                 self.server_clients.remove(&tab_id);
                 self.decoder_control_senders.remove(&tab_id);
                 self.server_decoder_controls.remove(&tab_id);
+                // MQTT 订阅控制通道同样清理(重连后由 MqttControlSenderReady 重新回填)
+                self.mqtt_control_senders.remove(&tab_id);
                 // 断开时暂停该 tab 的全部发送任务(保留任务, 重连后刷新目标再继续)
                 self.pause_tab_send_tasks(
                     &tab_id,
@@ -4065,6 +4461,49 @@ impl NetAssistantApp {
                 }
                 if let Some(map) = self.server_decoder_controls.get_mut(&tab_id) {
                     map.insert(addr, control_sender);
+                }
+            }
+            ConnectionEvent::MqttControlSenderReady(tab_id, control_sender) => {
+                // 标签页已关闭: 丢弃孤儿连接的回填事件, 避免已清理的 map 被重新填满
+                if !self.connection_tabs.contains_key(&tab_id) {
+                    debug!(
+                        "[handle_connection_events] 忽略已关闭标签页的事件: tab_id={}",
+                        tab_id
+                    );
+                    return;
+                }
+                debug!(
+                    "[handle_connection_events] MQTT 订阅控制发送器就绪: {}",
+                    tab_id
+                );
+                self.mqtt_control_senders.insert(tab_id.clone(), control_sender);
+                // 控制通道就绪(首次连接 / 手动重连): 按界面订阅列表重建网络层 active 列表,
+                // 修复「手动重连后 broker 端订阅丢失、界面却仍显示已订阅」的漂移
+                // (规划 D-10 只覆盖 rumqttc 自动重连, 此处补齐手动重连)。
+                if let Some(subs) = self
+                    .connection_tabs
+                    .get(&tab_id)
+                    .map(|t| t.mqtt_subscriptions.clone())
+                {
+                    if let Some(sender) = self.mqtt_control_senders.get(&tab_id) {
+                        for (topic, qos) in subs {
+                            let _ = sender.try_send(MqttCommand::Subscribe { topic, qos });
+                        }
+                    }
+                }
+            }
+            ConnectionEvent::MqttSubscriptionsRestored(tab_id, count) => {
+                // 非终态提示: 仅在状态区显示"重连后已重新发起订阅", 不动连接状态。
+                // 注: 仅表示已向 broker 重发 SUBSCRIBE; SUBACK 返回 0x80 的条目实际被拒,
+                // 但协议上无法与 topic 关联(D-10), 故文案不承诺"已恢复/已订阅成功"。
+                debug!(
+                    "[handle_connection_events] MQTT 重连后已重新发起 {} 个订阅: {}",
+                    count, tab_id
+                );
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state.error_message =
+                        Some(t!("connection_tab.mqtt_subscriptions_restored", count => count).to_string());
+                    cx.notify();
                 }
             }
             ConnectionEvent::ServerClientConnected(tab_id, addr, write_sender) => {

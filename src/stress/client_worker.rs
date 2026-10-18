@@ -178,6 +178,8 @@ pub async fn run_worker(
             )
             .await;
         }
+        // 压测对 MQTT 隐藏（规划 D-8），此分支不可达
+        ConnectionType::Mqtt => {}
     }
 
     debug!("[worker{}] 退出", worker_id);

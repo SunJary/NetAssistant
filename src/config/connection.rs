@@ -1,5 +1,5 @@
 use rust_i18n::t;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 pub enum ConnectionType {
     Tcp,
     Udp,
+    /// MQTT 3.1.1 客户端（仅客户端角色，无服务端；见 plans/plan-mqtt-client.md）
+    Mqtt,
 }
 
 impl fmt::Display for ConnectionType {
@@ -17,6 +19,7 @@ impl fmt::Display for ConnectionType {
         match self {
             ConnectionType::Tcp => write!(f, "TCP"),
             ConnectionType::Udp => write!(f, "UDP"),
+            ConnectionType::Mqtt => write!(f, "MQTT"),
         }
     }
 }
@@ -204,6 +207,108 @@ fn default_message_input_mode() -> String {
     "text".to_string()
 }
 
+/// MQTT QoS（项目内枚举，规避裸 u8 越界/魔法值；serde 以 0/1/2 数字持久化）。
+///
+/// 发送时经 `to_rumqttc` 转换为库枚举，订阅/遗嘱/发布共用（规划 §5.1）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Qos {
+    AtMostOnce = 0,
+    AtLeastOnce = 1,
+    ExactlyOnce = 2,
+}
+
+impl Qos {
+    pub fn to_rumqttc(self) -> rumqttc::QoS {
+        match self {
+            Qos::AtMostOnce => rumqttc::QoS::AtMostOnce,
+            Qos::AtLeastOnce => rumqttc::QoS::AtLeastOnce,
+            Qos::ExactlyOnce => rumqttc::QoS::ExactlyOnce,
+        }
+    }
+}
+
+impl From<Qos> for u8 {
+    fn from(q: Qos) -> u8 {
+        q as u8
+    }
+}
+
+impl TryFrom<u8> for Qos {
+    type Error = u8;
+
+    fn try_from(v: u8) -> Result<Self, u8> {
+        match v {
+            0 => Ok(Qos::AtMostOnce),
+            1 => Ok(Qos::AtLeastOnce),
+            2 => Ok(Qos::ExactlyOnce),
+            other => Err(other),
+        }
+    }
+}
+
+impl Serialize for Qos {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u8(*self as u8)
+    }
+}
+
+impl<'de> Deserialize<'de> for Qos {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let v = u8::deserialize(deserializer)?;
+        Qos::try_from(v).map_err(|_| serde::de::Error::custom(format!("invalid QoS: {v}")))
+    }
+}
+
+fn default_keep_alive() -> u16 {
+    60
+}
+
+/// 生成 MQTT Client ID（规划 §5.1: `netassist-{uuid 前 8 位}`）
+pub fn generate_mqtt_client_id() -> String {
+    format!("netassist-{}", &uuid::Uuid::new_v4().simple().to_string()[..8])
+}
+
+/// MQTT 遗嘱消息设置（首版 payload 仅文本；规划 §5.1）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WillSettings {
+    pub topic: String,
+    pub payload: String,
+    pub qos: Qos,
+    pub retain: bool,
+}
+
+/// MQTT 专属设置（`ClientConfig` 内嵌，仅 protocol == Mqtt 时有意义；规划 D-4）。
+///
+/// 向后兼容：旧配置文件无 `mqtt` 字段 → 反序列化为 `None`，既有 TCP/UDP 配置不受影响。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MqttSettings {
+    pub client_id: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default = "default_keep_alive")]
+    pub keep_alive_secs: u16,
+    #[serde(default = "default_true")]
+    pub clean_session: bool,
+    #[serde(default)]
+    pub will: Option<WillSettings>,
+}
+
+impl Default for MqttSettings {
+    fn default() -> Self {
+        Self {
+            client_id: generate_mqtt_client_id(),
+            username: None,
+            password: None,
+            keep_alive_secs: default_keep_alive(),
+            clean_session: true,
+            will: None,
+        }
+    }
+}
+
 /// 客户端连接配置
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfig {
@@ -223,9 +328,12 @@ pub struct ClientConfig {
     /// 本地绑定端口(None=系统自动分配临时端口)
     #[serde(default)]
     pub local_port: Option<u16>,
-    /// 发送结尾追加字符(默认不追加)
+    /// 发送结尾追加字符（默认不追加；MQTT 协议下访问器强制视为 None，见规划 D-7）
     #[serde(default)]
     pub send_trailer: TrailerKind,
+    /// MQTT 专属设置（仅 protocol == Mqtt 时有意义；旧配置无此字段 → None）
+    #[serde(default)]
+    pub mqtt: Option<MqttSettings>,
 }
 
 impl Default for ClientConfig {
@@ -240,6 +348,7 @@ impl Default for ClientConfig {
             local_address: None,
             local_port: None,
             send_trailer: TrailerKind::None,
+            mqtt: None,
         }
     }
 }
@@ -322,7 +431,12 @@ impl ConnectionConfig {
     }
 
     /// 获取连接级发送结尾追加字符配置
+    ///
+    /// MQTT 载荷不可污染（规划 D-7）：无论持久化值为何，MQTT 连接一律视为不追加。
     pub fn send_trailer(&self) -> TrailerKind {
+        if self.protocol() == ConnectionType::Mqtt {
+            return TrailerKind::None;
+        }
         match self {
             ConnectionConfig::Client(config) => config.send_trailer,
             ConnectionConfig::Server(config) => config.send_trailer,
@@ -367,6 +481,7 @@ impl ConnectionConfig {
             local_address: None,
             local_port: None,
             send_trailer: TrailerKind::None,
+            mqtt: None,
         })
     }
 
@@ -387,8 +502,99 @@ impl ConnectionConfig {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClientConfig, ConnectionConfig, ConnectionType, ServerConfig, TrailerKind, apply_trailer,
+        ClientConfig, ConnectionConfig, ConnectionType, MqttSettings, Qos, ServerConfig,
+        TrailerKind, WillSettings, apply_trailer,
     };
+
+    #[test]
+    fn mqtt_settings_serde_roundtrip() {
+        let settings = MqttSettings {
+            client_id: "netassist-test01".to_string(),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
+            keep_alive_secs: 30,
+            clean_session: false,
+            will: Some(WillSettings {
+                topic: "device/1/status".to_string(),
+                payload: "offline".to_string(),
+                qos: Qos::AtLeastOnce,
+                retain: true,
+            }),
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let back: MqttSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, settings);
+    }
+
+    #[test]
+    fn mqtt_settings_defaults() {
+        let settings = MqttSettings::default();
+        assert!(settings.client_id.starts_with("netassist-"));
+        assert_eq!(settings.client_id.len(), "netassist-".len() + 8);
+        assert_eq!(settings.keep_alive_secs, 60);
+        assert!(settings.clean_session);
+        assert!(settings.username.is_none());
+        assert!(settings.password.is_none());
+        assert!(settings.will.is_none());
+    }
+
+    #[test]
+    fn qos_serde_numeric_roundtrip() {
+        for (qos, json) in [
+            (Qos::AtMostOnce, "0"),
+            (Qos::AtLeastOnce, "1"),
+            (Qos::ExactlyOnce, "2"),
+        ] {
+            assert_eq!(serde_json::to_string(&qos).unwrap(), json);
+            let back: Qos = serde_json::from_str(json).unwrap();
+            assert_eq!(back, qos);
+        }
+        // 非法值拒绝
+        assert!(serde_json::from_str::<Qos>("3").is_err());
+    }
+
+    #[test]
+    fn client_config_backward_compatible_without_mqtt_field() {
+        // 旧版配置 JSON 无 mqtt 字段 → None，既有 TCP/UDP 配置不受影响
+        let legacy = r#"{
+            "id": "legacy-id",
+            "protocol": "tcp",
+            "server_address": "127.0.0.1",
+            "server_port": 8080
+        }"#;
+        let config: ClientConfig = serde_json::from_str(legacy).unwrap();
+        assert_eq!(config.protocol, ConnectionType::Tcp);
+        assert!(config.mqtt.is_none());
+    }
+
+    #[test]
+    fn mqtt_client_config_serialization_roundtrip() {
+        let mut config = ClientConfig::default();
+        config.protocol = ConnectionType::Mqtt;
+        config.server_address = "broker.emqx.io".to_string();
+        config.server_port = 1883;
+        config.mqtt = Some(MqttSettings::default());
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"protocol\":\"mqtt\""));
+        let back: ClientConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, config);
+    }
+
+    #[test]
+    fn mqtt_trailer_forced_to_none() {
+        // 规划 D-7：MQTT 载荷不可污染 —— 即使持久化值被手改为 Lf，访问器也强制 None；
+        // TCP/UDP 行为不变
+        let mut mqtt_config = ClientConfig::default();
+        mqtt_config.protocol = ConnectionType::Mqtt;
+        mqtt_config.send_trailer = TrailerKind::Lf;
+        let mqtt_wrapper = ConnectionConfig::Client(mqtt_config);
+        assert_eq!(mqtt_wrapper.send_trailer(), TrailerKind::None);
+
+        let mut tcp_config = ClientConfig::default();
+        tcp_config.send_trailer = TrailerKind::Lf;
+        let tcp_wrapper = ConnectionConfig::Client(tcp_config);
+        assert_eq!(tcp_wrapper.send_trailer(), TrailerKind::Lf);
+    }
 
     #[test]
     /// 测试旧版配置 JSON(无 local_address/local_port 字段)反序列化后为 None,
