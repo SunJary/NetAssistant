@@ -297,7 +297,7 @@ pub struct NetAssistantApp {
 
 impl NetAssistantApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let storage = ConfigStorage::new().expect("无法创建配置存储");
+        let storage = ConfigStorage::new();
 
         // 使用window创建InputState实体
         let host_input = cx.new(|cx| InputState::new(window, cx));
