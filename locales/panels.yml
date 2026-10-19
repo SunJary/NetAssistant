@@ -676,6 +676,9 @@ send_task:
   reason_disconnected:
     zh-CN: 连接已断开
     en: Connection lost
+  reason_mqtt_topic_empty:
+    zh-CN: 发布主题为空，已暂停
+    en: Publish topic is empty; paused
   title:
     zh-CN: 发送任务
     en: Send Tasks
@@ -812,3 +815,17 @@ mqtt_net:
   unsubscribe_failed:
     zh-CN: "取消订阅失败: %{topic}"
     en: "Unsubscribe failed: %{topic}"
+  missing_topic_meta:
+    zh-CN: MQTT 发布缺少主题，消息已忽略
+    en: MQTT publish is missing a topic; message dropped
+
+mqtt_history:
+  tooltip:
+    zh-CN: 最近发送过的主题
+    en: Recently sent topics
+  empty:
+    zh-CN: 暂无历史记录
+    en: No history yet
+  clear:
+    zh-CN: 清空历史
+    en: Clear History

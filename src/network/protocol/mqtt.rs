@@ -29,7 +29,7 @@ use smol::channel::{Sender, unbounded as smol_unbounded};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -44,6 +44,13 @@ const BATCH_MAX: usize = 64;
 /// 正常情况下任务 B 入队的 Disconnect 请求会在毫秒级被 poll 消费；该超时只用于
 /// 兜底异常路径（broker 不回包、请求分支因 inflight 满/碰撞被禁用），避免退出挂死。
 const DISCONNECT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// `disconnect()` 等待任务 A（事件循环）退出的上限（规划 D-A/F1）。
+///
+/// 取 `DISCONNECT_DRAIN_TIMEOUT`（2s 排空上限）+ 余量：`manager` 在建新连接前会
+/// `await` 旧实例的 `disconnect()`，任务 A 退出后其 `Disconnected` 必然先于新连接的
+/// `ClientWriteSenderReady` 入队，从而避免旧连接的事件误删新连接的写通道。
+const DISCONNECT_WAIT_TASK_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// broker 端点解析失败时的哨兵地址（规划 §6.3①：规则引擎 `source` 用哨兵兜底）
 fn broker_endpoint_sentinel() -> SocketAddr {
@@ -152,6 +159,10 @@ pub struct MqttClient {
     /// 回复规则共享状态（客户端 1:1 构造注入，决策 D-12）
     reply_rules: Arc<ReplyRulesStore>,
     cancel_token: CancellationToken,
+    /// 任务 A（事件循环）的句柄：`disconnect()` 等待其退出，确保它发出的
+    /// `Disconnected` 先于新连接的 `ClientWriteSenderReady` 入队（F1）。
+    /// 用 `Arc<Mutex>` 以便 `connect()` 的 `'static` future 回填句柄。
+    read_task: Arc<StdMutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl MqttClient {
@@ -170,6 +181,7 @@ impl MqttClient {
             net_counters,
             reply_rules,
             cancel_token: CancellationToken::new(),
+            read_task: Arc::new(StdMutex::new(None)),
         }
     }
 }
@@ -184,6 +196,8 @@ impl NetworkConnection for MqttClient {
         let net_counters = self.net_counters.clone();
         let reply_rules = self.reply_rules.clone();
         let cancel = self.cancel_token.clone();
+        // 任务 A 句柄槽位：spawn 后回填，供 disconnect() 有界等待（F1）
+        let read_task_slot = self.read_task.clone();
 
         Pin::from(Box::new(async move {
             let broker_endpoint =
@@ -238,9 +252,12 @@ impl NetworkConnection for MqttClient {
             let read_rules = reply_rules.clone();
             // 读路径专用应答发送器：自动回复投递回写通道（D-3）
             let reply_sender = write_tx.clone();
-            tokio::spawn(async move {
+            let read_handle = tokio::spawn(async move {
                 let mut batch = ReceivedBatch::with_capacity(BATCH_MAX);
                 let mut connected_once = false;
+                // 终态错误路径标记（F2/D-B）：已发 `Error` 的路径退出时**不再补发**
+                // `Disconnected`，避免把 `ConnectionStatus::Error` 覆盖成「已断开」
+                let mut terminal_error = false;
                 // 取消后**不立即退出**，而是进入「排空」态继续 poll，直到观察到
                 // `Outgoing::Disconnect`（该事件返回时报文已 write+flush 到网络）或超时。
                 //
@@ -342,6 +359,8 @@ impl NetworkConnection for MqttClient {
                                     ))
                                     .await;
                             }
+                            // 终态: broker 主动断开会话, 状态停在 Error, 退出时不再补发 Disconnected
+                            terminal_error = true;
                             read_cancel.cancel();
                             break;
                         }
@@ -372,6 +391,8 @@ impl NetworkConnection for MqttClient {
                                         ))
                                         .await;
                                 }
+                                // 终态: 首连失败, 状态停在 Error, 退出时不再补发 Disconnected
+                                terminal_error = true;
                                 read_cancel.cancel();
                                 break;
                             }
@@ -393,13 +414,20 @@ impl NetworkConnection for MqttClient {
                     }
                 }
                 flush_batch(&read_event_sender, &read_config_id, &mut batch);
-                if let Some(s) = &read_event_sender {
-                    let _ = s
-                        .send(ConnectionEvent::Disconnected(read_config_id.clone()))
-                        .await;
+                // 终态错误路径已发 Error(状态停在 Error), 不再补发 Disconnected 覆盖它(F2/D-B)
+                if !terminal_error {
+                    if let Some(s) = &read_event_sender {
+                        let _ = s
+                            .send(ConnectionEvent::Disconnected(read_config_id.clone()))
+                            .await;
+                    }
                 }
                 info!("MQTT 事件循环任务退出");
             });
+            // 回填任务 A 句柄: disconnect() 据此有界等待其退出, 保证事件 FIFO 顺序（F1）
+            if let Ok(mut slot) = read_task_slot.lock() {
+                *slot = Some(read_handle);
+            }
 
             // ---- 任务 B：客户端操作（唯一持有 AsyncClient；与 poll 任务分离避免自死锁）----
             let write_cancel = cancel.clone();
@@ -563,9 +591,21 @@ impl NetworkConnection for MqttClient {
                                                 ),
                                             }
                                         }
-                                        None => warn!(
-                                            "MQTT 写通道收到缺少 topic/QoS 元数据的数据，已忽略"
-                                        ),
+                                        // 兜底（F3）：正常情况下引擎/手动发送都会带 meta，理论不再命中；
+                                        // 若命中则回一条 Warning 便于观测（避免静默丢弃）
+                                        None => {
+                                            warn!(
+                                                "MQTT 写通道收到缺少 topic/QoS 元数据的数据，已忽略"
+                                            );
+                                            if let Some(s) = &write_event_sender {
+                                                let _ = s
+                                                    .send(ConnectionEvent::Warning(
+                                                        write_config_id.clone(),
+                                                        t!("mqtt_net.missing_topic_meta").to_string(),
+                                                    ))
+                                                    .await;
+                                            }
+                                        }
                                     }
                                 }
                                 Err(_) => {
@@ -587,7 +627,26 @@ impl NetworkConnection for MqttClient {
     ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>> {
         // cancel 驱动退出闭环：任务 B 发 DISCONNECT 后退出 → 任务 A 的 poll 返回错误后退出
         self.cancel_token.cancel();
-        Pin::from(Box::new(async { Ok(()) }))
+        // 取走任务 A 句柄并**有界等待其退出**（F1/D-A）：任务 A 退出后才返回，
+        // 确保它发出的 `Disconnected` 先于新连接的 `ClientWriteSenderReady` 入队，
+        // 避免旧连接的事件误删新连接的写通道。
+        let handle = self
+            .read_task
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take());
+        Pin::from(Box::new(async move {
+            if let Some(handle) = handle {
+                match tokio::time::timeout(DISCONNECT_WAIT_TASK_TIMEOUT, handle).await {
+                    Ok(_) => {}
+                    Err(_) => warn!(
+                        "MQTT 等待事件循环任务退出超时（{}s），继续断开",
+                        DISCONNECT_WAIT_TASK_TIMEOUT.as_secs()
+                    ),
+                }
+            }
+            Ok(())
+        }))
     }
 }
 
@@ -1048,5 +1107,79 @@ mod tests {
             outcome, "ok",
             "客户端断开必须发出 DISCONNECT 报文, 否则 broker 按非优雅断开会发布遗嘱消息"
         );
+    }
+
+    /// F2 / D-B: 首次连接失败属**终态** → 只发一次 `Error`, **不再补发** `Disconnected`,
+    /// 以避免把 `ConnectionStatus::Error` 覆盖成「已断开」。
+    ///
+    /// 无需真实 broker: 取一个"无人监听"的端口(绑定后立即释放)即可让首连被拒。
+    #[tokio::test]
+    async fn test_first_connect_failure_only_emits_error() {
+        use crate::network::events::ConnectionEvent as Ev;
+        use std::time::Duration;
+
+        // 取得一个当前无人监听的端口: bind 127.0.0.1:0 拿到端口后立即 drop 释放 → 连接将被拒
+        let dead_port = {
+            let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            l.local_addr().unwrap().port()
+        };
+
+        let config = ClientConfig {
+            protocol: ConnectionType::Mqtt,
+            server_address: "127.0.0.1".to_string(),
+            server_port: dead_port,
+            mqtt: Some(MqttSettings {
+                client_id: "netassist-test".to_string(),
+                ..MqttSettings::default()
+            }),
+            ..Default::default()
+        };
+
+        let (tx_events, rx_events) = smol_unbounded::<ConnectionEvent>();
+        let mut manager = crate::network::connection::manager::NetworkConnectionManager::new();
+        manager
+            .create_and_connect_client_with_counters(
+                &config,
+                Some(tx_events),
+                None,
+                crate::config::connection::TrailerSetting::default(),
+            )
+            .await
+            .expect("MQTT 客户端应启动成功(连接成败经事件异步上报)");
+
+        // 阶段一: 等首个 Error(连接被建立前即被拒, 应很快到达)
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut saw_error = false;
+        while !saw_error {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(remaining, rx_events.recv()).await {
+                Ok(Ok(Ev::Error(id, _))) => {
+                    assert_eq!(id, config.id);
+                    saw_error = true;
+                }
+                Ok(Ok(_)) => continue,
+                Ok(Err(_)) | Err(_) => break, // 通道关闭 / 超时
+            }
+        }
+        assert!(saw_error, "首连失败应上报 Error");
+
+        // 阶段二: 再给一个短窗口, 确认其后没有 Disconnected(终态不补发)
+        let grace = tokio::time::Instant::now() + Duration::from_millis(500);
+        let mut disconnected = 0usize;
+        loop {
+            let remaining = grace.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, rx_events.recv()).await {
+                Ok(Ok(Ev::Disconnected(id))) => {
+                    assert_eq!(id, config.id);
+                    disconnected += 1;
+                }
+                Ok(Ok(_)) => continue,
+                Ok(Err(_)) | Err(_) => break,
+            }
+        }
+        assert_eq!(disconnected, 0, "终态错误不应再补发 Disconnected(状态停在 Error)");
     }
 }

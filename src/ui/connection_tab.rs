@@ -8,6 +8,7 @@ use crate::ui::dialog::{
     open_decoder_selection_dialog, open_favorite_remark_dialog, open_reply_rules_dialog,
 };
 use gpui_kit::component::ElementExt as _;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_kit::component::{
     Icon, IconName, Size, Theme,
@@ -26,7 +27,7 @@ use rust_i18n::t;
 use std::collections::{HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 
@@ -34,11 +35,13 @@ use crate::app::NetAssistantApp;
 use crate::config::connection::{
     ConnectionConfig, ConnectionStatus, ConnectionType, Qos, TrailerKind, TrailerSetting,
 };
+use crate::config::storage::MqttTopicHistoryEntry;
 use crate::custom_icons::CustomIconName;
 use crate::log_writer::LogWriter;
 use crate::message::{
     DEFAULT_KEEP_LAST, Message, MessageDirection, MessageDisplayMode, MessageListState,
 };
+use crate::network::events::MqttPublishMeta;
 use crate::send_task::{IntervalHandle, PeriodicSource, SendTaskEntry};
 use crate::stress::engine::StressTestEngine;
 use crate::stress::{StressReport, StressStats, StressTestConfig, TabViewMode};
@@ -193,12 +196,20 @@ pub struct ConnectionTabState {
     pub mqtt_subscriptions: Vec<(String, Qos)>,
     /// 发送区：发布 topic 输入（publish 不允许通配符）
     pub mqtt_publish_topic_input: Entity<InputState>,
+    /// 每 tab 共享的 MQTT 发布元数据 cell（规划 D-C/D-D）：与 `periodic_source.mqtt_meta`
+    /// 为同一 Arc，是该 tab 全部发送入口（手动/周期/定时/逐行）topic/QoS/retain 的唯一真源；
+    /// 非 MQTT tab 恒 None（引擎 `dispatch` 以「cell 是否为 Some」区分是否需要 meta）
+    pub mqtt_publish_meta_cell: Arc<RwLock<Option<MqttPublishMeta>>>,
     /// 发送区：发布 QoS
     pub mqtt_publish_qos: Qos,
     /// 发送区：发布 retain 标记
     pub mqtt_publish_retain: bool,
     /// 发送块内错误红字（topic 为空/含通配符等）
     pub mqtt_publish_error: Option<String>,
+    /// 发布 topic 历史下拉浮层是否展开（仅 MQTT 发布行）
+    pub mqtt_history_open: bool,
+    /// 发布 topic 历史下拉按钮的窗口坐标（on_prepaint 更新，供浮层锚定）
+    pub mqtt_history_button_bounds: Option<Bounds<Pixels>>,
 }
 
 impl ConnectionTabState {
@@ -213,11 +224,16 @@ impl ConnectionTabState {
         let send_trailer = connection_config.send_trailer();
         // 手动发送与周期发送共享的递增序号
         let message_seq = Arc::new(AtomicU64::new(0));
+        // 每 tab 共享的 MQTT 发布元数据 cell(规划 D-C): 创建一次 Arc, 同时交给
+        // PeriodicSource 与本 tab 自身字段(同一实例), 成为全部发送入口的唯一真源
+        let mqtt_publish_meta_cell: Arc<RwLock<Option<MqttPublishMeta>>> =
+            Arc::new(RwLock::new(None));
         // 周期发送的实时载荷: 初始为空, 内容/模式由发送框订阅实时写入
         let periodic_source = Arc::new(PeriodicSource::new(
             message_seq.clone(),
             String::new(),
             message_input_mode == "hex",
+            mqtt_publish_meta_cell.clone(),
         ));
         Self {
             connection_config,
@@ -344,9 +360,12 @@ impl ConnectionTabState {
                 InputState::new(window, cx)
                     .placeholder(t!("connection_tab.mqtt_publish_topic_placeholder").to_string())
             }),
+            mqtt_publish_meta_cell,
             mqtt_publish_qos: Qos::AtMostOnce,
             mqtt_publish_retain: false,
             mqtt_publish_error: None,
+            mqtt_history_open: false,
+            mqtt_history_button_bounds: None,
         }
     }
 
@@ -617,6 +636,7 @@ impl<'a> ConnectionTab<'a> {
         // 浮层先于根节点构建: 消费 self 前取好 target 与按钮坐标
         let variable_picker = self.render_variable_picker_overlay(&theme, cx);
         let send_task_overlay = self.render_send_task_overlay(&theme, cx);
+        let mqtt_history_overlay = self.render_mqtt_history_overlay(&theme, cx);
 
         div()
             .flex()
@@ -631,6 +651,8 @@ impl<'a> ConnectionTab<'a> {
             .children(variable_picker)
             // 发送任务面板: 同样挂在根节点, 锚定任务图标按钮
             .children(send_task_overlay)
+            // MQTT 发布 topic 历史下拉: 挂在根节点, 锚定发布行下拉按钮
+            .children(mqtt_history_overlay)
     }
 
     /// 渲染发送任务面板浮层(展开时才返回 Some)
@@ -644,6 +666,185 @@ impl<'a> ConnectionTab<'a> {
             return None;
         }
         SendTaskPanel::new(self.tab_id.clone(), self.tab_state).render_overlay(theme, cx)
+    }
+
+    /// 渲染 MQTT 发布 topic 历史下拉浮层(展开时才返回 Some)。
+    ///
+    /// 列表 = 当前连接最近成功手动发送过的 topic+QoS+retain(按 connection_id 隔离);
+    /// 选中回填输入框/QoS/retain 与共享 cell(不自动发送); 底部「清空历史」仅清当前连接。
+    fn render_mqtt_history_overlay(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Option<AnyElement> {
+        // 仅调试视图的 MQTT 连接有发布行; 切走或非 MQTT 时不渲染锚在旧坐标的浮层
+        if self.tab_state.view_mode != TabViewMode::Debug
+            || self.tab_state.connection_config.protocol() != ConnectionType::Mqtt
+        {
+            return None;
+        }
+        if !self.tab_state.mqtt_history_open {
+            return None;
+        }
+        let bounds = self.tab_state.mqtt_history_button_bounds?;
+
+        let tab_id = self.tab_id.clone();
+        let history: Vec<MqttTopicHistoryEntry> =
+            self.app.storage.mqtt_topic_history(&tab_id).to_vec();
+
+        // 点击面板外: 收起
+        let dismiss_entity = cx.entity().clone();
+        let dismiss_tab_id = tab_id.clone();
+        let dismiss_handler: Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static> =
+            Box::new(move |_event, _window, cx| {
+                dismiss_entity.update(cx, |app, cx| {
+                    if let Some(tab) = app.connection_tabs.get_mut(&dismiss_tab_id) {
+                        tab.mqtt_history_open = false;
+                    }
+                    cx.notify();
+                });
+            });
+
+        // 底部「清空历史」: 仅清当前连接
+        let clear_entity = cx.entity().clone();
+        let clear_tab_id = tab_id.clone();
+        let clear_button = div()
+            .flex_shrink_0()
+            .px_3()
+            .py_2()
+            .border_t_1()
+            .border_color(theme.border)
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.border))
+            .text_xs()
+            .text_color(theme.danger)
+            .child(t!("mqtt_history.clear").to_string())
+            .on_mouse_down(
+                MouseButton::Left,
+                move |_event, _window, cx: &mut App| {
+                    clear_entity.update(cx, |app, cx| {
+                        app.clear_mqtt_topic_history_for_tab(&clear_tab_id, cx);
+                    });
+                },
+            );
+
+        // 列表项: topic(等宽省略) + QoS 徽标 + retain 标记
+        let rows: Vec<AnyElement> = history
+            .iter()
+            .map(|entry| {
+                let entry = entry.clone();
+                let pick_entity = cx.entity().clone();
+                let pick_tab_id = tab_id.clone();
+                let qos = Qos::try_from(entry.qos).unwrap_or(Qos::AtMostOnce);
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .px_3()
+                    .py_1p5()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(theme.border))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_xs()
+                            .font_family("JetBrains Mono")
+                            .text_color(theme.foreground)
+                            .text_ellipsis()
+                            .child(entry.topic.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .px_1p5()
+                                    .py_0p5()
+                                    .rounded_md()
+                                    .bg(theme.secondary)
+                                    .text_color(theme.secondary_foreground)
+                                    .text_xs()
+                                    .child(qos_label(qos)),
+                            )
+                            .when(entry.retain, |d| {
+                                d.child(
+                                    div()
+                                        .px_1p5()
+                                        .py_0p5()
+                                        .rounded_md()
+                                        .bg(theme.secondary)
+                                        .text_color(theme.secondary_foreground)
+                                        .text_xs()
+                                        .child("R"),
+                                )
+                            }),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        move |_event, window: &mut Window, cx: &mut App| {
+                            let entry = entry.clone();
+                            pick_entity.update(cx, |app, cx| {
+                                app.apply_mqtt_topic_history(&pick_tab_id, entry, window, cx);
+                            });
+                        },
+                    )
+                    .into_any_element()
+            })
+            .collect();
+
+        let body: AnyElement = if history.is_empty() {
+            div()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .p_6()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(t!("mqtt_history.empty").to_string())
+                .into_any_element()
+        } else {
+            div()
+                .flex_1()
+                .min_h_0()
+                .overflow_hidden()
+                .child(
+                    div()
+                        .size_full()
+                        .overflow_y_scrollbar()
+                        .children(rows),
+                )
+                .into_any_element()
+        };
+
+        let popup = anchored()
+            .anchor(Anchor::TopRight)
+            .position(bounds.bottom_right())
+            .offset(point(px(0.0), px(4.0)))
+            .snap_to_window_with_margin(px(8.0))
+            .child(
+                div()
+                    .occlude()
+                    .w(px(320.0))
+                    .max_h(px(360.0))
+                    .flex()
+                    .flex_col()
+                    .bg(theme.background)
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded_md()
+                    .shadow_lg()
+                    .overflow_hidden()
+                    .on_mouse_down_out(dismiss_handler)
+                    .child(body)
+                    .child(clear_button),
+            );
+
+        Some(deferred(popup).with_priority(gpui_kit::base::POPUP_PRIORITY).into_any_element())
     }
 
     /// 渲染「插入变量」浮层(消息区与自动回复区共用一个, 按 target 选择锚点与插入目标)
@@ -1529,6 +1730,17 @@ impl<'a> ConnectionTab<'a> {
                     entity.update(cx, |app, cx| {
                         if let Some(tab) = app.connection_tabs.get_mut(&tab_id) {
                             tab.mqtt_publish_retain = checked;
+                            // D-G: retain 无中间态, 即时写共享 cell(topic 取输入框当前值)
+                            let topic =
+                                tab.mqtt_publish_topic_input.read(cx).value().trim().to_string();
+                            let meta = Some(MqttPublishMeta {
+                                topic,
+                                qos: tab.mqtt_publish_qos,
+                                retain: checked,
+                            });
+                            if let Ok(mut m) = tab.mqtt_publish_meta_cell.write() {
+                                *m = meta;
+                            }
                         }
                         cx.notify();
                     });
@@ -1545,9 +1757,64 @@ impl<'a> ConnectionTab<'a> {
                     .items_center()
                     .gap_2()
                     .child(
-                        div().flex_1().min_w_0().child(
-                            Input::new(&self.tab_state.mqtt_publish_topic_input).cleanable(true),
-                        ),
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                div().flex_1().min_w_0().child(
+                                    Input::new(&self.tab_state.mqtt_publish_topic_input)
+                                        .cleanable(true),
+                                ),
+                            )
+                            // 发布 topic 历史下拉: 切换浮层显隐, on_prepaint 追踪坐标供浮层锚定
+                            .child({
+                                let prepaint_entity = cx.entity().clone();
+                                let prepaint_tab_id = tab_id.clone();
+                                let prepaint_handler: Box<
+                                    dyn Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static,
+                                > = Box::new(move |bounds, _window, cx| {
+                                    prepaint_entity.update(cx, |app, _| {
+                                        if let Some(tab) =
+                                            app.connection_tabs.get_mut(&prepaint_tab_id)
+                                        {
+                                            tab.mqtt_history_button_bounds = Some(bounds);
+                                        }
+                                    });
+                                });
+                                let toggle_tab_id = tab_id.clone();
+                                div()
+                                    // on_prepaint 需挂在 Div 上, 必须在 .id()/.tooltip() 之前调用
+                                    .on_prepaint(prepaint_handler)
+                                    .id("mqtt-topic-history-btn")
+                                    .flex_shrink_0()
+                                    .px_1p5()
+                                    .py_1()
+                                    .rounded_md()
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.secondary_hover))
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new(
+                                            t!("mqtt_history.tooltip").to_string(),
+                                        )
+                                        .build(window, cx)
+                                    })
+                                    .on_mouse_down(MouseButton::Left, cx.listener(
+                                        move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                            if let Some(tab) = app.connection_tabs.get_mut(&toggle_tab_id) {
+                                                tab.mqtt_history_open = !tab.mqtt_history_open;
+                                            }
+                                            cx.notify();
+                                        },
+                                    ))
+                                    .child(
+                                        Icon::new(IconName::ChevronDown)
+                                            .size(px(14.0))
+                                            .text_color(theme.muted_foreground),
+                                    )
+                            }),
                     )
                     .child(qos_chips)
                     .child(retain_toggle),
@@ -3021,12 +3288,13 @@ impl<'a> ConnectionTab<'a> {
                                     )
                                     .child(Icon::new(IconName::ChevronDown).size(px(10.0)))
                             })
-                            // 发送任务: 图标按钮(状态色 + 角标) + 逐行发送任务面板
+                            })
+                            // 发送任务: 图标按钮(状态色 + 角标) + 逐行发送任务面板。
+                            // MQTT 也放开(规划 D-C): 发布 topic/QoS/retain 由每 tab 共享 cell 兜底补齐
                             .child(
                                 SendTaskPanel::new(tab_id.clone(), self.tab_state)
                                     .render_button(&theme, cx),
-                            )
-                            }),
+                            ),
                     )
                     .child(
                         div()
@@ -3148,6 +3416,21 @@ fn render_mqtt_qos_chips(
                             if let Some(tab) = app.connection_tabs.get_mut(&tab_id_owned) {
                                 if for_publish {
                                     tab.mqtt_publish_qos = qos;
+                                    // D-G: QoS 无中间态, 即时写共享 cell(topic 取输入框当前值)
+                                    let topic = tab
+                                        .mqtt_publish_topic_input
+                                        .read(cx)
+                                        .value()
+                                        .trim()
+                                        .to_string();
+                                    let meta = Some(MqttPublishMeta {
+                                        topic,
+                                        qos,
+                                        retain: tab.mqtt_publish_retain,
+                                    });
+                                    if let Ok(mut m) = tab.mqtt_publish_meta_cell.write() {
+                                        *m = meta;
+                                    }
                                 } else {
                                     tab.mqtt_sub_qos = qos;
                                 }

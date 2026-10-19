@@ -27,6 +27,17 @@ const PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(16);
 /// 进度上报的最大累积条数(节流, 防止高频任务挤占事件通道)
 const PROGRESS_MAX_BATCH: u32 = 64;
 
+/// 单步投递结果(规划 D-I: 由 bool 扩为三态, 便于区分「暂停原因」)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchOutcome {
+    /// 已投递并记账
+    Delivered,
+    /// 目标不可用(连接断开 / 无可用客户端)
+    TargetGone,
+    /// MQTT 发布但 topic 为空
+    MqttMetaMissing,
+}
+
 /// 发送任务引擎句柄(启停包装)。
 pub struct SendTaskEngine {
     /// App 可随时 set_target 刷新(重连 / 客户端变动)
@@ -40,12 +51,17 @@ pub struct SendTaskEngine {
 
 impl SendTaskEngine {
     /// 启动引擎(在 tokio runtime 上下文内调用)。
+    ///
+    /// `meta_cell` 为本 tab 共享的 MQTT 发布元数据 cell(规划 D-C): 与
+    /// `ConnectionTabState.mqtt_publish_meta_cell` / `PeriodicSource.mqtt_meta`
+    /// 为同一实例, 是全部发送入口 topic/QoS/retain 的唯一真源; 非 MQTT tab 恒 None。
     pub fn start(
         config: Arc<SendTaskConfig>,
         tab_id: String,
         target: TaskTarget,
         events: Sender<ConnectionEvent>,
         seq: Arc<AtomicU64>,
+        meta_cell: Arc<RwLock<Option<MqttPublishMeta>>>,
     ) -> Self {
         let target = Arc::new(RwLock::new(target));
         let cancel = CancellationToken::new();
@@ -59,6 +75,7 @@ impl SendTaskEngine {
             target: target.clone(),
             events,
             seq,
+            meta_cell,
             cancel: cancel.clone(),
             pause: pause.clone(),
             pause_reason: pause_reason.clone(),
@@ -143,6 +160,8 @@ struct Runner {
     target: Arc<RwLock<TaskTarget>>,
     events: Sender<ConnectionEvent>,
     seq: Arc<AtomicU64>,
+    /// 本 tab 共享的 MQTT 发布元数据 cell(规划 D-C); 非 MQTT 恒 None
+    meta_cell: Arc<RwLock<Option<MqttPublishMeta>>>,
     cancel: CancellationToken,
     pause: Arc<AtomicBool>,
     pause_reason: Arc<StdMutex<Option<String>>>,
@@ -197,10 +216,19 @@ impl Runner {
                 } else {
                     MessageType::Text
                 };
-                if self.dispatch(&step.bytes, message_type, step.mqtt_meta.as_ref()) {
+                match self.dispatch(&step.bytes, message_type, step.mqtt_meta.as_ref()) {
+                    // 正常投递: 记账 + 推进进度
+                    DispatchOutcome::Delivered => {}
                     // 客户端写通道断开: 暂停并保留任务(不推进 idx, 恢复后重试本条)
-                    self.set_paused_disconnected();
-                    continue;
+                    DispatchOutcome::TargetGone => {
+                        self.set_paused(t!("send_task.reason_disconnected").to_string());
+                        continue;
+                    }
+                    // MQTT 发布但 topic 为空: 暂停并保留(空 topic 发布必失败, 规划 D-I)
+                    DispatchOutcome::MqttMetaMissing => {
+                        self.set_paused(t!("send_task.reason_mqtt_topic_empty").to_string());
+                        continue;
+                    }
                 }
                 self.sent_items += 1;
                 self.since_report += 1;
@@ -276,9 +304,13 @@ impl Runner {
 
     /// 投递一条消息: ① 直连写通道 ② 回传 Sent 簿记事件。
     ///
-    /// 返回 `true` 表示目标已不可用(应暂停并保留任务):
-    /// - 客户端: 写通道 `try_send` 失败(连接已断开)
-    /// - 服务端: 客户端列表为空(App 推「空目标」表示已无可用客户端)
+    /// 返回 `DispatchOutcome`(规划 D-I):
+    /// - `Delivered`: 已投递并记账(调用方推进进度)
+    /// - `TargetGone`: 目标不可用(客户端写通道断开 / 服务端无可用客户端) → 暂停保留
+    /// - `MqttMetaMissing`: MQTT 发布但解析出的 topic 为空 → 暂停保留
+    ///
+    /// MQTT 元数据解析: **本步自带(周期发送)优先, 否则取本 tab 共享 cell 兜底**
+    /// (规划 D-C): 使 `SendTimed`/`SendByLines` 也能带上发送区当前 topic/QoS/retain。
     ///
     /// 服务端非空列表中个别客户端发送失败只记警告, 不影响整批(由既有
     /// `ServerClientDisconnected` 事件在下一次快照刷新时剔除)。
@@ -286,17 +318,29 @@ impl Runner {
         &self,
         bytes: &[u8],
         message_type: MessageType,
-        mqtt_meta: Option<&MqttPublishMeta>,
-    ) -> bool {
-        let (delivered, disconnected) = {
+        step_meta: Option<&MqttPublishMeta>,
+    ) -> DispatchOutcome {
+        // 解析本步的 MQTT 元数据: 步内自带(周期发送)优先, 否则读共享 cell 兜底
+        let meta = step_meta
+            .cloned()
+            .or_else(|| self.meta_cell.read().ok().and_then(|m| m.clone()));
+
+        // 空 topic: MQTT 发布必失败(rumqttc 静默丢弃) → 暂停并给可见原因(规划 D-I)
+        if let Some(m) = &meta {
+            if m.topic.trim().is_empty() {
+                return DispatchOutcome::MqttMetaMissing;
+            }
+        }
+
+        let (delivered, target_gone) = {
             let target = match self.target.read() {
                 Ok(t) => t,
-                Err(_) => return false,
+                Err(_) => return DispatchOutcome::TargetGone,
             };
             match &*target {
                 TaskTarget::Client(tx) => {
                     // MQTT 发布必须携带 topic/QoS(规划 D-2): 有元数据走 inherit_mqtt, 否则继承 trailer
-                    let wire = match mqtt_meta {
+                    let wire = match &meta {
                         Some(meta) => WireMessage::inherit_mqtt(bytes.to_vec(), meta.clone()),
                         None => WireMessage::inherit(bytes.to_vec()),
                     };
@@ -327,18 +371,28 @@ impl Runner {
         };
 
         if delivered {
-            let message = Message::new(MessageDirection::Sent, bytes.to_vec(), message_type);
+            // F5: Sent 明细补 topic/retain, 与手动发送 `dispatch_send` 展示口径一致
+            let message = Message::new(MessageDirection::Sent, bytes.to_vec(), message_type)
+                .with_transport(
+                    meta.as_ref().map(|m| m.topic.clone()),
+                    meta.as_ref().is_some_and(|m| m.retain),
+                );
             let _ = self.events.try_send(ConnectionEvent::MessageReceived(
                 self.tab_id.clone(),
                 message,
             ));
         }
-        disconnected
+        if target_gone {
+            DispatchOutcome::TargetGone
+        } else {
+            DispatchOutcome::Delivered
+        }
     }
 
-    fn set_paused_disconnected(&self) {
+    /// 暂停任务并附可见原因(泛化: 断线 / 空 topic 等共用, 规划 D-I)。
+    fn set_paused(&self, reason: String) {
         if let Ok(mut r) = self.pause_reason.lock() {
-            *r = Some(t!("send_task.reason_disconnected").to_string());
+            *r = Some(reason);
         }
         self.pause.store(true, Ordering::Relaxed);
         self.wake.notify_one();
@@ -419,6 +473,7 @@ mod tests {
             Arc::new(AtomicU64::new(0)),
             "a".to_string(),
             false,
+            Arc::new(RwLock::new(None)),
         ));
         let interval = IntervalHandle::new(interval_ms);
         let config = Arc::new(SendTaskConfig {
@@ -449,6 +504,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         let mut got = Vec::new();
@@ -489,6 +545,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         let mut count = 0usize;
@@ -524,6 +581,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         // 等第一条
@@ -583,6 +641,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
         engine.stop();
 
@@ -616,6 +675,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         // 关闭接收端 → 写通道 try_send 失败
@@ -650,6 +710,7 @@ mod tests {
             TaskTarget::ServerClients(Vec::new()),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         let deadline = tokio::time::sleep(Duration::from_secs(3));
@@ -690,6 +751,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         let first = timeout(Duration::from_secs(2), write_rx.recv())
@@ -731,6 +793,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         // 60s 间隔: 短时间内不应有发送
@@ -764,6 +827,7 @@ mod tests {
             TaskTarget::Client(write_tx),
             event_tx,
             Arc::new(AtomicU64::new(0)),
+            Arc::new(RwLock::new(None)),
         );
 
         let deadline = tokio::time::sleep(Duration::from_millis(200));
@@ -788,5 +852,181 @@ mod tests {
         }
         assert!(delivered > 0, "hidden 任务仍应发出消息");
         assert!(!saw_progress, "hidden 任务不应上报进度/结束事件");
+    }
+
+    /// F4: 周期发送每步都读共享 cell; 运行中提交新 topic 后下一轮即生效(无需重建任务)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_step_meta_follows_shared_cell() {
+        use crate::config::connection::Qos;
+        let (event_tx, _event_rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
+        let (config, _source) = periodic_config(10);
+        let cell: Arc<RwLock<Option<MqttPublishMeta>>> =
+            Arc::new(RwLock::new(Some(MqttPublishMeta {
+                topic: "t/1".to_string(),
+                qos: Qos::AtMostOnce,
+                retain: false,
+            })));
+
+        let _engine = SendTaskEngine::start(
+            config,
+            "tab".to_string(),
+            TaskTarget::Client(write_tx),
+            event_tx,
+            Arc::new(AtomicU64::new(0)),
+            cell.clone(),
+        );
+
+        // 首轮: 取 cell 当前 topic
+        let first = timeout(Duration::from_secs(2), write_rx.recv())
+            .await
+            .expect("应收到首条")
+            .unwrap();
+        assert_eq!(first.mqtt_meta().map(|m| m.topic.as_str()), Some("t/1"));
+
+        // 提交新 topic 到共享 cell(F4: 运行中改 topic/QoS/retain 应即时生效)
+        if let Ok(mut g) = cell.write() {
+            *g = Some(MqttPublishMeta {
+                topic: "t/2".to_string(),
+                qos: Qos::AtLeastOnce,
+                retain: true,
+            });
+        }
+        let deadline = tokio::time::sleep(Duration::from_secs(2));
+        tokio::pin!(deadline);
+        let mut saw_new = false;
+        loop {
+            tokio::select! {
+                _ = &mut deadline => break,
+                r = write_rx.recv() => {
+                    if let Ok(w) = r {
+                        if let Some(m) = w.mqtt_meta() {
+                            if m.topic == "t/2" {
+                                assert_eq!(m.qos, Qos::AtLeastOnce);
+                                assert!(m.retain);
+                                saw_new = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(saw_new, "提交新 topic 后下一轮应取到新 meta");
+    }
+
+    /// D-I: 共享 cell 的 topic 为空 → 发布任务暂停并附带专用原因, 不投递;
+    /// 补上有效 topic 后 resume 应恢复投递(引擎侧闭环)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_empty_topic_pauses_with_reason() {
+        use crate::config::connection::Qos;
+        let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
+        let (write_tx, write_rx) = smol::channel::unbounded::<WireMessage>();
+        let cell: Arc<RwLock<Option<MqttPublishMeta>>> =
+            Arc::new(RwLock::new(Some(MqttPublishMeta {
+                topic: String::new(),
+                qos: Qos::AtMostOnce,
+                retain: false,
+            })));
+
+        let engine = SendTaskEngine::start(
+            config("a\nb\nc", 1, false, None),
+            "tab".to_string(),
+            TaskTarget::Client(write_tx),
+            event_tx,
+            Arc::new(AtomicU64::new(0)),
+            cell.clone(),
+        );
+
+        let deadline = tokio::time::sleep(Duration::from_secs(3));
+        tokio::pin!(deadline);
+        let mut reason_ok = false;
+        loop {
+            tokio::select! {
+                _ = &mut deadline => break,
+                r = write_rx.recv() => {
+                    if r.is_ok() {
+                        panic!("空 topic 不应真的投递");
+                    }
+                }
+                r = event_rx.recv() => {
+                    if let Ok(ConnectionEvent::TaskProgress {
+                        status: TaskStatus::Paused,
+                        pause_reason,
+                        ..
+                    }) = r
+                    {
+                        assert_eq!(
+                            pause_reason.as_deref(),
+                            Some(t!("send_task.reason_mqtt_topic_empty").as_ref())
+                        );
+                        reason_ok = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(reason_ok, "空 topic 应上报 Paused 且附带专用原因");
+
+        // 补上有效 topic 后 resume(引擎侧) 应恢复投递
+        if let Ok(mut g) = cell.write() {
+            *g = Some(MqttPublishMeta {
+                topic: "t/ok".to_string(),
+                qos: Qos::AtMostOnce,
+                retain: false,
+            });
+        }
+        engine.resume();
+        let got = timeout(Duration::from_secs(2), write_rx.recv())
+            .await
+            .expect("补 topic 并 resume 后应恢复投递")
+            .unwrap();
+        assert_eq!(got.mqtt_meta().map(|m| m.topic.as_str()), Some("t/ok"));
+    }
+
+    /// F5: 引擎 Sent 记账必须携带 topic/retain(与手动发送 `dispatch_send` 展示口径一致)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_sent_bookkeeping_carries_topic_and_retain() {
+        use crate::config::connection::Qos;
+        let (event_tx, event_rx) = smol::channel::unbounded::<ConnectionEvent>();
+        // 写通道只需存在(引擎据 Sent 记账发事件, 不依赖 broker); 用 `_write_rx` 保活接收端
+        let (write_tx, _write_rx) = smol::channel::unbounded::<WireMessage>();
+        let (config, _source) = periodic_config(10);
+        let cell: Arc<RwLock<Option<MqttPublishMeta>>> =
+            Arc::new(RwLock::new(Some(MqttPublishMeta {
+                topic: "out/1".to_string(),
+                qos: Qos::AtLeastOnce,
+                retain: true,
+            })));
+
+        let _engine = SendTaskEngine::start(
+            config,
+            "tab".to_string(),
+            TaskTarget::Client(write_tx),
+            event_tx,
+            Arc::new(AtomicU64::new(0)),
+            cell,
+        );
+
+        let deadline = tokio::time::sleep(Duration::from_secs(2));
+        tokio::pin!(deadline);
+        let mut ok = false;
+        loop {
+            tokio::select! {
+                _ = &mut deadline => break,
+                r = event_rx.recv() => {
+                    if let Ok(ConnectionEvent::MessageReceived(id, msg)) = r {
+                        if msg.direction == MessageDirection::Sent {
+                            assert_eq!(id, "tab");
+                            assert_eq!(msg.topic.as_deref(), Some("out/1"));
+                            assert!(msg.retain, "Sent 明细应带 retain 标记");
+                            ok = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(ok, "应观察到 Sent 明细并携带 topic/retain");
     }
 }

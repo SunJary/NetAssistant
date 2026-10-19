@@ -57,17 +57,27 @@ pub struct PeriodicSource {
     pub hex_mode: AtomicBool,
     /// `${seq}` 用(与手动发送共享同一计数器)
     pub seq: Arc<AtomicU64>,
-    /// MQTT 发布元数据(topic/QoS), 随发送区 topic 变化写入; 非 MQTT 恒 None
-    mqtt_meta: RwLock<Option<MqttPublishMeta>>,
+    /// MQTT 发布元数据(topic/QoS/retain)的**共享 cell**(规划 D-C/D-D)。
+    ///
+    /// 与本 tab 的 `mqtt_publish_meta_cell` 为**同一实例**, 是该 tab 所有发送入口
+    /// (手动/周期/定时/逐行)的 topic/QoS/retain 唯一真源; 非 MQTT tab 恒 None。
+    mqtt_meta: Arc<RwLock<Option<MqttPublishMeta>>>,
 }
 
 impl PeriodicSource {
-    pub fn new(seq: Arc<AtomicU64>, content: String, hex_mode: bool) -> Self {
+    /// `mqtt_meta` 由外部注入本 tab 共享的 cell(与 `ConnectionTabState.mqtt_publish_meta_cell`
+    /// 为同一 Arc), 从而周期发送与其他发送入口动态跟随同一份 topic/QoS/retain。
+    pub fn new(
+        seq: Arc<AtomicU64>,
+        content: String,
+        hex_mode: bool,
+        mqtt_meta: Arc<RwLock<Option<MqttPublishMeta>>>,
+    ) -> Self {
         Self {
             content: RwLock::new(content),
             hex_mode: AtomicBool::new(hex_mode),
             seq,
-            mqtt_meta: RwLock::new(None),
+            mqtt_meta,
         }
     }
 
@@ -390,7 +400,12 @@ mod tests {
     }
 
     fn periodic(content: &str, hex_mode: bool) -> (Arc<SendTaskConfig>, Arc<PeriodicSource>) {
-        let source = Arc::new(PeriodicSource::new(seq(), content.to_string(), hex_mode));
+        let source = Arc::new(PeriodicSource::new(
+            seq(),
+            content.to_string(),
+            hex_mode,
+            Arc::new(RwLock::new(None)),
+        ));
         let config = Arc::new(build_periodic_config(
             source.clone(),
             IntervalHandle::new(1000),

@@ -19,6 +19,32 @@ pub enum StorageError {
     Json(#[from] serde_json::Error),
 }
 
+/// 一条 MQTT 发布历史（topic + QoS + retain 三元组）。
+///
+/// 复用 `Qos::try_from(u8)` 映射；用 u8 而非直接 serde `Qos`，避免改动 `Qos` 枚举的派生约束。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MqttTopicHistoryEntry {
+    pub topic: String,
+    pub qos: u8,
+    pub retain: bool,
+}
+
+/// 每连接 MQTT 发布历史（按 `connection_id` 索引，与 `FavoritesMap` 同构）。
+pub type MqttTopicHistoryMap = HashMap<String, Vec<MqttTopicHistoryEntry>>;
+
+/// 一条持久化的 MQTT 订阅（topic + QoS）。
+///
+/// 与运行期 `ConnectionTabState::mqtt_subscriptions: Vec<(String, Qos)>` 同构；
+/// 用 u8 而非 serde `Qos`，理由同 `MqttTopicHistoryEntry`。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MqttSubscriptionEntry {
+    pub topic: String,
+    pub qos: u8,
+}
+
+/// 每连接 MQTT 订阅（按 `connection_id` 索引）。
+pub type MqttSubscriptionMap = HashMap<String, Vec<MqttSubscriptionEntry>>;
+
 /// 应用配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -55,6 +81,16 @@ pub struct AppConfig {
     /// 也无需在 `add_connection` 播种。
     #[serde(default)]
     pub reply_connection_enabled: HashMap<String, bool>,
+    /// MQTT 发布 topic 历史（按 connection_id 索引）
+    ///
+    /// 旧配置无此字段 → `serde(default)` 得空 map，行为与升级前一致（无历史可下拉）。
+    #[serde(default)]
+    pub mqtt_topic_history: MqttTopicHistoryMap,
+    /// MQTT 订阅（按 connection_id 索引）：重开标签页 / 重启后自动恢复
+    ///
+    /// 旧配置无此字段 → `serde(default)` 得空 map，行为与升级前一致（不自动订阅）。
+    #[serde(default)]
+    pub mqtt_subscriptions: MqttSubscriptionMap,
 }
 
 impl Default for AppConfig {
@@ -75,6 +111,8 @@ impl Default for AppConfig {
             language: None,
             reply_rules: ReplyRulesConfig::default(),
             reply_connection_enabled: HashMap::new(),
+            mqtt_topic_history: HashMap::new(),
+            mqtt_subscriptions: HashMap::new(),
         }
     }
 }
@@ -252,6 +290,9 @@ impl ConfigStorage {
         // 连带删除该连接的「自动回复」开关与规则，避免残留孤儿规则
         self.config.reply_connection_enabled.remove(connection_id);
         self.config.reply_rules.connections.remove(connection_id);
+        // 连带删除该连接的 MQTT 发布 topic 历史与订阅，避免孤儿数据
+        self.config.mqtt_topic_history.remove(connection_id);
+        self.config.mqtt_subscriptions.remove(connection_id);
         if self.config.auto_save {
             let _ = self.save();
         }
@@ -331,6 +372,78 @@ impl ConfigStorage {
             .favorites
             .get(connection_id)
             .and_then(|list| list.iter().find(|item| item.content == content).cloned())
+    }
+
+    /// 记录一条 MQTT 发布历史：以 topic 为键去重（命中则更新 QoS/retain 并置顶），
+    /// 每连接上限 20，超出截断尾部。
+    pub fn push_mqtt_topic_history(&mut self, connection_id: &str, entry: MqttTopicHistoryEntry) {
+        const MAX_HISTORY: usize = 20;
+        let list = self
+            .config
+            .mqtt_topic_history
+            .entry(connection_id.to_string())
+            .or_default();
+        list.retain(|e| e.topic != entry.topic);
+        list.insert(0, entry);
+        list.truncate(MAX_HISTORY);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 读取指定连接的 MQTT 发布历史（最近优先）。
+    pub fn mqtt_topic_history(&self, connection_id: &str) -> &[MqttTopicHistoryEntry] {
+        self.config
+            .mqtt_topic_history
+            .get(connection_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// 清空指定连接的 MQTT 发布历史。
+    pub fn clear_mqtt_topic_history(&mut self, connection_id: &str) {
+        self.config.mqtt_topic_history.remove(connection_id);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 读取指定连接的持久化 MQTT 订阅（按记录顺序）。
+    pub fn mqtt_subscriptions(&self, connection_id: &str) -> &[MqttSubscriptionEntry] {
+        self.config
+            .mqtt_subscriptions
+            .get(connection_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// 新增/更新一条 MQTT 订阅：同 topic 去重（命中则更新 QoS），保持插入顺序。
+    pub fn add_mqtt_subscription(&mut self, connection_id: &str, topic: &str, qos: u8) {
+        let list = self
+            .config
+            .mqtt_subscriptions
+            .entry(connection_id.to_string())
+            .or_default();
+        match list.iter_mut().find(|e| e.topic == topic) {
+            Some(e) => e.qos = qos,
+            None => list.push(MqttSubscriptionEntry {
+                topic: topic.to_string(),
+                qos,
+            }),
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 删除指定连接的一条 MQTT 订阅。
+    pub fn remove_mqtt_subscription(&mut self, connection_id: &str, topic: &str) {
+        if let Some(list) = self.config.mqtt_subscriptions.get_mut(connection_id) {
+            list.retain(|e| e.topic != topic);
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
     }
 
     /// 获取指定连接的压测配置(回填用)
@@ -716,6 +829,163 @@ mod tests {
     }"#;
         let config: AppConfig = serde_json::from_str(json).unwrap();
         assert!(config.reply_connection_enabled.is_empty());
+    }
+
+    /// MQTT 发布历史：按连接隔离、去重置顶、上限 20、清空、删连接连带清理、serde 往返。
+    #[test]
+    fn test_mqtt_topic_history() {
+        let mut storage = test_storage();
+        let entry = |topic: &str, qos: u8, retain: bool| MqttTopicHistoryEntry {
+            topic: topic.to_string(),
+            qos,
+            retain,
+        };
+
+        // 初始为空，未建历史的连接返回空切片
+        assert!(storage.mqtt_topic_history("conn-1").is_empty());
+        assert!(storage.mqtt_topic_history("conn-x").is_empty());
+
+        // 最近优先：新纪录插到队首
+        storage.push_mqtt_topic_history("conn-1", entry("a/b", 1, false));
+        storage.push_mqtt_topic_history("conn-1", entry("c/d", 0, true));
+        let topics: Vec<&str> = storage
+            .mqtt_topic_history("conn-1")
+            .iter()
+            .map(|e| e.topic.as_str())
+            .collect();
+        assert_eq!(topics, vec!["c/d", "a/b"]);
+
+        // 同 topic 去重：更新 QoS/retain 并置顶，长度不增
+        storage.push_mqtt_topic_history("conn-1", entry("a/b", 2, true));
+        let list = storage.mqtt_topic_history("conn-1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 2);
+        assert!(list[0].retain);
+
+        // 按连接隔离：互不可见
+        storage.push_mqtt_topic_history("conn-2", entry("x/y", 0, false));
+        assert_eq!(storage.mqtt_topic_history("conn-1").len(), 2);
+        assert_eq!(storage.mqtt_topic_history("conn-2").len(), 1);
+        assert_eq!(storage.mqtt_topic_history("conn-2")[0].topic, "x/y");
+
+        // 上限 20：超出截断尾部（最早的被丢弃）
+        for i in 0..25 {
+            storage.push_mqtt_topic_history("conn-3", entry(&format!("t/{i}"), 0, false));
+        }
+        let list3 = storage.mqtt_topic_history("conn-3");
+        assert_eq!(list3.len(), 20);
+        assert_eq!(list3[0].topic, "t/24", "最新在队首");
+        assert_eq!(list3[19].topic, "t/5", "最老的溢出被截断");
+
+        // serde 往返
+        let json = serde_json::to_string(&storage.config).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.mqtt_topic_history, storage.config.mqtt_topic_history);
+
+        // 清空仅影响当前连接
+        storage.clear_mqtt_topic_history("conn-1");
+        assert!(storage.mqtt_topic_history("conn-1").is_empty());
+        assert_eq!(storage.mqtt_topic_history("conn-2").len(), 1);
+
+        // 删除连接连带清理历史
+        storage.add_connection(ConnectionConfig::Client(ClientConfig {
+            id: "conn-b".to_string(),
+            ..Default::default()
+        }));
+        storage.push_mqtt_topic_history("conn-b", entry("k/l", 1, false));
+        storage.remove_client_connection("conn-b");
+        assert!(storage.mqtt_topic_history("conn-b").is_empty());
+    }
+
+    /// MQTT 订阅持久化：按连接隔离、同 topic 去重更新 QoS、保序、删除、删连接连带清理、serde 往返。
+    #[test]
+    fn test_mqtt_subscription_persistence() {
+        let mut storage = test_storage();
+
+        // 初始为空
+        assert!(storage.mqtt_subscriptions("conn-1").is_empty());
+
+        // 保序追加
+        storage.add_mqtt_subscription("conn-1", "a/b", 0);
+        storage.add_mqtt_subscription("conn-1", "c/d", 1);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 0);
+        assert_eq!(list[1].topic, "c/d");
+        assert_eq!(list[1].qos, 1);
+
+        // 同 topic 去重：仅更新 QoS，长度与顺序不变
+        storage.add_mqtt_subscription("conn-1", "a/b", 2);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 2, "同 topic 应更新 QoS 而非新增");
+
+        // 按连接隔离
+        storage.add_mqtt_subscription("conn-2", "x/y", 0);
+        assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 2);
+        assert_eq!(storage.mqtt_subscriptions("conn-2").len(), 1);
+
+        // serde 往返
+        let json = serde_json::to_string(&storage.config).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.mqtt_subscriptions, storage.config.mqtt_subscriptions);
+
+        // 删除单条：不影响同连接其它订阅
+        storage.remove_mqtt_subscription("conn-1", "a/b");
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].topic, "c/d");
+        // 删除不存在的 topic 幂等
+        storage.remove_mqtt_subscription("conn-1", "nope");
+        assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 1);
+
+        // 删除连接连带清理订阅
+        storage.add_connection(ConnectionConfig::Client(ClientConfig {
+            id: "conn-b".to_string(),
+            ..Default::default()
+        }));
+        storage.add_mqtt_subscription("conn-b", "k/l", 1);
+        storage.remove_client_connection("conn-b");
+        assert!(storage.mqtt_subscriptions("conn-b").is_empty());
+    }
+
+    /// 旧配置无 `mqtt_subscriptions` 字段 → 空 map（零迁移）
+    #[test]
+    fn test_legacy_config_has_no_mqtt_subscriptions() {
+        let json = r#"{
+        "connections": [],
+        "auto_save": true,
+        "save_interval": 30,
+        "window_x": null,
+        "window_y": null,
+        "window_width": null,
+        "window_height": null,
+        "sidebar_width": null,
+        "sidebar_collapsed": null
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(config.mqtt_subscriptions.is_empty());
+    }
+
+    /// 旧配置无 `mqtt_topic_history` 字段 → 空 map（零迁移）
+    #[test]
+    fn test_legacy_config_has_no_mqtt_topic_history() {
+        let json = r#"{
+        "connections": [],
+        "auto_save": true,
+        "save_interval": 30,
+        "window_x": null,
+        "window_y": null,
+        "window_width": null,
+        "window_height": null,
+        "sidebar_width": null,
+        "sidebar_collapsed": null
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(config.mqtt_topic_history.is_empty());
     }
 
     /// 上移/下移必须真正改变求值顺序，并重排 priority 的间隔

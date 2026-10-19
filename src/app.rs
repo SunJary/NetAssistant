@@ -9,7 +9,7 @@ use crate::config::connection::{
     ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, MqttSettings, Qos,
     TrailerKind, WillSettings, generate_mqtt_client_id,
 };
-use crate::config::storage::ConfigStorage;
+use crate::config::storage::{ConfigStorage, MqttTopicHistoryEntry};
 use crate::core::toolbox::ToolCategory;
 use crate::core::toolbox_extra::{
     file_digest_set, file_hash_algo_by_hex_len, now_local_string, now_millis_string,
@@ -49,7 +49,7 @@ use smol::channel::{Receiver, Sender, unbounded as smol_unbounded};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 /// 工具箱标签页的特殊 id：不占据 connection_tabs（连接体系），仅占据一个标签栏位置
@@ -907,10 +907,18 @@ impl NetAssistantApp {
             })
             .unwrap_or(false);
 
-        let Some(tab) = self.connection_tabs.get_mut(tab_id) else {
+        if !delivered {
+            if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                tab.error_message = Some(t!("connection_tab.mqtt_subscribe_failed").to_string());
+            }
+            cx.notify();
             return;
-        };
-        if delivered {
+        }
+        // 持久化订阅（按连接隔离）：重开标签页/重启后自动恢复，与收藏同款心智。
+        // 先写 storage 再改 tab 状态，避免同时可变借用 self.storage 与 self.connection_tabs。
+        self.storage
+            .add_mqtt_subscription(tab_id, &topic, qos as u8);
+        if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
             // 乐观入列 / 已订阅则更新 QoS（重发订阅幂等）
             if let Some(entry) = tab.mqtt_subscriptions.iter_mut().find(|(t, _)| *t == topic) {
                 entry.1 = qos;
@@ -918,8 +926,6 @@ impl NetAssistantApp {
                 tab.mqtt_subscriptions.push((topic, qos));
             }
             tab.error_message = None;
-        } else {
-            tab.error_message = Some(t!("connection_tab.mqtt_subscribe_failed").to_string());
         }
         cx.notify();
     }
@@ -936,14 +942,18 @@ impl NetAssistantApp {
             })
             .unwrap_or(false);
 
-        let Some(tab) = self.connection_tabs.get_mut(tab_id) else {
+        if !delivered {
+            if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                tab.error_message = Some(t!("connection_tab.mqtt_unsubscribe_failed").to_string());
+            }
+            cx.notify();
             return;
-        };
-        if delivered {
+        }
+        // 同步删除持久化订阅（投递失败时上面已提前返回，保持乐观语义不误删）
+        self.storage.remove_mqtt_subscription(tab_id, &topic);
+        if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
             tab.mqtt_subscriptions.retain(|(t, _)| *t != topic);
             tab.error_message = None;
-        } else {
-            tab.error_message = Some(t!("connection_tab.mqtt_unsubscribe_failed").to_string());
         }
         cx.notify();
     }
@@ -1184,6 +1194,17 @@ impl NetAssistantApp {
             if !favorited.is_empty() {
                 tab_state.favorited_contents = Arc::new(favorited);
             }
+            // 回灌该连接已持久化的 MQTT 订阅：连接建立后由 MqttControlSenderReady 统一重发
+            // SUBSCRIBE，故重开标签页 / 重启后订阅自动恢复（与收藏同款）。
+            let saved_subs: Vec<(String, Qos)> = self
+                .storage
+                .mqtt_subscriptions(&tab_id)
+                .iter()
+                .map(|e| (e.topic.clone(), Qos::try_from(e.qos).unwrap_or(Qos::AtMostOnce)))
+                .collect();
+            if !saved_subs.is_empty() {
+                tab_state.mqtt_subscriptions = saved_subs;
+            }
             self.connection_tabs.insert(tab_id.clone(), tab_state);
         }
         self.ensure_message_input_enter_subscription(&tab_id, cx);
@@ -1338,9 +1359,14 @@ impl NetAssistantApp {
         self.periodic_sync_subscriptions.insert(sub_tab_id, subs);
     }
 
-    /// 订阅 MQTT 发布 topic 输入框：输入变化即清除发送块内红字。
+    /// 订阅 MQTT 发布 topic 输入框：① 变化清红字 ② 回车/失焦提交到共享 cell。
     ///
-    /// 避免「发送失败留下红字后，用户改对 topic 仍残留到下次发送」。
+    /// 提交时机取**回车/失焦**而非逐字符（规划 D-G，与 `periodic_interval_input` 同款）：
+    /// 输入过程中的中间态（如 `sen`）仍是**合法** MQTT topic，会被真的发出去，
+    /// 必须延迟到提交点才写入 cell。`Change` 只做清红字。
+    ///
+    /// 建立订阅时先**播种** cell（规划 D-C/D-H）：MQTT 写 `Some`（topic 可为空串），
+    /// 非 MQTT 写 `None`。空 topic 提交出有效值时按原因恢复暂停的任务（规划 D-I/D-J）。
     fn ensure_mqtt_publish_subscription(&mut self, tab_id: &str, cx: &mut Context<Self>) {
         if self.mqtt_publish_subscriptions.contains_key(tab_id) {
             return;
@@ -1349,20 +1375,129 @@ impl NetAssistantApp {
             return;
         };
         let publish_input = tab_state.mqtt_publish_topic_input.clone();
+        let meta_cell = tab_state.mqtt_publish_meta_cell.clone();
+        let is_mqtt = tab_state.connection_config.protocol() == ConnectionType::Mqtt;
+
+        // 播种: 读发送区当前 topic/QoS/retain 写入共享 cell
+        let seed_topic = publish_input.read(cx).value().trim().to_string();
+        if let Ok(mut g) = meta_cell.write() {
+            *g = if is_mqtt {
+                Some(MqttPublishMeta {
+                    topic: seed_topic,
+                    qos: tab_state.mqtt_publish_qos,
+                    retain: tab_state.mqtt_publish_retain,
+                })
+            } else {
+                None
+            };
+        }
+
         let sub_tab_id = tab_id.to_string();
-        let subscription = cx.subscribe(&publish_input, move |app, _input, event, cx| {
-            if !matches!(event, InputEvent::Change) {
-                return;
-            }
-            if let Some(tab) = app.connection_tabs.get_mut(&sub_tab_id) {
-                if tab.mqtt_publish_error.is_some() {
-                    tab.mqtt_publish_error = None;
-                    cx.notify();
+        let subscription = cx.subscribe(&publish_input, move |app, input, event, cx| match event {
+            // 输入变化: 仅清红字(避免「发送失败留红字后改对 topic 仍残留」)
+            InputEvent::Change => {
+                if let Some(tab) = app.connection_tabs.get_mut(&sub_tab_id) {
+                    if tab.mqtt_publish_error.is_some() {
+                        tab.mqtt_publish_error = None;
+                        cx.notify();
+                    }
                 }
             }
+            // 提交: 写共享 cell; topic 变为有效时恢复「空 topic」暂停的任务
+            InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                if !is_mqtt {
+                    return;
+                }
+                let topic = input.read(cx).value().trim().to_string();
+                if let Some(tab) = app.connection_tabs.get(&sub_tab_id) {
+                    let meta = Some(MqttPublishMeta {
+                        topic: topic.clone(),
+                        qos: tab.mqtt_publish_qos,
+                        retain: tab.mqtt_publish_retain,
+                    });
+                    if let Ok(mut g) = meta_cell.write() {
+                        *g = meta;
+                    }
+                }
+                // D-J: 提交出有效 topic(非空且无通配符) → 恢复因此原因暂停的任务
+                if !topic.is_empty() && !topic.contains('+') && !topic.contains('#') {
+                    app.resume_mqtt_topic_empty_tasks(&sub_tab_id, cx);
+                }
+            }
+            _ => {}
         });
         self.mqtt_publish_subscriptions
             .insert(tab_id.to_string(), vec![subscription]);
+    }
+
+    /// 恢复该 tab 中因「发布 topic 为空」而暂停的发送任务(规划 D-J)。
+    ///
+    /// `resume_auto_send_tasks` 只在 Connected/ServerClientConnected 触发，
+    /// 用户补齐 topic 不会触发连接事件，故需在此按原因精准恢复。
+    fn resume_mqtt_topic_empty_tasks(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        let reason = t!("send_task.reason_mqtt_topic_empty").to_string();
+        let ids: Vec<String> = match self.connection_tabs.get(tab_id) {
+            Some(tab) => tab
+                .send_tasks
+                .iter()
+                .filter(|(_, e)| {
+                    e.state.status == TaskStatus::Paused
+                        && e.state.pause_reason.as_deref() == Some(reason.as_str())
+                })
+                .map(|(id, _)| id.clone())
+                .collect(),
+            None => return,
+        };
+        for id in ids {
+            self.resume_send_task(tab_id, &id, cx);
+        }
+    }
+
+    /// 回填一条 MQTT 发布历史（规划 D6）：写输入框文本 + QoS + retain + 共享 cell，
+    /// **不自动发送**。topic 有效时按原因恢复「空 topic」暂停的发送任务。
+    pub fn apply_mqtt_topic_history(
+        &mut self,
+        tab_id: &str,
+        entry: MqttTopicHistoryEntry,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self.connection_tabs.get(tab_id) else {
+            return;
+        };
+        let input = tab.mqtt_publish_topic_input.clone();
+        let cell = tab.mqtt_publish_meta_cell.clone();
+        let topic = entry.topic.clone();
+        // u8 → Qos; 越界值兜底 AtMostOnce（Qos 无 from_u8，用 TryFrom）
+        let qos = Qos::try_from(entry.qos).unwrap_or(Qos::AtMostOnce);
+        let retain = entry.retain;
+
+        // 写输入框文本（qos/retain 无中间态，直接同步）
+        input.update(cx, |i, cx| i.set_value(topic.clone(), window, cx));
+        if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+            tab.mqtt_publish_qos = qos;
+            tab.mqtt_publish_retain = retain;
+            tab.mqtt_publish_error = None;
+            tab.mqtt_history_open = false;
+            if let Ok(mut g) = cell.write() {
+                *g = Some(MqttPublishMeta {
+                    topic: topic.clone(),
+                    qos,
+                    retain,
+                });
+            }
+        }
+        // D-J: 回填有效 topic → 恢复因此原因暂停的任务
+        if !topic.is_empty() && !topic.contains('+') && !topic.contains('#') {
+            self.resume_mqtt_topic_empty_tasks(tab_id, cx);
+        }
+        cx.notify();
+    }
+
+    /// 清空当前连接的 MQTT 发布历史（规划 D8）。
+    pub fn clear_mqtt_topic_history_for_tab(&mut self, tab_id: &str, cx: &mut Context<Self>) {
+        self.storage.clear_mqtt_topic_history(tab_id);
+        cx.notify();
     }
 
     /// 订阅「保留最后 N 条」输入框：回车 / 失焦时提交。
@@ -3131,6 +3266,19 @@ impl NetAssistantApp {
                     self.send_message(tab_id.to_string(), rendered.clone(), mqtt_meta.clone());
                 }
 
+                // 手动发送成功: 记录 MQTT 发布历史(topic+QoS+retain 三元组), 按连接隔离.
+                // 定点/定时任务/逐行发送不记录(规划 D3); topic 已在上面校验非空且无通配符(规划 D5)。
+                if let Some(meta) = &mqtt_meta {
+                    self.storage.push_mqtt_topic_history(
+                        tab_id,
+                        MqttTopicHistoryEntry {
+                            topic: meta.topic.clone(),
+                            qos: meta.qos as u8,
+                            retain: meta.retain,
+                        },
+                    );
+                }
+
                 // Clear input ONLY on successful send initiation and if auto_clear_input is true
                 if auto_clear_input {
                     if let Some(message_input) = message_input_clone {
@@ -3540,7 +3688,13 @@ impl NetAssistantApp {
             state.pause_reason = pause_reason.clone();
         }
 
-        let engine = SendTaskEngine::start(config, tab_id.clone(), target, events, seq);
+        // 本 tab 共享的 MQTT 发布元数据 cell(规划 D-C): 传给引擎作为 topic/QoS/retain 兜底真源
+        let meta_cell = self
+            .connection_tabs
+            .get(&tab_id)
+            .map(|s| s.mqtt_publish_meta_cell.clone())
+            .unwrap_or_else(|| Arc::new(RwLock::new(None)));
+        let engine = SendTaskEngine::start(config, tab_id.clone(), target, events, seq, meta_cell);
         if state.status == TaskStatus::Paused {
             engine.pause(pause_reason);
         }
@@ -4358,7 +4512,11 @@ impl NetAssistantApp {
             ConnectionEvent::Disconnected(tab_id) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     tab_state.is_connected = false;
-                    tab_state.connection_status = ConnectionStatus::Disconnected;
+                    // 终态错误(MQTT 首连失败 / broker 主动断开)已由 Error 给出更准确的状态与原因,
+                    // 且不会自动重连; 若被紧随其后的 Disconnected 覆盖成普通"已断开", 二者将无法区分
+                    if tab_state.connection_status != ConnectionStatus::Error {
+                        tab_state.connection_status = ConnectionStatus::Disconnected;
+                    }
                     tab_state.local_endpoint = None;
                     cx.notify();
                 }
