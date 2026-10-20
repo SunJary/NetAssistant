@@ -39,6 +39,12 @@ context_menu:
   delete:
     zh-CN: 删除连接
     en: Delete Connection
+  copy_selection:
+    zh-CN: 复制选中
+    en: Copy Selection
+  copy_full:
+    zh-CN: 复制全文
+    en: Copy All
 
 # 连接状态值（ConnectionStatus Display，标签页左侧信息区）
 connection_status:

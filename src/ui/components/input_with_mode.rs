@@ -445,14 +445,19 @@ fn tool_menu_item(
             let title = title.clone();
             // 菜单确认后本帧还要关菜单、归还焦点，弹窗延后一帧打开避免同期打架
             window.defer(cx, move |window, cx| {
-                open_convert_result_dialog(title, result, window, cx);
+                open_tool_result_dialog(title, result, window, cx);
             });
         })
 }
 
-/// 打开转换结果对话框：只读展示（多行、可滚动、等宽）+ 复制图标/关闭按钮。
-/// 纯展示，不回写输入框。
-fn open_convert_result_dialog(title: String, text: String, window: &mut Window, cx: &mut App) {
+/// 打开工具结果对话框：只读展示（多行、可滚动、等宽）+ 复制图标/关闭按钮。
+/// 纯展示，不回写输入框；输入框右键菜单与消息气泡右键菜单共用。
+pub(crate) fn open_tool_result_dialog(
+    title: String,
+    text: String,
+    window: &mut Window,
+    cx: &mut App,
+) {
     window.open_dialog(cx, move |dialog, window, _cx| {
         let copy_value = text.clone();
         let body_value = text.clone();

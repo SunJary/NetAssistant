@@ -1,5 +1,5 @@
 use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
-use crate::ui::components::input_with_mode::InputWithMode;
+use crate::ui::components::input_with_mode::{InputWithMode, open_tool_result_dialog};
 use crate::ui::dialog::variable_picker::{
     VariableItem, VariablePickerTarget, message_variable_items, render_variable_picker,
 };
@@ -7,12 +7,14 @@ use crate::ui::dialog::{
     DecoderSelectionDialogState, ReplyRulesDialogState, open_add_client_dialog,
     open_decoder_selection_dialog, open_favorite_remark_dialog, open_reply_rules_dialog,
 };
+use gpui_kit::base::{SelectableText, TextSelection};
 use gpui_kit::component::ElementExt as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_kit::component::{
     Icon, IconName, Size, Theme,
     clipboard::Clipboard,
     input::{EditorState, Input, InputState},
+    menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
     scroll::{Scrollbar, ScrollbarMode},
     switch::Switch,
     tooltip::Tooltip,
@@ -33,6 +35,7 @@ use crate::app::NetAssistantApp;
 use crate::config::connection::{
     ConnectionConfig, ConnectionStatus, ConnectionType, TrailerKind, TrailerSetting,
 };
+use crate::core::toolbox::{ToolCategory, compute_tool, resolve_tools};
 use crate::custom_icons::CustomIconName;
 use crate::log_writer::LogWriter;
 use crate::message::{
@@ -2136,6 +2139,9 @@ impl<'a> ConnectionTab<'a> {
                                                         message.display_content(display_mode),
                                                     )
                                                 };
+                                            // 右键菜单取源：仅捕获展示文本本身，避免渲染树额外持有
+                                            // Arc<Vec<Message>> 而拖慢入队侧的 Arc::make_mut
+                                            let menu_text = display_text.clone();
                                             // 收藏 key 固定用原始内容,与显示模式解耦:
                                             // 切换格式化不会让星标熄灭,也不会重复收藏
                                             let favorite_key: SharedString =
@@ -2250,6 +2256,13 @@ impl<'a> ConnectionTab<'a> {
                                                         })
                                                         .child(
                                                             div()
+                                                                .id(ElementId::Name(
+                                                                    format!(
+                                                                        "msg-bubble-{}",
+                                                                        message.id
+                                                                    )
+                                                                    .into(),
+                                                                ))
                                                                 .max_w_3_5()
                                                                 .p_3()
                                                                 .rounded_md()
@@ -2258,6 +2271,25 @@ impl<'a> ConnectionTab<'a> {
                                                                 })
                                                                 .when(!is_sent, |div| {
                                                                     div.bg(theme.secondary)
+                                                                })
+                                                                // Ctrl/Cmd+C 是 Root 上下文里的 Copy 动作；若输入框仍聚焦，
+                                                                // 会被输入框先消费（复制其空选区）。拖选产生选区后让气泡失焦，
+                                                                // 使复制落到窗口级文本选区上；普通点击不抢输入框焦点。
+                                                                .on_mouse_up(MouseButton::Left, |_, window, cx| {
+                                                                    if !TextSelection::selected_text(window, cx)
+                                                                        .trim()
+                                                                        .is_empty()
+                                                                    {
+                                                                        window.blur(cx);
+                                                                    }
+                                                                })
+                                                                .context_menu(move |menu, window, cx| {
+                                                                    build_message_context_menu(
+                                                                        menu,
+                                                                        menu_text.clone(),
+                                                                        window,
+                                                                        cx,
+                                                                    )
                                                                 })
                                                                 .child(
                                                                     div()
@@ -2270,7 +2302,22 @@ impl<'a> ConnectionTab<'a> {
                                                                         .when(!is_sent, |div| {
                                                                             div.text_color(theme.foreground)
                                                                         })
-                                                                        .child(display_text.clone()),
+                                                                        .child(
+                                                                            // 可选中复制：拖选/双击选词/三击选行，
+                                                                            // Ctrl/Cmd+C 由 gpui-base Root 的 Copy 动作处理。
+                                                                            // 元素 id 用 message.id：虚拟列表淘汰后下标会漂移
+                                                                            SelectableText::new(
+                                                                                ElementId::Name(
+                                                                                    format!(
+                                                                                        "msg-text-{}",
+                                                                                        message.id
+                                                                                    )
+                                                                                    .into(),
+                                                                                ),
+                                                                                display_text.clone(),
+                                                                            )
+                                                                            .selection_color(theme.selection),
+                                                                        ),
                                                                 ),
                                                         )
                                                         .child(
@@ -2825,4 +2872,120 @@ impl<'a> ConnectionTab<'a> {
                     ),
             )
     }
+}
+
+/// 构建消息气泡右键菜单。
+///
+/// 处理范围：气泡内有选中文本时用选中，否则用整条展示文本。`TextSelection` 是
+/// 窗口级的，选区可能来自其它气泡（每个气泡独立本地 handle），故用 `contains`
+/// 校验归属，不在本气泡内则回退全文，避免误处理别处选区。
+///
+/// 转换/校验沿用 `core::toolbox` 注册表：校验仅当源内容为合法 hex 时可用，
+/// 不可用时子菜单顶部用一条灰标说明原因（与输入框右键菜单一致）。
+fn build_message_context_menu(
+    mut menu: PopupMenu,
+    message_text: SharedString,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let selected = TextSelection::selected_text(window, cx);
+    // 行级选区可能在末尾带换行；去掉后再做归属判定/转换，避免误判成「不在本气泡内」
+    let selected = selected.trim_end_matches('\n').to_string();
+    let source: String = if !selected.is_empty() && message_text.contains(selected.as_str()) {
+        selected.clone()
+    } else {
+        message_text.to_string()
+    };
+
+    menu = menu
+        .item(
+            PopupMenuItem::new(t!("context_menu.copy_selection").to_string())
+                .disabled(selected.is_empty())
+                .on_click({
+                    let selected = selected.clone();
+                    move |_, _, cx| {
+                        if !selected.is_empty() {
+                            cx.write_to_clipboard(ClipboardItem::new_string(selected.clone()));
+                        }
+                    }
+                }),
+        )
+        .item(
+            PopupMenuItem::new(t!("context_menu.copy_full").to_string()).on_click({
+                let full = message_text.to_string();
+                move |_, _, cx| {
+                    if !full.is_empty() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(full.clone()));
+                    }
+                }
+            }),
+        )
+        .separator();
+
+    // 转换：文本 → Hex 恒可用（空源禁用），Hex → 文本要求源为合法 hex。
+    // 两种模式各出一项，合并后即「Hex ⇄ 文本」。
+    for state in resolve_tools("text", &source, ToolCategory::Convert)
+        .into_iter()
+        .chain(resolve_tools("hex", &source, ToolCategory::Convert))
+    {
+        let label = t!(state.tool.label_key).to_string();
+        // 与输入框保持一致：to_hex 空源禁用
+        let disabled = !state.enabled || (state.tool.id == "to_hex" && source.is_empty());
+        let tool = state.tool;
+        let src = source.clone();
+        let title = label.clone();
+        menu = menu.item(
+            PopupMenuItem::new(label)
+                .disabled(disabled)
+                .on_click(move |_, window, cx| {
+                    let result = compute_tool(tool, &src);
+                    let title = title.clone();
+                    // 菜单确认后本帧还要关菜单、归还焦点，弹窗延后一帧打开避免同期打架
+                    window.defer(cx, move |window, cx| {
+                        open_tool_result_dialog(title, result, window, cx);
+                    });
+                }),
+        );
+    }
+
+    // 校验子菜单：仅源为合法 hex 时逐项可用
+    let checks = resolve_tools("hex", &source, ToolCategory::Checksum);
+    if !checks.is_empty() {
+        let shared_reason = checks
+            .iter()
+            .filter(|c| !c.enabled)
+            .find_map(|c| c.disabled_reason);
+        menu = menu.submenu(
+            t!("input_mode.checksum").to_string(),
+            window,
+            cx,
+            move |sub: PopupMenu, _window: &mut Window, _cx: &mut Context<PopupMenu>| {
+                // 置顶一条灰标说明禁用原因（含变量 / 非合法 hex / 空内容）
+                let sub = if let Some(reason) = shared_reason {
+                    sub.label(t!(reason).to_string())
+                } else {
+                    sub
+                };
+                checks.iter().fold(sub, |sub, state| {
+                    let label = t!(state.tool.label_key).to_string();
+                    let tool = state.tool;
+                    let src = source.clone();
+                    let title = label.clone();
+                    sub.item(
+                        PopupMenuItem::new(label)
+                            .disabled(!state.enabled)
+                            .on_click(move |_, window, cx| {
+                                let result = compute_tool(tool, &src);
+                                let title = title.clone();
+                                window.defer(cx, move |window, cx| {
+                                    open_tool_result_dialog(title, result, window, cx);
+                                });
+                            }),
+                    )
+                })
+            },
+        );
+    }
+
+    menu
 }
