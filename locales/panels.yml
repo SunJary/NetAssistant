@@ -465,17 +465,14 @@ connection_tab:
     zh-CN: "已重新发起 %{count} 个订阅"
     en: "Re-subscribed to %{count} subscription(s)"
   mqtt_subscriptions_title:
-    zh-CN: 订阅管理
+    zh-CN: 订阅
     en: Subscriptions
+  mqtt_new_subscription:
+    zh-CN: 新增订阅
+    en: New Subscription
   mqtt_no_subscriptions:
     zh-CN: 暂无订阅
     en: No subscriptions yet
-  mqtt_subscribe:
-    zh-CN: 订阅
-    en: Subscribe
-  mqtt_unsubscribe:
-    zh-CN: 取消订阅
-    en: Unsubscribe
   mqtt_subscribe_failed:
     zh-CN: 订阅失败（连接未就绪）
     en: Failed to subscribe (not connected)
@@ -506,9 +503,6 @@ connection_tab:
   mqtt_qos_2:
     zh-CN: QoS 2
     en: QoS 2
-  mqtt_sub_qos_tooltip:
-    zh-CN: "订阅 QoS：%{qos}"
-    en: "Subscribe QoS: %{qos}"
   mqtt_retain_mark:
     zh-CN: retain
     en: retain

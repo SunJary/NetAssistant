@@ -588,6 +588,29 @@ impl ConfigStorage {
         }
     }
 
+    /// 编辑指定连接的一条 MQTT 订阅：`old_topic` → `new_topic` 并更新 QoS，**保持原列表位置**。
+    ///
+    /// - `old == new` 时退化为仅更新 QoS；
+    /// - 命中多条同 topic 只改第一条（调用方已前置判重，正常不会出现）；
+    /// - `new_topic` 命中其它条目时不做合并（由调用方负责拒绝），行为与 `add` 的幂等语义区分。
+    pub fn update_mqtt_subscription(
+        &mut self,
+        connection_id: &str,
+        old_topic: &str,
+        new_topic: &str,
+        qos: u8,
+    ) {
+        if let Some(list) = self.config.mqtt_subscriptions.get_mut(connection_id) {
+            if let Some(e) = list.iter_mut().find(|e| e.topic == old_topic) {
+                e.topic = new_topic.to_string();
+                e.qos = qos;
+            }
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
     /// 获取指定连接的压测配置(回填用)
     pub fn get_stress_profile(&self, connection_id: &str) -> Option<&StressTestConfig> {
         self.config.stress_profiles.get(connection_id)
@@ -1141,6 +1164,38 @@ mod tests {
         storage.add_mqtt_subscription("conn-b", "k/l", 1);
         storage.remove_client_connection("conn-b");
         assert!(storage.mqtt_subscriptions("conn-b").is_empty());
+    }
+
+    /// 编辑订阅：保序替换 topic 并更新 QoS；old==new 退化为仅改 QoS；跨连接隔离。
+    #[test]
+    fn test_update_mqtt_subscription_keeps_order() {
+        let mut storage = test_storage();
+        storage.add_mqtt_subscription("conn-1", "a/b", 0);
+        storage.add_mqtt_subscription("conn-1", "c/d", 1);
+        storage.add_mqtt_subscription("conn-1", "e/f", 2);
+
+        // 改 topic + QoS：位置不变
+        storage.update_mqtt_subscription("conn-1", "c/d", "c/d2", 2);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[1].topic, "c/d2", "编辑应就地替换 topic，保持原位置");
+        assert_eq!(list[1].qos, 2);
+        assert_eq!(list[2].topic, "e/f");
+
+        // old == new：仅更新 QoS
+        storage.update_mqtt_subscription("conn-1", "a/b", "a/b", 2);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 2, "old==new 应退化为仅更新 QoS");
+
+        // 跨连接隔离：conn-2 不受影响，编辑不存在的 topic 幂等
+        storage.add_mqtt_subscription("conn-2", "x/y", 0);
+        storage.update_mqtt_subscription("conn-1", "nope", "nope2", 1);
+        assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 3);
+        assert_eq!(storage.mqtt_subscriptions("conn-2").len(), 1);
+        assert_eq!(storage.mqtt_subscriptions("conn-2")[0].topic, "x/y");
     }
 
     /// 旧配置无 `mqtt_subscriptions` 字段 → 空 map（零迁移）

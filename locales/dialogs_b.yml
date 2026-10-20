@@ -364,6 +364,23 @@ reply_rules:
     zh-CN: 关闭
     en: Close
 
+mqtt_subscriptions:
+  title_add:
+    zh-CN: 新增订阅
+    en: New Subscription
+  title_edit:
+    zh-CN: 编辑订阅
+    en: Edit Subscription
+  save:
+    zh-CN: 保存
+    en: Save
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  exists:
+    zh-CN: 该主题已存在订阅
+    en: That topic is already subscribed
+
 reply_rule_edit:
   title_new:
     zh-CN: 新建回复规则
