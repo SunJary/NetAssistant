@@ -154,70 +154,53 @@ fn run_app() {
         // 初始化语言：从配置读取上次选择，未设置过则使用默认中文
         // 同时设置组件库内置文案（对话框按钮、日历等）的语言
         let locale = ConfigStorage::new()
-            .ok()
-            .and_then(|storage| storage.load_language())
+            .load_language()
             .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
         rust_i18n::set_locale(&locale);
         gpui_kit::component::set_locale(&locale);
         info!("=== 多语言初始化完成，当前语言: {} ===", locale);
 
         // 加载窗口配置
-        let window_bounds = match ConfigStorage::new() {
-            Ok(storage) => {
-                if let Some((x, y, width, height)) = storage.load_window_bounds() {
-                    info!(
-                        "=== 从配置加载窗口尺寸: {}x{} @ ({}, {}) ===",
-                        width, height, x, y
-                    );
-                    // 确保窗口在可见区域内，至少x和y坐标为0
-                    let visible_x = x.max(0.0);
-                    let visible_y = y.max(0.0);
+        // 配置不可读时已由 ConfigStorage 内部回退默认值，这里只需处理"无窗口尺寸记录"
+        let storage = ConfigStorage::new();
+        let window_bounds = if let Some((x, y, width, height)) = storage.load_window_bounds() {
+            info!(
+                "=== 从配置加载窗口尺寸: {}x{} @ ({}, {}) ===",
+                width, height, x, y
+            );
+            // 确保窗口在可见区域内，至少x和y坐标为0
+            let visible_x = x.max(0.0);
+            let visible_y = y.max(0.0);
 
-                    if visible_x != x || visible_y != y {
-                        info!(
-                            "=== 调整窗口位置到可见区域: {}x{} @ ({}, {}) ===",
-                            width, height, visible_x, visible_y
-                        );
-                    }
-
-                    Bounds {
-                        origin: Point {
-                            x: px(visible_x as f32),
-                            y: px(visible_y as f32),
-                        },
-                        size: gpui_kit::Size {
-                            width: px(width as f32),
-                            height: px(height as f32),
-                        },
-                    }
-                } else {
-                    info!("=== 使用默认窗口尺寸 ===");
-                    // 使用默认窗口尺寸
-                    Bounds {
-                        origin: Point {
-                            x: px(100.0),
-                            y: px(100.0),
-                        },
-                        size: gpui_kit::Size {
-                            width: px(900.0),
-                            height: px(600.0),
-                        },
-                    }
-                }
+            if visible_x != x || visible_y != y {
+                info!(
+                    "=== 调整窗口位置到可见区域: {}x{} @ ({}, {}) ===",
+                    width, height, visible_x, visible_y
+                );
             }
-            Err(e) => {
-                error!("=== 加载配置失败，使用默认窗口尺寸: {:?} ===", e);
-                // 使用默认窗口尺寸
-                Bounds {
-                    origin: Point {
-                        x: px(100.0),
-                        y: px(100.0),
-                    },
-                    size: gpui_kit::Size {
-                        width: px(900.0),
-                        height: px(600.0),
-                    },
-                }
+
+            Bounds {
+                origin: Point {
+                    x: px(visible_x as f32),
+                    y: px(visible_y as f32),
+                },
+                size: gpui_kit::Size {
+                    width: px(width as f32),
+                    height: px(height as f32),
+                },
+            }
+        } else {
+            info!("=== 使用默认窗口尺寸 ===");
+            // 使用默认窗口尺寸
+            Bounds {
+                origin: Point {
+                    x: px(100.0),
+                    y: px(100.0),
+                },
+                size: gpui_kit::Size {
+                    width: px(900.0),
+                    height: px(600.0),
+                },
             }
         };
 
@@ -319,7 +302,8 @@ fn run_app() {
                         });
 
                         // 保存窗口配置
-                        if let Ok(mut storage) = ConfigStorage::new() {
+                        {
+                            let mut storage = ConfigStorage::new();
                             let x = (origin.x / gpui_kit::px(1.0)) as f64;
                             let y = (origin.y / gpui_kit::px(1.0)) as f64;
                             let width = (content_size.width / gpui_kit::px(1.0)) as f64;

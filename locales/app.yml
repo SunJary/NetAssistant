@@ -39,6 +39,12 @@ context_menu:
   delete:
     zh-CN: 删除连接
     en: Delete Connection
+  edit_subscription:
+    zh-CN: 编辑订阅…
+    en: Edit Subscription…
+  unsubscribe:
+    zh-CN: 取消订阅
+    en: Unsubscribe
   copy_selection:
     zh-CN: 复制选中
     en: Copy Selection

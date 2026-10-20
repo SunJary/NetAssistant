@@ -1,4 +1,4 @@
-use crate::config::connection::DecoderConfig;
+use crate::config::connection::{DecoderConfig, Qos};
 use crate::message::Message;
 use crate::reply::ReplyRulesStore;
 use crate::send_task::model::{TaskEndReason, TaskStatus};
@@ -21,6 +21,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// `target` 只有 UDP 用得上：TCP 连接的写通道天然绑定在一条 socket 上，
 /// 而 UDP 的应答必须发回**数据报的真实来源**（广播发现场景下通常是设备自己的 IP，
 /// 而不是广播地址），因此目标地址需要随数据传递。
+///
+/// `mqtt_meta` 只有 MQTT 用得上：发布必须携带 topic 与 QoS，二者随数据一起传递，
+/// 与 UDP 用 `target` 传递目标地址是同构设计（规划 D-2）。TCP/UDP 写路径忽略此字段。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WireMessage {
     data: Vec<u8>,
@@ -28,6 +31,19 @@ pub struct WireMessage {
     finalized: bool,
     /// UDP 显式目标地址；None = 使用连接/会话的默认目标
     target: Option<std::net::SocketAddr>,
+    /// MQTT 发布元数据（topic/QoS/retain）；TCP/UDP 为 None（规划 D-2）
+    mqtt_meta: Option<MqttPublishMeta>,
+}
+
+/// MQTT 发布元数据，随 `WireMessage` 传递（规划 §5.2）。
+///
+/// `retain` 首版恒 false：发送区不暴露 retain（仅遗嘱消息有 retain，见配置层
+/// `WillSettings`），保留字段是为后续迭代（发送区 retain 开关）预留语义。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MqttPublishMeta {
+    pub topic: String,
+    pub qos: Qos,
+    pub retain: bool,
 }
 
 impl WireMessage {
@@ -37,6 +53,7 @@ impl WireMessage {
             data,
             finalized: false,
             target: None,
+            mqtt_meta: None,
         }
     }
 
@@ -46,6 +63,20 @@ impl WireMessage {
             data,
             finalized: false,
             target: Some(target),
+            mqtt_meta: None,
+        }
+    }
+
+    /// MQTT 发布：payload 原样投递，携带 topic/QoS/retain（规划 D-2/D-3）。
+    ///
+    /// `finalized = true`：MQTT 载荷不可追加 trailer（配置层对 MQTT 已强制
+    /// `TrailerKind::None`，此处再显式标记，语义自洽且与 `bypass` 一致）。
+    pub fn inherit_mqtt(data: Vec<u8>, meta: MqttPublishMeta) -> Self {
+        Self {
+            data,
+            finalized: true,
+            target: None,
+            mqtt_meta: Some(meta),
         }
     }
 
@@ -69,6 +100,7 @@ impl WireMessage {
             data,
             finalized: true,
             target,
+            mqtt_meta: None,
         }
     }
 
@@ -92,6 +124,11 @@ impl WireMessage {
     /// UDP 显式目标地址（None = 用会话默认目标）
     pub fn target(&self) -> Option<std::net::SocketAddr> {
         self.target
+    }
+
+    /// MQTT 发布元数据（None = 非 MQTT 发布；MQTT 写任务据此取 topic/QoS）
+    pub fn mqtt_meta(&self) -> Option<&MqttPublishMeta> {
+        self.mqtt_meta.as_ref()
     }
 }
 
@@ -202,6 +239,18 @@ impl NetCounters {
     }
 }
 
+/// UI → MQTT 网络层的订阅控制命令（运行时下发，无需重连；规划 §5.3）。
+///
+/// 与 `DecoderControlSenderReady` 同构：网络层把控制发送器通过事件交给 UI，
+/// UI 订阅/取消时直接投递命令，由客户端操作任务调用 rumqttc 的 subscribe/unsubscribe。
+#[derive(Debug, Clone)]
+pub enum MqttCommand {
+    /// 订阅 topic（`topic` 支持 `+`/`#` 通配符，合法性由 broker 校验）
+    Subscribe { topic: String, qos: Qos },
+    /// 取消订阅 topic
+    Unsubscribe { topic: String },
+}
+
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
 #[derive(Debug)]
 pub enum ConnectionEvent {
@@ -234,6 +283,14 @@ pub enum ConnectionEvent {
     DecoderControlSenderReady(String, Sender<DecoderConfig>),
     /// 服务端某客户端的解码器控制发送器就绪
     ServerDecoderControlSenderReady(String, SocketAddr, Sender<DecoderConfig>),
+    /// MQTT 订阅控制发送器就绪(用于运行时订阅/取消, 无需重连; 规划 §5.3)
+    ///
+    /// 注：**不提供 SubAck 事件** —— MQTT SUBACK 报文按协议仅含 pkid+返回码、不含 topic,
+    /// 且 rumqttc `subscribe` 不返回 pkid, topic↔确认无法关联(规划 D-10)。订阅列表由 UI
+    /// 乐观维护, SubAck 仅在网络层 debug log。
+    MqttControlSenderReady(String, Sender<MqttCommand>),
+    /// MQTT 重连成功后已自动恢复的订阅数量(仅提示条, 非终态; 规划 §6.4)
+    MqttSubscriptionsRestored(String, usize),
     /// 回复规则集共享状态就绪(UI 运行时下发整表；服务端多客户端共享同一 store)
     ///
     /// 客户端侧不需要此事件：客户端是 1:1，在 `TcpClient::new` / `UdpClient::new`
@@ -256,3 +313,33 @@ pub enum ConnectionEvent {
         reason: TaskEndReason,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{MqttPublishMeta, WireMessage};
+    use crate::config::connection::Qos;
+
+    /// MQTT 发布语义：payload 原样、meta 携带 topic/QoS、且标记为不可追加 trailer（规划 D-2/D-7）。
+    #[test]
+    fn wire_message_inherit_mqtt_carries_meta_and_is_finalized() {
+        let meta = MqttPublishMeta {
+            topic: "sensor/1/temp".to_string(),
+            qos: Qos::AtLeastOnce,
+            retain: false,
+        };
+        let msg = WireMessage::inherit_mqtt(b"23.5".to_vec(), meta.clone());
+        assert_eq!(msg.data(), b"23.5", "payload 必须原样传递");
+        assert_eq!(msg.mqtt_meta(), Some(&meta), "topic/QoS 必须随数据传递");
+        assert!(msg.bypasses_trailer(), "MQTT 载荷不得追加连接 trailer");
+        assert!(msg.target().is_none(), "MQTT 不使用 UDP 目标语义");
+    }
+
+    /// 回归：非 MQTT 发送路径不受新增字段影响（meta 恒 None）。
+    #[test]
+    fn wire_message_inherit_has_no_mqtt_meta() {
+        let msg = WireMessage::inherit(b"hi".to_vec());
+        assert!(msg.mqtt_meta().is_none());
+        assert!(!msg.bypasses_trailer(), "普通发送仍继承连接 trailer");
+    }
+}
+

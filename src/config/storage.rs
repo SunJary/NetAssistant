@@ -3,9 +3,12 @@ use crate::message::{FavoriteItem, FavoritesMap};
 use crate::reply::model::{ReplyRule, ReplyRulesConfig};
 use crate::send_task::model::TimedTaskProfile;
 use crate::stress::config::StressTestConfig;
+use log::{error, warn};
+use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -19,10 +22,40 @@ pub enum StorageError {
     Json(#[from] serde_json::Error),
 }
 
+/// 一条 MQTT 发布历史（topic + QoS + retain 三元组）。
+///
+/// 复用 `Qos::try_from(u8)` 映射；用 u8 而非直接 serde `Qos`，避免改动 `Qos` 枚举的派生约束。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MqttTopicHistoryEntry {
+    pub topic: String,
+    pub qos: u8,
+    pub retain: bool,
+}
+
+/// 每连接 MQTT 发布历史（按 `connection_id` 索引，与 `FavoritesMap` 同构）。
+pub type MqttTopicHistoryMap = HashMap<String, Vec<MqttTopicHistoryEntry>>;
+
+/// 一条持久化的 MQTT 订阅（topic + QoS）。
+///
+/// 与运行期 `ConnectionTabState::mqtt_subscriptions: Vec<(String, Qos)>` 同构；
+/// 用 u8 而非 serde `Qos`，理由同 `MqttTopicHistoryEntry`。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MqttSubscriptionEntry {
+    pub topic: String,
+    pub qos: u8,
+}
+
+/// 每连接 MQTT 订阅（按 `connection_id` 索引）。
+pub type MqttSubscriptionMap = HashMap<String, Vec<MqttSubscriptionEntry>>;
+
 /// 应用配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub connections: Vec<ConnectionConfig>,
+    /// 连接列表：本版本不认识的条目会原样保留并在保存时写回，避免旧版本吃掉新版本的数据
+    ///
+    /// 见 `ConnectionList`。
+    #[serde(default)]
+    pub connections: ConnectionList,
     pub auto_save: bool,
     pub save_interval: u64,
     pub window_x: Option<f64>,
@@ -55,12 +88,22 @@ pub struct AppConfig {
     /// 也无需在 `add_connection` 播种。
     #[serde(default)]
     pub reply_connection_enabled: HashMap<String, bool>,
+    /// MQTT 发布 topic 历史（按 connection_id 索引）
+    ///
+    /// 旧配置无此字段 → `serde(default)` 得空 map，行为与升级前一致（无历史可下拉）。
+    #[serde(default)]
+    pub mqtt_topic_history: MqttTopicHistoryMap,
+    /// MQTT 订阅（按 connection_id 索引）：重开标签页 / 重启后自动恢复
+    ///
+    /// 旧配置无此字段 → `serde(default)` 得空 map，行为与升级前一致（不自动订阅）。
+    #[serde(default)]
+    pub mqtt_subscriptions: MqttSubscriptionMap,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            connections: Vec::new(),
+            connections: ConnectionList::default(),
             auto_save: true,
             save_interval: 30,
             window_x: None,
@@ -75,6 +118,107 @@ impl Default for AppConfig {
             language: None,
             reply_rules: ReplyRulesConfig::default(),
             reply_connection_enabled: HashMap::new(),
+            mqtt_topic_history: HashMap::new(),
+            mqtt_subscriptions: HashMap::new(),
+        }
+    }
+}
+
+/// 连接配置列表：强类型条目 + 本版本无法识别的原始条目。
+///
+/// 配置文件由所有版本共用。更新版本可能写入本版本不认识的连接（例如新增协议 `mqtt`）。
+/// 旧版本读到时若直接丢弃，它随后的一次保存（切窗口尺寸、增删连接都会触发）就会把
+/// 这条连接从文件里抹掉，用户回到新版本也找不回来——所以这里只做"透传"：
+/// 无法解析的条目按原始 JSON 保留，保存时插回原来的下标位置。
+///
+/// `Deref`/`DerefMut` 到 `Vec<ConnectionConfig>`：业务代码只会看到自己认得的条目，
+/// 未识别条目不参与任何逻辑，也不会被"删除连接"这类操作误伤。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ConnectionList {
+    connections: Vec<ConnectionConfig>,
+    /// 本版本无法解析的原始条目，及其在原数组中的下标（用于保存时插回原位）
+    unrecognized: Vec<(usize, serde_json::Value)>,
+}
+
+impl Deref for ConnectionList {
+    type Target = Vec<ConnectionConfig>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connections
+    }
+}
+
+impl DerefMut for ConnectionList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connections
+    }
+}
+
+impl Serialize for ConnectionList {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // 把未识别条目按下标插回，让写回的数组顺序与用户上次看到的顺序一致
+        let mut merged: Vec<EntryRef<'_>> =
+            self.connections.iter().map(EntryRef::Known).collect();
+        for (index, raw) in &self.unrecognized {
+            merged.insert((*index).min(merged.len()), EntryRef::Raw(raw));
+        }
+
+        let mut seq = serializer.serialize_seq(Some(merged.len()))?;
+        for entry in &merged {
+            seq.serialize_element(entry)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ConnectionList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
+        let mut connections = Vec::with_capacity(raw.len());
+        let mut unrecognized = Vec::new();
+
+        for (index, item) in raw.into_iter().enumerate() {
+            match serde_json::from_value::<ConnectionConfig>(item.clone()) {
+                Ok(connection) => connections.push(connection),
+                Err(e) => {
+                    error!(
+                        "=== 第 {} 条连接本版本无法识别，已原样保留(可能来自更新版本): {} ===",
+                        index + 1,
+                        e
+                    );
+                    unrecognized.push((index, item));
+                }
+            }
+        }
+
+        Ok(Self {
+            connections,
+            unrecognized,
+        })
+    }
+}
+
+/// `ConnectionList` 序列化时的单个元素：强类型条目走自身 `Serialize`
+///（保留字段顺序），未识别条目原样输出
+enum EntryRef<'a> {
+    Known(&'a ConnectionConfig),
+    Raw(&'a serde_json::Value),
+}
+
+impl Serialize for EntryRef<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            EntryRef::Known(connection) => connection.serialize(serializer),
+            EntryRef::Raw(raw) => raw.serialize(serializer),
         }
     }
 }
@@ -88,23 +232,59 @@ pub struct ConfigStorage {
 
 impl ConfigStorage {
     /// 创建新的配置存储管理器
-    pub fn new() -> Result<Self, StorageError> {
+    ///
+    /// 该函数不会失败：配置目录建不出来、或既有配置文件解析不了时，都以默认配置继续，
+    /// 绝不 panic。用户侧"读不动配置 → 永远起不来且无法自愈"是不可接受的。
+    /// 解析失败时先把坏文件改名备份，保留用户手工修复/找回连接的可能。
+    pub fn new() -> Self {
         let config_dir = Self::get_config_dir();
         let config_file = config_dir.join("netassistant_config.json");
 
-        // 确保配置目录存在
-        fs::create_dir_all(&config_dir)?;
+        // 确保配置目录存在；失败只告警：后续保存会静默失败，但不应阻止启动
+        if let Err(e) = fs::create_dir_all(&config_dir) {
+            warn!(
+                "=== 创建配置目录失败({}): {} ===",
+                config_dir.display(),
+                e
+            );
+        }
 
         let config = if config_file.exists() {
-            Self::load_from_file(&config_file)?
+            match Self::load_from_file(&config_file) {
+                Ok(config) => config,
+                Err(e) => {
+                    error!("=== 配置文件无法解析，回退默认配置: {} ===", e);
+                    match Self::backup_unreadable(&config_file) {
+                        Some(backup) => error!(
+                            "=== 原文件已备份到 {} (修复后可手工还原) ===",
+                            backup.display()
+                        ),
+                        None => error!("=== 备份原文件失败，下次保存将覆盖它 ==="),
+                    }
+                    AppConfig::default()
+                }
+            }
         } else {
             AppConfig::default()
         };
 
-        Ok(Self {
+        Self {
             config_file,
             config,
-        })
+        }
+    }
+
+    /// 把无法解析的配置文件改名备份，避免下次启动再读到它。
+    ///
+    /// 返回备份后的路径；重命名失败(如文件被占用)时返回 `None`，
+    /// 调用方仍应以默认配置继续启动。
+    fn backup_unreadable(path: &Path) -> Option<PathBuf> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let backup = path.with_extension(format!("corrupted-{}.json", stamp));
+        fs::rename(path, &backup).ok().map(|_| backup)
     }
 
     /// 保存窗口位置和尺寸
@@ -252,6 +432,9 @@ impl ConfigStorage {
         // 连带删除该连接的「自动回复」开关与规则，避免残留孤儿规则
         self.config.reply_connection_enabled.remove(connection_id);
         self.config.reply_rules.connections.remove(connection_id);
+        // 连带删除该连接的 MQTT 发布 topic 历史与订阅，避免孤儿数据
+        self.config.mqtt_topic_history.remove(connection_id);
+        self.config.mqtt_subscriptions.remove(connection_id);
         if self.config.auto_save {
             let _ = self.save();
         }
@@ -331,6 +514,101 @@ impl ConfigStorage {
             .favorites
             .get(connection_id)
             .and_then(|list| list.iter().find(|item| item.content == content).cloned())
+    }
+
+    /// 记录一条 MQTT 发布历史：以 topic 为键去重（命中则更新 QoS/retain 并置顶），
+    /// 每连接上限 20，超出截断尾部。
+    pub fn push_mqtt_topic_history(&mut self, connection_id: &str, entry: MqttTopicHistoryEntry) {
+        const MAX_HISTORY: usize = 20;
+        let list = self
+            .config
+            .mqtt_topic_history
+            .entry(connection_id.to_string())
+            .or_default();
+        list.retain(|e| e.topic != entry.topic);
+        list.insert(0, entry);
+        list.truncate(MAX_HISTORY);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 读取指定连接的 MQTT 发布历史（最近优先）。
+    pub fn mqtt_topic_history(&self, connection_id: &str) -> &[MqttTopicHistoryEntry] {
+        self.config
+            .mqtt_topic_history
+            .get(connection_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// 清空指定连接的 MQTT 发布历史。
+    pub fn clear_mqtt_topic_history(&mut self, connection_id: &str) {
+        self.config.mqtt_topic_history.remove(connection_id);
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 读取指定连接的持久化 MQTT 订阅（按记录顺序）。
+    pub fn mqtt_subscriptions(&self, connection_id: &str) -> &[MqttSubscriptionEntry] {
+        self.config
+            .mqtt_subscriptions
+            .get(connection_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// 新增/更新一条 MQTT 订阅：同 topic 去重（命中则更新 QoS），保持插入顺序。
+    pub fn add_mqtt_subscription(&mut self, connection_id: &str, topic: &str, qos: u8) {
+        let list = self
+            .config
+            .mqtt_subscriptions
+            .entry(connection_id.to_string())
+            .or_default();
+        match list.iter_mut().find(|e| e.topic == topic) {
+            Some(e) => e.qos = qos,
+            None => list.push(MqttSubscriptionEntry {
+                topic: topic.to_string(),
+                qos,
+            }),
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 删除指定连接的一条 MQTT 订阅。
+    pub fn remove_mqtt_subscription(&mut self, connection_id: &str, topic: &str) {
+        if let Some(list) = self.config.mqtt_subscriptions.get_mut(connection_id) {
+            list.retain(|e| e.topic != topic);
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
+    }
+
+    /// 编辑指定连接的一条 MQTT 订阅：`old_topic` → `new_topic` 并更新 QoS，**保持原列表位置**。
+    ///
+    /// - `old == new` 时退化为仅更新 QoS；
+    /// - 命中多条同 topic 只改第一条（调用方已前置判重，正常不会出现）；
+    /// - `new_topic` 命中其它条目时不做合并（由调用方负责拒绝），行为与 `add` 的幂等语义区分。
+    pub fn update_mqtt_subscription(
+        &mut self,
+        connection_id: &str,
+        old_topic: &str,
+        new_topic: &str,
+        qos: u8,
+    ) {
+        if let Some(list) = self.config.mqtt_subscriptions.get_mut(connection_id) {
+            if let Some(e) = list.iter_mut().find(|e| e.topic == old_topic) {
+                e.topic = new_topic.to_string();
+                e.qos = qos;
+            }
+        }
+        if self.config.auto_save {
+            let _ = self.save();
+        }
     }
 
     /// 获取指定连接的压测配置(回填用)
@@ -505,7 +783,7 @@ impl ConfigStorage {
 
 impl Default for ConfigStorage {
     fn default() -> Self {
-        Self::new().expect("无法创建配置存储")
+        Self::new()
     }
 }
 
@@ -558,6 +836,55 @@ mod tests {
         assert_eq!(config.reply_rules.version, 1);
         // 行为等价于"升级前"：无规则可命中
         assert!(config.reply_rules.connections.values().all(|rules| rules.is_empty()));
+    }
+
+    /// 更新版本写入的未知协议必须原样保留并插回原下标：
+    /// 旧版本保存一次之后，用户回到新版本仍然能读到这条连接。
+    ///
+    /// 本机实际踩到的就是这个坑：旧版本读到新版本写入的 `protocol: "mqtt"` 后整份失败，
+    /// 启动直接 panic。这里用一个本版本必然不认识的协议值复现该场景。
+    #[test]
+    fn test_unrecognized_connection_survives_old_version_save() {
+        let json = r#"{
+        "connections": [
+            {"type":"Client","config":{"id":"keep-1","protocol":"tcp","server_address":"127.0.0.1","server_port":12345}},
+            {"type":"Client","config":{"id":"from-future","protocol":"somefutureproto","server_address":"10.0.0.82","server_port":1883}},
+            {"type":"Client","config":{"id":"keep-2","protocol":"udp","server_address":"127.0.0.1","server_port":54321}}
+        ],
+        "auto_save": true,
+        "save_interval": 30
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+
+        // 业务侧只看到自己认得的条目
+        let ids: Vec<&str> = config.connections.iter().map(|c| c.id()).collect();
+        assert_eq!(ids, vec!["keep-1", "keep-2"]);
+
+        // 旧版本保存后：未识别条目仍在原下标，内容一字未改
+        let saved: serde_json::Value = serde_json::to_value(&config).unwrap();
+        let saved = saved["connections"].as_array().expect("connections 应为数组");
+        assert_eq!(saved.len(), 3, "未识别条目不能被丢弃");
+        assert_eq!(saved[0]["config"]["id"], "keep-1");
+        assert_eq!(saved[1]["config"]["id"], "from-future");
+        assert_eq!(saved[1]["config"]["protocol"], "somefutureproto");
+        assert_eq!(saved[1]["config"]["server_port"], 1883);
+        assert_eq!(saved[2]["config"]["id"], "keep-2");
+    }
+
+    /// 整份配置无法解析时，坏文件被改名备份而不是留在原地反复失败
+    #[test]
+    fn test_unreadable_config_is_backed_up_before_falling_back() {
+        let dir = std::env::temp_dir().join("na_storage_backup_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("netassistant_config.json");
+        fs::write(&file, "{ 截断的 json").unwrap();
+
+        let backup = ConfigStorage::backup_unreadable(&file).expect("应能备份坏文件");
+        assert!(!file.exists(), "坏文件不应留在原路径");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{ 截断的 json");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// 含规则集的配置序列化往返一致
@@ -716,6 +1043,195 @@ mod tests {
     }"#;
         let config: AppConfig = serde_json::from_str(json).unwrap();
         assert!(config.reply_connection_enabled.is_empty());
+    }
+
+    /// MQTT 发布历史：按连接隔离、去重置顶、上限 20、清空、删连接连带清理、serde 往返。
+    #[test]
+    fn test_mqtt_topic_history() {
+        let mut storage = test_storage();
+        let entry = |topic: &str, qos: u8, retain: bool| MqttTopicHistoryEntry {
+            topic: topic.to_string(),
+            qos,
+            retain,
+        };
+
+        // 初始为空，未建历史的连接返回空切片
+        assert!(storage.mqtt_topic_history("conn-1").is_empty());
+        assert!(storage.mqtt_topic_history("conn-x").is_empty());
+
+        // 最近优先：新纪录插到队首
+        storage.push_mqtt_topic_history("conn-1", entry("a/b", 1, false));
+        storage.push_mqtt_topic_history("conn-1", entry("c/d", 0, true));
+        let topics: Vec<&str> = storage
+            .mqtt_topic_history("conn-1")
+            .iter()
+            .map(|e| e.topic.as_str())
+            .collect();
+        assert_eq!(topics, vec!["c/d", "a/b"]);
+
+        // 同 topic 去重：更新 QoS/retain 并置顶，长度不增
+        storage.push_mqtt_topic_history("conn-1", entry("a/b", 2, true));
+        let list = storage.mqtt_topic_history("conn-1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 2);
+        assert!(list[0].retain);
+
+        // 按连接隔离：互不可见
+        storage.push_mqtt_topic_history("conn-2", entry("x/y", 0, false));
+        assert_eq!(storage.mqtt_topic_history("conn-1").len(), 2);
+        assert_eq!(storage.mqtt_topic_history("conn-2").len(), 1);
+        assert_eq!(storage.mqtt_topic_history("conn-2")[0].topic, "x/y");
+
+        // 上限 20：超出截断尾部（最早的被丢弃）
+        for i in 0..25 {
+            storage.push_mqtt_topic_history("conn-3", entry(&format!("t/{i}"), 0, false));
+        }
+        let list3 = storage.mqtt_topic_history("conn-3");
+        assert_eq!(list3.len(), 20);
+        assert_eq!(list3[0].topic, "t/24", "最新在队首");
+        assert_eq!(list3[19].topic, "t/5", "最老的溢出被截断");
+
+        // serde 往返
+        let json = serde_json::to_string(&storage.config).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.mqtt_topic_history, storage.config.mqtt_topic_history);
+
+        // 清空仅影响当前连接
+        storage.clear_mqtt_topic_history("conn-1");
+        assert!(storage.mqtt_topic_history("conn-1").is_empty());
+        assert_eq!(storage.mqtt_topic_history("conn-2").len(), 1);
+
+        // 删除连接连带清理历史
+        storage.add_connection(ConnectionConfig::Client(ClientConfig {
+            id: "conn-b".to_string(),
+            ..Default::default()
+        }));
+        storage.push_mqtt_topic_history("conn-b", entry("k/l", 1, false));
+        storage.remove_client_connection("conn-b");
+        assert!(storage.mqtt_topic_history("conn-b").is_empty());
+    }
+
+    /// MQTT 订阅持久化：按连接隔离、同 topic 去重更新 QoS、保序、删除、删连接连带清理、serde 往返。
+    #[test]
+    fn test_mqtt_subscription_persistence() {
+        let mut storage = test_storage();
+
+        // 初始为空
+        assert!(storage.mqtt_subscriptions("conn-1").is_empty());
+
+        // 保序追加
+        storage.add_mqtt_subscription("conn-1", "a/b", 0);
+        storage.add_mqtt_subscription("conn-1", "c/d", 1);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 0);
+        assert_eq!(list[1].topic, "c/d");
+        assert_eq!(list[1].qos, 1);
+
+        // 同 topic 去重：仅更新 QoS，长度与顺序不变
+        storage.add_mqtt_subscription("conn-1", "a/b", 2);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 2, "同 topic 应更新 QoS 而非新增");
+
+        // 按连接隔离
+        storage.add_mqtt_subscription("conn-2", "x/y", 0);
+        assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 2);
+        assert_eq!(storage.mqtt_subscriptions("conn-2").len(), 1);
+
+        // serde 往返
+        let json = serde_json::to_string(&storage.config).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.mqtt_subscriptions, storage.config.mqtt_subscriptions);
+
+        // 删除单条：不影响同连接其它订阅
+        storage.remove_mqtt_subscription("conn-1", "a/b");
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].topic, "c/d");
+        // 删除不存在的 topic 幂等
+        storage.remove_mqtt_subscription("conn-1", "nope");
+        assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 1);
+
+        // 删除连接连带清理订阅
+        storage.add_connection(ConnectionConfig::Client(ClientConfig {
+            id: "conn-b".to_string(),
+            ..Default::default()
+        }));
+        storage.add_mqtt_subscription("conn-b", "k/l", 1);
+        storage.remove_client_connection("conn-b");
+        assert!(storage.mqtt_subscriptions("conn-b").is_empty());
+    }
+
+    /// 编辑订阅：保序替换 topic 并更新 QoS；old==new 退化为仅改 QoS；跨连接隔离。
+    #[test]
+    fn test_update_mqtt_subscription_keeps_order() {
+        let mut storage = test_storage();
+        storage.add_mqtt_subscription("conn-1", "a/b", 0);
+        storage.add_mqtt_subscription("conn-1", "c/d", 1);
+        storage.add_mqtt_subscription("conn-1", "e/f", 2);
+
+        // 改 topic + QoS：位置不变
+        storage.update_mqtt_subscription("conn-1", "c/d", "c/d2", 2);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[1].topic, "c/d2", "编辑应就地替换 topic，保持原位置");
+        assert_eq!(list[1].qos, 2);
+        assert_eq!(list[2].topic, "e/f");
+
+        // old == new：仅更新 QoS
+        storage.update_mqtt_subscription("conn-1", "a/b", "a/b", 2);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0].topic, "a/b");
+        assert_eq!(list[0].qos, 2, "old==new 应退化为仅更新 QoS");
+
+        // 跨连接隔离：conn-2 不受影响，编辑不存在的 topic 幂等
+        storage.add_mqtt_subscription("conn-2", "x/y", 0);
+        storage.update_mqtt_subscription("conn-1", "nope", "nope2", 1);
+        assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 3);
+        assert_eq!(storage.mqtt_subscriptions("conn-2").len(), 1);
+        assert_eq!(storage.mqtt_subscriptions("conn-2")[0].topic, "x/y");
+    }
+
+    /// 旧配置无 `mqtt_subscriptions` 字段 → 空 map（零迁移）
+    #[test]
+    fn test_legacy_config_has_no_mqtt_subscriptions() {
+        let json = r#"{
+        "connections": [],
+        "auto_save": true,
+        "save_interval": 30,
+        "window_x": null,
+        "window_y": null,
+        "window_width": null,
+        "window_height": null,
+        "sidebar_width": null,
+        "sidebar_collapsed": null
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(config.mqtt_subscriptions.is_empty());
+    }
+
+    /// 旧配置无 `mqtt_topic_history` 字段 → 空 map（零迁移）
+    #[test]
+    fn test_legacy_config_has_no_mqtt_topic_history() {
+        let json = r#"{
+        "connections": [],
+        "auto_save": true,
+        "save_interval": 30,
+        "window_x": null,
+        "window_y": null,
+        "window_width": null,
+        "window_height": null,
+        "sidebar_width": null,
+        "sidebar_collapsed": null
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(config.mqtt_topic_history.is_empty());
     }
 
     /// 上移/下移必须真正改变求值顺序，并重排 priority 的间隔

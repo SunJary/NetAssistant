@@ -88,6 +88,13 @@ pub struct Message {
     /// 源地址是否为非预期地址（如UDP广播场景下，回复来自非目标地址）
     #[serde(default)]
     pub source_unexpected: bool,
+    /// MQTT 主题标签（PUBLISH 的 topic）；非 MQTT 连接恒为 None（规划 §5.4）。
+    /// `#[serde(default)]` 兼容缺少该字段的旧消息记录。
+    #[serde(default)]
+    pub topic: Option<String>,
+    /// MQTT PUBLISH 的 retain 标记（消息列表 topic pill 旁小标记）；非 MQTT 恒 false
+    #[serde(default)]
+    pub retain: bool,
     #[serde(default = "default_cached_content")]
     cached_content: String,
     /// 显示格式化缓存(惰性): Some((模式, 格式化后的内容))。
@@ -119,9 +126,19 @@ impl Message {
             raw_data,
             source: None,
             source_unexpected: false,
+            topic: None,
+            retain: false,
             cached_content,
             display_cache: Mutex::new(None),
         }
+    }
+
+    /// 注入 MQTT 传输元数据（topic/retain）。`Message::new` 默认 topic=None、retain=false，
+    /// 既有构造点零改动；仅 MQTT 读路径经此 builder 填充（规划 §5.4）。
+    pub fn with_transport(mut self, topic: Option<String>, retain: bool) -> Self {
+        self.topic = topic;
+        self.retain = retain;
+        self
     }
 
     pub fn with_source(mut self, source: String) -> Self {
@@ -216,6 +233,8 @@ impl Clone for Message {
             raw_data: self.raw_data.clone(),
             source: self.source.clone(),
             source_unexpected: self.source_unexpected,
+            topic: self.topic.clone(),
+            retain: self.retain,
             cached_content: self.cached_content.clone(),
             display_cache: Mutex::new(None),
         }
@@ -420,6 +439,45 @@ mod tests {
         assert!(hex_message.id.len() > 0);
         assert!(hex_message.timestamp.len() > 0);
         assert_eq!(hex_message.source, None);
+    }
+
+    #[test]
+    fn test_message_default_transport_is_none() {
+        // Message::new 默认 topic=None、retain=false，既有构造点语义不变
+        let message = Message::new(MessageDirection::Received, b"x".to_vec(), MessageType::Text);
+        assert_eq!(message.topic, None);
+        assert!(!message.retain);
+    }
+
+    #[test]
+    fn test_message_with_transport_sets_topic_and_retain() {
+        let message =
+            Message::new(MessageDirection::Received, b"x".to_vec(), MessageType::Text)
+                .with_transport(Some("sensor/1".to_string()), true);
+        assert_eq!(message.topic.as_deref(), Some("sensor/1"));
+        assert!(message.retain);
+
+        // clone 保留传输元数据（日志/导出路径）
+        let clone = message.clone();
+        assert_eq!(clone.topic.as_deref(), Some("sensor/1"));
+        assert!(clone.retain);
+    }
+
+    #[test]
+    fn test_message_deserializes_without_topic_retain_fields() {
+        // 旧消息记录（在新增字段之前序列化）缺 topic/retain → 反序列化回退默认值。
+        // 用真实序列化结果的 JSON 对象删掉这两个键，避免臆测 raw_data 的编码形式。
+        let message =
+            Message::new(MessageDirection::Received, b"hi".to_vec(), MessageType::Text)
+                .with_transport(Some("t".to_string()), true);
+        let mut value = serde_json::to_value(&message).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        assert!(obj.remove("topic").is_some());
+        assert!(obj.remove("retain").is_some());
+
+        let restored: Message = serde_json::from_value(value).expect("旧记录应可反序列化");
+        assert_eq!(restored.topic, None);
+        assert!(!restored.retain);
     }
 
     #[test]

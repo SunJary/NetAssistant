@@ -461,6 +461,54 @@ connection_tab:
   decoder_label:
     zh-CN: "解码器:"
     en: "Decoder:"
+  mqtt_subscriptions_restored:
+    zh-CN: "已重新发起 %{count} 个订阅"
+    en: "Re-subscribed to %{count} subscription(s)"
+  mqtt_subscriptions_title:
+    zh-CN: 订阅
+    en: Subscriptions
+  mqtt_new_subscription:
+    zh-CN: 新增订阅
+    en: New Subscription
+  mqtt_no_subscriptions:
+    zh-CN: 暂无订阅
+    en: No subscriptions yet
+  mqtt_subscribe_failed:
+    zh-CN: 订阅失败（连接未就绪）
+    en: Failed to subscribe (not connected)
+  mqtt_unsubscribe_failed:
+    zh-CN: 取消订阅失败（连接未就绪）
+    en: Failed to unsubscribe (not connected)
+  mqtt_topic_empty:
+    zh-CN: 请输入订阅主题
+    en: Enter a subscribe topic
+  mqtt_sub_topic_placeholder:
+    zh-CN: 订阅主题，支持 + / # 通配符
+    en: Topic to subscribe, supports + and #
+  mqtt_publish_topic_placeholder:
+    zh-CN: 发布主题
+    en: Publish topic
+  mqtt_publish_topic_empty:
+    zh-CN: 请输入发布主题
+    en: Enter a publish topic
+  mqtt_publish_topic_invalid:
+    zh-CN: 发布主题不能包含通配符 + 或 #
+    en: Publish topic cannot contain + or #
+  mqtt_qos_0:
+    zh-CN: QoS 0
+    en: QoS 0
+  mqtt_qos_1:
+    zh-CN: QoS 1
+    en: QoS 1
+  mqtt_qos_2:
+    zh-CN: QoS 2
+    en: QoS 2
+  mqtt_retain_mark:
+    zh-CN: retain
+    en: retain
+  mqtt_publish_retain_label:
+    zh-CN: 保留
+    en: Retain
   edit:
     zh-CN: 编辑
     en: Edit
@@ -622,6 +670,9 @@ send_task:
   reason_disconnected:
     zh-CN: 连接已断开
     en: Connection lost
+  reason_mqtt_topic_empty:
+    zh-CN: 发布主题为空，已暂停
+    en: Publish topic is empty; paused
   title:
     zh-CN: 发送任务
     en: Send Tasks
@@ -735,3 +786,40 @@ timed_task:
   cancel:
     zh-CN: 取消
     en: Cancel
+
+mqtt_net:
+  reconnected:
+    zh-CN: MQTT 已重连
+    en: MQTT reconnected
+  reconnecting:
+    zh-CN: MQTT 连接断开，自动重连中
+    en: MQTT disconnected, reconnecting
+  broker_disconnected:
+    zh-CN: Broker 主动断开连接
+    en: Broker closed the connection
+  suback_rejected:
+    zh-CN: Broker 拒绝了部分订阅
+    en: Broker rejected some subscriptions
+  connect_failed:
+    zh-CN: "MQTT 连接失败: %{reason}"
+    en: "MQTT connect failed: %{reason}"
+  subscribe_failed:
+    zh-CN: "订阅失败: %{topic}"
+    en: "Subscribe failed: %{topic}"
+  unsubscribe_failed:
+    zh-CN: "取消订阅失败: %{topic}"
+    en: "Unsubscribe failed: %{topic}"
+  missing_topic_meta:
+    zh-CN: MQTT 发布缺少主题，消息已忽略
+    en: MQTT publish is missing a topic; message dropped
+
+mqtt_history:
+  tooltip:
+    zh-CN: 最近发送过的主题
+    en: Recently sent topics
+  empty:
+    zh-CN: 暂无历史记录
+    en: No history yet
+  clear:
+    zh-CN: 清空历史
+    en: Clear History

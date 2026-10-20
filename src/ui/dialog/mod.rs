@@ -3,6 +3,7 @@ mod decoder_selection;
 mod favorite_list;
 mod favorite_remark;
 mod import_file;
+mod mqtt_subscriptions;
 mod new_connection;
 mod port_limit_help;
 mod reply_rule_edit;
@@ -16,6 +17,7 @@ pub use decoder_selection::{DecoderSelectionDialogState, open_decoder_selection_
 pub use favorite_list::FavoriteListPanel;
 pub use favorite_remark::open_favorite_remark_dialog;
 pub use import_file::{ImportFileDialogState, open_import_file_dialog};
+pub use mqtt_subscriptions::{MqttSubscriptionDialogState, open_mqtt_subscriptions_dialog};
 pub use new_connection::open_new_connection_dialog;
 pub use port_limit_help::open_port_limit_help_dialog;
 pub use reply_rule_edit::{ReplyRuleEditDialogState, open_reply_rule_edit_dialog};

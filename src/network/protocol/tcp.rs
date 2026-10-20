@@ -1,13 +1,14 @@
 use crate::config::connection::{ClientConfig, DecoderConfig, ServerConfig, TrailerSetting};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
-use crate::message::{Message, MessageDirection, MessageType};
+use crate::message::MessageType;
 use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch, WireMessage};
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::decoder::CodecFactory;
-use crate::reply::exec::handle_frame;
-use crate::reply::{ReplyRulesStore, RxFrame};
+use crate::network::protocol::frame::{flush_batch, process_frame_shared};
+use crate::reply::exec::RuleWireMode;
+use crate::reply::ReplyRulesStore;
 use bytes::BytesMut;
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use smol::channel::{Sender, unbounded as smol_unbounded};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -33,9 +34,7 @@ use tokio_util::sync::CancellationToken;
 /// TCP 段到达间隔通常远小于 1ms, 消费式强刷也保证残留不会损坏解码状态)。
 const FLUSH_DELAY: Duration = Duration::from_millis(10);
 
-/// 处理一个解码出的帧(可与回复规则交互)并累加入批。
-///
-/// 先跑回复规则（只可能追加一条应答），帧本身照常进明细、照常计数。
+/// TCP 帧处理：应答按 TCP 语义构造（继承/绕过连接 trailer，无目标地址）。
 #[allow(clippy::too_many_arguments)]
 fn process_frame(
     data: BytesMut,
@@ -48,23 +47,26 @@ fn process_frame(
     connection_id: &str,
     source: &SocketAddr,
 ) {
-    let raw_len = data.len() as u64;
-    // P-6：整帧只复制一次（`BytesMut` → `Arc<[u8]>`），规则引擎的 `RxFrame`
-    // 与消息明细共享同一份缓冲，不再各复制一份。
-    let raw: Arc<[u8]> = Arc::from(&data[..]);
-
-    if rules.is_enabled() {
-        try_rule_reply(rules, sender, batch, connection_id, source, raw.clone());
-    }
-
-    let message = processor.process_received_message(raw, message_type);
-    if let Some(c) = counters {
-        c.add_received(1);
-        c.add_received_bytes(raw_len);
-    }
-    batch.count += 1;
-    batch.bytes += raw_len;
-    batch.messages.push(message);
+    let deliver = |bytes: Arc<[u8]>, mode: RuleWireMode| -> bool {
+        let wire = match mode {
+            RuleWireMode::Inherit => WireMessage::inherit(bytes.to_vec()),
+            RuleWireMode::Override(trailer) => WireMessage::bypass(bytes.to_vec(), trailer),
+        };
+        sender.try_send(wire).is_ok()
+    };
+    process_frame_shared(
+        data,
+        processor,
+        batch,
+        counters,
+        message_type,
+        rules,
+        connection_id,
+        *source,
+        None,
+        false,
+        &deliver,
+    );
 }
 
 /// TCP 服务端读循环的单帧处理：走规则引擎。
@@ -93,73 +95,6 @@ fn process_frame_server(
         connection_id,
         source,
     );
-}
-
-/// 将本批消息一次性推送为单个 MessagesReceived 事件(洪泛聚合路径)。
-fn flush_batch(
-    event_sender: &Option<Sender<ConnectionEvent>>,
-    connection_id: &str,
-    batch: &mut ReceivedBatch,
-) {
-    if batch.is_empty() {
-        return;
-    }
-    let batch = std::mem::take(batch);
-    if let Some(sender) = event_sender {
-        if let Err(e) = sender.try_send(ConnectionEvent::MessagesReceived(
-            connection_id.to_string(),
-            batch,
-        )) {
-            error!("[TCP] 发送 MessagesReceived 事件失败: {:?}", e);
-        }
-    }
-}
-
-/// 对一帧跑回复规则并投递应答(TCP 服务端与客户端共用)。
-///
-/// 关键点:
-///   1. 走**规则引擎**而非单条固定载荷 —— 按规则集逐条匹配, 命中即停;
-///   2. 应答载荷可引用 `${rx.*}`(请求帧字段), 或含 `${crc16modbus:0:6:le}`
-///      这类生成型校验(发送前自动填充校验位)。
-///
-/// 未命中时不产生任何动作；未启用规则时零开销(`is_enabled()` 原子读即返回)。
-fn try_rule_reply(
-    rules: &Arc<ReplyRulesStore>,
-    client_tx: &Sender<WireMessage>,
-    batch: &mut ReceivedBatch,
-    connection_id: &str,
-    source: &SocketAddr,
-    raw: Arc<[u8]>,
-) {
-    if !rules.is_enabled() {
-        return;
-    }
-
-    // P-6：`raw` 已由调用方与本帧的 Message 共享，这里不再 `to_vec()`
-    let frame = Arc::new(RxFrame::from_shared(raw, *source));
-    let outcome = handle_frame(rules, &frame, connection_id);
-
-    if let Some(bytes) = &outcome.reply {
-        // P-6：应答字节也共享一份 `Arc<[u8]>` —— 明细用 Arc，投递项仍需独立 Vec
-        let shared: Arc<[u8]> = Arc::from(bytes.as_slice());
-        // 规则自带的编码方式优先（`Raw` = 原样输出，二进制协议必需）；
-        // `Inherit` 时由 encoder 追加连接级 trailer，与手动发送完全一致（决策 D-8）
-        let wire = match crate::reply::exec::rule_wire_mode(outcome.codec) {
-            crate::reply::exec::RuleWireMode::Inherit => WireMessage::inherit(shared.to_vec()),
-            crate::reply::exec::RuleWireMode::Override(trailer) => {
-                WireMessage::bypass(shared.to_vec(), trailer)
-            }
-        };
-        if client_tx.try_send(wire).is_ok() {
-            batch.sent_messages.push(
-                Message::new(MessageDirection::Sent, shared, MessageType::Text)
-                    .with_source(source.to_string()),
-            );
-        } else {
-            // 通道满/关闭：不阻塞网络任务，只告警（沿用既有 try_send 语义）
-            warn!("[reply] 投递应答失败: rule={:?}", outcome.rule_id);
-        }
-    }
 }
 
 /// TCP客户端实现

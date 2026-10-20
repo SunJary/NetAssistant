@@ -609,7 +609,7 @@ fn render_rule_row(
 }
 
 /// 行内图标按钮(自动在 `NetAssistantApp` 的 update 中执行回调)
-fn row_icon_button(
+pub(crate) fn row_icon_button(
     id: ElementId,
     label: String,
     tooltip: String,
@@ -632,7 +632,7 @@ fn row_icon_button(
 /// 回调直接拿到 `App`/`Window`, 由调用方自行决定是否 `update` `NetAssistantApp`:
 /// 需要 app 可变引用的用 [`row_icon_button`]; 需要自己 update 实体或叠开弹窗的
 /// (例如「编辑」) 用本函数, 以免在已持有租约时再次 update 造成 double lease panic。
-fn row_icon_button_raw(
+pub(crate) fn row_icon_button_raw(
     id: ElementId,
     label: String,
     tooltip: String,
