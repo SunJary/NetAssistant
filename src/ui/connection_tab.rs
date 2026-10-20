@@ -2796,6 +2796,9 @@ impl<'a> ConnectionTab<'a> {
                                                                 if let Some(source) = &message.source {
                                                                     let is_unexpected = message.source_unexpected;
 
+                                                                    // 双击复制来源地址（ip:port），与消息正文复制图标的行为区分：
+                                                                    // 不改动行内其它交互，仅在 click_count == 2 时写入剪贴板
+                                                                    let source_copy = source.clone();
                                                                     let source_div = div()
                                                                         .id(ElementId::named_usize("source", ix))
                                                                         .text_xs()
@@ -2803,7 +2806,21 @@ impl<'a> ConnectionTab<'a> {
                                                                             theme.danger
                                                                         } else {
                                                                             theme.muted_foreground
-                                                                        });
+                                                                        })
+                                                                        .on_mouse_down(
+                                                                            MouseButton::Left,
+                                                                            move |event: &MouseDownEvent,
+                                                                                  _window: &mut Window,
+                                                                                  cx: &mut App| {
+                                                                                if event.click_count == 2 {
+                                                                                    cx.write_to_clipboard(
+                                                                                        ClipboardItem::new_string(
+                                                                                            source_copy.clone(),
+                                                                                        ),
+                                                                                    );
+                                                                                }
+                                                                            },
+                                                                        );
 
                                                                     let source_div = if is_unexpected {
                                                                         source_div.tooltip(|window, cx| {
@@ -2827,6 +2844,8 @@ impl<'a> ConnectionTab<'a> {
                                                             message.topic.is_some(),
                                                             |this_div| {
                                                                 if let Some(topic) = &message.topic {
+                                                                    // 双击复制 topic 原文（不含展示用方括号），便于直接粘贴到订阅表单
+                                                                    let topic_copy = topic.clone();
                                                                     this_div.child(
                                                                         div()
                                                                             .id(ElementId::named_usize("topic", ix))
@@ -2841,7 +2860,21 @@ impl<'a> ConnectionTab<'a> {
                                                                                     t!("connection_tab.mqtt_retain_mark")
                                                                                         .to_string(),
                                                                                 )
-                                                                            }),
+                                                                            })
+                                                                            .on_mouse_down(
+                                                                                MouseButton::Left,
+                                                                                move |event: &MouseDownEvent,
+                                                                                      _window: &mut Window,
+                                                                                      cx: &mut App| {
+                                                                                    if event.click_count == 2 {
+                                                                                        cx.write_to_clipboard(
+                                                                                            ClipboardItem::new_string(
+                                                                                                topic_copy.clone(),
+                                                                                            ),
+                                                                                        );
+                                                                                    }
+                                                                                },
+                                                                            ),
                                                                     )
                                                                 } else {
                                                                     this_div
