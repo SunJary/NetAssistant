@@ -342,4 +342,3 @@ mod tests {
         assert!(!msg.bypasses_trailer(), "普通发送仍继承连接 trailer");
     }
 }
-

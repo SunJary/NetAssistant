@@ -152,6 +152,13 @@ pub struct ConnectionTabState {
     /// 上次重算时刻，用于事件泵限流
     pub search_last_recalc: Instant,
 
+    /// 消息气泡的焦点句柄（每个 tab 一个）。
+    ///
+    /// 气泡正文用 `SelectableText` 后，Ctrl/Cmd+C 的 `Copy` 动作绑定在 gpui-base Root 上，
+    /// 必须先有元素在焦点路径上才会派发：点气泡即聚焦它，动作沿 气泡 → … → Root
+    /// 冒泡，由 Root 复制窗口级文本选区。焦点若留在发送框，编辑器会先消费 Copy。
+    pub bubble_focus: FocusHandle,
+
     // 服务端和客户端的控制句柄
     pub server_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
     pub client_handle: Option<Arc<Mutex<Option<JoinHandle<()>>>>>,
@@ -264,6 +271,8 @@ impl ConnectionTabState {
                 state
             },
             client_list_state: ListState::new(0, ListAlignment::Top, px(32.)),
+
+            bubble_focus: cx.focus_handle(),
 
             // 消息显示模式默认为原始
             message_display_mode: MessageDisplayMode::Normal,
@@ -2536,6 +2545,7 @@ impl<'a> ConnectionTab<'a> {
                 let scrollbar_state = self.tab_state.message_list_state.clone();
                 let tab_id_for_list = tab_id.clone();
                 let app_entity = cx.entity().clone();
+                let bubble_focus = self.tab_state.bubble_focus.clone();
                 let favorited_contents = self.tab_state.favorited_contents.clone();
                 let display_mode = self.tab_state.message_display_mode;
 
@@ -2690,6 +2700,19 @@ impl<'a> ConnectionTab<'a> {
                         div()
                             .pr_8()
                             .size_full()
+                            // SelectableText 把选区高亮画在元素自身 paint 里，而拖拽时
+                            // gpui-base 只通知选择层自身（未订阅 refresh_window_on_change），
+                            // 虚拟列表项不会重绘，表现为松手才整段变色。拖拽期间主动请求
+                            // 重绘，让高亮跟随鼠标逐字变化。
+                            .on_mouse_move(
+                                |event: &MouseMoveEvent, window: &mut Window, cx: &mut App| {
+                                    if event.pressed_button == Some(MouseButton::Left)
+                                        && !TextSelection::selected_text(window, cx).is_empty()
+                                    {
+                                        window.refresh();
+                                    }
+                                },
+                            )
                             // 浮层打开时列表整体下移 40px（浮层高约 34px），避免消息被悬浮的搜索框遮住
                             .when(self.tab_state.search_open, |div| div.pt_10())
                             .child(
@@ -2728,6 +2751,8 @@ impl<'a> ConnectionTab<'a> {
                                             // 右键菜单取源：仅捕获展示文本本身，避免渲染树额外持有
                                             // Arc<Vec<Message>> 而拖慢入队侧的 Arc::make_mut
                                             let menu_text = display_text.clone();
+                                            let bubble_focus_for_msg = bubble_focus.clone();
+                                            let bubble_focus_on_click = bubble_focus.clone();
                                             // 收藏 key 固定用原始内容,与显示模式解耦:
                                             // 切换格式化不会让星标熄灭,也不会重复收藏
                                             let favorite_key: SharedString =
@@ -2918,16 +2943,11 @@ impl<'a> ConnectionTab<'a> {
                                                                 .when(!is_sent, |div| {
                                                                     div.bg(theme.secondary)
                                                                 })
-                                                                // Ctrl/Cmd+C 是 Root 上下文里的 Copy 动作；若输入框仍聚焦，
-                                                                // 会被输入框先消费（复制其空选区）。拖选产生选区后让气泡失焦，
-                                                                // 使复制落到窗口级文本选区上；普通点击不抢输入框焦点。
-                                                                .on_mouse_up(MouseButton::Left, |_, window, cx| {
-                                                                    if !TextSelection::selected_text(window, cx)
-                                                                        .trim()
-                                                                        .is_empty()
-                                                                    {
-                                                                        window.blur(cx);
-                                                                    }
+                                                                // 点气泡即聚焦（见 ConnectionTabState::bubble_focus）：
+                                                                // Ctrl/Cmd+C 的 Copy 动作沿 气泡 → Root 派发，复制选中文本
+                                                                .track_focus(&bubble_focus_for_msg)
+                                                                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                                                                    window.focus(&bubble_focus_on_click, cx);
                                                                 })
                                                                 .context_menu(move |menu, window, cx| {
                                                                     build_message_context_menu(
@@ -2962,7 +2982,17 @@ impl<'a> ConnectionTab<'a> {
                                                                                 ),
                                                                                 display_text.clone(),
                                                                             )
-                                                                            .selection_color(theme.selection),
+                                                                            // 选区配色按气泡底色分别取：
+                                                                            // 发送气泡底色是 primary（实心蓝），用前景色做白蒙层；
+                                                                            // 接收气泡底色是 secondary，用 primary 做蓝蒙层。
+                                                                            // 统一用 theme.selection 会在蓝底上几乎不可见。
+                                                                            .selection_color(if is_sent {
+                                                                                theme
+                                                                                    .primary_foreground
+                                                                                    .opacity(0.30)
+                                                                            } else {
+                                                                                theme.primary.opacity(0.22)
+                                                                            }),
                                                                         ),
                                                                 ),
                                                         )
@@ -3692,4 +3722,135 @@ pub(crate) fn qos_chips_row(
         );
     }
     row
+}
+
+#[cfg(test)]
+mod bubble_verify_tests {
+    use gpui_kit::component::{ActiveTheme as _, Root, input::InputState};
+    use gpui_kit::{
+        App, AppContext as _, Context, Entity, Focusable as _, FocusHandle, InteractiveElement as _,
+        IntoElement, Modifiers, MouseButton, MouseMoveEvent, ParentElement as _, Render,
+        SharedString, Styled as _, TestAppContext, Window, div, point, px,
+    };
+
+    use super::{ElementId, Input, SelectableText, TextSelection};
+
+    struct Host {
+        editor: Entity<InputState>,
+        bubble_focus: FocusHandle,
+    }
+
+    impl Host {
+        fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+            Self {
+                editor: cx.new(|cx| InputState::new(window, cx)),
+                bubble_focus: cx.focus_handle(),
+            }
+        }
+    }
+
+    impl Render for Host {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let theme = cx.theme().clone();
+            let bubble_focus = self.bubble_focus.clone();
+            let focus_on_click = self.bubble_focus.clone();
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                // 与真实消息列表一致：拖拽期间主动请求重绘，选区高亮才能跟随鼠标
+                .on_mouse_move(
+                    |event: &MouseMoveEvent, window: &mut Window, cx: &mut App| {
+                        if event.pressed_button == Some(MouseButton::Left)
+                            && !TextSelection::selected_text(window, cx).is_empty()
+                        {
+                            window.refresh();
+                        }
+                    },
+                )
+                .child(div().h(px(4.0)))
+                .child(div().h(px(60.0)).w(px(400.0)).child(Input::new(&self.editor)))
+                .child(
+                    div()
+                        .id("bubble")
+                        .w(px(400.0))
+                        .h(px(80.0))
+                        .p_2()
+                        .track_focus(&bubble_focus)
+                        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                            window.focus(&focus_on_click, cx);
+                        })
+                        .child(
+                            SelectableText::new(
+                                ElementId::Name("msg-text-1".into()),
+                                SharedString::from("hello world payload 11 22 33"),
+                            )
+                            // 与发送气泡同色（蓝底白蒙层）
+                            .selection_color(theme.primary_foreground.opacity(0.30)),
+                        ),
+                )
+        }
+    }
+
+    /// 拖选 → 失焦 → Ctrl+C 的完整链路（与消息气泡同构）
+    #[gpui_kit::test]
+    fn bubble_text_selection_and_copy(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::component::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let host = cx.new(|cx| Host::new(window, cx));
+            Root::new(host, window, cx)
+        });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        // 先让输入框获得焦点，模拟真实场景（编辑器抢先消费 ctrl-c 的风险点）
+        cx.update(|window, cx| {
+            let root = window.root::<Root>().unwrap().unwrap();
+            let host = root.read(cx).view().clone().downcast::<Host>().unwrap();
+            let handle = host.read(cx).editor.read(cx).focus_handle(cx);
+            window.focus(&handle, cx);
+        });
+        // 拖选气泡正文（bubble 从 y=64 开始，p_2 = 8 → 文本基线约 y=76）
+        cx.simulate_mouse_down(
+            point(px(10.0), px(76.0)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(
+            point(px(150.0), px(76.0)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+
+        // 松手前选区应已随鼠标更新（证明是「重绘滞后」而非「选择状态不更新」）
+        let mid_drag = cx.update(|window, cx| TextSelection::selected_text(window, cx));
+        assert!(
+            !mid_drag.trim().is_empty(),
+            "拖拽移动过程中选区就应实时更新"
+        );
+
+        cx.simulate_mouse_up(
+            point(px(150.0), px(76.0)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+
+        let selected = cx.update(|window, cx| TextSelection::selected_text(window, cx));
+        assert!(
+            !selected.trim().is_empty(),
+            "拖选应产生非空选区，实际为空（选择层未生效）"
+        );
+
+        cx.simulate_keystrokes("ctrl-c");
+        let clip = cx.update(|_, cx| cx.read_from_clipboard()).and_then(|item| item.text());
+        assert_eq!(
+            clip.map(|s| s.trim().to_string()),
+            Some(selected.trim().to_string()),
+            "Ctrl+C 应把选中文本写入剪贴板"
+        );
+    }
 }
