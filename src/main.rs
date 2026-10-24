@@ -5,7 +5,7 @@ use simple_logger::SimpleLogger;
 use std::borrow::Cow;
 
 // 导入配置存储
-use crate::config::storage::ConfigStorage;
+use crate::config::storage::{ConfigStorage, WindowStateStore};
 
 // 导入自定义资产
 use crate::assets::{CustomAssets, Fonts};
@@ -106,10 +106,15 @@ fn main() {
     // 进入 runtime context，让 app.run 闭包内能调用 tokio::runtime::Handle::current()
     let _guard = runtime.enter();
 
-    run_app();
+    // 窗口状态独立持久化：由后台线程防抖写盘，main 保留一份句柄用于退出前 flush
+    let window_state = WindowStateStore::new();
+    run_app(window_state.clone());
 
     // app.run() 已返回：GPUI 已销毁窗口和 entity，Drop 已清理连接
     info!("=== app.run 已返回，准备关闭 tokio runtime ===");
+
+    // 后台写线程有防抖，进程即将强制退出：同步落盘最后一次窗口位置
+    window_state.flush();
 
     // 给后台任务 3 秒优雅退出时间：
     // - 日志文件 close/flush
@@ -126,7 +131,7 @@ fn main() {
 }
 
 /// 运行 GPUI 应用
-fn run_app() {
+fn run_app(window_state: WindowStateStore) {
     let app = gpui_kit::platform::application().with_assets(CustomAssets::new());
     info!("=== Application::new() 创建成功 ===");
 
@@ -151,19 +156,24 @@ fn run_app() {
         theme_manager.init(cx);
         info!("=== 主题管理器初始化完成 ===");
 
+        // 只创建一份配置存储：语言读取与旧版窗口字段迁移共用同一快照
+        let storage = ConfigStorage::new();
+
         // 初始化语言：从配置读取上次选择，未设置过则使用默认中文
         // 同时设置组件库内置文案（对话框按钮、日历等）的语言
-        let locale = ConfigStorage::new()
+        let locale = storage
             .load_language()
             .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
         rust_i18n::set_locale(&locale);
         gpui_kit::component::set_locale(&locale);
         info!("=== 多语言初始化完成，当前语言: {} ===", locale);
 
-        // 加载窗口配置
+        // 加载窗口配置：优先独立窗口状态文件；首次升级回退到旧配置字段
         // 配置不可读时已由 ConfigStorage 内部回退默认值，这里只需处理"无窗口尺寸记录"
-        let storage = ConfigStorage::new();
-        let window_bounds = if let Some((x, y, width, height)) = storage.load_window_bounds() {
+        let window_bounds = if let Some((x, y, width, height)) = window_state
+            .initial_bounds()
+            .or_else(|| storage.load_window_bounds())
+        {
             info!(
                 "=== 从配置加载窗口尺寸: {}x{} @ ({}, {}) ===",
                 width, height, x, y
@@ -254,6 +264,7 @@ fn run_app() {
                 cx.new(|cx| {
                     // 监听窗口大小变化，实现响应式布局和窗口配置保存
                     let app_clone = app.clone();
+                    let window_state_for_bounds = window_state.clone();
 
                     cx.observe_window_bounds(window, move |_, window, cx| {
                         // 获取窗口内容大小和位置
@@ -301,9 +312,8 @@ fn run_app() {
                             // 当宽度变化超过 10px 时会自动重新计算
                         });
 
-                        // 保存窗口配置
+                        // 保存窗口配置：只更新内存，磁盘写入由后台线程防抖完成
                         {
-                            let mut storage = ConfigStorage::new();
                             let x = (origin.x / gpui_kit::px(1.0)) as f64;
                             let y = (origin.y / gpui_kit::px(1.0)) as f64;
                             let width = (content_size.width / gpui_kit::px(1.0)) as f64;
@@ -311,10 +321,15 @@ fn run_app() {
 
                             // 检查窗口位置是否有效（防止窗口被关闭时保存无效位置）
                             if x > -1000.0 && y > -1000.0 && x < 32768.0 && y < 32768.0 {
-                                storage.save_window_bounds(Some(x), Some(y), width, height);
+                                window_state_for_bounds.request_save(
+                                    Some(x),
+                                    Some(y),
+                                    width,
+                                    height,
+                                );
                             } else {
                                 // 只保存窗口尺寸，不保存无效位置
-                                storage.save_window_bounds(None, None, width, height);
+                                window_state_for_bounds.request_save(None, None, width, height);
                             }
                         }
                     })

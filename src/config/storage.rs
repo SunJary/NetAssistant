@@ -8,8 +8,13 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write as _;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 
 /// 存储错误类型
@@ -58,6 +63,8 @@ pub struct AppConfig {
     pub connections: ConnectionList,
     pub auto_save: bool,
     pub save_interval: u64,
+    /// 旧版本的窗口位置字段：仅作首次升级时迁移到 `window_state.json` 的来源。
+    /// 新代码不再写入（窗口状态由 `WindowStateStore` 独立持久化，避免两份内存快照互相覆盖）。
     pub window_x: Option<f64>,
     pub window_y: Option<f64>,
     pub window_width: Option<f64>,
@@ -287,24 +294,10 @@ impl ConfigStorage {
         fs::rename(path, &backup).ok().map(|_| backup)
     }
 
-    /// 保存窗口位置和尺寸
-    pub fn save_window_bounds(&mut self, x: Option<f64>, y: Option<f64>, width: f64, height: f64) {
-        // 只有当位置有效时才更新位置
-        if let Some(valid_x) = x {
-            self.config.window_x = Some(valid_x);
-        }
-        if let Some(valid_y) = y {
-            self.config.window_y = Some(valid_y);
-        }
-        // 总是更新尺寸
-        self.config.window_width = Some(width);
-        self.config.window_height = Some(height);
-        if self.config.auto_save {
-            let _ = self.save();
-        }
-    }
-
-    /// 加载窗口位置和尺寸
+    /// 加载窗口位置和尺寸（旧版配置字段，仅用于首次迁移）。
+    ///
+    /// 新版本的窗口状态由 `WindowStateStore` 读取 `window_state.json`；
+    /// 这里保留只为让升级用户不丢失一次启动位置。
     pub fn load_window_bounds(&self) -> Option<(f64, f64, f64, f64)> {
         match (
             self.config.window_x,
@@ -321,7 +314,7 @@ impl ConfigStorage {
     pub fn save_sidebar_width(&mut self, width: f64) {
         self.config.sidebar_width = Some(width);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -334,7 +327,7 @@ impl ConfigStorage {
     pub fn save_sidebar_collapsed(&mut self, collapsed: bool) {
         self.config.sidebar_collapsed = Some(collapsed);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -347,7 +340,7 @@ impl ConfigStorage {
     pub fn save_language(&mut self, language: &str) {
         self.config.language = Some(language.to_string());
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -381,10 +374,13 @@ impl ConfigStorage {
     }
 
     /// 保存配置到文件
+    ///
+    /// 采用原子写：先写同目录临时文件并 `sync_all`，再 `rename` 覆盖目标。
+    /// 直接 `fs::write` 会在截断后崩溃/断电时留下空文件或半截 JSON，
+    /// 导致整份配置（连接、收藏、规则）丢失。
     fn save_to_file(path: &Path, config: &AppConfig) -> Result<(), StorageError> {
         let content = serde_json::to_string_pretty(config)?;
-        fs::write(path, content)?;
-        Ok(())
+        write_atomic(path, content.as_bytes())
     }
 
     /// 保存配置
@@ -392,11 +388,21 @@ impl ConfigStorage {
         Self::save_to_file(&self.config_file, &self.config)
     }
 
+    /// 自动保存并记录失败原因。
+    ///
+    /// 原先各处 `let _ = self.save();` 会把磁盘满、文件被占用等错误完全吞掉，
+    /// 用户只会看到"设置又丢了"却没有任何线索。
+    fn save_and_log(&self) {
+        if let Err(e) = self.save() {
+            warn!("=== 保存配置失败({}): {} ===", self.config_file.display(), e);
+        }
+    }
+
     /// 添加连接配置
     pub fn add_connection(&mut self, connection: ConnectionConfig) {
         self.config.connections.push(connection);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -436,7 +442,7 @@ impl ConfigStorage {
         self.config.mqtt_topic_history.remove(connection_id);
         self.config.mqtt_subscriptions.remove(connection_id);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -455,7 +461,7 @@ impl ConfigStorage {
         self.config.reply_connection_enabled.remove(connection_id);
         self.config.reply_rules.connections.remove(connection_id);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -469,7 +475,7 @@ impl ConfigStorage {
         {
             self.config.connections[index] = connection;
             if self.config.auto_save {
-                let _ = self.save();
+                self.save_and_log();
             }
         }
     }
@@ -481,7 +487,7 @@ impl ConfigStorage {
             .or_default()
             .push(item);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -493,7 +499,7 @@ impl ConfigStorage {
             }
         }
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -529,7 +535,7 @@ impl ConfigStorage {
         list.insert(0, entry);
         list.truncate(MAX_HISTORY);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -546,7 +552,7 @@ impl ConfigStorage {
     pub fn clear_mqtt_topic_history(&mut self, connection_id: &str) {
         self.config.mqtt_topic_history.remove(connection_id);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -574,7 +580,7 @@ impl ConfigStorage {
             }),
         }
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -584,7 +590,7 @@ impl ConfigStorage {
             list.retain(|e| e.topic != topic);
         }
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -607,7 +613,7 @@ impl ConfigStorage {
             }
         }
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -622,7 +628,7 @@ impl ConfigStorage {
             .stress_profiles
             .insert(connection_id.to_string(), config);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -637,7 +643,7 @@ impl ConfigStorage {
             .timed_tasks
             .insert(connection_id.to_string(), profile);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -645,7 +651,7 @@ impl ConfigStorage {
     pub fn remove_timed_profile(&mut self, connection_id: &str) {
         self.config.timed_tasks.remove(connection_id);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -673,7 +679,7 @@ impl ConfigStorage {
     pub fn save_reply_rules(&mut self, config: ReplyRulesConfig) {
         self.config.reply_rules = config;
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -692,7 +698,7 @@ impl ConfigStorage {
             .reply_connection_enabled
             .insert(connection_id.to_string(), enabled);
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -718,7 +724,7 @@ impl ConfigStorage {
             None => rules.push(rule),
         }
         if self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
     }
 
@@ -731,7 +737,7 @@ impl ConfigStorage {
         rules.retain(|r| r.id != rule_id);
         let removed = before != rules.len();
         if removed && self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
         removed
     }
@@ -752,7 +758,7 @@ impl ConfigStorage {
             }
         }
         if changed > 0 && self.config.auto_save {
-            let _ = self.save();
+            self.save_and_log();
         }
         changed
     }
@@ -785,6 +791,264 @@ impl Default for ConfigStorage {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 临时文件序号：避免同一进程内并发保存时互相覆盖临时文件
+static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// 原子写文件：写临时文件 → `sync_all` → `rename` 覆盖目标。
+///
+/// 崩溃/断电只会留下无人引用的临时文件，目标文件要么是旧内容、要么是完整新内容。
+fn write_atomic(path: &Path, content: &[u8]) -> Result<(), StorageError> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "config.json".to_string());
+    let tmp = parent.join(format!(
+        ".{}.{}.{}.tmp",
+        file_name,
+        std::process::id(),
+        TEMP_FILE_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+
+    let write_result = (|| -> std::io::Result<()> {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(content)?;
+        // 先落盘再 rename：确保 rename 成功时内容已经持久化
+        file.sync_all()
+    })();
+    if let Err(e) = write_result {
+        // 写入/落盘失败时清理半个临时文件，避免长期累积
+        let _ = fs::remove_file(&tmp);
+        return Err(StorageError::Io(e));
+    }
+
+    // Windows 上杀毒软件/索引器可能短暂占用目标文件，重试几次
+    let mut last_err = None;
+    for _ in 0..3 {
+        match fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = Some(e);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+    let _ = fs::remove_file(&tmp);
+    Err(StorageError::Io(
+        last_err.unwrap_or_else(|| std::io::Error::other("rename 失败")),
+    ))
+}
+
+/// 窗口位置/尺寸的独立持久化文件
+const WINDOW_STATE_FILE: &str = "window_state.json";
+/// 抖动静默期：最后一次窗口变化后超过该时长才落盘
+const WINDOW_STATE_DEBOUNCE: Duration = Duration::from_millis(1000);
+
+/// 持久化的窗口状态
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct WindowState {
+    #[serde(default)]
+    x: Option<f64>,
+    #[serde(default)]
+    y: Option<f64>,
+    #[serde(default)]
+    width: f64,
+    #[serde(default)]
+    height: f64,
+}
+
+struct WindowStateShared {
+    path: PathBuf,
+    inner: Mutex<WindowStateInner>,
+    cvar: Condvar,
+    writer: Mutex<Option<JoinHandle<()>>>,
+}
+
+struct WindowStateInner {
+    /// 最近一次已知的窗口状态（位置为 `None` 时保留旧值）
+    latest: WindowState,
+    /// 待落盘状态及最后一次更新时间（用于防抖）
+    pending: Option<(WindowState, Instant)>,
+    stop: bool,
+}
+
+/// 窗口状态存储：独立文件 + 单写线程 + 防抖。
+///
+/// 不复用 `netassistant_config.json` 的原因：整份配置由 UI 线程持有的
+/// `ConfigStorage` 内存快照写入，而窗口移动是高频事件。两者共用一个文件时，
+/// 任一方的保存都会用自己内存里的旧值覆盖对方的最新值（表现为"移动窗口后
+/// 重启，位置又回去了"）。拆成独立文件后：
+///   - 窗口状态只有本类型一个写者；
+///   - 配置写者不再持有窗口字段；
+///   - UI 线程只更新内存，磁盘 I/O 交给后台线程防抖执行。
+#[derive(Clone)]
+pub struct WindowStateStore {
+    shared: Arc<WindowStateShared>,
+}
+
+impl WindowStateStore {
+    /// 创建存储并启动唯一的后台写线程
+    pub fn new() -> Self {
+        Self::with_path(ConfigStorage::get_config_dir().join(WINDOW_STATE_FILE))
+    }
+
+    fn with_path(path: PathBuf) -> Self {
+        if let Some(parent) = path.parent()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            warn!("=== 创建配置目录失败({}): {} ===", parent.display(), e);
+        }
+
+        let latest = match fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<WindowState>(&content) {
+                Ok(state) => state,
+                Err(e) => {
+                    warn!("=== 窗口状态文件无法解析，按默认处理: {} ===", e);
+                    WindowState::default()
+                }
+            },
+            Err(_) => WindowState::default(),
+        };
+
+        let shared = Arc::new(WindowStateShared {
+            path,
+            inner: Mutex::new(WindowStateInner {
+                latest,
+                pending: None,
+                stop: false,
+            }),
+            cvar: Condvar::new(),
+            writer: Mutex::new(None),
+        });
+
+        let worker = Arc::clone(&shared);
+        match std::thread::Builder::new()
+            .name("window-state-writer".into())
+            .spawn(move || writer_loop(worker))
+        {
+            Ok(handle) => {
+                *shared.writer.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
+            }
+            Err(e) => warn!(
+                "=== 启动窗口状态写线程失败，窗口位置仅在退出时保存: {} ===",
+                e
+            ),
+        }
+
+        Self { shared }
+    }
+
+    /// 启动时读取上次保存的窗口位置（四元组齐全才返回）
+    pub fn initial_bounds(&self) -> Option<(f64, f64, f64, f64)> {
+        let inner = self.shared.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let state = &inner.latest;
+        match (state.x, state.y) {
+            (Some(x), Some(y)) if state.width > 0.0 && state.height > 0.0 => {
+                Some((x, y, state.width, state.height))
+            }
+            _ => None,
+        }
+    }
+
+    /// 请求保存：只更新内存，由后台线程在静默期后原子落盘（UI 线程不做磁盘 I/O）
+    pub fn request_save(&self, x: Option<f64>, y: Option<f64>, width: f64, height: f64) {
+        let mut inner = self.shared.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if x.is_some() {
+            inner.latest.x = x;
+        }
+        if y.is_some() {
+            inner.latest.y = y;
+        }
+        inner.latest.width = width;
+        inner.latest.height = height;
+        inner.pending = Some((inner.latest.clone(), Instant::now()));
+        drop(inner);
+        self.shared.cvar.notify_one();
+    }
+
+    /// 退出前同步落盘最后一个待写状态。
+    ///
+    /// 进程随后会 `process::exit`，后台线程不会被执行器等待，因此必须在这里
+    /// 先让写线程退出、再同步写一次（写线程退出后不会再有旧值覆盖新值）。
+    pub fn flush(&self) {
+        {
+            let mut inner = self.shared.inner.lock().unwrap_or_else(|e| e.into_inner());
+            inner.stop = true;
+            self.shared.cvar.notify_all();
+        }
+        let handle = self
+            .shared
+            .writer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(handle) = handle {
+            let _ = handle.join();
+        }
+
+        let pending = {
+            let mut inner = self.shared.inner.lock().unwrap_or_else(|e| e.into_inner());
+            inner.pending.take()
+        };
+        if let Some((state, _)) = pending
+            && let Err(e) = save_window_state(&self.shared.path, &state)
+        {
+            warn!("=== 保存窗口状态失败: {} ===", e);
+        }
+    }
+}
+
+impl Default for WindowStateStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn writer_loop(shared: Arc<WindowStateShared>) {
+    loop {
+        let mut inner = shared.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if inner.stop {
+            return;
+        }
+
+        let wait = match inner.pending.as_ref() {
+            Some((_, updated_at)) => WINDOW_STATE_DEBOUNCE.saturating_sub(updated_at.elapsed()),
+            None => {
+                // 无待写数据：无限等待，由 request_save/flush 唤醒（不轮询，避免无谓唤醒）
+                let guard = shared
+                    .cvar
+                    .wait(inner)
+                    .unwrap_or_else(|e| e.into_inner());
+                drop(guard);
+                continue;
+            }
+        };
+
+        if wait.is_zero() {
+            let Some((state, _)) = inner.pending.take() else {
+                // 理论上不可达（wait 为 0 意味着 pending 存在）；保持防御，避免空转
+                continue;
+            };
+            drop(inner);
+            if let Err(e) = save_window_state(&shared.path, &state) {
+                warn!("=== 保存窗口状态失败: {} ===", e);
+            }
+            continue;
+        }
+
+        let (guard, _) = shared
+            .cvar
+            .wait_timeout(inner, wait)
+            .unwrap_or_else(|e| e.into_inner());
+        drop(guard);
+    }
+}
+
+fn save_window_state(path: &Path, state: &WindowState) -> Result<(), StorageError> {
+    let content = serde_json::to_string_pretty(state)?;
+    write_atomic(path, content.as_bytes())
 }
 
 #[cfg(test)]
@@ -1312,5 +1576,56 @@ mod tests {
         );
         // 不存在的连接返回 0
         assert_eq!(storage.renumber_reply_rule_priorities("conn-x"), 0);
+    }
+
+    /// 原子写：覆盖目标文件后不残留临时文件，内容为完整新值
+    #[test]
+    fn test_write_atomic_replaces_without_leaving_temp_files() {
+        let dir = std::env::temp_dir().join("na_storage_atomic_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("netassistant_config.json");
+        fs::write(&file, "old").unwrap();
+
+        write_atomic(&file, br#"{"a":1}"#).unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), r#"{"a":1}"#);
+
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "不应残留临时文件: {leftovers:?}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 窗口状态：防抖期间只保留最后一个值，flush 后落盘且可重新读取
+    #[test]
+    fn test_window_state_store_flushes_latest_bounds() {
+        let dir = std::env::temp_dir().join("na_window_state_test");
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join(WINDOW_STATE_FILE);
+
+        let store = WindowStateStore::with_path(path.clone());
+        assert!(store.initial_bounds().is_none(), "无文件时不应有默认位置");
+
+        store.request_save(Some(10.0), Some(20.0), 800.0, 600.0);
+        store.request_save(Some(30.0), Some(40.0), 900.0, 700.0);
+        store.flush();
+        assert_eq!(store.initial_bounds(), Some((30.0, 40.0, 900.0, 700.0)));
+
+        // 重新打开（模拟下次启动）读到同一份状态
+        let reopened = WindowStateStore::with_path(path.clone());
+        assert_eq!(reopened.initial_bounds(), Some((30.0, 40.0, 900.0, 700.0)));
+
+        // 位置为 None（窗口关闭时的无效坐标）只更新尺寸，保留旧坐标
+        reopened.request_save(None, None, 1000.0, 800.0);
+        reopened.flush();
+        let after = WindowStateStore::with_path(path.clone());
+        assert_eq!(after.initial_bounds(), Some((30.0, 40.0, 1000.0, 800.0)));
+        after.flush();
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

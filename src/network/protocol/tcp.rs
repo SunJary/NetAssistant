@@ -103,7 +103,6 @@ pub struct TcpClient {
     event_sender: Option<Sender<ConnectionEvent>>,
     message_processor: Arc<dyn MessageProcessor>,
     net_counters: Option<NetCounters>,
-    is_connected: bool,
     cancel_token: CancellationToken,
     /// 运行期「结尾追加字符」设置(下拉改动即时生效)
     trailer: TrailerSetting,
@@ -124,7 +123,6 @@ impl TcpClient {
             event_sender,
             message_processor: Arc::new(DefaultMessageProcessor),
             net_counters,
-            is_connected: false,
             cancel_token: CancellationToken::new(),
             trailer,
             reply_rules,
@@ -481,7 +479,6 @@ impl NetworkConnection for TcpClient {
         &mut self,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>>
     {
-        self.is_connected = false;
         self.cancel_token.cancel();
 
         Pin::from(Box::new(async move { Ok(()) }))

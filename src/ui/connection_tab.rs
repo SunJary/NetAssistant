@@ -92,7 +92,7 @@ pub struct ConnectionTabState {
     ///
     /// 仅记录**追加的新消息**（淘汰/清空不入队）；洪泛拍整体不入队（见
     /// `ROW_ANIM_FLOOD_THRESHOLD`）。渲染时按 id 命中即播一次入场动画。
-    pub recent_message_ids: VecDeque<(String, Instant)>,
+    pub recent_message_ids: VecDeque<(u64, Instant)>,
     /// 统一行高提示的节流记账：上次施加时的消息条目数与时刻。
     /// `None` 表示尚未施加过（首条消息到达时立即施加一次）。
     pub row_hint_applied: Option<(usize, Instant)>,
@@ -143,8 +143,8 @@ pub struct ConnectionTabState {
     /// 命中的 Message.id 列表（有序，与消息在列表中的先后一致）。
     ///
     /// 缓存 id 而非下标：淘汰走 drain(0..dropped) 从头部删，下标必然前移失效，
-    /// 而 id 是 UUID，跨淘汰稳定。
-    pub search_match_ids: Vec<String>,
+    /// 而 id 单调递增，跨淘汰稳定。
+    pub search_match_ids: Vec<u64>,
     /// 当前命中序号（0-based；展示为 cursor + 1）
     pub search_cursor: usize,
     /// 匹配集合需要重算（消息新增/淘汰/清空/过滤变化时置位，由事件泵节流消费）
@@ -419,7 +419,7 @@ impl ConnectionTabState {
             }
         }
 
-        let msg_id = message.id.clone();
+        let msg_id = message.id;
         let old_count = self.message_list.messages.len();
         let dropped = self.message_list.add_message(message);
         // 命中集合可能变化：只置脏标记，重算交给事件泵限流消费（此处不做 O(N) 扫描）
@@ -463,8 +463,8 @@ impl ConnectionTabState {
         }
 
         // 洪泛降级：单拍到达条数超阈值时整拍不记录，即整拍不播入场动画
-        let recent_ids: Vec<String> = if messages.len() <= ROW_ANIM_FLOOD_THRESHOLD {
-            messages.iter().map(|m| m.id.clone()).collect()
+        let recent_ids: Vec<u64> = if messages.len() <= ROW_ANIM_FLOOD_THRESHOLD {
+            messages.iter().map(|m| m.id).collect()
         } else {
             Vec::new()
         };
@@ -2727,16 +2727,16 @@ impl<'a> ConnectionTab<'a> {
                                         let message =
                                             tab.and_then(|tab| tab.message_list.messages.get(ix));
                                         // 当前命中项：浮层打开时才有意义（id 而非下标，淘汰不影响）
-                                        let current_match_id: Option<&str> = tab
+                                        let current_match_id: Option<u64> = tab
                                             .filter(|tab| tab.search_open)
                                             .and_then(|tab| {
                                                 tab.search_match_ids.get(tab.search_cursor)
                                             })
-                                            .map(|id| id.as_str());
+                                            .copied();
                                         if let Some(message) = message {
                                             let is_sent = message.direction == MessageDirection::Sent;
                                             let is_current_match =
-                                                current_match_id == Some(message.id.as_str());
+                                                current_match_id == Some(message.id);
                                             // 原始内容(未格式化),收藏 key 的基准
                                             let raw_text = message.get_content_by_type();
                                             // 展示/复制按当前显示模式(惰性计算并缓存,仅可见项产生开销)
@@ -3064,7 +3064,7 @@ impl<'a> ConnectionTab<'a> {
 
                                             if is_recent {
                                                 // 入场动画：上滑 10px + 淡入，200ms ease_out_quint。
-                                                // ID 用 message.id（UUID，跨头部淘汰稳定），不能用下标 ix
+                                                // ID 用 message.id（单调递增，跨头部淘汰稳定），不能用下标 ix
                                                 // —— 淘汰会使下标整体前移，动画状态会错位到别的消息。
                                                 // position: relative + top 只做视觉位移，不影响相邻行布局。
                                                 row.with_animation(

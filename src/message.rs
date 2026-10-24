@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// 消息方向
@@ -74,9 +75,11 @@ impl fmt::Display for MessageType {
 /// 单条消息记录
 ///
 /// Clone 为手动实现(display_cache 不可派生克隆,且克隆时重置缓存)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Message {
-    pub id: String,
+    /// 进程内单调递增 id（替代 UUID：省一次随机数生成与 36 字节 String 分配）。
+    /// 仅用于 UI key/搜索定位，不参与导出与日志。
+    pub id: u64,
     pub timestamp: String,
     pub direction: MessageDirection,
     pub message_type: MessageType,
@@ -86,26 +89,23 @@ pub struct Message {
     pub raw_data: Arc<[u8]>,
     pub source: Option<String>,
     /// 源地址是否为非预期地址（如UDP广播场景下，回复来自非目标地址）
-    #[serde(default)]
     pub source_unexpected: bool,
     /// MQTT 主题标签（PUBLISH 的 topic）；非 MQTT 连接恒为 None（规划 §5.4）。
-    /// `#[serde(default)]` 兼容缺少该字段的旧消息记录。
-    #[serde(default)]
     pub topic: Option<String>,
     /// MQTT PUBLISH 的 retain 标记（消息列表 topic pill 旁小标记）；非 MQTT 恒 false
-    #[serde(default)]
     pub retain: bool,
-    #[serde(default = "default_cached_content")]
     cached_content: String,
     /// 显示格式化缓存(惰性): Some((模式, 格式化后的内容))。
     /// 切换显示模式时不再全量重算(toggle 为 O(1)),渲染可见项时按需计算并填充。
     /// Clone 时重置为 None(日志/导出克隆走基础内容,无需携带缓存)。
-    #[serde(skip)]
     display_cache: Mutex<Option<(MessageDisplayMode, String)>>,
 }
 
-fn default_cached_content() -> String {
-    String::new()
+/// 全局消息 id 计数器：进程内单调递增（Relaxed 足够，仅需唯一性）。
+static NEXT_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_message_id() -> u64 {
+    NEXT_MESSAGE_ID.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Message {
@@ -117,7 +117,7 @@ impl Message {
         let raw_data: Arc<[u8]> = raw_data.into();
         let cached_content = Self::compute_content(&raw_data, message_type);
         Self {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: next_message_id(),
             timestamp: chrono::Local::now()
                 .format("%Y-%m-%d %H:%M:%S.%3f")
                 .to_string(),
@@ -226,7 +226,7 @@ impl Message {
 impl Clone for Message {
     fn clone(&self) -> Self {
         Self {
-            id: self.id.clone(),
+            id: self.id,
             timestamp: self.timestamp.clone(),
             direction: self.direction,
             message_type: self.message_type,
@@ -424,7 +424,7 @@ mod tests {
         assert_eq!(text_message.direction, MessageDirection::Sent);
         assert_eq!(&*text_message.raw_data, &b"Hello World"[..]);
         assert_eq!(text_message.message_type, MessageType::Text);
-        assert!(text_message.id.len() > 0);
+        assert!(text_message.id > 0);
         assert!(text_message.timestamp.len() > 0);
         assert_eq!(text_message.source, None);
 
@@ -436,7 +436,7 @@ mod tests {
         assert_eq!(hex_message.direction, MessageDirection::Received);
         assert_eq!(&*hex_message.raw_data, &b"48656c6c6f"[..]);
         assert_eq!(hex_message.message_type, MessageType::Hex);
-        assert!(hex_message.id.len() > 0);
+        assert!(hex_message.id > 0);
         assert!(hex_message.timestamp.len() > 0);
         assert_eq!(hex_message.source, None);
     }
@@ -461,23 +461,6 @@ mod tests {
         let clone = message.clone();
         assert_eq!(clone.topic.as_deref(), Some("sensor/1"));
         assert!(clone.retain);
-    }
-
-    #[test]
-    fn test_message_deserializes_without_topic_retain_fields() {
-        // 旧消息记录（在新增字段之前序列化）缺 topic/retain → 反序列化回退默认值。
-        // 用真实序列化结果的 JSON 对象删掉这两个键，避免臆测 raw_data 的编码形式。
-        let message =
-            Message::new(MessageDirection::Received, b"hi".to_vec(), MessageType::Text)
-                .with_transport(Some("t".to_string()), true);
-        let mut value = serde_json::to_value(&message).unwrap();
-        let obj = value.as_object_mut().unwrap();
-        assert!(obj.remove("topic").is_some());
-        assert!(obj.remove("retain").is_some());
-
-        let restored: Message = serde_json::from_value(value).expect("旧记录应可反序列化");
-        assert_eq!(restored.topic, None);
-        assert!(!restored.retain);
     }
 
     #[test]

@@ -1828,7 +1828,7 @@ impl NetAssistantApp {
             .selected_client
             .as_ref()
             .map(|addr| addr.to_string());
-        let mut ids: Vec<String> = Vec::new();
+        let mut ids: Vec<u64> = Vec::new();
         for message in tab_state.message_list.messages.iter() {
             if let (Some(selected), Some(source)) =
                 (selected_source.as_ref(), message.source.as_ref())
@@ -1842,7 +1842,7 @@ impl NetAssistantApp {
                 .to_lowercase()
                 .contains(&needle)
             {
-                ids.push(message.id.clone());
+                ids.push(message.id);
             }
         }
         tab_state.search_match_ids = ids;
@@ -1918,7 +1918,7 @@ impl NetAssistantApp {
                 .message_list
                 .messages
                 .iter()
-                .position(|m| &m.id == target_id)
+                .position(|m| m.id == *target_id)
             else {
                 // 该消息已被淘汰：剔除后落在同一位置的下一条候选上继续找
                 tab_state.search_match_ids.remove(tab_state.search_cursor);

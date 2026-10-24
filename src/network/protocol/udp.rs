@@ -459,7 +459,6 @@ pub struct UdpServer {
     clients: Arc<RwLock<HashMap<SocketAddr, Sender<WireMessage>>>>,
     message_processor: Arc<dyn MessageProcessor>,
     net_counters: Option<NetCounters>,
-    is_running: bool,
     /// 父取消令牌: 仅作"实例总闸"(Drop 兜底/紧急全停)。
     /// CancellationToken 一旦取消不可恢复, 因此正常 stop() 不取消它 ——
     /// 否则同一实例再次 start() 派生的子令牌出生即取消, 服务端静默失效。
@@ -491,7 +490,6 @@ impl UdpServer {
             clients: Arc::new(RwLock::new(HashMap::new())),
             message_processor: Arc::new(DefaultMessageProcessor),
             net_counters,
-            is_running: false,
             stop_token: CancellationToken::new(),
             current_run_token: None,
             main_send_tx: Arc::new(Mutex::new(None)),
@@ -930,9 +928,6 @@ impl NetworkServer for UdpServer {
             run_token.cancel();
         }
         debug!("UDP服务器已发送停止信号");
-
-        // 更新状态为停止
-        self.is_running = false;
 
         Pin::from(Box::new(async move {
             // 清空主发送通道
