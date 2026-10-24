@@ -25,7 +25,9 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 ## ✨ Features
 
 ### Core Features
-- **Multi-protocol support**: Complete TCP/UDP client and server modes
+- **Multi-protocol support**: Complete TCP/UDP client and server modes, plus an MQTT 3.1.1 client
+- **MQTT client**: QoS 0/1/2, Clean Session, KeepAlive and last-will messages; subscribe/unsubscribe at runtime with automatic reconnect and subscription restore; the publish row exposes topic, QoS and retain, with a per-connection history of recently used topics; messages show a topic pill, and auto replies go back to the topic the message arrived on
+- **Built-in toolbox**: open it from the wrench icon at the right of the tab bar — text ⇄ Hex conversion, checksums (XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32), hashes (MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512, bcrypt / Argon2id / PBKDF2-SHA256 password hashes, file digests and hash comparison), timestamp ⇄ date, JSON beautify/minify (JSON5-compatible), and Base64 / URL encoding
 - **IPv4/IPv6 dual stack**: Supports both IPv4 and IPv6 protocols, adapting to various network environments
 - **Multiple TCP decoders**: Supports raw data, line-based decoding, length-prefixed decoding, and JSON decoding to meet different protocol format requirements, effectively solving TCP sticky packet issues
 - **JSON formatting**: Send box provides "Beautify"/"Minify" buttons in text mode to format outgoing content; receiver top toolbar toggles global display format (Raw/Beautify/Minify), supports pretty indentation and compact display; non-JSON content is returned as-is
@@ -40,6 +42,8 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 
 ### Message Management Features
 - **Copy message**: Quickly copy a single message to the clipboard, supporting both text and hexadecimal formats
+- **Selectable message text**: drag-select, double-click a word or triple-click a line in a bubble and copy with `Ctrl/Cmd+C`; the context menu copies the selection or the full message and runs text ⇄ Hex conversion or six checksum algorithms on the selection (or the whole message when nothing is selected), with results in a read-only window; the selection highlight follows the mouse live
+- **Double-click to copy source**: double-click a message's source address to copy `ip:port`; on MQTT connections, double-click the topic pill to copy the raw topic for pasting into subscribe/publish inputs
 - **Favorite message**: Add important messages to the favorites, support adding remarks to favorite items, and provide keyword search
 - **Real-time log recording**: After manual enabling, all sent/received messages are asynchronously written to log file in real-time (flushed per message), supports custom save path, auto-flush and close on disconnection; log filename is clickable to open directory
 - **On-demand manual export**: Don't need continuous logging? You can export current message records anytime as TXT/JSON/CSV files for archiving, sharing, and secondary analysis
@@ -48,8 +52,8 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 - **Message count cap**: Configure "Keep last N" messages (default 10000, `0` = unlimited); once exceeded the oldest messages are dropped to bound memory usage. It is linked to auto-scroll — with auto-scroll off nothing is dropped, so messages keep accumulating and memory grows until you clear them or set a cap again
 
 ### Automated Testing Features
-- **Reply rules**: a per-connection rule engine that matches incoming frames by byte-level conditions (contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address with CIDR, checksum validation, and more, arbitrarily nested with all/any/not) and replies automatically; replies support received-frame and dynamic variables and can set their own encoding; rules are scoped per connection with enable/disable, duplicate, drag-to-reorder (top-down, first hit wins), trigger counts and an inline test run — old fixed auto-reply content can be migrated to an equivalent rule in one click
-- **Message variables**: the send box, timed tasks and reply rules all share general variables such as `${seq}`, `${timestamp}`, `${uuid}` and `${random:min:max}`, plus received-frame variables `${rx.*}` (`raw` / `hex` / `ascii` / `base64` and integer accessors such as `u8` / `u16be` / `i32le`), checksums generated at send time (e.g. `${crc16modbus:off:len}`) and `${= expression }`; in Hex mode numeric variables are converted to hexadecimal automatically
+- **Reply rules**: a per-connection rule engine that matches incoming frames by byte-level conditions (contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address with CIDR, JSON fields, checksum validation, and more, arbitrarily nested with all/any/not) and replies automatically; JSON field conditions accept paths such as `data.items[0].temp` with `== / != / > / >= / < / <= / contains / exists`; replies support received-frame and dynamic variables and can set their own encoding; rules are scoped per connection with enable/disable, duplicate, drag-to-reorder (top-down, first hit wins), trigger counts and an inline test run — old fixed auto-reply content can be migrated to an equivalent rule in one click
+- **Message variables**: the send box, timed tasks and reply rules all share general variables such as `${seq}`, `${timestamp}`, `${uuid}` and `${random:min:max}`, plus received-frame variables `${rx.*}` (`raw` / `hex` / `ascii` / `base64` and integer accessors such as `u8` / `u16be` / `i32le`), `${rx.json:path}` JSON field access, checksums generated at send time (e.g. `${crc16modbus:off:len}`) and `${= expression }`; in Hex mode numeric variables are converted to hexadecimal automatically
 - **Send tasks and timed tasks**: send imported files or pasted lines one by one (with per-line interval, looping and round limits); each connection can add a timed task to send a heartbeat at a fixed interval — both show progress in the task panel with pause/resume/stop
 - **Suffix (LF / CRLF)**: a "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message as well as line-send tasks and reply rules; the stress test configuration can set its own suffix (Inherit / None / LF / CRLF)
 - **Periodic send functionality**: Supports timed periodic message sending for stress testing or long-term stability testing
@@ -99,6 +103,18 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 
 ### Reply Rules
 ![Reply Rules Screenshot](assets/screenshots/en/screenshot_reply_rule.png)
+
+### New MQTT Connection
+![New MQTT connection screenshot](assets/screenshots/en/screenshot_mqtt_new_client.png)
+
+### MQTT Client
+![MQTT client screenshot](assets/screenshots/en/screenshot_mqtt_client.png)
+
+### Toolbox · Hash
+![Toolbox hash screenshot](assets/screenshots/en/screenshot_toolbox_hash.png)
+
+### Toolbox · Time
+![Toolbox time screenshot](assets/screenshots/en/screenshot_toolbox_time.png)
 
 ### Import from File (File Data Source)
 ![File Data Source Screenshot](assets/screenshots/en/screenshot_file_source.png)
@@ -285,6 +301,17 @@ Run the corresponding executable file according to the installation method for d
     - `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Ctrl+PageDown` / `Ctrl+PageUp` cycle through tabs, `Ctrl+1..9` jumps to the Nth tab, `Ctrl+W` closes the current tab
     - `Ctrl+N` creates a new connection and `Ctrl+K` focuses the message input; use `Cmd` instead of `Ctrl` on macOS
 
+17. **MQTT Debugging**
+    - Create a connection and choose MQTT, then enter the broker address, port (default 1883) and Client ID; username/password and KeepAlive are optional; "More Settings" holds the last-will message (topic / payload / QoS / retain) and Clean Session
+    - In the "Subscriptions" block on the left of the connection page, click `＋` to add a topic and QoS; right-click a subscription to edit or unsubscribe; subscriptions are restored automatically after an automatic reconnect
+    - In the send area, enter a publish topic, choose QoS and retain, then send; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS / retain), and history is isolated per connection and persisted
+    - Messages show a topic pill that can be double-clicked to copy the raw topic; auto replies go back to the topic the message arrived on
+
+18. **Toolbox**
+    - Click the wrench icon at the right of the tab bar to open the toolbox, and click it again to return to connection tabs; the toolbox is a permanent tab and cannot be closed
+    - Switch between Convert / Checksum / Hash / Time / JSON / Encoding on the left; each group keeps its own input, results appear as you type, and every result row has a copy button
+    - The Hash group covers text digests, password hashes (bcrypt / Argon2id / PBKDF2-SHA256 with random salt), file digests (multiple algorithms, single read pass) and hash comparison (paste a hash to auto-detect the algorithm by length and mark a match)
+
 ## 🎯 Technical Highlights
 
 ### ⚡ Extreme Performance
@@ -355,6 +382,11 @@ Run the corresponding executable file according to the installation method for d
   - Rich network protocol support
   - Mature production-ready solution
 
+- [rumqttc](https://crates.io/crates/rumqttc) - MQTT 3.1.1 client
+  - QoS 0/1/2 handshakes and KeepAlive
+  - Built-in automatic reconnect
+  - Pure Rust with native Tokio support
+
 ## 📊 Performance Metrics
 
 During development, we used the built-in stress testing feature to perform high-concurrency testing on NetAssistant itself, which helped discover and optimize multiple performance bottlenecks (batch message updates, batch log writing, etc.), ensuring smooth performance even under high load:
@@ -400,10 +432,11 @@ netassistant/
 │   │   ├── message_processor.rs # Message processor
 │   │   ├── crc.rs             # CRC algorithms (CRC16-Modbus / CRC16-CCITT / CRC32)
 │   │   ├── checksum.rs        # Checksum algorithms (XOR / Sum8 / LRC)
-│   │   └── toolbox.rs         # Selection tool registry: conversion & checksum tools (context menu)
+│   │   ├── toolbox.rs         # Selection tool registry: conversion & checksum tools (context menu / toolbox)
+│   │   └── toolbox_extra.rs   # Toolbox group logic: hash / time / JSON / encoding
 │   ├── reply/                 # Reply rule engine: condition matching & auto-reply (zero GPUI dependencies)
 │   │   ├── model.rs           # Rule data model (ReplyRule / MatchNode / ReplyPayload)
-│   │   ├── frame.rs           # Received-frame snapshot and `${rx.*}` access layer
+│   │   ├── frame.rs           # Received-frame snapshot and `${rx.*}` / `${rx.json:}` access layer
 │   │   ├── matcher.rs         # Pure-function condition matcher with match trace
 │   │   ├── store.rs           # Rule runtime state (per-connection scoping, hit counters)
 │   │   ├── exec.rs            # Rule execution: frame handling and reply rendering
@@ -414,12 +447,14 @@ netassistant/
 │   │   ├── parse.rs           # Multi-line content parsing (pure logic + unit tests)
 │   │   ├── engine.rs          # Task scheduling engine (send tempo wired to the network write channel)
 │   │   └── mod.rs             # Send task module export
-│   ├── network/               # Network communication: TCP/UDP protocols, encoding/decoding, connection management
+│   ├── network/               # Network communication: TCP/UDP/MQTT protocols, encoding/decoding, connection management
 │   │   ├── connection/        # Connection management: client and server connections
 │   │   │   └── manager.rs     # Connection manager
-│   │   ├── protocol/          # Protocol implementation: TCP/UDP protocol handling and decoders
+│   │   ├── protocol/          # Protocol implementation: TCP/UDP/MQTT protocol handling and decoders
 │   │   │   ├── tcp.rs         # TCP protocol
 │   │   │   ├── udp.rs         # UDP protocol
+│   │   │   ├── mqtt.rs        # MQTT 3.1.1 client (subscribe / publish / resubscribe on reconnect)
+│   │   │   ├── frame.rs       # Shared receive path: rule engine / counters / batched events
 │   │   │   └── decoder.rs     # Decoder (raw/line/length-prefixed/JSON)
 │   │   ├── bind.rs            # Client local bind address resolution
 │   │   ├── events.rs          # Network event definitions
@@ -437,7 +472,8 @@ netassistant/
 │   ├── ui/                    # UI components: build user interface and handle user interaction
 │   │   ├── main_window.rs     # Main window component
 │   │   ├── connection_panel.rs# Connection panel: display and manage connections
-│   │   ├── connection_tab.rs  # Connection tab: each tab corresponds to one connection
+│   │   ├── connection_tab.rs  # Connection tab: message log, MQTT subscriptions/publish, etc.
+│   │   ├── toolbox_panel.rs   # Toolbox tab: group navigation and tool blocks
 │   │   ├── stress_panel.rs    # Stress test panel: real-time display of stress metrics
 │   │   ├── send_task_panel.rs # Send task panel: line-send/timed-task progress and control
 │   │   ├── tab_container.rs   # Tab container
@@ -449,7 +485,8 @@ netassistant/
 │   │       ├── add_client.rs       # UDP manual add client dialog
 │   │       ├── decoder_selection.rs# Decoder selection dialog
 │   │       ├── reply_rules.rs      # Reply rules management dialog
-│   │       ├── reply_rule_edit.rs  # Reply rule editor dialog (with inline test run)
+│   │       ├── reply_rule_edit.rs  # Reply rule editor dialog (JSON conditions & inline test run)
+│   │       ├── mqtt_subscriptions.rs # MQTT subscription add/edit dialog
 │   │       ├── timed_task.rs       # Timed task (heartbeat) dialog
 │   │       ├── favorite_list.rs    # Favorite list dialog
 │   │       ├── favorite_remark.rs  # Favorite remark dialog
@@ -488,9 +525,12 @@ netassistant/
 
 ## 🔮 Future Plans
 
+- [x] MQTT client (v1.4.0)
+- [x] Built-in toolbox (v1.4.0)
 - [x] File data source (v1.2.0)
 - [x] Multi-language support (v1.1.0)
 - [x] Hex editor (v1.1.0)
+- [ ] MQTT over TLS / MQTT 5.0
 - [ ] Support SSE debugging
 - [ ] Support more data format encoding and decoding
 - [ ] Support WebSocket protocol
@@ -508,6 +548,12 @@ A: Red addresses indicate the message came from an "unexpected address" — this
 
 **Q: Can auto-reply match by condition? Is the old fixed auto-reply still there?**  
 A: Since v1.3.0 the fixed "auto-reply" has been upgraded to a **reply rules** engine: each rule is a match condition plus a reply action, supporting arbitrary nesting of conditions such as contains bytes, masks, prefix + length range, offset values, regex, source address (CIDR) and checksum validation; old fixed auto-reply content can be migrated to an equivalent rule in one click from the rule manager.
+
+**Q: Does it support MQTT debugging?**  
+A: Yes. Since v1.4.0 there is a built-in MQTT 3.1.1 client with QoS 0/1/2, Clean Session, KeepAlive, last-will messages, runtime subscription management and publish topic history. TLS, MQTT 5.0 and MQTT over WebSocket are not supported yet.
+
+**Q: Where do I open the toolbox?**  
+A: Click the wrench icon at the right of the tab bar; the toolbox appears as a permanent tab, and clicking the icon again returns to connection tabs.
 
 **Q: Which protocols does stress testing support?**  
 A: TCP and UDP protocols, with configurable concurrency, send rate, variable templates, etc.

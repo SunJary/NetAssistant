@@ -7,6 +7,33 @@ description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast de
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## v1.4.0 <Badge type="tip" text="2026-10-24" />
+
+- **MQTT client**: a new MQTT 3.1.1 client (powered by rumqttc) that fully reuses the existing debugging workflow
+  - **Connection settings**: create/edit connections with the MQTT protocol, configuring the broker address and port (default 1883), Client ID, username/password, KeepAlive, Clean Session and a last-will message (topic / payload / QoS / retain)
+  - **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and restored automatically after an automatic reconnect
+  - **Publishing**: the send area supports topic, QoS 0/1/2 and retain while the payload keeps using text / hex mode; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS / retain), persisted per connection with up to 20 entries
+  - **Messages and auto reply**: messages show a topic pill (retain is marked separately), and double-clicking it copies the raw topic; auto replies are published back to the topic the message arrived on; periodic send uses the current publish topic
+  - **Protocol constraints**: decoders and the suffix selector are hidden for MQTT, and stress testing, line-send tasks and timed tasks are not offered; the first version does not support TLS, MQTT 5.0 or MQTT over WebSocket
+- **Built-in toolbox**: open it from the wrench icon at the right of the tab bar — a permanent toolbox tab with Convert / Checksum / Hash / Time / JSON / Encoding groups; each group keeps its own input, results appear as you type, and every result row has a copy button
+  - **Convert**: separate text → Hex and Hex → text blocks
+  - **Checksum**: XOR, Sum8, LRC, CRC16-Modbus, CRC16-CCITT-FALSE and CRC32
+  - **Hash**: MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512; bcrypt / Argon2id / PBKDF2-SHA256 password hashes (random salt); file digests (multiple algorithms, single read pass) and hash comparison (auto-detects the algorithm by length and marks a match)
+  - **Time**: bidirectional timestamp ⇄ date conversion (seconds / milliseconds, local / UTC, ISO 8601, weekday and relative time)
+  - **JSON**: beautify / minify with a JSON5 fallback when strict JSON parsing fails
+  - **Encoding**: Base64 and URL encode/decode
+- **Selectable message text with context tools**: drag-select, double-click a word or triple-click a line in a bubble and copy with `Ctrl/Cmd+C`; the context menu copies the selection or the full message and runs text ⇄ Hex conversion or six checksum algorithms on the selection (or the whole message); the selection highlight follows the mouse live and reads clearly on light themes
+- **JSON field conditions in reply rules**: a new JSON field predicate supports paths such as `data.items[0].temp` with `== / != / > / >= / < / <= / contains / exists`; message variables gain `${rx.json:path}`
+- **Message list interaction**: message bubbles animate in, the list follows the tail more smoothly and the scrollbar thumb is more stable; double-clicking a source address copies `ip:port` (on MQTT, double-clicking the topic pill copies the topic)
+- **Performance**: `TCP_NODELAY` is enabled for TCP clients, servers and stress connections; the half-frame fallback flush drops from 50ms to 10ms, reducing RTT spikes in round-trip stress tests; gpui-kit upgraded to 0.8 with gpui-fast enabled
+
+Fixes and improvements:
+
+- Unreadable config files no longer panic, and unrecognized connection configs are preserved to avoid data loss
+- New/edit connection forms give instant validation feedback, and UDP address parsing is fixed
+- The UDP receive buffer is raised to 64 KiB, fixing datagrams larger than 1024 bytes being truncated or killing the read loop; datagrams over 65507 bytes are rejected with a clear message before sending, and send failures now surface explicit feedback
+- Fixed stale writes of toolbox hash results and password hashing (KDF) blocking the main thread
+
 ## v1.3.0 <Badge type="tip" text="2026-10-09" />
 
 - **Custom reply rules**: the old fixed "auto-reply" is now a rule engine — each rule is a match condition plus a reply action, matching incoming frames and answering automatically

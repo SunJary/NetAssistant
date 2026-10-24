@@ -1,14 +1,14 @@
 ---
 layout: home
 
-title: NetAssistant Official Site - Cross-Platform TCP/UDP Network Debugging Tool
+title: NetAssistant Official Site - Cross-Platform TCP/UDP/MQTT Network Debugging Tool
 titleTemplate: ':title'
-description: "NetAssistant is an open-source cross-platform network debugging tool built with Rust: TCP/UDP client & server, four decoders, message management and high-concurrency stress testing, for Windows, Linux and macOS with native x64 and ARM64 builds."
+description: "NetAssistant is an open-source cross-platform network debugging tool built with Rust: TCP/UDP client & server, MQTT 3.1.1 client, built-in toolbox, four decoders, message management and high-concurrency stress testing, for Windows, Linux and macOS with native x64 and ARM64 builds."
 
 hero:
   name: NetAssistant
   text: High-Performance Cross-Platform Network Debugging Tool
-  tagline: Built with Rust · TCP/UDP Client & Server · Multiple Decoders · Built-in Stress Testing · GPU-Accelerated UI
+  tagline: Built with Rust · TCP/UDP/MQTT Client & Server · Multiple Decoders · Built-in Toolbox & Stress Testing · GPU-Accelerated UI
   actions:
     - theme: brand
       text: Download Now
@@ -23,7 +23,10 @@ hero:
 features:
   - icon: 🔌
     title: Multi-Protocol Support
-    details: Full support for TCP/UDP client and server modes, IPv4/IPv6 dual stack, adapting to any network environment.
+    details: Full support for TCP/UDP client and server modes plus an MQTT 3.1.1 client (QoS 0/1/2, subscription management, last-will messages), with IPv4/IPv6 dual stack for any network environment.
+  - icon: 🧰
+    title: Built-in Toolbox
+    details: Six everyday groups — convert, checksum, hash, time, JSON and encoding — with instant results and one-click copy, no need to switch to external sites.
   - icon: 📦
     title: Smart Decoders
     details: Four TCP decoders — raw data, line-delimited, length-prefix and JSON — effectively solving sticky packet issues; send and receive in hex mode.
@@ -50,6 +53,14 @@ features:
 ### Server Mode
 
 ![Server mode screenshot](../../assets/screenshots/en/screenshot_server.png)
+
+### MQTT Client
+
+![MQTT client screenshot](../../assets/screenshots/en/screenshot_mqtt_client.png)
+
+### Built-in Toolbox
+
+![Toolbox hash screenshot](../../assets/screenshots/en/screenshot_toolbox_hash.png)
 
 ### Stress Testing
 

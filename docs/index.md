@@ -1,9 +1,9 @@
 ---
 layout: home
 
-title: NetAssistant 官网 - 跨平台 TCP/UDP 网络调试助手，免费下载
+title: NetAssistant 官网 - 跨平台 TCP/UDP/MQTT 网络调试助手，免费下载
 titleTemplate: ':title'
-description: NetAssistant 是基于 Rust 的开源跨平台网络调试工具：TCP/UDP 客户端与服务端、四种解码器、消息管理与高并发压力测试，支持 Windows、Linux、macOS（x64 与 ARM64 原生构建）。
+description: NetAssistant 是基于 Rust 的开源跨平台网络调试工具：TCP/UDP 客户端与服务端、MQTT 3.1.1 客户端、内置工具箱、四种解码器、消息管理与高并发压力测试，支持 Windows、Linux、macOS（x64 与 ARM64 原生构建）。
 
 head:
   - - script
@@ -13,7 +13,7 @@ head:
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "NetAssistant",
-        "description": "基于 Rust 构建的高性能跨平台网络调试工具，支持 Windows、Linux、macOS（x64 / ARM64），涵盖 TCP/UDP 客户端与服务端、多种解码器、消息管理与高并发压力测试。",
+        "description": "基于 Rust 构建的高性能跨平台网络调试工具，支持 Windows、Linux、macOS（x64 / ARM64），涵盖 TCP/UDP 客户端与服务端、MQTT 3.1.1 客户端、内置工具箱、多种解码器、消息管理与高并发压力测试。",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Windows, Linux, macOS",
         "url": "https://netassistant.trydo.top/",
@@ -26,7 +26,7 @@ head:
 hero:
   name: NetAssistant
   text: 高性能跨平台网络调试工具
-  tagline: 基于 Rust 构建 · TCP/UDP 客户端与服务端 · 多种解码器 · 内置压力测试 · GPU 加速界面
+  tagline: 基于 Rust 构建 · TCP/UDP/MQTT 客户端与服务端 · 多种解码器 · 内置工具箱与压力测试 · GPU 加速界面
   actions:
     - theme: brand
       text: 立即下载
@@ -41,7 +41,10 @@ hero:
 features:
   - icon: 🔌
     title: 多协议支持
-    details: 完整支持 TCP/UDP 客户端与服务端模式，IPv4/IPv6 双栈，适应各种网络环境。
+    details: 完整支持 TCP/UDP 客户端与服务端，以及 MQTT 3.1.1 客户端（QoS 0/1/2、订阅管理、遗嘱消息），IPv4/IPv6 双栈适应各种网络环境。
+  - icon: 🧰
+    title: 内置工具箱
+    details: 转换、校验、哈希、时间、JSON、编码六组常用工具，输入即出结果，结果一键复制，无需切换到外部网站。
   - icon: 📦
     title: 智能解码器
     details: 原始数据、行分隔、长度前缀、JSON 四种 TCP 解码器，有效解决粘包问题；收发内容支持十六进制模式。
@@ -68,6 +71,14 @@ features:
 ### 服务端模式
 
 ![服务端模式截图](../assets/screenshots/zh/screenshot_server.png)
+
+### MQTT 客户端
+
+![MQTT 客户端截图](../assets/screenshots/zh/screenshot_mqtt_client.png)
+
+### 内置工具箱
+
+![工具箱哈希截图](../assets/screenshots/zh/screenshot_toolbox_hash.png)
 
 ### 压力测试
 
