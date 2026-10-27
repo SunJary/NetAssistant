@@ -473,9 +473,12 @@ connection_tab:
   mqtt_no_subscriptions:
     zh-CN: 暂无订阅
     en: No subscriptions yet
-  mqtt_topic_copy_hint:
-    zh-CN: 双击复制主题
-    en: Double-click to copy topic
+  mqtt_topic_copied:
+    zh-CN: 已复制主题到剪贴板
+    en: Topic copied to clipboard
+  source_copied:
+    zh-CN: 已复制来源地址到剪贴板
+    en: Source address copied to clipboard
   mqtt_subscribe_failed:
     zh-CN: 订阅失败（连接未就绪）
     en: Failed to subscribe (not connected)

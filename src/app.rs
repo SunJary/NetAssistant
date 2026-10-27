@@ -892,18 +892,19 @@ impl NetAssistantApp {
             return false;
         }
 
-        let delivered = self
-            .mqtt_control_senders
-            .get(tab_id)
-            .map(|sender| {
-                sender
-                    .try_send(MqttCommand::Subscribe {
-                        topic: topic.clone(),
-                        qos,
-                    })
-                    .is_ok()
-            })
-            .unwrap_or(false);
+        // TEMP(临时放开「未连接不能订阅」): 未连接时只写本地（列表 + 持久化），不下发命令；
+        // 连接建立后 `ConnectionEvent::MqttControlSenderReady` 会按界面订阅列表自动补发订阅，
+        // 因此不会丢。仅用于离线测试，勿提交。
+        // 还原: 把下面的 `None => true` 改回 `None => false`。
+        let delivered = match self.mqtt_control_senders.get(tab_id) {
+            Some(sender) => sender
+                .try_send(MqttCommand::Subscribe {
+                    topic: topic.clone(),
+                    qos,
+                })
+                .is_ok(),
+            None => true,
+        };
 
         if !delivered {
             if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
@@ -1029,15 +1030,14 @@ impl NetAssistantApp {
 
     /// 取消订阅：乐观移除 + 下发 `MqttCommand::Unsubscribe`；投递失败回滚提示。
     pub fn mqtt_unsubscribe(&mut self, tab_id: &str, topic: String, cx: &mut Context<Self>) {
-        let delivered = self
-            .mqtt_control_senders
-            .get(tab_id)
-            .map(|sender| {
-                sender
-                    .try_send(MqttCommand::Unsubscribe { topic: topic.clone() })
-                    .is_ok()
-            })
-            .unwrap_or(false);
+        // TEMP(临时放开「未连接不能退订」): 未连接时只改本地（列表 + 持久化），不下发命令。
+        // 还原: 把下面的 `None => true` 改回 `None => false`。
+        let delivered = match self.mqtt_control_senders.get(tab_id) {
+            Some(sender) => sender
+                .try_send(MqttCommand::Unsubscribe { topic: topic.clone() })
+                .is_ok(),
+            None => true,
+        };
 
         if !delivered {
             if let Some(tab) = self.connection_tabs.get_mut(tab_id) {

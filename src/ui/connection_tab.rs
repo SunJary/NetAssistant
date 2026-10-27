@@ -13,11 +13,13 @@ use gpui_kit::component::ElementExt as _;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable, StyledExt};
 use gpui_kit::component::{
-    Icon, IconName, Size, Theme,
+    Icon, IconName, Size, Theme, WindowExt as _,
     checkbox::Checkbox,
     clipboard::Clipboard,
+    hover_card::HoverCard,
     input::{EditorState, Input, InputState},
     menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
+    notification::Notification,
     scroll::{Scrollbar, ScrollbarHandle, ScrollbarMode},
     switch::Switch,
     tooltip::Tooltip,
@@ -1622,7 +1624,8 @@ impl<'a> ConnectionTab<'a> {
     /// 布局：
     /// - 标题行 `订阅 (N)` + 右侧「＋」新增入口（照搬同侧栏「＋新建连接」的位置与样式）；
     /// - **只读一览**列表（占满面板剩余高度（同服务端「客户端连接」），超出时内部滚动）；
-    /// - 每行悬停出 tooltip 显示完整 topic（行内长 topic 会截断），**双击**复制 topic 名称；
+    /// - 每行悬停**向上**弹出提示显示完整 topic（行内长 topic 会截断），
+    ///   **双击**复制 topic 名称（复制成功弹一条通知）；
     /// - 每行**右键**出上下文菜单：`编辑订阅…`（开弹窗编辑模式）/ `取消订阅`（直接执行）。
     ///
     /// 单条的新增与编辑都收进「订阅」弹窗（`mqtt_subscriptions.rs`）；本块不再有
@@ -1738,118 +1741,124 @@ impl<'a> ConnectionTab<'a> {
                 let menu_tab = tab_id.clone();
                 let menu_topic = topic.clone();
                 rows.push(
-                    div()
-                        .id(format!("mqtt-sub-row-{}", topic))
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .px_2()
-                        .py_0p5()
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .text_xs()
-                                .text_color(theme.foreground)
-                                .child(topic.clone()),
-                        )
-                        // QoS 小徽标(行宽紧张时优先让 topic 截断)
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .px_1p5()
-                                .py_0p5()
-                                .rounded_md()
-                                .bg(theme.border)
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(qos_label(*qos)),
-                        )
-                        // 悬停显示完整 topic(行内长 topic 被截断为省略号), 双击行复制 topic 名称
-                        .tooltip({
-                            let tip_topic = topic.clone();
-                            move |window, cx| {
-                                let tip = tip_topic.clone();
-                                Tooltip::element(move |_window: &mut Window, _cx: &mut App| {
-                                    div()
-                                        .max_w(px(420.0))
-                                        .flex()
-                                        .flex_col()
-                                        .gap_1()
-                                        .child(tip.clone())
-                                        .child(
-                                            div().text_xs().opacity(0.7).child(
-                                                t!("connection_tab.mqtt_topic_copy_hint")
-                                                    .to_string(),
-                                            ),
-                                        )
-                                })
-                                .build(window, cx)
-                            }
-                        })
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            {
-                                let copy_topic = topic.clone();
-                                move |event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
-                                    if event.click_count == 2 {
-                                        cx.write_to_clipboard(ClipboardItem::new_string(
-                                            copy_topic.clone(),
-                                        ));
-                                    }
-                                }
-                            },
-                        )
-                        // 右键菜单: 编辑订阅… / 取消订阅(由框架 ContextMenuExt 承载, 自动收敛到窗口内)
-                        .context_menu(move |menu, _window, _cx| {
-                            let edit_weak = menu_weak.clone();
-                            let edit_tab = menu_tab.clone();
-                            let edit_topic = menu_topic.clone();
-                            let unsub_weak = menu_weak.clone();
-                            let unsub_tab = menu_tab.clone();
-                            let unsub_topic = menu_topic.clone();
-                            menu
-                                // 编辑订阅…（开弹窗编辑模式）
-                                .item(
-                                    PopupMenuItem::new(
-                                        t!("context_menu.edit_subscription").to_string(),
-                                    )
-                                    .on_click(move |_, window, cx| {
-                                        let Some(app) = edit_weak.upgrade() else {
-                                            return;
-                                        };
-                                        let (tab_id, topic) =
-                                            (edit_tab.clone(), edit_topic.clone());
-                                        app.update(cx, |app, cx| {
-                                            // 弹窗状态必须先建好: 表单的输入实体只能在此上下文创建
-                                            app.mqtt_subscriptions_dialog = Some(
-                                                MqttSubscriptionDialogState::new_edit(
-                                                    tab_id.clone(),
-                                                    topic,
-                                                    row_qos,
-                                                    window,
-                                                    cx,
+                    // 悬停提示改为**向上**弹出: gpui 原生 `.tooltip()` 固定落在光标右下方且
+                    // 无方向参数, 这里改用 HoverCard —— `Anchor::BottomCenter` 把内容底边
+                    // 居中贴住整行顶边 ⇒ 提示显示在行上方; 内容走 deferred 浮层, 不会被
+                    // 滚动容器裁剪, 也不会把行撑高。
+                    HoverCard::new(ElementId::Name(
+                        format!("mqtt-sub-tip-{}", topic).into(),
+                    ))
+                    .anchor(Anchor::BottomCenter)
+                    .open_delay(Duration::from_millis(300))
+                    .close_delay(Duration::from_millis(100))
+                    // 悬停提示是一张小卡片(框架默认外观), 收紧内边距贴近 tooltip 观感
+                    .p_2()
+                    .trigger(
+                        div()
+                            .id(format!("mqtt-sub-row-{}", topic))
+                            .w_full()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .px_2()
+                            .py_0p5()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .text_xs()
+                                    .text_color(theme.foreground)
+                                    .child(topic.clone()),
+                            )
+                            // QoS 小徽标(行宽紧张时优先让 topic 截断)
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .px_1p5()
+                                    .py_0p5()
+                                    .rounded_md()
+                                    .bg(theme.border)
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(qos_label(*qos)),
+                            )
+                            // 双击行复制 topic 名称, 复制成功推一条通知(右上角轻提示, 自动消失)
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                {
+                                    let copy_topic = topic.clone();
+                                    move |event: &MouseDownEvent,
+                                          window: &mut Window,
+                                          cx: &mut App| {
+                                        if event.click_count == 2 {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                                copy_topic.clone(),
+                                            ));
+                                            window.push_notification(
+                                                Notification::success(
+                                                    t!("connection_tab.mqtt_topic_copied")
+                                                        .to_string(),
                                                 ),
-                                            );
-                                            if let Some(tab) = app.connection_tabs.get_mut(&tab_id) {
-                                                tab.mqtt_sub_error = None;
-                                            }
-                                            open_mqtt_subscriptions_dialog(
-                                                cx.entity().downgrade(),
-                                                window,
                                                 cx,
                                             );
-                                            cx.notify();
-                                        });
-                                    }),
-                                )
-                                .separator()
-                                // 取消订阅(直接执行, 像连接列表「删除连接」)
-                                .item(
-                                    PopupMenuItem::new(t!("context_menu.unsubscribe").to_string())
+                                        }
+                                    }
+                                },
+                            )
+                            // 右键菜单: 编辑订阅… / 取消订阅(由框架 ContextMenuExt 承载, 自动收敛到窗口内)
+                            .context_menu(move |menu, _window, _cx| {
+                                let edit_weak = menu_weak.clone();
+                                let edit_tab = menu_tab.clone();
+                                let edit_topic = menu_topic.clone();
+                                let unsub_weak = menu_weak.clone();
+                                let unsub_tab = menu_tab.clone();
+                                let unsub_topic = menu_topic.clone();
+                                menu
+                                    // 编辑订阅…（开弹窗编辑模式）
+                                    .item(
+                                        PopupMenuItem::new(
+                                            t!("context_menu.edit_subscription").to_string(),
+                                        )
+                                        .on_click(move |_, window, cx| {
+                                            let Some(app) = edit_weak.upgrade() else {
+                                                return;
+                                            };
+                                            let (tab_id, topic) =
+                                                (edit_tab.clone(), edit_topic.clone());
+                                            app.update(cx, |app, cx| {
+                                                // 弹窗状态必须先建好: 表单的输入实体只能在此上下文创建
+                                                app.mqtt_subscriptions_dialog = Some(
+                                                    MqttSubscriptionDialogState::new_edit(
+                                                        tab_id.clone(),
+                                                        topic,
+                                                        row_qos,
+                                                        window,
+                                                        cx,
+                                                    ),
+                                                );
+                                                if let Some(tab) =
+                                                    app.connection_tabs.get_mut(&tab_id)
+                                                {
+                                                    tab.mqtt_sub_error = None;
+                                                }
+                                                open_mqtt_subscriptions_dialog(
+                                                    cx.entity().downgrade(),
+                                                    window,
+                                                    cx,
+                                                );
+                                                cx.notify();
+                                            });
+                                        }),
+                                    )
+                                    .separator()
+                                    // 取消订阅(直接执行, 像连接列表「删除连接」)
+                                    .item(
+                                        PopupMenuItem::new(
+                                            t!("context_menu.unsubscribe").to_string(),
+                                        )
                                         .on_click(move |_, _window, cx| {
                                             let Some(app) = unsub_weak.upgrade() else {
                                                 return;
@@ -1861,9 +1870,22 @@ impl<'a> ConnectionTab<'a> {
                                                 cx.notify();
                                             });
                                         }),
-                                )
-                        })
-                        .into_any_element(),
+                                    )
+                            }),
+                    )
+                    // 提示内容: 只有完整 topic, 不再带「双击复制」小字
+                    .content({
+                        let tip_topic = topic.clone();
+                        let tip_color = theme.foreground;
+                        move |_state, _window, _cx| {
+                            div()
+                                .max_w(px(420.0))
+                                .text_xs()
+                                .text_color(tip_color)
+                                .child(tip_topic.clone())
+                        }
+                    })
+                    .into_any_element(),
                 );
             }
         }
@@ -2965,7 +2987,7 @@ impl<'a> ConnectionTab<'a> {
                                                                     let is_unexpected = message.source_unexpected;
 
                                                                     // 双击复制来源地址（ip:port），与消息正文复制图标的行为区分：
-                                                                    // 不改动行内其它交互，仅在 click_count == 2 时写入剪贴板
+                                                                    // 不改动行内其它交互，仅在 click_count == 2 时写入剪贴板并提示
                                                                     let source_copy = source.clone();
                                                                     let source_div = div()
                                                                         .id(ElementId::named_usize("source", ix))
@@ -2978,13 +3000,20 @@ impl<'a> ConnectionTab<'a> {
                                                                         .on_mouse_down(
                                                                             MouseButton::Left,
                                                                             move |event: &MouseDownEvent,
-                                                                                  _window: &mut Window,
+                                                                                  window: &mut Window,
                                                                                   cx: &mut App| {
                                                                                 if event.click_count == 2 {
                                                                                     cx.write_to_clipboard(
                                                                                         ClipboardItem::new_string(
                                                                                             source_copy.clone(),
                                                                                         ),
+                                                                                    );
+                                                                                    window.push_notification(
+                                                                                        Notification::success(
+                                                                                            t!("connection_tab.source_copied")
+                                                                                                .to_string(),
+                                                                                        ),
+                                                                                        cx,
                                                                                     );
                                                                                 }
                                                                             },
@@ -3012,7 +3041,8 @@ impl<'a> ConnectionTab<'a> {
                                                             message.topic.is_some(),
                                                             |this_div| {
                                                                 if let Some(topic) = &message.topic {
-                                                                    // 双击复制 topic 原文（不含展示用方括号），便于直接粘贴到订阅表单
+                                                                    // 双击复制 topic 原文（不含展示用方括号），便于直接粘贴到订阅表单；
+                                                                    // 复制成功弹一条通知（与订阅列表同一提示）
                                                                     let topic_copy = topic.clone();
                                                                     this_div.child(
                                                                         div()
@@ -3032,13 +3062,20 @@ impl<'a> ConnectionTab<'a> {
                                                                             .on_mouse_down(
                                                                                 MouseButton::Left,
                                                                                 move |event: &MouseDownEvent,
-                                                                                      _window: &mut Window,
+                                                                                      window: &mut Window,
                                                                                       cx: &mut App| {
                                                                                     if event.click_count == 2 {
                                                                                         cx.write_to_clipboard(
                                                                                             ClipboardItem::new_string(
                                                                                                 topic_copy.clone(),
                                                                                             ),
+                                                                                        );
+                                                                                        window.push_notification(
+                                                                                            Notification::success(
+                                                                                                t!("connection_tab.mqtt_topic_copied")
+                                                                                                    .to_string(),
+                                                                                            ),
+                                                                                            cx,
                                                                                         );
                                                                                     }
                                                                                 },
