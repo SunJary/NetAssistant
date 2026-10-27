@@ -1,12 +1,8 @@
 use crate::app::NetAssistantApp;
-use crate::config::connection::Qos;
 use crate::custom_icons::CustomIconName;
 use crate::theme_event_handler::{ThemeEventHandler, apply_theme};
 use crate::ui::connection_panel::ConnectionPanel;
-use crate::ui::dialog::{
-    FavoriteListPanel, MqttSubscriptionDialogState, open_mqtt_subscriptions_dialog,
-    open_new_connection_dialog,
-};
+use crate::ui::dialog::{FavoriteListPanel, open_new_connection_dialog};
 use crate::ui::tab_container::TabContainer;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::component::Icon;
@@ -75,9 +71,7 @@ impl<'a> MainWindow<'a> {
                 }
 
                 // 模态守卫: 应用内浮层打开时屏蔽全局快捷键, 避免误触
-                let modal_open = app.show_favorite_list
-                    || app.show_language_menu
-                    || app.show_context_menu;
+                let modal_open = app.show_favorite_list || app.show_language_menu;
                 if modal_open {
                     return;
                 }
@@ -443,214 +437,6 @@ impl<'a> MainWindow<'a> {
                         ),
                 )
             })
-            .when(
-                self.app.show_context_menu && self.app.context_menu_subscription.is_none(),
-                |this_div| {
-                let menu_x = self.app.context_menu_position.unwrap_or_else(|| px(0.0));
-                let menu_y = self.app.context_menu_position_y.unwrap_or_else(|| px(0.0));
-                this_div.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .flex()
-                        .items_start()
-                        .justify_start()
-                        .bg(gpui_kit::rgba(0x80000000))
-                        .occlude()
-                        .child(
-                            div()
-                                .absolute()
-                                .left(menu_x)
-                                .top(menu_y)
-                                .bg(theme.background)
-                                .rounded_md()
-                                .shadow_lg()
-                                .w_48()
-                                .flex()
-                                .flex_col()
-                                // 编辑连接
-                                .child(
-                                    div()
-                                        .id("ctx-menu-edit")
-                                        .w_full()
-                                        .px_4()
-                                        .py_3()
-                                        .text_sm()
-                                        .text_color(theme.foreground)
-                                        .cursor_pointer()
-                                        .hover(|style| {
-                                            style.bg(theme.border)
-                                        })
-                                        .child(t!("context_menu.edit").to_string())
-                                        .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                            if let Some(connection_id) = app.context_menu_connection.clone() {
-                                                app.show_context_menu = false;
-                                                app.context_menu_connection = None;
-                                                app.context_menu_position = None;
-                                                app.context_menu_position_y = None;
-                                                app.open_edit_connection(connection_id, window, cx);
-                                            }
-                                        })),
-                                )
-                                // 删除连接
-                                .child(
-                                    div()
-                                        .id("ctx-menu-delete")
-                                        .w_full()
-                                        .px_4()
-                                        .py_3()
-                                        .text_sm()
-                                        .text_color(theme.danger)
-                                        .cursor_pointer()
-                                        .hover(|style| {
-                                            style.bg(theme.border)
-                                        })
-                                        .child(t!("context_menu.delete").to_string())
-                                        .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                            if let Some(connection_name) = app.context_menu_connection.clone() {
-                                                let is_client = app.context_menu_is_client;
-
-                                                // 直接使用连接配置的原始ID作为标签页ID
-                                                let tab_id = connection_name.clone();
-                                                app.close_tab(tab_id, cx);
-
-                                                // 然后删除连接配置
-                                                if is_client {
-                                                    app.storage.remove_client_connection(&connection_name);
-                                                } else {
-                                                    app.storage.remove_server_connection(&connection_name);
-                                                }
-                                            }
-                                            app.show_context_menu = false;
-                                            app.context_menu_connection = None;
-                                            app.context_menu_position = None;
-                                            app.context_menu_position_y = None;
-                                            cx.notify();
-                                        })),
-                                ),
-                        )
-                        .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                            app.show_context_menu = false;
-                            app.context_menu_connection = None;
-                            app.context_menu_position = None;
-                            app.context_menu_position_y = None;
-                            cx.notify();
-                        })),
-                )
-            })
-            // 右侧订阅行右键菜单: 编辑订阅… / 取消订阅(直接执行, 无二次确认)
-            .when(
-                self.app.show_context_menu && self.app.context_menu_subscription.is_some(),
-                |this_div| {
-                    let menu_x = self.app.context_menu_position.unwrap_or_else(|| px(0.0));
-                    let menu_y = self.app.context_menu_position_y.unwrap_or_else(|| px(0.0));
-                    this_div.child(
-                        div()
-                            .absolute()
-                            .inset_0()
-                            .flex()
-                            .items_start()
-                            .justify_start()
-                            .bg(gpui_kit::rgba(0x80000000))
-                            .occlude()
-                            .child(
-                                div()
-                                    .absolute()
-                                    .left(menu_x)
-                                    .top(menu_y)
-                                    .bg(theme.background)
-                                    .rounded_md()
-                                    .shadow_lg()
-                                    .w_48()
-                                    .flex()
-                                    .flex_col()
-                                    // 编辑订阅…
-                                    .child(
-                                        div()
-                                            .id("ctx-menu-edit-sub")
-                                            .w_full()
-                                            .px_4()
-                                            .py_3()
-                                            .text_sm()
-                                            .text_color(theme.foreground)
-                                            .cursor_pointer()
-                                            .hover(|style| style.bg(theme.border))
-                                            .child(
-                                                t!("context_menu.edit_subscription").to_string(),
-                                            )
-                                            .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                if let Some((tab_id, topic)) = app.context_menu_subscription.clone() {
-                                                    // 取当前 QoS 作为编辑初值
-                                                    let qos = app
-                                                        .connection_tabs
-                                                        .get(&tab_id)
-                                                        .and_then(|tab| {
-                                                            tab.mqtt_subscriptions
-                                                                .iter()
-                                                                .find(|(t, _)| *t == topic)
-                                                                .map(|(_, q)| *q)
-                                                        })
-                                                        .unwrap_or(Qos::AtMostOnce);
-                                                    app.show_context_menu = false;
-                                                    app.context_menu_subscription = None;
-                                                    app.context_menu_position = None;
-                                                    app.context_menu_position_y = None;
-                                                    // 弹窗状态必须先建好: 表单的输入实体只能在此上下文创建
-                                                    app.mqtt_subscriptions_dialog = Some(
-                                                        MqttSubscriptionDialogState::new_edit(
-                                                            tab_id.clone(),
-                                                            topic,
-                                                            qos,
-                                                            window,
-                                                            cx,
-                                                        ),
-                                                    );
-                                                    if let Some(tab) = app.connection_tabs.get_mut(&tab_id) {
-                                                        tab.mqtt_sub_error = None;
-                                                    }
-                                                    open_mqtt_subscriptions_dialog(
-                                                        cx.entity().downgrade(),
-                                                        window,
-                                                        cx,
-                                                    );
-                                                    cx.notify();
-                                                }
-                                            })),
-                                    )
-                                    // 取消订阅(直接执行, 像连接列表「删除连接」)
-                                    .child(
-                                        div()
-                                            .id("ctx-menu-unsubscribe")
-                                            .w_full()
-                                            .px_4()
-                                            .py_3()
-                                            .text_sm()
-                                            .text_color(theme.danger)
-                                            .cursor_pointer()
-                                            .hover(|style| style.bg(theme.border))
-                                            .child(t!("context_menu.unsubscribe").to_string())
-                                            .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                                if let Some((tab_id, topic)) = app.context_menu_subscription.clone() {
-                                                    app.show_context_menu = false;
-                                                    app.context_menu_subscription = None;
-                                                    app.context_menu_position = None;
-                                                    app.context_menu_position_y = None;
-                                                    app.mqtt_unsubscribe(&tab_id, topic, cx);
-                                                }
-                                                cx.notify();
-                                            })),
-                                    ),
-                            )
-                            .on_mouse_down(MouseButton::Left, cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                app.show_context_menu = false;
-                                app.context_menu_subscription = None;
-                                app.context_menu_position = None;
-                                app.context_menu_position_y = None;
-                                cx.notify();
-                            })),
-                    )
-                },
-            )
             // 自动显示的更新提示（5 秒后消失；鼠标移入即隐藏为下方控件让路；
             // 放在最后确保不被遮挡）
             .when(self.app.show_update_tooltip, |this_div| {

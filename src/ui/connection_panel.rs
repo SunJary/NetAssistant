@@ -1,6 +1,7 @@
 use crate::custom_icons::CustomIconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::StyledExt;
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenuItem};
 use gpui_kit::component::{Icon, IconName};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -123,15 +124,19 @@ impl<'a> ConnectionPanel<'a> {
 
         for (conn_id, host, port, protocol) in items.iter() {
             let conn_id_clone1 = conn_id.clone();
-            let conn_id_clone2 = conn_id.clone();
             let _host_clone = host.clone();
             let _port_clone = *port;
             let _protocol_clone = protocol.clone();
             let is_client_clone = is_client;
             let display_text = format!("{}:{} [{}]", host, port, protocol);
+            // 右键菜单项闭包用: 行渲染期捕获（框架菜单只在打开那一刻惰性构建）
+            let menu_app_weak = cx.entity().downgrade();
+            let menu_conn_id = conn_id.clone();
+            let menu_is_client = is_client;
 
             content_div = content_div.child(
                 div()
+                    .id(format!("conn-row-{}", conn_id))
                     .w_full()
                     .px_3()
                     .py_2()
@@ -191,22 +196,51 @@ impl<'a> ConnectionPanel<'a> {
                             },
                         ),
                     )
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(
-                            move |app: &mut NetAssistantApp,
-                                  event: &MouseDownEvent,
-                                  _window: &mut Window,
-                                  cx: &mut Context<NetAssistantApp>| {
-                                app.show_context_menu = true;
-                                app.context_menu_connection = Some(conn_id_clone2.clone());
-                                app.context_menu_is_client = is_client_clone;
-                                app.context_menu_position = Some(event.position.x);
-                                app.context_menu_position_y = Some(event.position.y);
-                                cx.notify();
-                            },
-                        ),
-                    ),
+                    // 右键菜单: 编辑连接 / 删除连接(由框架 ContextMenuExt 承载, 自动收敛到窗口内)
+                    .context_menu(move |menu, _window, _cx| {
+                        let edit_app = menu_app_weak.clone();
+                        let edit_conn_id = menu_conn_id.clone();
+                        let delete_app = menu_app_weak.clone();
+                        let delete_conn_id = menu_conn_id.clone();
+                        menu
+                            // 编辑连接
+                            .item(
+                                PopupMenuItem::new(t!("context_menu.edit").to_string()).on_click(
+                                    move |_, window, cx| {
+                                        let Some(app) = edit_app.upgrade() else {
+                                            return;
+                                        };
+                                        let conn_id = edit_conn_id.clone();
+                                        app.update(cx, |app, cx| {
+                                            app.open_edit_connection(conn_id, window, cx);
+                                        });
+                                    },
+                                ),
+                            )
+                            .separator()
+                            // 删除连接（直接执行, 不二次确认）
+                            .item(
+                                PopupMenuItem::new(t!("context_menu.delete").to_string())
+                                    .on_click(move |_, _window, cx| {
+                                        let Some(app) = delete_app.upgrade() else {
+                                            return;
+                                        };
+                                        let conn_id = delete_conn_id.clone();
+                                        let is_client = menu_is_client;
+                                        app.update(cx, |app, cx| {
+                                            // 直接使用连接配置的原始ID作为标签页ID
+                                            app.close_tab(conn_id.clone(), cx);
+                                            // 然后删除连接配置
+                                            if is_client {
+                                                app.storage.remove_client_connection(&conn_id);
+                                            } else {
+                                                app.storage.remove_server_connection(&conn_id);
+                                            }
+                                            cx.notify();
+                                        });
+                                    }),
+                            )
+                    }),
             );
         }
 

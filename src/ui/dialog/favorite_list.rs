@@ -23,7 +23,7 @@ impl<'a> FavoriteListPanel<'a> {
 
     pub fn render(
         self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<NetAssistantApp>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
@@ -31,6 +31,21 @@ impl<'a> FavoriteListPanel<'a> {
         let tab_id = self.app.favorite_list_tab_id.clone().unwrap_or_default();
         let pos_x = self.app.favorite_list_position.unwrap_or(px(0.0));
         let pos_y = self.app.favorite_list_position_y.unwrap_or(px(0.0));
+
+        // 面板固定 320×300, 自 ★ 按钮的左上方展开(与展开态 ChevronUp 一致)。
+        // 按钮贴在工具条上, pos_y 偏小时面板顶部会越出窗口被裁;
+        // 故用窗口边界钳制 left/top(留 8px 外边距), 保证面板始终完整可见。
+        const PANEL_W: f32 = 320.0;
+        const PANEL_H: f32 = 300.0;
+        const MARGIN: f32 = 8.0;
+        let win_w = (window.bounds().size.width / px(1.0)) as f32;
+        let win_h = (window.bounds().size.height / px(1.0)) as f32;
+        let max_left = (win_w - PANEL_W - MARGIN).max(MARGIN);
+        let max_top = (win_h - PANEL_H - MARGIN).max(MARGIN);
+        let panel_left = ((pos_x / px(1.0)) as f32 - PANEL_W).max(MARGIN).min(max_left);
+        let panel_top = ((pos_y / px(1.0)) as f32 - PANEL_H - 4.0)
+            .max(MARGIN)
+            .min(max_top);
         let search_keyword = search_input.read(cx).value().to_string().to_lowercase();
 
         let mut favorites: Vec<FavoriteItem> = self
@@ -61,8 +76,8 @@ impl<'a> FavoriteListPanel<'a> {
             .child(
                 div()
                     .absolute()
-                    .left(pos_x - px(320.0))
-                    .top(pos_y - px(300.0) - px(4.0))
+                    .left(px(panel_left))
+                    .top(px(panel_top))
                     .w(px(320.0))
                     .h(px(300.0))
                     .overflow_hidden()

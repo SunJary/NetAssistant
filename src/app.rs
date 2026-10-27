@@ -201,16 +201,6 @@ pub struct NetAssistantApp {
     pub reply_rules_store: Arc<ReplyRulesStore>,
     pub server_reply_rules_stores: HashMap<String, Arc<ReplyRulesStore>>,
 
-    // 右键菜单状态
-    pub show_context_menu: bool,
-    pub context_menu_connection: Option<String>,
-    pub context_menu_is_client: bool,
-    pub context_menu_position: Option<Pixels>,
-    pub context_menu_position_y: Option<Pixels>,
-    /// 订阅行右键菜单的目标: (tab_id, topic)。与 `context_menu_connection` 互斥,
-    /// Some 时渲染订阅菜单(编辑订阅… / 取消订阅)。
-    pub context_menu_subscription: Option<(String, String)>,
-
     // 语言切换下拉菜单状态
     pub show_language_menu: bool,
 
@@ -489,12 +479,6 @@ impl NetAssistantApp {
             // 使客户端连接与 UI 共享同一个规则集（UDP/TCP 客户端构造时注入）
             reply_rules_store,
             server_reply_rules_stores: HashMap::new(),
-            show_context_menu: false,
-            context_menu_connection: None,
-            context_menu_is_client: false,
-            context_menu_position: None,
-            context_menu_position_y: None,
-            context_menu_subscription: None,
             // 语言切换下拉菜单
             show_language_menu: false,
             // 添加客户端对话框状态（UDP服务端专用）

@@ -1577,7 +1577,8 @@ impl<'a> ConnectionTab<'a> {
     ///
     /// 布局：
     /// - 标题行 `订阅 (N)` + 右侧「＋」新增入口（照搬同侧栏「＋新建连接」的位置与样式）；
-    /// - **只读一览**列表（带边框盒 + 固定高度上限 + 超出时内部滚动；左键无动作）；
+    /// - **只读一览**列表（占满面板剩余高度（同服务端「客户端连接」），超出时内部滚动）；
+    /// - 每行悬停出 tooltip 显示完整 topic（行内长 topic 会截断），**双击**复制 topic 名称；
     /// - 每行**右键**出上下文菜单：`编辑订阅…`（开弹窗编辑模式）/ `取消订阅`（直接执行）。
     ///
     /// 单条的新增与编辑都收进「订阅」弹窗（`mqtt_subscriptions.rs`）；本块不再有
@@ -1599,6 +1600,9 @@ impl<'a> ConnectionTab<'a> {
             .flex_col()
             .gap_1()
             .mt_3()
+            // 同服务端「客户端连接」列表: 块本身 flex_1, 让列表盒占满面板剩余高度(高度固定、超出滚动)
+            .flex_1()
+            .min_h_0()
             .child(
                 div()
                     .flex()
@@ -1662,13 +1666,14 @@ impl<'a> ConnectionTab<'a> {
                     ),
             );
 
-        // ===== 只读一览列表: 带边框盒 + 固定高度上限 + 超出时内部滚动 =====
-        // 外层非滚动 div 挂 max_h 钳高, 内层 div 挂 overflow_y_scrollbar（遵循 dialog/mod.rs 的约定）
+        // ===== 只读一览列表: 带边框盒 + 固定高度(同服务端「客户端连接」列表) + 超出时内部滚动 =====
+        // 外层块与盒子都挂 flex_1(占满面板剩余高度), 内层 div 挂 overflow_y_scrollbar():
+        // 高度由面板决定、与订阅条数无关 ⇒ 列表不会随订阅变多而长高（遵循 dialog/mod.rs 的约定）。
         let mut rows: Vec<AnyElement> = Vec::new();
         if subs.is_empty() {
             rows.push(
                 div()
-                    .w_full()
+                    .size_full()
                     .py_2()
                     .flex()
                     .items_center()
@@ -1683,8 +1688,11 @@ impl<'a> ConnectionTab<'a> {
             );
         } else {
             for (topic, qos) in subs.iter() {
-                let row_topic = topic.clone();
-                let row_tab = tab_id.clone();
+                let row_qos = *qos;
+                // 框架右键菜单的项闭包用: 渲染期捕获（菜单只在打开那一刻惰性构建）
+                let menu_weak = cx.entity().downgrade();
+                let menu_tab = tab_id.clone();
+                let menu_topic = topic.clone();
                 rows.push(
                     div()
                         .id(format!("mqtt-sub-row-{}", topic))
@@ -1716,19 +1724,101 @@ impl<'a> ConnectionTab<'a> {
                                 .text_color(theme.muted_foreground)
                                 .child(qos_label(*qos)),
                         )
-                        // 右键菜单: 编辑订阅… / 取消订阅(照连接列表右键范式)
-                        .on_mouse_down(MouseButton::Right, cx.listener(
-                            move |app: &mut NetAssistantApp, event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                app.show_context_menu = true;
-                                // 订阅菜单与连接菜单互斥: 清空连接字段避免混淆
-                                app.context_menu_connection = None;
-                                app.context_menu_subscription =
-                                    Some((row_tab.clone(), row_topic.clone()));
-                                app.context_menu_position = Some(event.position.x);
-                                app.context_menu_position_y = Some(event.position.y);
-                                cx.notify();
+                        // 悬停显示完整 topic(行内长 topic 被截断为省略号), 双击行复制 topic 名称
+                        .tooltip({
+                            let tip_topic = topic.clone();
+                            move |window, cx| {
+                                let tip = tip_topic.clone();
+                                Tooltip::element(move |_window: &mut Window, _cx: &mut App| {
+                                    div()
+                                        .max_w(px(420.0))
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(tip.clone())
+                                        .child(
+                                            div().text_xs().opacity(0.7).child(
+                                                t!("connection_tab.mqtt_topic_copy_hint")
+                                                    .to_string(),
+                                            ),
+                                        )
+                                })
+                                .build(window, cx)
+                            }
+                        })
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            {
+                                let copy_topic = topic.clone();
+                                move |event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+                                    if event.click_count == 2 {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            copy_topic.clone(),
+                                        ));
+                                    }
+                                }
                             },
-                        ))
+                        )
+                        // 右键菜单: 编辑订阅… / 取消订阅(由框架 ContextMenuExt 承载, 自动收敛到窗口内)
+                        .context_menu(move |menu, _window, _cx| {
+                            let edit_weak = menu_weak.clone();
+                            let edit_tab = menu_tab.clone();
+                            let edit_topic = menu_topic.clone();
+                            let unsub_weak = menu_weak.clone();
+                            let unsub_tab = menu_tab.clone();
+                            let unsub_topic = menu_topic.clone();
+                            menu
+                                // 编辑订阅…（开弹窗编辑模式）
+                                .item(
+                                    PopupMenuItem::new(
+                                        t!("context_menu.edit_subscription").to_string(),
+                                    )
+                                    .on_click(move |_, window, cx| {
+                                        let Some(app) = edit_weak.upgrade() else {
+                                            return;
+                                        };
+                                        let (tab_id, topic) =
+                                            (edit_tab.clone(), edit_topic.clone());
+                                        app.update(cx, |app, cx| {
+                                            // 弹窗状态必须先建好: 表单的输入实体只能在此上下文创建
+                                            app.mqtt_subscriptions_dialog = Some(
+                                                MqttSubscriptionDialogState::new_edit(
+                                                    tab_id.clone(),
+                                                    topic,
+                                                    row_qos,
+                                                    window,
+                                                    cx,
+                                                ),
+                                            );
+                                            if let Some(tab) = app.connection_tabs.get_mut(&tab_id) {
+                                                tab.mqtt_sub_error = None;
+                                            }
+                                            open_mqtt_subscriptions_dialog(
+                                                cx.entity().downgrade(),
+                                                window,
+                                                cx,
+                                            );
+                                            cx.notify();
+                                        });
+                                    }),
+                                )
+                                .separator()
+                                // 取消订阅(直接执行, 像连接列表「删除连接」)
+                                .item(
+                                    PopupMenuItem::new(t!("context_menu.unsubscribe").to_string())
+                                        .on_click(move |_, _window, cx| {
+                                            let Some(app) = unsub_weak.upgrade() else {
+                                                return;
+                                            };
+                                            let (tab_id, topic) =
+                                                (unsub_tab.clone(), unsub_topic.clone());
+                                            app.update(cx, |app, cx| {
+                                                app.mqtt_unsubscribe(&tab_id, topic, cx);
+                                                cx.notify();
+                                            });
+                                        }),
+                                )
+                        })
                         .into_any_element(),
                 );
             }
@@ -1736,9 +1826,10 @@ impl<'a> ConnectionTab<'a> {
         block = block.child(
             div()
                 .w_full()
-                // 默认就给足高度(空态/少量订阅也不塌成一条), 超出上限再内部滚动
-                .min_h(px(72.0))
-                .max_h(px(184.0))
+                // 与服务端「客户端连接」列表同款: flex_1 占满面板剩余高度 ⇒ 高度不随订阅条数变化
+                .flex_1()
+                .min_h_0()
+                .overflow_hidden()
                 .bg(theme.background)
                 .rounded_md()
                 .border_1()
@@ -1746,6 +1837,7 @@ impl<'a> ConnectionTab<'a> {
                 .child(
                     div()
                         .id("mqtt-subscriptions-list-scroll")
+                        .size_full()
                         .overflow_y_scrollbar()
                         .children(rows),
                 ),
