@@ -18,7 +18,7 @@ use gpui_kit::component::{
     clipboard::Clipboard,
     input::{EditorState, Input, InputState},
     menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
-    scroll::{Scrollbar, ScrollbarMode},
+    scroll::{Scrollbar, ScrollbarHandle, ScrollbarMode},
     switch::Switch,
     tooltip::Tooltip,
 };
@@ -76,6 +76,50 @@ pub const MESSAGE_ROW_HINT_HEIGHT: Pixels = px(96.0);
 /// 统一行高提示的最小重施间隔。`apply_uniform_item_height` 为 O(N) 重建，
 /// 压测下不可每拍执行，故叠加这层限流（与 `SEARCH_RECALC_MIN_INTERVAL` 同量级）。
 pub const ROW_HINT_MIN_INTERVAL: Duration = Duration::from_millis(250);
+
+/// 消息列表的滚动条句柄。
+///
+/// 虚拟列表只测量可见行，`ListState` 上报的总内容高度是「已测量行 + 未测量行×行高提示」
+/// 的估算值；拖拽滚动条期间该值还会被冻结。当消息实际行高大于
+/// [`MESSAGE_ROW_HINT_HEIGHT`]（多行 JSON 等）时，拖到轨道最底部映射出的滚动位
+/// 仍落在历史中部，表现为「拉到最下边后还有大量消息」。
+///
+/// 这里把「轨道到底」重定向为 `scroll_to_end()`：无论估算总高偏差多大，拇指一到底
+/// 就锚定最后一条消息。不修改跟随模式，因此关闭自动滚动时仍保持 Normal（不会被吸附）。
+#[derive(Clone)]
+struct MessageListScrollbarHandle(ListState);
+
+impl ScrollbarHandle for MessageListScrollbarHandle {
+    fn viewport_bounds(&self) -> Bounds<Pixels> {
+        self.0.viewport_bounds()
+    }
+
+    fn offset(&self) -> Point<Pixels> {
+        self.0.scroll_px_offset_for_scrollbar()
+    }
+
+    fn set_offset(&self, offset: Point<Pixels>) {
+        let max = self.0.max_offset_for_scrollbar().y;
+        // 1px 容差：Scrollbar 用（内容高 - 视口高）映射，与 max_offset 存在取整误差。
+        if max > px(0.) && -offset.y >= max - px(1.0) {
+            self.0.scroll_to_end();
+        } else {
+            self.0.set_offset_from_scrollbar(offset);
+        }
+    }
+
+    fn content_size(&self) -> gpui_kit::Size<Pixels> {
+        self.0.viewport_bounds().size + self.0.max_offset_for_scrollbar().into()
+    }
+
+    fn start_drag(&self) {
+        self.0.scrollbar_drag_started();
+    }
+
+    fn end_drag(&self) {
+        self.0.scrollbar_drag_ended();
+    }
+}
 
 /// 连接标签页状态
 #[derive(Clone)]
@@ -2634,7 +2678,8 @@ impl<'a> ConnectionTab<'a> {
                 .into_any()
             } else {
                 let selected_client = self.tab_state.selected_client.clone();
-                let scrollbar_state = self.tab_state.message_list_state.clone();
+                let scrollbar_state =
+                    MessageListScrollbarHandle(self.tab_state.message_list_state.clone());
                 let tab_id_for_list = tab_id.clone();
                 let app_entity = cx.entity().clone();
                 let bubble_focus = self.tab_state.bubble_focus.clone();
@@ -3026,7 +3071,7 @@ impl<'a> ConnectionTab<'a> {
                                                                     )
                                                                     .into(),
                                                                 ))
-                                                                .max_w_3_5()
+                                                                .max_w(relative(0.75))
                                                                 .p_3()
                                                                 .rounded_md()
                                                                 .when(is_sent, |div| {
@@ -3944,5 +3989,90 @@ mod bubble_verify_tests {
             Some(selected.trim().to_string()),
             "Ctrl+C 应把选中文本写入剪贴板"
         );
+    }
+}
+
+#[cfg(test)]
+mod scrollbar_bottom_tests {
+    use gpui_kit::component::scroll::ScrollbarHandle as _;
+    use gpui_kit::{
+        Context, Element as _, IntoElement, ListAlignment, ListState, Render, Styled as _,
+        TestAppContext, VisualTestContext, Window, div, list, point, px,
+    };
+
+    use super::{MESSAGE_ROW_HINT_HEIGHT, MessageListScrollbarHandle};
+
+    /// 实际行高（200px）远大于统一行高提示（96px），复现总高被低估的场景。
+    const ACTUAL_ROW_HEIGHT: f32 = 200.0;
+
+    struct TestList(ListState);
+
+    impl Render for TestList {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            list(self.0.clone(), |_, _, _| {
+                div().h(px(ACTUAL_ROW_HEIGHT)).w_full().into_any()
+            })
+            .size_full()
+        }
+    }
+
+    fn draw(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+    }
+
+    /// 拖拽滚动条到轨道底部必须锚定到最新消息。
+    ///
+    /// 修复前：拖拽期间 `ListState` 冻结的是「行数 × 96px」的估算总高，实际行高
+    /// 200px 时轨道底部只映射到列表中部，最后若干条消息无法通过滚动条到达。
+    #[gpui_kit::test]
+    fn drag_to_bottom_reveals_latest_message(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::component::init);
+        let state = ListState::new(100, ListAlignment::Top, px(100.));
+        let _ = state
+            .clone()
+            .with_uniform_item_height(MESSAGE_ROW_HINT_HEIGHT);
+        let (_, cx) = cx.add_window_view(|_, _| TestList(state.clone()));
+        let cx: &mut VisualTestContext = cx;
+        cx.simulate_resize(gpui_kit::Size {
+            width: px(300.),
+            height: px(300.),
+        });
+        draw(cx);
+
+        // 首次布局会把未测量条目的行高提示清空，生产中由 `refresh_row_hint`
+        // 在后续消息到达时重施。这里手动重施，复现「总高按 96px 估算」的真实场景。
+        let _ = state
+            .clone()
+            .with_uniform_item_height(MESSAGE_ROW_HINT_HEIGHT);
+
+        let last = state.item_count() - 1;
+        assert!(
+            state.bounds_for_item(last).is_none(),
+            "初始应停在列表顶部，最后一条尚未渲染"
+        );
+
+        // 模拟按下拇指：冻结滚动条总高（此处为低估的估算值）
+        let handle = MessageListScrollbarHandle(state.clone());
+        handle.start_drag();
+        let max = state.max_offset_for_scrollbar().y;
+        assert!(max > px(0.), "内容应可滚动，实际 max_offset={max:?}");
+        handle.set_offset(point(px(0.), -max));
+        draw(cx);
+
+        assert!(
+            state.bounds_for_item(last).is_some(),
+            "拖到滚动条底部后应渲染最后一条消息（实际 logical_scroll_top={:?}）",
+            state.logical_scroll_top()
+        );
+        assert_eq!(
+            state.item_is_below_viewport(last),
+            Some(false),
+            "最后一条消息必须位于视口内"
+        );
+
+        handle.end_drag();
     }
 }
