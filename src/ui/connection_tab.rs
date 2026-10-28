@@ -71,6 +71,12 @@ pub const ROW_RECENT_CAP: usize = 64;
 /// 洪泛下「跟手看到最新」优先于「顺滑」）。
 pub const ROW_ANIM_FLOOD_THRESHOLD: usize = 20;
 
+/// 非错误提示（如重连后「已重新发起 N 个订阅」）的展示时长。
+///
+/// 这类提示描述的是正常状态变化而非错误：用成功色短暂展示后自动消失，
+/// 不能像 `error_message` 那样常驻红色，否则会一直留在面板底部被误认为故障。
+pub const STATUS_HINT_TTL: Duration = Duration::from_secs(5);
+
 /// 统一行高提示的估算值（单行消息约 88–96px：页眉行 + 气泡 + 按钮行 + gap_1×2）。
 /// 供 `refresh_row_hint` 施加给 ListState，使滚动条拇指从首帧起长度稳定。
 /// 校准：拇指偏长则调小，偏短则调大。
@@ -131,6 +137,11 @@ pub struct ConnectionTabState {
     pub message_list: MessageListState,
     pub is_connected: bool,
     pub error_message: Option<String>,
+    /// 非错误提示（文案 + 出现时刻）：成功色展示，超过 [`STATUS_HINT_TTL`] 自动清除。
+    ///
+    /// 与 `error_message` 分离：正常状态变化（如重连后已重新发起订阅）不应按错误
+    /// 红色常驻渲染，避免面板底部一直挂着一条看似故障的红字。
+    pub status_hint: Option<(String, Instant)>,
     /// 实际生效的本地端点(IP:端口, 连接成功后由 Connected 事件上报; UDP 自动分配端口也可见)
     pub local_endpoint: Option<String>,
     pub auto_scroll_enabled: bool,
@@ -296,6 +307,7 @@ impl ConnectionTabState {
             message_list: MessageListState::new(),
             is_connected: false,
             error_message: None,
+            status_hint: None,
             local_endpoint: None,
             auto_scroll_enabled: true,
             recent_message_ids: VecDeque::new(),
@@ -1615,6 +1627,24 @@ impl<'a> ConnectionTab<'a> {
                         .font_medium()
                         .text_color(theme.danger)
                         .child(error_msg.to_string()),
+                )
+            })
+            // 非错误提示（重连后已重新发起订阅等）: 成功色 + 到期自动消失，
+            // 不能复用上面的红色错误行，否则会常驻面板底部被误认为故障。
+            .when(self.tab_state.status_hint.is_some(), |this| {
+                let hint = self
+                    .tab_state
+                    .status_hint
+                    .as_ref()
+                    .map(|(text, _)| text.clone())
+                    .unwrap_or_default();
+                this.child(
+                    div()
+                        .mt_3()
+                        .text_xs()
+                        .font_medium()
+                        .text_color(theme.success)
+                        .child(hint),
                 )
             })
     }

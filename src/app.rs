@@ -36,6 +36,7 @@ use crate::utils::hex::convert_value;
 
 use crate::ui::connection_tab::{
     ConnectionTabState, ROW_RECENT_CAP, ROW_RECENT_WINDOW, SEARCH_RECALC_MIN_INTERVAL,
+    STATUS_HINT_TTL,
 };
 use crate::ui::dialog::{
     DecoderSelectionDialogState, ImportFileDialogState, MqttSubscriptionDialogState,
@@ -682,10 +683,12 @@ impl NetAssistantApp {
                     app.sync_tab_follow_states(cx);
                     // 入场动画「新到达」记录的过期清理（不触发重绘）
                     app.sweep_recent_message_ids();
+                    // 非错误提示到期清理：需重绘才能撤掉已经显示的文案
+                    let hints_expired = app.sweep_status_hints();
                     // 搜索匹配重算挂在同一节拍上并做下限流：消息洪泛时只置 search_dirty，
                     // 由这里最多 4 次/秒地重算，避免每拍做一次 O(N) 全量扫描。
                     let searches_changed = app.throttled_recalc_searches();
-                    if !has_events && (counters_changed || searches_changed) {
+                    if !has_events && (counters_changed || searches_changed || hints_expired) {
                         cx.notify();
                     }
                 });
@@ -892,10 +895,6 @@ impl NetAssistantApp {
             return false;
         }
 
-        // TEMP(临时放开「未连接不能订阅」): 未连接时只写本地（列表 + 持久化），不下发命令；
-        // 连接建立后 `ConnectionEvent::MqttControlSenderReady` 会按界面订阅列表自动补发订阅，
-        // 因此不会丢。仅用于离线测试，勿提交。
-        // 还原: 把下面的 `None => true` 改回 `None => false`。
         let delivered = match self.mqtt_control_senders.get(tab_id) {
             Some(sender) => sender
                 .try_send(MqttCommand::Subscribe {
@@ -903,7 +902,7 @@ impl NetAssistantApp {
                     qos,
                 })
                 .is_ok(),
-            None => true,
+            None => false,
         };
 
         if !delivered {
@@ -1030,13 +1029,11 @@ impl NetAssistantApp {
 
     /// 取消订阅：乐观移除 + 下发 `MqttCommand::Unsubscribe`；投递失败回滚提示。
     pub fn mqtt_unsubscribe(&mut self, tab_id: &str, topic: String, cx: &mut Context<Self>) {
-        // TEMP(临时放开「未连接不能退订」): 未连接时只改本地（列表 + 持久化），不下发命令。
-        // 还原: 把下面的 `None => true` 改回 `None => false`。
         let delivered = match self.mqtt_control_senders.get(tab_id) {
             Some(sender) => sender
                 .try_send(MqttCommand::Unsubscribe { topic: topic.clone() })
                 .is_ok(),
-            None => true,
+            None => false,
         };
 
         if !delivered {
@@ -4461,6 +4458,24 @@ impl NetAssistantApp {
         }
     }
 
+    /// 清理过期的非错误提示（重连后已重新发起订阅等）。
+    ///
+    /// 返回是否有提示被移除：调用方据此重绘，让文案从界面上真正消失。
+    /// 挂在事件泵同一节拍上，无需额外的定时器。
+    pub fn sweep_status_hints(&mut self) -> bool {
+        let now = Instant::now();
+        let mut removed = false;
+        for tab in self.connection_tabs.values_mut() {
+            if let Some((_, at)) = tab.status_hint.as_ref()
+                && now.duration_since(*at) > STATUS_HINT_TTL
+            {
+                tab.status_hint = None;
+                removed = true;
+            }
+        }
+        removed
+    }
+
     /// 清空消息时调用: 网络层计数一并归零, 避免下一拍同步把显示计数覆盖回原值。
     pub fn reset_net_counters(&mut self, tab_id: &str) {
         if let Some(counters) = self.net_counters.get(tab_id) {
@@ -4601,6 +4616,8 @@ impl NetAssistantApp {
                     // 记录实际生效的本地端点(UDP 自动分配的端口只有这里能拿到)
                     tab_state.local_endpoint = Some(local_addr.to_string());
                     tab_state.error_message = None;
+                    // 新连接建立后，上一轮重连的提示已过时
+                    tab_state.status_hint = None;
                     cx.notify();
                 }
                 // 连接建立: 若有持久化的定时任务(心跳)则创建(启用态立即开始)
@@ -4615,6 +4632,7 @@ impl NetAssistantApp {
                         tab_state.connection_status = ConnectionStatus::Disconnected;
                     }
                     tab_state.local_endpoint = None;
+                    tab_state.status_hint = None;
                     cx.notify();
                 }
                 self.client_write_senders.remove(&tab_id);
@@ -4634,10 +4652,20 @@ impl NetAssistantApp {
                     tab_state.is_connected = true;
                     tab_state.connection_status = ConnectionStatus::Listening;
                     tab_state.error_message = None;
+                    tab_state.status_hint = None;
                     cx.notify();
                 }
                 // 开始监听: 若有持久化的定时任务(心跳)则创建
                 self.ensure_timed_task(&tab_id, cx);
+            }
+            ConnectionEvent::StatusHint(tab_id, hint) => {
+                // 非错误提示: 成功色 + 到期自动消失。顺手清掉重连期间的旧告警
+                // (如"自动重连中"), 避免过时红字与正常提示并存。
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    tab_state.error_message = None;
+                    tab_state.status_hint = Some((hint, Instant::now()));
+                    cx.notify();
+                }
             }
             ConnectionEvent::Warning(tab_id, warning) => {
                 // 非终态: 只显示提示文案, 不动连接状态/发送通道(区别于 Error)
@@ -4652,6 +4680,7 @@ impl NetAssistantApp {
                     tab_state.connection_status = ConnectionStatus::Error;
                     tab_state.error_message = Some(error);
                     tab_state.local_endpoint = None;
+                    tab_state.status_hint = None;
                     cx.notify();
                 }
                 // 清理连接信息，确保下次发送时直接失败。
@@ -4748,7 +4777,9 @@ impl NetAssistantApp {
                 }
             }
             ConnectionEvent::MqttSubscriptionsRestored(tab_id, count) => {
-                // 非终态提示: 仅在状态区显示"重连后已重新发起订阅", 不动连接状态。
+                // 非终态提示: 仅在状态区短暂显示"重连后已重新发起订阅", 不动连接状态。
+                // 走 `status_hint`(成功色 + 自动消失)而非 `error_message`(红色常驻):
+                // 这是正常状态变化, 不该被误认为故障。
                 // 注: 仅表示已向 broker 重发 SUBSCRIBE; SUBACK 返回 0x80 的条目实际被拒,
                 // 但协议上无法与 topic 关联(D-10), 故文案不承诺"已恢复/已订阅成功"。
                 debug!(
@@ -4756,8 +4787,10 @@ impl NetAssistantApp {
                     count, tab_id
                 );
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
-                    tab_state.error_message =
-                        Some(t!("connection_tab.mqtt_subscriptions_restored", count => count).to_string());
+                    tab_state.status_hint = Some((
+                        t!("connection_tab.mqtt_subscriptions_restored", count => count).to_string(),
+                        Instant::now(),
+                    ));
                     cx.notify();
                 }
             }

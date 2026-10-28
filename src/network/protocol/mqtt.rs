@@ -297,8 +297,10 @@ impl NetworkConnection for MqttClient {
                                 // 重连：broker 不保留订阅（Clean Session=true），通知任务 B 重订阅
                                 info!("MQTT 已重连");
                                 if let Some(s) = &read_event_sender {
+                                    // 重连成功是正常状态变化: 走 StatusHint(成功色 + 自动消失),
+                                    // 不走 Warning(红色常驻), 避免重连后底部一直挂着红字。
                                     let _ = s
-                                        .send(ConnectionEvent::Warning(
+                                        .send(ConnectionEvent::StatusHint(
                                             read_config_id.clone(),
                                             t!("mqtt_net.reconnected").to_string(),
                                         ))

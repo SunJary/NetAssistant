@@ -291,6 +291,11 @@ pub enum ConnectionEvent {
     MqttControlSenderReady(String, Sender<MqttCommand>),
     /// MQTT 重连成功后已自动恢复的订阅数量(仅提示条, 非终态; 规划 §6.4)
     MqttSubscriptionsRestored(String, usize),
+    /// 非错误的短暂状态提示(如 "MQTT 已重连")。
+    ///
+    /// UI 侧以成功色展示并在数秒后自动消失; 与 `Warning` 区分:
+    /// 后者是"操作被拒绝 / 连接异常"等需要红色常驻的问题提示。
+    StatusHint(String, String),
     /// 回复规则集共享状态就绪(UI 运行时下发整表；服务端多客户端共享同一 store)
     ///
     /// 客户端侧不需要此事件：客户端是 1:1，在 `TcpClient::new` / `UdpClient::new`
