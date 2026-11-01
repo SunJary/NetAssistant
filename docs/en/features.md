@@ -53,7 +53,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 ## MQTT Debugging
 
 - **MQTT 3.1.1 client**: integrated into the client connection system — choose MQTT when creating a connection and fill in the broker address and port (default 1883), Client ID, optional username/password and KeepAlive; "More Settings" holds Clean Session and last-will settings (topic / payload / QoS / retain)
-- **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and restored automatically after an automatic reconnect
+- **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and restored automatically after an automatic reconnect; the list fills the side panel and scrolls inside it, shows the full topic on hover and copies the topic on double-click
 - **Publishing**: set topic, QoS (0/1/2) and retain in the send area while the payload keeps using text / hex mode; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS and retain), persisted per connection with up to 20 entries
 - **Message display**: every message carries a topic pill (retain is marked), and double-clicking the pill copies the raw topic; the existing log, search, export, JSON formatting and reply rules all work as before
 - **Auto reply**: replies are published back to the topic the message arrived on; periodic send also uses the current publish topic

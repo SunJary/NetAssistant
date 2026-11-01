@@ -7,6 +7,15 @@ description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast de
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## v1.4.1 <Badge type="tip" text="2026-10-31" />
+
+- **Scrollbar reaches the latest message**: fixed an issue where dragging the scrollbar to the bottom still stopped mid-history when bubble heights exceeded the estimated row height (multi-line JSON, long payloads), leaving the newest messages unreachable — the thumb now anchors the latest message at the bottom of the track without changing the auto-scroll toggle
+- **MQTT subscription list**: the subscription overview now fills the remaining side-panel height (like the server's "client connections" list) and scrolls inside the box instead of growing the panel; hovering opens a card above the row with the full topic (long topics are ellipsized inline and the tip is no longer clipped by the scroll container), and double-clicking copies the topic
+- **Wider message bubbles**: bubbles now take up to 75% of the message area instead of a fixed width, so long payloads and multi-line JSON wrap less
+- **Copy feedback**: double-clicking a source address `ip:port` or an MQTT topic now shows a "copied to clipboard" toast in the top-right corner
+- **Context menus stay in view**: the context menus of connection rows and subscription rows now use the shared menu component and stay within the window; the favorites panel is clamped to the window bounds so it is no longer clipped at the edges
+- Reconnect and "resubscribed after reconnect" hints now render in a success colour and disappear after 5 seconds instead of lingering in red; stale hints are also cleared when a connection is established, closed, starts listening or errors
+
 ## v1.4.0 <Badge type="tip" text="2026-10-24" />
 
 - **MQTT client**: a new MQTT 3.1.1 client (powered by rumqttc) that fully reuses the existing debugging workflow
