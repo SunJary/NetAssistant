@@ -59,7 +59,8 @@ export default defineConfig({
         nav: [
           { text: '首页', link: '/' },
           { text: '功能特性', link: '/features' },
-          { text: '同类对比', link: '/comparison' },
+          { text: '网络调试工具对比', link: '/comparison' },
+          { text: 'MQTTX 对比', link: '/comparison-mqttx' },
           { text: '常见问题', link: '/faq' },
           { text: '使用指南', link: '/guide/' },
           { text: '下载', link: '/download' },
@@ -112,7 +113,8 @@ export default defineConfig({
         nav: [
           { text: 'Home', link: '/en/' },
           { text: 'Features', link: '/en/features' },
-          { text: 'Comparison', link: '/en/comparison' },
+          { text: 'Network Debugging Tools', link: '/en/comparison' },
+          { text: 'vs MQTTX', link: '/en/comparison-mqttx' },
           { text: 'FAQ', link: '/en/faq' },
           { text: 'Guide', link: '/en/guide/' },
           { text: 'Download', link: '/en/download' },
