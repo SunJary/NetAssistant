@@ -363,6 +363,101 @@ reply_rules:
   close:
     zh-CN: 关闭
     en: Close
+  select_all:
+    zh-CN: 全选
+    en: Select all
+  selected_count:
+    zh-CN: 已选 %{selected} / %{total}
+    en: "%{selected} of %{total} selected"
+  transfer_hint:
+    zh-CN: 勾选规则后可批量导出或复制
+    en: Select rules to export or copy them in bulk
+  import:
+    zh-CN: 导入
+    en: Import
+  export_selected:
+    zh-CN: 导出所选 (%{n})
+    en: Export Selected (%{n})
+  export_none:
+    zh-CN: 导出所选
+    en: Export Selected
+  export_ok:
+    zh-CN: 已导出 %{n} 条规则到 %{path}
+    en: Exported %{n} rules to %{path}
+  export_failed:
+    zh-CN: 导出失败：%{reason}
+    en: "Export failed: %{reason}"
+  copy_to:
+    zh-CN: 复制到其他连接
+    en: Copy to Another Connection
+  import_ok:
+    zh-CN: 已导入 %{n} 条规则
+    en: Imported %{n} rules
+  import_ok_invalid:
+    zh-CN: 已导入 %{n} 条规则，其中 %{invalid} 条存在校验错误，可在列表中修正
+    en: Imported %{n} rules; %{invalid} have validation errors you can fix in the list
+  import_read_failed:
+    zh-CN: 读取文件失败：%{reason}
+    en: "Failed to read file: %{reason}"
+  import_too_large:
+    zh-CN: 规则包过大（%{size} 字节，上限 %{max} 字节）
+    en: Rule bundle is too large (%{size} bytes, limit %{max} bytes)
+  import_not_bundle:
+    zh-CN: 导入失败：这不是 NetAssistant 规则包
+    en: "Import failed: not a NetAssistant rule bundle"
+  import_unsupported_version:
+    zh-CN: 导入失败：规则包版本 %{version} 不受支持，请升级应用
+    en: "Import failed: bundle version %{version} is not supported; please upgrade the app"
+  import_empty:
+    zh-CN: 导入失败：规则包内没有任何规则
+    en: "Import failed: the bundle contains no rules"
+  import_too_many:
+    zh-CN: 导入失败：规则包包含 %{n} 条规则，上限 %{max} 条
+    en: "Import failed: the bundle has %{n} rules, limit %{max}"
+  import_invalid_json:
+    zh-CN: 导入失败：规则包内容无法解析（%{reason}）
+    en: "Import failed: cannot parse the bundle (%{reason})"
+  gate_off_suffix:
+    zh-CN: （该连接「自动回复」未开启，规则暂不生效）
+    en: " (Auto-reply is off for this connection, so the rules are not active yet)"
+  copy_ok:
+    zh-CN: 已复制 %{n} 条规则到 %{target}
+    en: Copied %{n} rules to %{target}
+  copy_ok_gate_off:
+    zh-CN: 已复制 %{n} 条规则到 %{target}（该连接「自动回复」未开启，规则暂不生效）
+    en: Copied %{n} rules to %{target} (Auto-reply is off for this connection, so the rules are not active yet)
+  invalid_suffix:
+    zh-CN: 其中 %{invalid} 条存在校验错误。
+    en: "%{invalid} of them have validation errors."
+
+reply_rules_copy:
+  title:
+    zh-CN: 复制规则到其他连接
+    en: Copy Rules to Another Connection
+  desc:
+    zh-CN: 将 %{n} 条规则追加到目标连接，不会覆盖目标已有规则；导入后会重新生成规则 ID。
+    en: Append %{n} rules to the target connection without overwriting existing rules. Rule IDs are regenerated.
+  empty:
+    zh-CN: 没有其他 TCP/UDP 连接可复制，请先创建并保存一个连接。
+    en: There are no other TCP/UDP connections. Create and save one first.
+  existing:
+    zh-CN: 已有 %{n} 条规则
+    en: "%{n} existing rules"
+  role_client:
+    zh-CN: 客户端
+    en: Client
+  role_server:
+    zh-CN: 服务端
+    en: Server
+  mqtt_note:
+    zh-CN: MQTT 连接不参与自动回复，因此不在复制目标中显示。
+    en: MQTT connections do not run auto-reply, so they are not listed here.
+  cancel:
+    zh-CN: 取消
+    en: Cancel
+  confirm:
+    zh-CN: 复制 %{n} 条
+    en: Copy %{n}
 
 mqtt_subscriptions:
   title_add:

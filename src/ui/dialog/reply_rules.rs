@@ -21,6 +21,7 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::Theme;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::switch::Switch;
@@ -30,13 +31,32 @@ use gpui_kit::component::{Sizable as _, Size};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use rust_i18n::t;
+use std::collections::HashSet;
 
 use crate::app::NetAssistantApp;
 use crate::reply::model::{
     ReplyRule, Severity, format_matcher_summary, format_reply_summary, validate_rule,
 };
 
-use super::{dialog_content_max_height, dialog_height, open_reply_rule_edit_dialog};
+use super::{
+    dialog_content_max_height, dialog_height, open_reply_rule_copy_dialog,
+    open_reply_rule_edit_dialog,
+};
+
+/// 弹窗内操作结果的状态行（成功 / 提醒 / 失败）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferStatusKind {
+    Success,
+    Warning,
+    Error,
+}
+
+/// 一次导入/导出/复制后的反馈文案
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferStatus {
+    pub kind: TransferStatusKind,
+    pub text: String,
+}
 
 /// 「回复规则」管理弹窗状态(打开时创建, 关闭时由 app 置 None)
 pub struct ReplyRulesDialogState {
@@ -48,6 +68,10 @@ pub struct ReplyRulesDialogState {
     /// 关闭语义(close_dialog 关最上层 vs 关全部)变得难以推理, 而破坏性动作的
     /// 二次确认只需要一次明确的再点击。
     pub confirm_delete: Option<String>,
+    /// 多选集合（按规则 id）；导出 / 复制只作用于选中项
+    pub selected: HashSet<String>,
+    /// 上一次导入/导出/复制的反馈（显示在列表下方）
+    pub status: Option<TransferStatus>,
 }
 
 impl ReplyRulesDialogState {
@@ -55,6 +79,8 @@ impl ReplyRulesDialogState {
         Self {
             tab_id: tab_id.into(),
             confirm_delete: None,
+            selected: HashSet::new(),
+            status: None,
         }
     }
 
@@ -75,6 +101,55 @@ impl ReplyRulesDialogState {
             self.confirm_delete = Some(rule_id.to_string());
             false
         }
+    }
+
+    /// 切换单条规则的选中态
+    pub fn toggle_selected(&mut self, rule_id: &str) {
+        if !self.selected.remove(rule_id) {
+            self.selected.insert(rule_id.to_string());
+        }
+    }
+
+    /// 当前选中条数
+    pub fn selected_count(&self) -> usize {
+        self.selected.len()
+    }
+
+    /// 是否已全选（空列表不算全选）
+    pub fn all_selected(&self, total: usize) -> bool {
+        total > 0 && self.selected.len() >= total
+    }
+
+    /// 全选 / 取消全选
+    pub fn toggle_select_all(&mut self, rule_ids: &[String]) {
+        if self.all_selected(rule_ids.len()) {
+            self.selected.clear();
+        } else {
+            self.selected = rule_ids.iter().cloned().collect();
+        }
+    }
+
+    /// 删除规则后同步剪枝，避免选中集残留不存在的 id
+    pub fn prune_selected(&mut self, existing_ids: &[String]) {
+        let existing: HashSet<&String> = existing_ids.iter().collect();
+        self.selected.retain(|id| existing.contains(id));
+    }
+
+    /// 按列表顺序返回选中规则 id（导出/复制的顺序 = 用户在列表中看到的顺序）
+    pub fn selected_ids_in_order(&self, rules: &[ReplyRule]) -> Vec<String> {
+        rules
+            .iter()
+            .filter(|rule| self.selected.contains(&rule.id))
+            .map(|rule| rule.id.clone())
+            .collect()
+    }
+
+    /// 写入操作反馈（覆盖上一条）
+    pub fn set_status(&mut self, kind: TransferStatusKind, text: impl Into<String>) {
+        self.status = Some(TransferStatus {
+            kind,
+            text: text.into(),
+        });
     }
 }
 
@@ -124,6 +199,8 @@ pub fn open_reply_rules_dialog(
                 move |_, _, cx| {
                     let _ = app.update(cx, |app, cx| {
                         app.reply_rules_dialog = None;
+                        // 父弹窗关闭时一并清理叠层的目标选择弹窗状态
+                        app.reply_rules_copy_dialog = None;
                         cx.notify();
                     });
                     true
@@ -173,6 +250,19 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
         .reply_rules_dialog
         .as_ref()
         .and_then(|s| s.confirm_delete.clone());
+    let (selected_count, all_selected, selected_ids, status) = state
+        .reply_rules_dialog
+        .as_ref()
+        .map(|s| {
+            (
+                s.selected_count(),
+                s.all_selected(rules.len()),
+                s.selected_ids_in_order(&rules),
+                s.status.clone(),
+            )
+        })
+        .unwrap_or((0, false, Vec::new(), None));
+    let rule_ids: Vec<String> = rules.iter().map(|r| r.id.clone()).collect();
 
     let mut body = div().flex().flex_col().gap_3().px_6().pb_4();
 
@@ -219,6 +309,18 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
         ));
     }
 
+    // ===== 多选头（空列表不显示） =====
+    if !rules.is_empty() {
+        body = body.child(render_select_bar(
+            app,
+            &rule_ids,
+            selected_count,
+            all_selected,
+            rules.len(),
+            &theme,
+        ));
+    }
+
     // ===== 规则列表 =====
     if rules.is_empty() {
         body = body.child(
@@ -248,9 +350,27 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
                 hit,
                 per_rule_errors[index].clone(),
                 confirm_delete.as_deref() == Some(rule.id.as_str()),
+                app.read(cx)
+                    .reply_rules_dialog
+                    .as_ref()
+                    .is_some_and(|s| s.selected.contains(&rule.id)),
                 &theme,
             ));
         }
+    }
+
+    // ===== 导入 / 导出 / 复制到其他连接 =====
+    body = body.child(render_action_bar(
+        app,
+        &tab_id,
+        &selected_ids,
+        selected_count,
+        &theme,
+    ));
+
+    // ===== 操作反馈 =====
+    if let Some(status) = status {
+        body = body.child(render_status_line(&status, &theme));
     }
 
     div().max_h(dialog_content_max_height(window)).child(
@@ -261,10 +381,170 @@ fn render_body(app: &Entity<NetAssistantApp>, window: &Window, cx: &App) -> Div 
     )
 }
 
+/// 多选头：全选 + 已选计数
+fn render_select_bar(
+    app: &Entity<NetAssistantApp>,
+    rule_ids: &[String],
+    selected_count: usize,
+    all_selected: bool,
+    total: usize,
+    theme: &Theme,
+) -> Div {
+    let ids = rule_ids.to_vec();
+    let entity = app.clone();
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_3()
+        .child(
+            Checkbox::new("reply-rules-select-all")
+                .label(t!("reply_rules.select_all").to_string())
+                .checked(all_selected)
+                .on_click(move |_checked: &bool, _window, cx| {
+                    let ids = ids.clone();
+                    entity.update(cx, |app, cx| {
+                        if let Some(dialog) = app.reply_rules_dialog.as_mut() {
+                            dialog.toggle_select_all(&ids);
+                        }
+                        cx.notify();
+                    });
+                }),
+        )
+        .child(
+            div().text_xs().text_color(theme.muted_foreground).child(
+                t!(
+                    "reply_rules.selected_count",
+                    selected = selected_count,
+                    total = total
+                )
+                .to_string(),
+            ),
+        )
+}
+
+/// 操作条：导入 / 导出所选 / 复制到其他连接
+fn render_action_bar(
+    app: &Entity<NetAssistantApp>,
+    tab_id: &str,
+    selected_ids: &[String],
+    selected_count: usize,
+    theme: &Theme,
+) -> Div {
+    let can_transfer = selected_count > 0;
+
+    let import = Button::new("reply-rules-import")
+        .outline()
+        .label(t!("reply_rules.import").to_string())
+        .on_click({
+            let entity = app.clone();
+            let tab_id = tab_id.to_string();
+            move |_, _, cx| {
+                entity.update(cx, |app, cx| {
+                    app.import_reply_rules(tab_id.clone(), cx);
+                });
+            }
+        });
+
+    let export = Button::new("reply-rules-export")
+        .outline()
+        .label(if can_transfer {
+            t!("reply_rules.export_selected", n = selected_count).to_string()
+        } else {
+            t!("reply_rules.export_none").to_string()
+        })
+        .on_click({
+            let entity = app.clone();
+            let tab_id = tab_id.to_string();
+            let ids = selected_ids.to_vec();
+            move |_, _, cx| {
+                entity.update(cx, |app, cx| {
+                    app.export_reply_rules(tab_id.clone(), ids.clone(), cx);
+                });
+            }
+        });
+    let export = if can_transfer {
+        export
+    } else {
+        export.disabled(true)
+    };
+
+    let copy = Button::new("reply-rules-copy-to")
+        .outline()
+        .label(t!("reply_rules.copy_to").to_string())
+        .on_click({
+            let entity = app.clone();
+            let tab_id = tab_id.to_string();
+            let ids = selected_ids.to_vec();
+            move |_, window, cx| {
+                open_reply_rule_copy_dialog(
+                    entity.downgrade(),
+                    tab_id.clone(),
+                    ids.clone(),
+                    window,
+                    cx,
+                );
+            }
+        });
+    let copy = if can_transfer {
+        copy
+    } else {
+        copy.disabled(true)
+    };
+
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .pt_2()
+        .border_t_1()
+        .border_color(theme.border)
+        .child(import)
+        .child(export)
+        .child(copy)
+        .when(!can_transfer, |d| {
+            d.child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(t!("reply_rules.transfer_hint").to_string()),
+            )
+        })
+}
+
+/// 操作反馈行（成功 / 提醒 / 失败）
+fn render_status_line(status: &TransferStatus, theme: &Theme) -> Div {
+    let color = match status.kind {
+        TransferStatusKind::Success => theme.success,
+        TransferStatusKind::Warning => theme.warning,
+        TransferStatusKind::Error => theme.danger,
+    };
+    div()
+        .flex()
+        .flex_row()
+        .items_start()
+        .gap_2()
+        .p_2()
+        .mt_2()
+        .rounded_md()
+        .bg(color.opacity(0.12))
+        .child(div().text_xs().font_semibold().text_color(color).child("!"))
+        .child(
+            div()
+                .flex_1()
+                .text_xs()
+                .whitespace_normal()
+                .text_color(color)
+                .child(status.text.clone()),
+        )
+}
+
 /// 单条规则卡片
 ///
 /// 布局: 左侧拖动手柄 | 中间摘要(标题/条件/动作/错误) | 右侧上下两块(次数+开关 / 图标操作组)。
 /// 开关放右上角是因为它是最常按的单条操作; 破坏性操作(删除)收进右下角并保留二次点击确认。
+#[allow(clippy::too_many_arguments)]
 fn render_rule_row(
     app: &Entity<NetAssistantApp>,
     tab_id: &str,
@@ -273,6 +553,7 @@ fn render_rule_row(
     hits: u64,
     errors: Vec<String>,
     confirming_delete: bool,
+    selected: bool,
     theme: &Theme,
 ) -> Div {
     let rule_id = rule.id.clone();
@@ -516,6 +797,16 @@ fn render_rule_row(
                     return;
                 }
                 if app.storage.delete_reply_rule(&tab_id, &rule_id) {
+                    // 选中集剪枝：删除后不能让已不存在的 id 继续参与导出/复制
+                    let remaining: Vec<String> = app
+                        .storage
+                        .rules_for_connection(&tab_id)
+                        .iter()
+                        .map(|r| r.id.clone())
+                        .collect();
+                    if let Some(dialog) = app.reply_rules_dialog.as_mut() {
+                        dialog.prune_selected(&remaining);
+                    }
                     app.sync_reply_rules_to_network(cx);
                 }
             }
@@ -531,7 +822,25 @@ fn render_rule_row(
         .child(top_right)
         .child(ops);
 
-    // ===== 左侧: 拖动手柄(独占鼠标事件, 卡片其余区域保持点击/选择行为) =====
+    // ===== 左侧: 多选框 + 拖动手柄 =====
+    let checkbox = div().flex_none().pt_0p5().child(
+        Checkbox::new(ElementId::named_usize("reply-rule-select", index))
+            .checked(selected)
+            .on_click({
+                let entity = app.clone();
+                let rule_id = rule_id.clone();
+                move |_checked: &bool, _window, cx| {
+                    entity.update(cx, |app, cx| {
+                        if let Some(dialog) = app.reply_rules_dialog.as_mut() {
+                            dialog.toggle_selected(&rule_id);
+                        }
+                        cx.notify();
+                    });
+                }
+            }),
+    );
+
+    // ===== 拖动手柄(独占鼠标事件, 卡片其余区域保持点击/选择行为) =====
     let handle_bg = theme.border;
     let handle = div()
         .id(ElementId::named_usize("reply-rule-handle", index))
@@ -568,12 +877,15 @@ fn render_rule_row(
         .p_2()
         .rounded_md()
         .border_1()
-        .border_color(if errors.is_empty() {
-            theme.border
-        } else {
+        .border_color(if !errors.is_empty() {
             theme.danger
+        } else if selected {
+            theme.primary
+        } else {
+            theme.border
         })
         .bg(theme.secondary)
+        .child(checkbox)
         .child(handle)
         .child(main)
         .child(right)
@@ -586,9 +898,7 @@ fn render_rule_row(
                     .is_some_and(|p| p.rule_id != self_id)
             }
         })
-        .drag_over::<RuleDragPayload>(|d, _drag, _window, cx| {
-            d.border_color(cx.theme().primary)
-        })
+        .drag_over::<RuleDragPayload>(|d, _drag, _window, cx| d.border_color(cx.theme().primary))
         .on_drop({
             let entity = app.clone();
             let drop_tab_id = tab_id.to_string();
@@ -596,10 +906,7 @@ fn render_rule_row(
                 let dragged = drag.rule_id.clone();
                 entity.update(cx, |app, cx| {
                     // 落点语义 = "重排到第 index 位"; 原地投放时 move 返回 false, 天然 no-op
-                    if app
-                        .storage
-                        .move_reply_rule(&drop_tab_id, &dragged, index)
-                    {
+                    if app.storage.move_reply_rule(&drop_tab_id, &dragged, index) {
                         app.sync_reply_rules_to_network(cx);
                     }
                     cx.notify();
@@ -640,7 +947,11 @@ pub(crate) fn row_icon_button_raw(
     theme: &Theme,
     on_click: impl Fn(&mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let base_fg = if danger { theme.danger } else { theme.foreground };
+    let base_fg = if danger {
+        theme.danger
+    } else {
+        theme.foreground
+    };
     let hover_bg = if danger { theme.danger } else { theme.primary };
     let hover_fg = theme.primary_foreground;
     div()
@@ -693,13 +1004,7 @@ fn render_footer(app: &WeakEntity<NetAssistantApp>, cx: &App) -> DialogFooter {
         .primary()
         .label(t!("reply_rules.new_rule").to_string())
         .on_click(move |_, window, cx| {
-            open_reply_rule_edit_dialog(
-                app_new.clone(),
-                new_tab_id.clone(),
-                None,
-                window,
-                cx,
-            );
+            open_reply_rule_edit_dialog(app_new.clone(), new_tab_id.clone(), None, window, cx);
         });
 
     let app_reset = app.clone();
@@ -729,6 +1034,8 @@ fn render_footer(app: &WeakEntity<NetAssistantApp>, cx: &App) -> DialogFooter {
         .on_click(move |_, window, cx| {
             let _ = app_close.update(cx, |app, cx| {
                 app.reply_rules_dialog = None;
+                // 父弹窗关闭时一并清理叠层的目标选择弹窗状态
+                app.reply_rules_copy_dialog = None;
                 cx.notify();
             });
             window.close_dialog(cx);
@@ -741,7 +1048,7 @@ fn render_footer(app: &WeakEntity<NetAssistantApp>, cx: &App) -> DialogFooter {
 
 #[cfg(test)]
 mod tests {
-    use super::ReplyRulesDialogState;
+    use super::{ReplyRulesDialogState, TransferStatusKind};
 
     /// T-2：删除二次确认状态机 —— 第一次点击只进入确认态，第二次才真正删除。
     #[test]
@@ -764,5 +1071,67 @@ mod tests {
         // 之前处于确认态的 rule-a 再点一次，只重新进入确认态（不会误删）
         assert!(!state.on_delete_click("rule-a"));
         assert_eq!(state.confirm_delete.as_deref(), Some("rule-a"));
+    }
+
+    /// 勾选 / 全选 / 未选中时禁止导出复制
+    #[test]
+    fn test_selection_toggle_and_select_all() {
+        let mut state = ReplyRulesDialogState::new("tab-1");
+        assert_eq!(state.selected_count(), 0, "初始未选中");
+
+        state.toggle_selected("rule-a");
+        assert_eq!(state.selected_count(), 1);
+
+        state.toggle_selected("rule-a");
+        assert_eq!(state.selected_count(), 0, "再次点击取消选中");
+
+        let ids = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        state.toggle_select_all(&ids);
+        assert_eq!(state.selected_count(), 3);
+        assert!(state.all_selected(3));
+
+        state.toggle_select_all(&ids);
+        assert_eq!(state.selected_count(), 0, "全选状态下再点应清空");
+        assert!(!state.all_selected(3), "空列表/空选中不算全选");
+        assert!(!state.all_selected(0));
+    }
+
+    /// 删除规则后剪枝；选中顺序跟随列表顺序而非勾选顺序
+    #[test]
+    fn test_selection_prune_and_order() {
+        use crate::reply::model::{MatchNode, ReplyRule};
+
+        let mut state = ReplyRulesDialogState::new("tab-1");
+        let rules = [
+            ReplyRule::new("A", 0),
+            ReplyRule::new("B", 10),
+            ReplyRule::new("C", 20),
+        ];
+        // 先勾 C 再勾 A：导出顺序仍应是列表里的 A → C
+        state.toggle_selected(&rules[2].id);
+        state.toggle_selected(&rules[0].id);
+        assert_eq!(
+            state.selected_ids_in_order(&rules),
+            vec![rules[0].id.clone(), rules[2].id.clone()]
+        );
+
+        state.prune_selected(&[rules[1].id.clone()]);
+        assert_eq!(state.selected_count(), 0, "不存在的 id 必须被剪掉");
+
+        // 空条件也是合法规则（不应影响选择逻辑）
+        assert_eq!(rules[0].matcher, MatchNode::All { children: vec![] });
+    }
+
+    /// 状态行写入（后一次覆盖前一次）
+    #[test]
+    fn test_status_overwrites() {
+        let mut state = ReplyRulesDialogState::new("tab-1");
+        state.set_status(TransferStatusKind::Success, "已导出 2 条");
+        assert_eq!(
+            state.status.as_ref().unwrap().kind,
+            TransferStatusKind::Success
+        );
+        state.set_status(TransferStatusKind::Error, "导入失败");
+        assert_eq!(state.status.as_ref().unwrap().text, "导入失败");
     }
 }

@@ -8,6 +8,7 @@ mod new_connection;
 mod port_limit_help;
 mod reply_rule_edit;
 mod reply_rules;
+mod reply_rules_copy;
 mod stress_config;
 mod timed_task;
 pub mod variable_picker;
@@ -21,7 +22,8 @@ pub use mqtt_subscriptions::{MqttSubscriptionDialogState, open_mqtt_subscription
 pub use new_connection::open_new_connection_dialog;
 pub use port_limit_help::open_port_limit_help_dialog;
 pub use reply_rule_edit::{ReplyRuleEditDialogState, open_reply_rule_edit_dialog};
-pub use reply_rules::{ReplyRulesDialogState, open_reply_rules_dialog};
+pub use reply_rules::{ReplyRulesDialogState, TransferStatusKind, open_reply_rules_dialog};
+pub use reply_rules_copy::{ReplyRulesCopyDialogState, open_reply_rule_copy_dialog};
 pub use stress_config::{StressConfigDialogState, open_stress_config_dialog};
 pub use timed_task::{TimedTaskDialogState, open_timed_task_dialog};
 

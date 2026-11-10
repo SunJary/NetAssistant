@@ -746,21 +746,38 @@ impl ConfigStorage {
     ///
     /// `index * 10` 留出间隔，便于手工微调；返回被改动的规则数。
     pub fn renumber_reply_rule_priorities(&mut self, connection_id: &str) -> usize {
+        let auto_save = self.config.auto_save;
         let Some(rules) = self.config.reply_rules.connections.get_mut(connection_id) else {
             return 0;
         };
-        let mut changed = 0;
-        for (i, rule) in rules.iter_mut().enumerate() {
-            let priority = (i as u32) * 10;
-            if rule.priority != priority {
-                rule.priority = priority;
-                changed += 1;
-            }
-        }
-        if changed > 0 && self.config.auto_save {
+        let changed = renumber_priorities_in_place(rules);
+        if changed > 0 && auto_save {
             self.save_and_log();
         }
         changed
+    }
+
+    /// 批量追加规则到指定连接（导入/复制到其他连接用）
+    ///
+    /// 与逐条 `upsert_reply_rule` 的区别：整批追加后只重排一次 priority、只落盘一次，
+    /// 避免导入 N 条规则触发 N 次配置写入。返回追加条数（空批次返回 0）。
+    pub fn append_reply_rules(&mut self, connection_id: &str, rules: Vec<ReplyRule>) -> usize {
+        if rules.is_empty() {
+            return 0;
+        }
+        let count = rules.len();
+        let target = self
+            .config
+            .reply_rules
+            .connections
+            .entry(connection_id.to_string())
+            .or_default();
+        target.extend(rules);
+        renumber_priorities_in_place(target);
+        if self.config.auto_save {
+            self.save_and_log();
+        }
+        count
     }
 
     /// 把指定连接下的某条规则移动到新位置（上移 / 下移），并重排 priority
@@ -791,6 +808,22 @@ impl Default for ConfigStorage {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 就地按列表顺序重写 priority（`index * 10`），返回改动条数。
+///
+/// 抽成自由函数是为了让批量追加能在一次 `&mut Vec` 借用的范围内完成"追加 + 重排"，
+/// 同时保持 `renumber_reply_rule_priorities` 的落盘语义不变。
+fn renumber_priorities_in_place(rules: &mut [ReplyRule]) -> usize {
+    let mut changed = 0;
+    for (i, rule) in rules.iter_mut().enumerate() {
+        let priority = (i as u32) * 10;
+        if rule.priority != priority {
+            rule.priority = priority;
+            changed += 1;
+        }
+    }
+    changed
 }
 
 /// 临时文件序号：避免同一进程内并发保存时互相覆盖临时文件
@@ -1576,6 +1609,42 @@ mod tests {
         );
         // 不存在的连接返回 0
         assert_eq!(storage.renumber_reply_rule_priorities("conn-x"), 0);
+    }
+
+    /// 批量追加：空表/非空表都追加到末尾，已有规则不受影响，priority 连续
+    #[test]
+    fn test_append_reply_rules_appends_and_renumbers() {
+        let mut storage = test_storage();
+        // 空连接（entry 尚不存在）也可直接追加
+        assert_eq!(
+            storage.append_reply_rules("conn-1", vec![rule("A"), rule("B")]),
+            2
+        );
+        assert_eq!(
+            storage
+                .rules_for_connection("conn-1")
+                .iter()
+                .map(|r| (r.name.clone(), r.priority))
+                .collect::<Vec<_>>(),
+            vec![("A".to_string(), 0), ("B".to_string(), 10)]
+        );
+
+        let a_id = storage.rules_for_connection("conn-1")[0].id.clone();
+        assert_eq!(storage.append_reply_rules("conn-1", vec![rule("C")]), 1);
+        let rules = storage.rules_for_connection("conn-1");
+        assert_eq!(
+            rules.iter().map(|r| r.name.clone()).collect::<Vec<_>>(),
+            vec!["A", "B", "C"]
+        );
+        assert_eq!(rules[0].id, a_id, "已有规则 id/顺序不变");
+        assert_eq!(
+            rules.iter().map(|r| r.priority).collect::<Vec<_>>(),
+            vec![0, 10, 20]
+        );
+
+        // 空批次不产生任何改动
+        assert_eq!(storage.append_reply_rules("conn-1", Vec::new()), 0);
+        assert_eq!(storage.rules_for_connection("conn-1").len(), 3);
     }
 
     /// 原子写：覆盖目标文件后不残留临时文件，内容为完整新值

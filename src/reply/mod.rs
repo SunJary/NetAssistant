@@ -17,6 +17,7 @@ pub mod frame;
 pub mod matcher;
 pub mod model;
 pub mod store;
+pub mod transfer;
 
 /// 精简的再导出面：只暴露"跨模块确实会用到"的少数类型。
 ///

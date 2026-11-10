@@ -22,7 +22,8 @@ use crate::network::events::{
     ConnectionEvent, MqttCommand, MqttPublishMeta, NetCounters, WireMessage,
 };
 use crate::reply::ReplyRulesStore;
-use crate::reply::model::ReplyRulesConfig;
+use crate::reply::model::{ReplyRule, ReplyRulesConfig};
+use crate::reply::transfer::{BundleError, MAX_BUNDLE_BYTES, MAX_BUNDLE_RULES, RuleBundle};
 use crate::send_task::{
     IntervalHandle, PeriodicSource, SendTaskConfig, SendTaskEngine, SendTaskEntry, SendTaskState,
     TaskEndReason, TaskStatus, TaskTarget, TimedTaskProfile, build_periodic_config,
@@ -40,9 +41,9 @@ use crate::ui::connection_tab::{
 };
 use crate::ui::dialog::{
     DecoderSelectionDialogState, ImportFileDialogState, MqttSubscriptionDialogState,
-    ReplyRuleEditDialogState, ReplyRulesDialogState, StressConfigDialogState,
-    TimedTaskDialogState, open_import_file_dialog, open_new_connection_dialog,
-    open_stress_config_dialog, open_timed_task_dialog,
+    ReplyRuleEditDialogState, ReplyRulesCopyDialogState, ReplyRulesDialogState,
+    StressConfigDialogState, TimedTaskDialogState, TransferStatusKind, open_import_file_dialog,
+    open_new_connection_dialog, open_stress_config_dialog, open_timed_task_dialog,
 };
 use crate::ui::main_window::MainWindow;
 
@@ -70,6 +71,47 @@ enum SendDispatchError {
     ClientWriteUnavailable,
     /// 投递到写通道失败
     SendFailed,
+}
+
+/// 规则包读取失败原因（文件 IO / 体积 / 包解析）
+enum ReplyBundleReadError {
+    Io(String),
+    TooLarge(u64),
+    Bundle(BundleError),
+}
+
+/// 把规则包解析错误映射成用户可读文案（区分"不是规则包"与"内容损坏"）
+fn describe_bundle_error(err: &BundleError) -> String {
+    match err {
+        BundleError::NotBundle => t!("reply_rules.import_not_bundle").to_string(),
+        BundleError::UnsupportedVersion(version) => {
+            t!("reply_rules.import_unsupported_version", version = version).to_string()
+        }
+        BundleError::EmptyRules => t!("reply_rules.import_empty").to_string(),
+        BundleError::TooManyRules(count) => t!(
+            "reply_rules.import_too_many",
+            n = count,
+            max = MAX_BUNDLE_RULES
+        )
+        .to_string(),
+        BundleError::Json(detail) => {
+            t!("reply_rules.import_invalid_json", reason = detail).to_string()
+        }
+    }
+}
+
+/// 把连接标识转成安全的文件名片段（IPv6 地址含 `:`，Windows 文件名非法）
+fn sanitize_file_stem(label: &str) -> String {
+    label
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 /// Hash 块文件摘要任务：Some=已选过文件（active=false 时处于文本模式，任务保留可秒恢复）
@@ -163,6 +205,8 @@ pub struct NetAssistantApp {
 
     // 「回复规则」管理弹窗状态(打开时创建, 关闭时置 None)
     pub reply_rules_dialog: Option<ReplyRulesDialogState>,
+    // 「复制规则到其他连接」目标选择弹窗状态(叠在规则弹窗之上)
+    pub reply_rules_copy_dialog: Option<ReplyRulesCopyDialogState>,
     // 「回复规则」编辑弹窗状态(打开时创建, 关闭时置 None)
     pub reply_rule_edit_dialog: Option<ReplyRuleEditDialogState>,
 
@@ -465,6 +509,7 @@ impl NetAssistantApp {
             import_file_dialog: None,
             timed_task_dialog: None,
             reply_rules_dialog: None,
+            reply_rules_copy_dialog: None,
             reply_rule_edit_dialog: None,
             mqtt_subscriptions_dialog: None,
             detected_port_range: None,
@@ -4570,6 +4615,244 @@ impl NetAssistantApp {
             }
         }
         hits
+    }
+
+    /// 连接的可读标识（导出文件名 / 状态文案）；找不到配置时回退 connection_id
+    fn reply_connection_label(&self, connection_id: &str) -> String {
+        self.storage
+            .client_connections()
+            .into_iter()
+            .chain(self.storage.server_connections())
+            .find(|config| config.id() == connection_id)
+            .map(|config| config.address_label())
+            .unwrap_or_else(|| connection_id.to_string())
+    }
+
+    /// 仅在对应连接的规则弹窗仍打开时回写操作反馈，避免旧任务污染新弹窗
+    fn set_reply_transfer_status(
+        &mut self,
+        tab_id: &str,
+        kind: TransferStatusKind,
+        text: impl Into<String>,
+    ) {
+        if let Some(dialog) = self.reply_rules_dialog.as_mut()
+            && dialog.tab_id == tab_id
+        {
+            dialog.set_status(kind, text);
+        }
+    }
+
+    /// 导出选中规则为 JSON 规则包（异步文件对话框 + 异步写盘）
+    pub fn export_reply_rules(
+        &mut self,
+        tab_id: String,
+        rule_ids: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let rules: Vec<ReplyRule> = self
+            .storage
+            .rules_for_connection(&tab_id)
+            .iter()
+            .filter(|rule| rule_ids.contains(&rule.id))
+            .cloned()
+            .collect();
+        if rules.is_empty() {
+            return;
+        }
+        let count = rules.len();
+        let label = self.reply_connection_label(&tab_id);
+        let bundle = RuleBundle::from_rules(&rules, Some(label.clone()));
+        let json = match bundle.to_json() {
+            Ok(json) => json,
+            Err(err) => {
+                self.set_reply_transfer_status(
+                    &tab_id,
+                    TransferStatusKind::Error,
+                    t!("reply_rules.export_failed", reason = err.to_string()).to_string(),
+                );
+                cx.notify();
+                return;
+            }
+        };
+        let default_name = format!(
+            "{}_reply_rules_{}.json",
+            sanitize_file_stem(&label),
+            chrono::Local::now().format("%Y%m%d_%H%M%S")
+        );
+
+        cx.spawn(
+            async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                let Some(file) = rfd::AsyncFileDialog::new()
+                    .set_file_name(&default_name)
+                    .add_filter("JSON", &["json"])
+                    .save_file()
+                    .await
+                else {
+                    // 用户取消保存：不打扰
+                    return;
+                };
+                let path = file.path().to_path_buf();
+                let display = path.display().to_string();
+                let result = smol::unblock(move || std::fs::write(&path, json.as_bytes())).await;
+                let _ = this.update(async_cx, |app, cx| {
+                    let (kind, text) = match result {
+                        Ok(()) => (
+                            TransferStatusKind::Success,
+                            t!("reply_rules.export_ok", n = count, path = display.clone())
+                                .to_string(),
+                        ),
+                        Err(err) => (
+                            TransferStatusKind::Error,
+                            t!("reply_rules.export_failed", reason = err.to_string()).to_string(),
+                        ),
+                    };
+                    app.set_reply_transfer_status(&tab_id, kind, text);
+                    cx.notify();
+                });
+            },
+        )
+        .detach();
+    }
+
+    /// 从 JSON 规则包导入并追加到当前连接（重新生成 UUID，不覆盖已有规则）
+    pub fn import_reply_rules(&mut self, tab_id: String, cx: &mut Context<Self>) {
+        cx.spawn(
+            async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                let Some(file) = rfd::AsyncFileDialog::new()
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+                    .await
+                else {
+                    return;
+                };
+                let path = file.path().to_path_buf();
+                let result = smol::unblock(move || {
+                    let meta = std::fs::metadata(&path)
+                        .map_err(|err| ReplyBundleReadError::Io(err.to_string()))?;
+                    if meta.len() > MAX_BUNDLE_BYTES {
+                        return Err(ReplyBundleReadError::TooLarge(meta.len()));
+                    }
+                    let json = std::fs::read_to_string(&path)
+                        .map_err(|err| ReplyBundleReadError::Io(err.to_string()))?;
+                    RuleBundle::parse(&json)
+                        .map(|bundle| bundle.into_rules())
+                        .map_err(ReplyBundleReadError::Bundle)
+                })
+                .await;
+
+                let _ = this.update(async_cx, |app, cx| {
+                    match result {
+                        Ok(imported) => {
+                            let count = app.storage.append_reply_rules(&tab_id, imported.rules);
+                            app.sync_reply_rules_to_network(cx);
+                            let gate_on = app.storage.reply_connection_enabled(&tab_id);
+                            let mut kind = TransferStatusKind::Success;
+                            let mut text = if imported.invalid > 0 {
+                                kind = TransferStatusKind::Warning;
+                                t!(
+                                    "reply_rules.import_ok_invalid",
+                                    n = count,
+                                    invalid = imported.invalid
+                                )
+                                .to_string()
+                            } else {
+                                t!("reply_rules.import_ok", n = count).to_string()
+                            };
+                            if !gate_on {
+                                kind = TransferStatusKind::Warning;
+                                text.push_str(t!("reply_rules.gate_off_suffix").as_ref());
+                            }
+                            app.set_reply_transfer_status(&tab_id, kind, text);
+                        }
+                        Err(ReplyBundleReadError::TooLarge(size)) => {
+                            app.set_reply_transfer_status(
+                                &tab_id,
+                                TransferStatusKind::Error,
+                                t!(
+                                    "reply_rules.import_too_large",
+                                    size = size,
+                                    max = MAX_BUNDLE_BYTES
+                                )
+                                .to_string(),
+                            );
+                        }
+                        Err(ReplyBundleReadError::Io(reason)) => {
+                            app.set_reply_transfer_status(
+                                &tab_id,
+                                TransferStatusKind::Error,
+                                t!("reply_rules.import_read_failed", reason = reason).to_string(),
+                            );
+                        }
+                        Err(ReplyBundleReadError::Bundle(err)) => {
+                            app.set_reply_transfer_status(
+                                &tab_id,
+                                TransferStatusKind::Error,
+                                describe_bundle_error(&err),
+                            );
+                        }
+                    }
+                    cx.notify();
+                });
+            },
+        )
+        .detach();
+    }
+
+    /// 把来源连接选中的规则追加到目标连接（应用内复制，不覆盖目标规则）
+    pub fn copy_reply_rules_to(
+        &mut self,
+        source_id: &str,
+        target_id: &str,
+        rule_ids: &[String],
+        cx: &mut Context<Self>,
+    ) {
+        let rules: Vec<ReplyRule> = self
+            .storage
+            .rules_for_connection(source_id)
+            .iter()
+            .filter(|rule| rule_ids.contains(&rule.id))
+            .cloned()
+            .collect();
+        if rules.is_empty() {
+            return;
+        }
+        let bundle = RuleBundle::from_rules(&rules, Some(self.reply_connection_label(source_id)));
+        let imported = bundle.into_rules();
+        let count = self.storage.append_reply_rules(target_id, imported.rules);
+        self.sync_reply_rules_to_network(cx);
+
+        let target = self.reply_connection_label(target_id);
+        let (kind, text) = if self.storage.reply_connection_enabled(target_id) {
+            (
+                if imported.invalid > 0 {
+                    TransferStatusKind::Warning
+                } else {
+                    TransferStatusKind::Success
+                },
+                t!("reply_rules.copy_ok", n = count, target = target.clone()).to_string(),
+            )
+        } else {
+            (
+                TransferStatusKind::Warning,
+                t!(
+                    "reply_rules.copy_ok_gate_off",
+                    n = count,
+                    target = target.clone()
+                )
+                .to_string(),
+            )
+        };
+        let text = if imported.invalid > 0 {
+            format!(
+                "{} {}",
+                text,
+                t!("reply_rules.invalid_suffix", invalid = imported.invalid)
+            )
+        } else {
+            text
+        };
+        self.set_reply_transfer_status(source_id, kind, text);
+        cx.notify();
     }
 
     /// 运行时下发解码器配置到在线连接(客户端或服务端所有已连接客户端)，无需重连。
