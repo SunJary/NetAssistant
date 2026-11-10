@@ -288,7 +288,10 @@ impl ReplyRulesStore {
 
     /// 全部连接下的运行期规则快照（一次读锁 + 一次 Arc clone）
     fn all_runtimes(&self) -> Arc<HashMap<String, Arc<Vec<Arc<RuleRuntime>>>>> {
-        self.tables.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.tables
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// UI 下发：整表替换各连接的「自动回复」总闸。**缺省 false**
@@ -353,13 +356,7 @@ impl ReplyRulesStore {
         let filtered: Arc<Vec<Arc<RuleRuntime>>> = if self.gate_of(connection_id) {
             let tables = self.all_runtimes();
             match tables.get(connection_id) {
-                Some(rules) => Arc::new(
-                    rules
-                        .iter()
-                        .filter(|r| r.rule.enabled)
-                        .cloned()
-                        .collect(),
-                ),
+                Some(rules) => Arc::new(rules.iter().filter(|r| r.rule.enabled).cloned().collect()),
                 None => Arc::new(Vec::new()),
             }
         } else {
@@ -464,7 +461,11 @@ mod tests {
         let store = gated_store(&["tab"]);
         store.replace(&config(
             "tab",
-            vec![rule("c", 300, true), rule("a", 100, true), rule("b", 200, true)],
+            vec![
+                rule("c", 300, true),
+                rule("a", 100, true),
+                rule("b", 200, true),
+            ],
         ));
         let ids: Vec<String> = store
             .rules_for("tab")
@@ -568,10 +569,7 @@ mod tests {
     #[test]
     fn test_reset_hits() {
         let store = gated_store(&["tab"]);
-        store.replace(&config(
-            "tab",
-            vec![rule("a", 1, true), rule("b", 2, true)],
-        ));
+        store.replace(&config("tab", vec![rule("a", 1, true), rule("b", 2, true)]));
         let rules = store.rules_for("tab");
         rules
             .iter()
@@ -640,7 +638,10 @@ mod tests {
         for i in 0..200u32 {
             store.replace(&config(
                 "tab",
-                vec![rule("a", 1, true), rule(&format!("extra-{}", i), 2 + i, i % 2 == 0)],
+                vec![
+                    rule("a", 1, true),
+                    rule(&format!("extra-{}", i), 2 + i, i % 2 == 0),
+                ],
             ));
         }
         stop.store(true, Ordering::Relaxed);

@@ -713,7 +713,10 @@ mod tests {
         // 顶层是数组
         assert_eq!(
             parse_json_path("[0].x"),
-            Some(vec![JsonPathSeg::Index(0), JsonPathSeg::Key("x".to_string())])
+            Some(vec![
+                JsonPathSeg::Index(0),
+                JsonPathSeg::Key("x".to_string())
+            ])
         );
         // 连续索引
         assert_eq!(
@@ -738,14 +741,10 @@ mod tests {
     #[test]
     fn test_parse_json_path_invalid() {
         for bad in [
-            "", "   ", ".x", "a.", "a..b", "a[]", "a[0", "a[0]b", "a]b", "a[0].", "a[-1]",
-            "a[x]", "]", "[",
+            "", "   ", ".x", "a.", "a..b", "a[]", "a[0", "a[0]b", "a]b", "a[0].", "a[-1]", "a[x]",
+            "]", "[",
         ] {
-            assert!(
-                parse_json_path(bad).is_none(),
-                "路径 {:?} 应非法",
-                bad
-            );
+            assert!(parse_json_path(bad).is_none(), "路径 {:?} 应非法", bad);
         }
     }
 
@@ -757,7 +756,10 @@ mod tests {
 
         // 尾部传输尾巴（\r\n）可容忍：取第一个 JSON 值
         let f = frame(b"{\"a\":1}\r\n");
-        assert_eq!(f.json_value().and_then(|v| v.get("a")), Some(&serde_json::json!(1)));
+        assert_eq!(
+            f.json_value().and_then(|v| v.get("a")),
+            Some(&serde_json::json!(1))
+        );
 
         let non_json = frame(b"AT+CSQ");
         assert!(non_json.json_value().is_none());
@@ -783,18 +785,19 @@ mod tests {
     /// `json_at`：嵌套对象 / 数组索引 / 类型不符 / 越界 / 顶层数组
     #[test]
     fn test_json_at() {
-        let f = frame(br#"{"device":{"name":"gw","tags":["a","b"]},"n":3.5,"ok":true,"none":null}"#);
-        assert_eq!(
-            f.json_at("device.name"),
-            Some(&serde_json::json!("gw"))
-        );
+        let f =
+            frame(br#"{"device":{"name":"gw","tags":["a","b"]},"n":3.5,"ok":true,"none":null}"#);
+        assert_eq!(f.json_at("device.name"), Some(&serde_json::json!("gw")));
         assert_eq!(f.json_at("device.tags[1]"), Some(&serde_json::json!("b")));
         assert_eq!(f.json_at("n"), Some(&serde_json::json!(3.5)));
         assert_eq!(f.json_at("ok"), Some(&serde_json::json!(true)));
         assert_eq!(f.json_at("none"), Some(&serde_json::Value::Null));
         // 路径不存在 / 类型不符 / 数组越界
         assert!(f.json_at("device.model").is_none());
-        assert!(f.json_at("device.name.x").is_none(), "对 string 继续下钻应 None");
+        assert!(
+            f.json_at("device.name.x").is_none(),
+            "对 string 继续下钻应 None"
+        );
         assert!(f.json_at("device.tags[9]").is_none());
         // 路径本身非法
         assert!(f.json_at("device..name").is_none());

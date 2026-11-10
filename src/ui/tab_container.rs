@@ -263,9 +263,12 @@ impl<'a> TabContainer<'a> {
     ) -> impl IntoElement {
         // 工具箱标签页：特殊 id，不走 connection_tabs
         if self.app.active_tab == TOOLBOX_TAB_ID {
-            return div().flex().flex_col().flex_1().min_h_0().child(
-                ToolboxPanel::new(self.app).render(cx),
-            );
+            return div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .child(ToolboxPanel::new(self.app).render(cx));
         }
 
         if let Some((tab_id, tab_state)) =

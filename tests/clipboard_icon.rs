@@ -65,8 +65,8 @@ impl Render for Host {
 }
 
 fn diag(cx: &mut gpui_kit::VisualTestContext, id: &str) {
-    cx.update(|window, _cx| {
-        match window.try_find(ElementId::Name(id.into())) {
+    cx.update(
+        |window, _cx| match window.try_find(ElementId::Name(id.into())) {
             Some(snap) => {
                 let b = snap.bounds();
                 eprintln!(
@@ -83,8 +83,8 @@ fn diag(cx: &mut gpui_kit::VisualTestContext, id: &str) {
                 );
             }
             None => panic!("{id} 未在任何帧中注册（元素根本没渲染）"),
-        }
-    });
+        },
+    );
 }
 
 #[gpui_kit::test]

@@ -1047,7 +1047,12 @@ mod tests {
 
         let port = free_udp_port();
         let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let mut server = UdpServer::new(udp_server_config(port), Some(tx), None, TrailerSetting::default());
+        let mut server = UdpServer::new(
+            udp_server_config(port),
+            Some(tx),
+            None,
+            TrailerSetting::default(),
+        );
         server.start().await.expect("服务端应启动成功");
 
         let payload = vec![0xABu8; 8192];
@@ -1091,7 +1096,12 @@ mod tests {
 
         let port = free_udp_port();
         let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
-        let mut server = UdpServer::new(udp_server_config(port), Some(tx), None, TrailerSetting::default());
+        let mut server = UdpServer::new(
+            udp_server_config(port),
+            Some(tx),
+            None,
+            TrailerSetting::default(),
+        );
         server.start().await.expect("首次启动应成功");
 
         let client = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();

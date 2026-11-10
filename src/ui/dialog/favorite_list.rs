@@ -42,7 +42,9 @@ impl<'a> FavoriteListPanel<'a> {
         let win_h = (window.bounds().size.height / px(1.0)) as f32;
         let max_left = (win_w - PANEL_W - MARGIN).max(MARGIN);
         let max_top = (win_h - PANEL_H - MARGIN).max(MARGIN);
-        let panel_left = ((pos_x / px(1.0)) as f32 - PANEL_W).max(MARGIN).min(max_left);
+        let panel_left = ((pos_x / px(1.0)) as f32 - PANEL_W)
+            .max(MARGIN)
+            .min(max_left);
         let panel_top = ((pos_y / px(1.0)) as f32 - PANEL_H - 4.0)
             .max(MARGIN)
             .min(max_top);

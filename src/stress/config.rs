@@ -292,7 +292,10 @@ mod tests {
             StressTrailer::None.resolve(TrailerKind::CrLf),
             TrailerKind::None
         );
-        assert_eq!(StressTrailer::Lf.resolve(TrailerKind::None), TrailerKind::Lf);
+        assert_eq!(
+            StressTrailer::Lf.resolve(TrailerKind::None),
+            TrailerKind::Lf
+        );
         assert_eq!(
             StressTrailer::CrLf.resolve(TrailerKind::Lf),
             TrailerKind::CrLf

@@ -17,7 +17,7 @@ use tokio::net::{TcpStream, UdpSocket};
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-use crate::config::connection::{apply_trailer, ConnectionType, TrailerKind};
+use crate::config::connection::{ConnectionType, TrailerKind, apply_trailer};
 use crate::stress::config::{ResponseValidation, StressMode, StressTestConfig};
 use crate::stress::events::StressEvent;
 use crate::stress::rate_limiter::TokenBucket;

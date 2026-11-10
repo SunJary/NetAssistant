@@ -990,14 +990,12 @@ pub fn validate_match_node(node: &MatchNode, path: &str, issues: &mut Vec<Issue>
                 ));
             }
             // 数值比较的期望值必须可解析为有限数字，否则规则永不命中（当场指出）
-            if matches!(
-                cmp,
-                JsonCmp::Gt | JsonCmp::Ge | JsonCmp::Lt | JsonCmp::Le
-            ) && value
-                .trim()
-                .parse::<f64>()
-                .map(|f| !f.is_finite())
-                .unwrap_or(true)
+            if matches!(cmp, JsonCmp::Gt | JsonCmp::Ge | JsonCmp::Lt | JsonCmp::Le)
+                && value
+                    .trim()
+                    .parse::<f64>()
+                    .map(|f| !f.is_finite())
+                    .unwrap_or(true)
             {
                 issues.push(Issue::error(
                     format!("{}.value", path),
@@ -1229,38 +1227,38 @@ mod tests {
             .entry("conn-1".to_string())
             .or_default()
             .push(ReplyRule {
-            name: "Modbus 读保持寄存器应答".to_string(),
-            description: "功能码 0x03；帧长 8".to_string(),
-            priority: 10,
-            tags: vec!["modbus".to_string(), "rtu".to_string()],
-            matcher: MatchNode::All {
-                children: vec![
-                    MatchNode::PrefixRange {
-                        prefix: BytePattern::Hex("01 03".to_string()),
-                        min_len: 8,
-                        max_len: 8,
-                        constraints: vec![Constraint::ByteEq {
-                            offset: 1,
-                            value: 3,
-                        }],
-                    },
-                    MatchNode::ChecksumValid {
-                        algorithm: ChecksumAlgorithm::Crc16Modbus,
-                        at: ChecksumAt::Trailing {
-                            n: 2,
-                            width: Width::U16,
+                name: "Modbus 读保持寄存器应答".to_string(),
+                description: "功能码 0x03；帧长 8".to_string(),
+                priority: 10,
+                tags: vec!["modbus".to_string(), "rtu".to_string()],
+                matcher: MatchNode::All {
+                    children: vec![
+                        MatchNode::PrefixRange {
+                            prefix: BytePattern::Hex("01 03".to_string()),
+                            min_len: 8,
+                            max_len: 8,
+                            constraints: vec![Constraint::ByteEq {
+                                offset: 1,
+                                value: 3,
+                            }],
                         },
-                        range: Some((0, 6)),
-                    },
-                ],
-            },
-            payload: ReplyPayload {
-                text: "01 03 04 00 0A 00 14 ${crc16modbus:0:9:le}".to_string(),
-                hex_mode: true,
-                codec: RuleCodec::Raw,
-            },
-            ..ReplyRule::new("占位", 0)
-        });
+                        MatchNode::ChecksumValid {
+                            algorithm: ChecksumAlgorithm::Crc16Modbus,
+                            at: ChecksumAt::Trailing {
+                                n: 2,
+                                width: Width::U16,
+                            },
+                            range: Some((0, 6)),
+                        },
+                    ],
+                },
+                payload: ReplyPayload {
+                    text: "01 03 04 00 0A 00 14 ${crc16modbus:0:9:le}".to_string(),
+                    hex_mode: true,
+                    codec: RuleCodec::Raw,
+                },
+                ..ReplyRule::new("占位", 0)
+            });
 
         let json = serde_json::to_string_pretty(&config).unwrap();
         let back: ReplyRulesConfig = serde_json::from_str(&json).unwrap();
@@ -1272,10 +1270,7 @@ mod tests {
             json.contains("\"kind\": \"prefix_range\""),
             "条件 tag 为 kind"
         );
-        assert!(
-            json.contains("\"connections\""),
-            "规则按连接分组存储"
-        );
+        assert!(json.contains("\"connections\""), "规则按连接分组存储");
     }
 
     /// 向后兼容：旧配置文件没有 `reply_rules` 字段时得到空规则集，
@@ -1348,7 +1343,10 @@ mod tests {
   }
 }"#;
         let config: ReplyRulesConfig = serde_json::from_str(json).unwrap();
-        let rules = config.connections.get("3f2a9c14-8b6e-4d21-9f03-7c1e5a4b8d02").unwrap();
+        let rules = config
+            .connections
+            .get("3f2a9c14-8b6e-4d21-9f03-7c1e5a4b8d02")
+            .unwrap();
         assert_eq!(rules.len(), 2);
         assert!(rules.iter().any(|r| r.enabled));
     }

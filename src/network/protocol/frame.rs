@@ -75,7 +75,8 @@ pub(crate) fn process_frame_shared(
         }
     }
 
-    let message = processor.process_received_message_with_transport(raw, message_type, topic, retain);
+    let message =
+        processor.process_received_message_with_transport(raw, message_type, topic, retain);
     if let Some(c) = counters {
         c.add_received(1);
         c.add_received_bytes(raw_len);

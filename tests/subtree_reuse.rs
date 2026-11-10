@@ -48,10 +48,7 @@ fn subtree_reused_until_entity_notified(cx: &mut TestAppContext) {
         });
     };
     let counter = cx.update(|window, cx| {
-        let root = window
-            .root::<gpui_kit::component::Root>()
-            .unwrap()
-            .unwrap();
+        let root = window.root::<gpui_kit::component::Root>().unwrap().unwrap();
         root.read(cx)
             .view()
             .clone()

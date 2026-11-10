@@ -235,9 +235,7 @@ pub fn rx_variables(payload: &ReplyPayload) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::reply::frame::RxFrame;
-    use crate::reply::model::{
-        BytePattern, MatchNode, ReplyRule, ReplyRulesConfig, RuleCodec,
-    };
+    use crate::reply::model::{BytePattern, MatchNode, ReplyRule, ReplyRulesConfig, RuleCodec};
     use crate::reply::store::ReplyRulesStore;
     use std::collections::HashMap;
 
@@ -679,11 +677,19 @@ mod tests {
             RuleCodec::Raw,
         )]);
         // temp=31 > 30 → 命中; "HI"=4849, 31 的 hex 是 1F
-        let hit = handle_frame(&store, &frame(b"{\"data\":{\"items\":[{\"temp\":25},{\"temp\":31}]}}"), "tab");
+        let hit = handle_frame(
+            &store,
+            &frame(b"{\"data\":{\"items\":[{\"temp\":25},{\"temp\":31}]}}"),
+            "tab",
+        );
         assert_eq!(hit.reply.as_deref(), Some(&[0x48, 0x49, 0x1F][..]));
 
         // temp=25 → Gt 不命中 → 无应答
-        let miss = handle_frame(&store, &frame(b"{\"data\":{\"items\":[{\"temp\":25},{\"temp\":25}]}}"), "tab");
+        let miss = handle_frame(
+            &store,
+            &frame(b"{\"data\":{\"items\":[{\"temp\":25},{\"temp\":25}]}}"),
+            "tab",
+        );
         assert!(miss.reply.is_none(), "数值比较不满足时不得命中");
     }
 

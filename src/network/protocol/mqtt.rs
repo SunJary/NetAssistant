@@ -19,8 +19,8 @@ use crate::network::events::{
 };
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::frame::{flush_batch, process_frame_shared};
-use crate::reply::exec::RuleWireMode;
 use crate::reply::ReplyRulesStore;
+use crate::reply::exec::RuleWireMode;
 use bytes::BytesMut;
 use log::{debug, error, info, warn};
 use rumqttc::{AsyncClient, Event, LastWill, MqttOptions, Outgoing, Packet, SubscribeReasonCode};
@@ -72,7 +72,10 @@ fn build_options(config: &ClientConfig) -> MqttOptions {
     options.set_keep_alive(Duration::from_secs(settings.keep_alive_secs as u64));
     options.set_clean_session(settings.clean_session || settings.client_id.is_empty());
     if let Some(username) = &settings.username {
-        options.set_credentials(username.clone(), settings.password.clone().unwrap_or_default());
+        options.set_credentials(
+            username.clone(),
+            settings.password.clone().unwrap_or_default(),
+        );
     }
     if let Some(will) = &settings.will {
         options.set_last_will(LastWill::new(
@@ -348,7 +351,10 @@ impl NetworkConnection for MqttClient {
                                         .await;
                                 }
                             } else {
-                                debug!("MQTT SUBACK: pkid={}, codes={:?}", ack.pkid, ack.return_codes);
+                                debug!(
+                                    "MQTT SUBACK: pkid={}, codes={:?}",
+                                    ack.pkid, ack.return_codes
+                                );
                             }
                         }
                         Ok(Event::Incoming(Packet::Disconnect)) => {
@@ -389,7 +395,8 @@ impl NetworkConnection for MqttClient {
                                     let _ = s
                                         .send(ConnectionEvent::Error(
                                             read_config_id.clone(),
-                                            t!("mqtt_net.connect_failed", reason => e.to_string()).to_string(),
+                                            t!("mqtt_net.connect_failed", reason => e.to_string())
+                                                .to_string(),
                                         ))
                                         .await;
                                 }
@@ -632,11 +639,7 @@ impl NetworkConnection for MqttClient {
         // 取走任务 A 句柄并**有界等待其退出**（F1/D-A）：任务 A 退出后才返回，
         // 确保它发出的 `Disconnected` 先于新连接的 `ClientWriteSenderReady` 入队，
         // 避免旧连接的事件误删新连接的写通道。
-        let handle = self
-            .read_task
-            .lock()
-            .ok()
-            .and_then(|mut slot| slot.take());
+        let handle = self.read_task.lock().ok().and_then(|mut slot| slot.take());
         Pin::from(Box::new(async move {
             if let Some(handle) = handle {
                 match tokio::time::timeout(DISCONNECT_WAIT_TASK_TIMEOUT, handle).await {
@@ -675,7 +678,9 @@ impl NetworkServer for MqttServer {
     fn start(
         &mut self,
     ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>> + Send + '_>> {
-        Box::pin(async { Err("MQTT 不支持服务端角色（规划 D-5：仅客户端）".into()) })
+        Box::pin(async {
+            Err("MQTT 不支持服务端角色（规划 D-5：仅客户端）".into())
+        })
     }
 
     fn stop(
@@ -754,7 +759,10 @@ mod tests {
         });
 
         let options = build_options(&config);
-        assert_eq!(options.broker_address(), ("broker.example".to_string(), 1883));
+        assert_eq!(
+            options.broker_address(),
+            ("broker.example".to_string(), 1883)
+        );
         assert_eq!(options.client_id(), "cid");
         assert_eq!(options.keep_alive(), Duration::from_secs(30));
         assert!(!options.clean_session());
@@ -779,7 +787,10 @@ mod tests {
             ..MqttSettings::default()
         });
         let options = build_options(&config);
-        assert!(options.clean_session(), "空 client_id 时必须强制 clean session");
+        assert!(
+            options.clean_session(),
+            "空 client_id 时必须强制 clean session"
+        );
     }
 
     /// IP 字面量 broker 直接解析为 SocketAddr（不依赖 DNS）。
@@ -865,9 +876,7 @@ mod tests {
     ///
     /// 返回 `Err` 表示对端在读完一个完整报文前关闭了连接——对本测试而言，
     /// 这正是"未发出 DISCONNECT 就裸关连接"的证据。
-    async fn read_mqtt_packet(
-        sock: &mut tokio::net::TcpStream,
-    ) -> std::io::Result<(u8, Vec<u8>)> {
+    async fn read_mqtt_packet(sock: &mut tokio::net::TcpStream) -> std::io::Result<(u8, Vec<u8>)> {
         use tokio::io::AsyncReadExt;
         let mut b1 = [0u8; 1];
         sock.read_exact(&mut b1).await?;
@@ -947,7 +956,9 @@ mod tests {
                         let pkid = [body[0], body[1]];
                         let topic_len = u16::from_be_bytes([body[2], body[3]]) as usize;
                         let topic = String::from_utf8(body[4..4 + topic_len].to_vec()).unwrap();
-                        sock.write_all(&[0x90, 0x03, pkid[0], pkid[1], 0x00]).await.unwrap();
+                        sock.write_all(&[0x90, 0x03, pkid[0], pkid[1], 0x00])
+                            .await
+                            .unwrap();
                         obs_tx.send(BrokerObs::Subscribed(topic)).ok();
                         // 推送一条消息，验证读路径 → MessagesReceived
                         sock.write_all(&encode_mqtt_publish("sensor/1", b"hello"))
@@ -1182,6 +1193,9 @@ mod tests {
                 Ok(Err(_)) | Err(_) => break,
             }
         }
-        assert_eq!(disconnected, 0, "终态错误不应再补发 Disconnected(状态停在 Error)");
+        assert_eq!(
+            disconnected, 0,
+            "终态错误不应再补发 Disconnected(状态停在 Error)"
+        );
     }
 }

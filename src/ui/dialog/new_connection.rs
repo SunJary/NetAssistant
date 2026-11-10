@@ -361,7 +361,10 @@ fn render_decoder_section(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App
         .flex()
         .flex_col()
         .gap_1()
-        .child(field_label(theme, t!("new_connection.decoder_label").to_string()))
+        .child(field_label(
+            theme,
+            t!("new_connection.decoder_label").to_string(),
+        ))
         .child(
             div()
                 .flex()

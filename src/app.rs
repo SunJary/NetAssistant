@@ -12,8 +12,8 @@ use crate::config::connection::{
 use crate::config::storage::{ConfigStorage, MqttTopicHistoryEntry};
 use crate::core::toolbox::ToolCategory;
 use crate::core::toolbox_extra::{
-    file_digest_set, file_hash_algo_by_hex_len, now_local_string, now_millis_string,
-    password_argon2id, password_bcrypt, password_pbkdf2_sha256, FILE_HASH_ALGOS,
+    FILE_HASH_ALGOS, file_digest_set, file_hash_algo_by_hex_len, now_local_string,
+    now_millis_string, password_argon2id, password_bcrypt, password_pbkdf2_sha256,
 };
 use crate::export::{self, ExportFormat};
 use crate::log_writer::LogWriter;
@@ -406,7 +406,8 @@ impl NetAssistantApp {
         });
         // Hash 块对比输入：粘贴待比对的哈希值（单行，输入即与摘要行比对）
         let toolbox_hash_compare_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(t!("toolbox.hash_compare_placeholder").to_string())
+            InputState::new(window, cx)
+                .placeholder(t!("toolbox.hash_compare_placeholder").to_string())
         });
         let toolbox_date_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
@@ -647,39 +648,41 @@ impl NetAssistantApp {
                 // 防抖 300ms + 后台计算：到点后输入已变则本次作废（新按键已排了
                 // 自己的任务）；计算完成回写前再次比对，期间输入变化则丢弃结果。
                 // 随机盐下同密码重复计算无害，无需严格代数，比对文本即可。
-                cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
-                    async_cx
-                        .background_executor()
-                        .timer(Duration::from_millis(300))
-                        .await;
-                    let unchanged = this
-                        .update(async_cx, |app, cx| {
-                            let current = app.toolbox_hash_input.read(cx).value().to_string();
-                            !current.trim().is_empty() && current == password
-                        })
-                        .unwrap_or(false);
-                    if !unchanged {
-                        return;
-                    }
-                    let pwd = password.clone();
-                    let results = async_cx
-                        .background_executor()
-                        .spawn(async move {
-                            vec![
-                                password_bcrypt(&pwd),
-                                password_argon2id(&pwd),
-                                password_pbkdf2_sha256(&pwd),
-                            ]
-                        })
-                        .await;
-                    let _ = this.update(async_cx, |app, cx| {
-                        let current = app.toolbox_hash_input.read(cx).value().to_string();
-                        if current == password {
-                            app.toolbox_kdf_cache = Some((password, results));
-                            cx.notify();
+                cx.spawn(
+                    async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                        async_cx
+                            .background_executor()
+                            .timer(Duration::from_millis(300))
+                            .await;
+                        let unchanged = this
+                            .update(async_cx, |app, cx| {
+                                let current = app.toolbox_hash_input.read(cx).value().to_string();
+                                !current.trim().is_empty() && current == password
+                            })
+                            .unwrap_or(false);
+                        if !unchanged {
+                            return;
                         }
-                    });
-                })
+                        let pwd = password.clone();
+                        let results = async_cx
+                            .background_executor()
+                            .spawn(async move {
+                                vec![
+                                    password_bcrypt(&pwd),
+                                    password_argon2id(&pwd),
+                                    password_pbkdf2_sha256(&pwd),
+                                ]
+                            })
+                            .await;
+                        let _ = this.update(async_cx, |app, cx| {
+                            let current = app.toolbox_hash_input.read(cx).value().to_string();
+                            if current == password {
+                                app.toolbox_kdf_cache = Some((password, results));
+                                cx.notify();
+                            }
+                        });
+                    },
+                )
                 .detach();
             },
         ));
@@ -959,7 +962,8 @@ impl NetAssistantApp {
         }
         // 持久化订阅（按连接隔离）：重开标签页/重启后自动恢复，与收藏同款心智。
         // 先写 storage 再改 tab 状态，避免同时可变借用 self.storage 与 self.connection_tabs。
-        self.storage.add_mqtt_subscription(tab_id, &topic, qos as u8);
+        self.storage
+            .add_mqtt_subscription(tab_id, &topic, qos as u8);
         if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
             // 乐观入列 / 已订阅则更新 QoS（重发订阅幂等）
             if let Some(entry) = tab.mqtt_subscriptions.iter_mut().find(|(t, _)| *t == topic) {
@@ -1034,7 +1038,8 @@ impl NetAssistantApp {
                 .unwrap_or(false);
             if !sub_ok {
                 if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
-                    tab.mqtt_sub_error = Some(t!("connection_tab.mqtt_subscribe_failed").to_string());
+                    tab.mqtt_sub_error =
+                        Some(t!("connection_tab.mqtt_subscribe_failed").to_string());
                 }
                 cx.notify();
                 return false;
@@ -1059,7 +1064,11 @@ impl NetAssistantApp {
         self.storage
             .update_mqtt_subscription(tab_id, old_topic, &new_topic, qos as u8);
         if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
-            if let Some(entry) = tab.mqtt_subscriptions.iter_mut().find(|(t, _)| *t == old_topic) {
+            if let Some(entry) = tab
+                .mqtt_subscriptions
+                .iter_mut()
+                .find(|(t, _)| *t == old_topic)
+            {
                 *entry = (new_topic, qos);
             }
             tab.mqtt_sub_error = if unsub_failed {
@@ -1076,7 +1085,9 @@ impl NetAssistantApp {
     pub fn mqtt_unsubscribe(&mut self, tab_id: &str, topic: String, cx: &mut Context<Self>) {
         let delivered = match self.mqtt_control_senders.get(tab_id) {
             Some(sender) => sender
-                .try_send(MqttCommand::Unsubscribe { topic: topic.clone() })
+                .try_send(MqttCommand::Unsubscribe {
+                    topic: topic.clone(),
+                })
                 .is_ok(),
             None => false,
         };
@@ -1339,7 +1350,12 @@ impl NetAssistantApp {
                 .storage
                 .mqtt_subscriptions(&tab_id)
                 .iter()
-                .map(|e| (e.topic.clone(), Qos::try_from(e.qos).unwrap_or(Qos::AtMostOnce)))
+                .map(|e| {
+                    (
+                        e.topic.clone(),
+                        Qos::try_from(e.qos).unwrap_or(Qos::AtMostOnce),
+                    )
+                })
                 .collect();
             if !saved_subs.is_empty() {
                 tab_state.mqtt_subscriptions = saved_subs;
@@ -1983,8 +1999,9 @@ impl NetAssistantApp {
         self.edit_message_input_mode = String::from("text");
         self.edit_decoder_config = DecoderConfig::default();
         // MQTT 表单重置为默认值（Client ID 预填自动生成值，KeepAlive 60，Clean Session 开）
-        self.mqtt_client_id_input
-            .update(cx, |i, cx| i.set_value(generate_mqtt_client_id(), window, cx));
+        self.mqtt_client_id_input.update(cx, |i, cx| {
+            i.set_value(generate_mqtt_client_id(), window, cx)
+        });
         self.mqtt_username_input
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
         self.mqtt_password_input
@@ -2117,8 +2134,9 @@ impl NetAssistantApp {
             ConnectionConfig::Server(_) => None,
         }
         .unwrap_or_default();
-        self.mqtt_client_id_input
-            .update(cx, |i, cx| i.set_value(settings.client_id.clone(), window, cx));
+        self.mqtt_client_id_input.update(cx, |i, cx| {
+            i.set_value(settings.client_id.clone(), window, cx)
+        });
         self.mqtt_username_input.update(cx, |i, cx| {
             i.set_value(settings.username.clone().unwrap_or_default(), window, cx)
         });
@@ -2165,14 +2183,12 @@ impl NetAssistantApp {
         let host = self.host_input.read(cx).value().trim().to_string();
         let port_str = self.port_input.read(cx).value().trim().to_string();
         if host.is_empty() {
-            self.connection_form_error =
-                Some(t!("new_connection.error_empty_host").to_string());
+            self.connection_form_error = Some(t!("new_connection.error_empty_host").to_string());
             cx.notify();
             return false;
         }
         if port_str.is_empty() {
-            self.connection_form_error =
-                Some(t!("new_connection.error_empty_port").to_string());
+            self.connection_form_error = Some(t!("new_connection.error_empty_port").to_string());
             cx.notify();
             return false;
         }
@@ -2241,7 +2257,12 @@ impl NetAssistantApp {
         let mqtt_settings = if is_mqtt {
             // Client ID 留空则回退自动生成（Clean Session=false 时 broker 要求非空）
             let client_id = {
-                let v = self.mqtt_client_id_input.read(cx).value().trim().to_string();
+                let v = self
+                    .mqtt_client_id_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .to_string();
                 if v.is_empty() {
                     generate_mqtt_client_id()
                 } else {
@@ -2250,31 +2271,27 @@ impl NetAssistantApp {
             };
             let username = {
                 let v = self.mqtt_username_input.read(cx).value().trim().to_string();
-                if v.is_empty() {
-                    None
-                } else {
-                    Some(v)
-                }
+                if v.is_empty() { None } else { Some(v) }
             };
             // 密码不做 trim（可能是含空白的合法密码）
             let password = {
                 let v = self.mqtt_password_input.read(cx).value().to_string();
-                if v.is_empty() {
-                    None
-                } else {
-                    Some(v)
-                }
+                if v.is_empty() { None } else { Some(v) }
             };
             // MQTT 3.1.1 的 Password 标志必须依附 Username（`build_options` 亦按此实现），
             // 只填密码不填用户名会被静默丢弃 —— 这里显式报错，避免用户输入无声失效。
             if username.is_none() && password.is_some() {
-                self.connection_form_error = Some(
-                    t!("new_connection.error_password_requires_username").to_string(),
-                );
+                self.connection_form_error =
+                    Some(t!("new_connection.error_password_requires_username").to_string());
                 cx.notify();
                 return false;
             }
-            let keep_alive_str = self.mqtt_keep_alive_input.read(cx).value().trim().to_string();
+            let keep_alive_str = self
+                .mqtt_keep_alive_input
+                .read(cx)
+                .value()
+                .trim()
+                .to_string();
             let keep_alive_secs = match keep_alive_str.parse::<u16>() {
                 Ok(v) if v > 0 => v,
                 _ => {
@@ -2285,7 +2302,12 @@ impl NetAssistantApp {
                 }
             };
             let will = if self.mqtt_will_enabled {
-                let topic = self.mqtt_will_topic_input.read(cx).value().trim().to_string();
+                let topic = self
+                    .mqtt_will_topic_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .to_string();
                 if topic.is_empty() {
                     self.connection_form_error =
                         Some(t!("new_connection.error_empty_will_topic").to_string());
@@ -2705,42 +2727,44 @@ impl NetAssistantApp {
     /// Hash 块：选择文件计算摘要（默认仅勾选 SHA-256，算法 chips 可加选）
     pub fn pick_hash_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         log::info!("[文件哈希] pick_hash_file 触发");
-        cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
-            log::info!("[文件哈希] 请求 rfd 文件对话框");
-            let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
-                log::info!("[文件哈希] rfd 返回：用户取消");
-                return; // 用户取消：保持现状
-            };
-            let path = file.path().to_path_buf();
-            log::info!("[文件哈希] rfd 返回：{}", path.display());
-            // 元数据（大小）后台线程获取
-            let meta_path = path.clone();
-            let meta =
-                smol::unblock(move || std::fs::metadata(&meta_path).map(|m| m.len())).await;
-            let _ = this.update(async_cx, |app, cx| {
-                let (size_bytes, error) = match &meta {
-                    Ok(size) => (*size, None),
-                    Err(err) => (0, Some(err.to_string())),
+        cx.spawn(
+            async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                log::info!("[文件哈希] 请求 rfd 文件对话框");
+                let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
+                    log::info!("[文件哈希] rfd 返回：用户取消");
+                    return; // 用户取消：保持现状
                 };
-                let file_name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.display().to_string());
-                app.toolbox_file_hash = Some(FileHashJob {
-                    path,
-                    file_name,
-                    size_bytes,
-                    generation: TOOLBOX_HASH_JOB_SEQ.fetch_add(1, Ordering::Relaxed),
-                    active: true,
-                    selected: vec!["sha256"],
-                    done: Default::default(),
-                    computing: Vec::new(),
-                    error,
+                let path = file.path().to_path_buf();
+                log::info!("[文件哈希] rfd 返回：{}", path.display());
+                // 元数据（大小）后台线程获取
+                let meta_path = path.clone();
+                let meta =
+                    smol::unblock(move || std::fs::metadata(&meta_path).map(|m| m.len())).await;
+                let _ = this.update(async_cx, |app, cx| {
+                    let (size_bytes, error) = match &meta {
+                        Ok(size) => (*size, None),
+                        Err(err) => (0, Some(err.to_string())),
+                    };
+                    let file_name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.display().to_string());
+                    app.toolbox_file_hash = Some(FileHashJob {
+                        path,
+                        file_name,
+                        size_bytes,
+                        generation: TOOLBOX_HASH_JOB_SEQ.fetch_add(1, Ordering::Relaxed),
+                        active: true,
+                        selected: vec!["sha256"],
+                        done: Default::default(),
+                        computing: Vec::new(),
+                        error,
+                    });
+                    app.spawn_file_hash_compute(cx);
+                    cx.notify();
                 });
-                app.spawn_file_hash_compute(cx);
-                cx.notify();
-            });
-        })
+            },
+        )
         .detach();
     }
 
@@ -2766,36 +2790,38 @@ impl NetAssistantApp {
         let path = job.path.clone();
         let generation = job.generation;
 
-        cx.spawn(async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
-            let results = async_cx
-                .background_executor()
-                .spawn(async move { file_digest_set(&path, &missing) })
-                .await;
-            let _ = this.update(async_cx, |app, cx| {
-                // 代数校验：计算期间用户换选了文件（generation 变化）则丢弃过期结果，
-                // 防止旧文件的哈希串写进新任务
-                if let Some(job) = app
-                    .toolbox_file_hash
-                    .as_mut()
-                    .filter(|job| job.generation == generation)
-                {
-                    match results {
-                        Ok(list) => {
-                            job.error = None;
-                            for result in list {
-                                job.done.insert(result.id, result.hex);
+        cx.spawn(
+            async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                let results = async_cx
+                    .background_executor()
+                    .spawn(async move { file_digest_set(&path, &missing) })
+                    .await;
+                let _ = this.update(async_cx, |app, cx| {
+                    // 代数校验：计算期间用户换选了文件（generation 变化）则丢弃过期结果，
+                    // 防止旧文件的哈希串写进新任务
+                    if let Some(job) = app
+                        .toolbox_file_hash
+                        .as_mut()
+                        .filter(|job| job.generation == generation)
+                    {
+                        match results {
+                            Ok(list) => {
+                                job.error = None;
+                                for result in list {
+                                    job.done.insert(result.id, result.hex);
+                                }
+                                job.computing.retain(|id| !job.done.contains_key(id));
                             }
-                            job.computing.retain(|id| !job.done.contains_key(id));
-                        }
-                        Err(err) => {
-                            job.error = Some(err.to_string());
-                            job.computing.clear();
+                            Err(err) => {
+                                job.error = Some(err.to_string());
+                                job.computing.clear();
+                            }
                         }
                     }
-                }
-                cx.notify();
-            });
-        })
+                    cx.notify();
+                });
+            },
+        )
         .detach();
     }
 
@@ -3383,11 +3409,7 @@ impl NetAssistantApp {
                     if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
                         tab.mqtt_publish_error = None;
                     }
-                    Some(MqttPublishMeta {
-                        topic,
-                        qos,
-                        retain,
-                    })
+                    Some(MqttPublishMeta { topic, qos, retain })
                 } else {
                     None
                 };
@@ -4411,7 +4433,9 @@ impl NetAssistantApp {
         let due: Vec<(String, bool)> = self
             .connection_tabs
             .iter()
-            .filter(|(_, tab)| tab.auto_scroll_enabled != tab.message_list_state.is_following_tail())
+            .filter(|(_, tab)| {
+                tab.auto_scroll_enabled != tab.message_list_state.is_following_tail()
+            })
             .map(|(tab_id, tab)| (tab_id.clone(), tab.message_list_state.is_following_tail()))
             .collect();
         let mut changed = false;
@@ -4446,7 +4470,10 @@ impl NetAssistantApp {
             if following {
                 tab.auto_scroll_enabled = true;
                 tab.message_list.keep_last = tab.keep_last_backup;
-                (tab.keep_last_input.clone(), tab.keep_last_backup.to_string())
+                (
+                    tab.keep_last_input.clone(),
+                    tab.keep_last_backup.to_string(),
+                )
             } else {
                 tab.auto_scroll_enabled = false;
                 tab.keep_last_backup = tab.message_list.keep_last;
@@ -5043,7 +5070,8 @@ impl NetAssistantApp {
                     "[handle_connection_events] MQTT 订阅控制发送器就绪: {}",
                     tab_id
                 );
-                self.mqtt_control_senders.insert(tab_id.clone(), control_sender);
+                self.mqtt_control_senders
+                    .insert(tab_id.clone(), control_sender);
                 // 控制通道就绪(首次连接 / 手动重连): 按界面订阅列表重建网络层 active 列表,
                 // 修复「手动重连后 broker 端订阅丢失、界面却仍显示已订阅」的漂移
                 // (规划 D-10 只覆盖 rumqttc 自动重连, 此处补齐手动重连)。
@@ -5071,7 +5099,8 @@ impl NetAssistantApp {
                 );
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
                     tab_state.status_hint = Some((
-                        t!("connection_tab.mqtt_subscriptions_restored", count => count).to_string(),
+                        t!("connection_tab.mqtt_subscriptions_restored", count => count)
+                            .to_string(),
                         Instant::now(),
                     ));
                     cx.notify();

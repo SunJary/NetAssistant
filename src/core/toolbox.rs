@@ -148,8 +148,8 @@ fn enabled(tool: &SelectionTool, source: &str) -> Result<(), &'static str> {
         }
         // 时间 / JSON / 编码组不在 SelectionTool 注册表内（见 core/toolbox_extra.rs）
         _ => unreachable!("SelectionTool 注册表只包含转换与校验工具"),
-        }
     }
+}
 
 /// 按 mode / source / category 求值生成可用态列表（已按 mode 过滤适用工具）。
 pub fn resolve_tools(mode: &str, source: &str, category: ToolCategory) -> Vec<ToolState> {

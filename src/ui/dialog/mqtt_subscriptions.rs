@@ -238,7 +238,12 @@ fn render_footer(app: &WeakEntity<NetAssistantApp>, _cx: &App) -> DialogFooter {
                         let Some(d) = app.mqtt_subscriptions_dialog.as_ref() else {
                             return false;
                         };
-                        (d.tab_id.clone(), d.old_topic.clone(), d.input.clone(), d.qos)
+                        (
+                            d.tab_id.clone(),
+                            d.old_topic.clone(),
+                            d.input.clone(),
+                            d.qos,
+                        )
                     };
                     let value = input.read(cx).value().trim().to_string();
                     let applied = match &old_topic {

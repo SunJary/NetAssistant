@@ -240,7 +240,9 @@ mod tests {
             ..Default::default()
         };
 
-        let result = manager.create_and_start_server_with_counters(&config, None, None, TrailerSetting::default()).await;
+        let result = manager
+            .create_and_start_server_with_counters(&config, None, None, TrailerSetting::default())
+            .await;
         assert!(
             result.is_err(),
             "端口被占用时启动服务端应返回错误,实际: {:?}",
@@ -266,7 +268,9 @@ mod tests {
             ..Default::default()
         };
 
-        let result = manager.create_and_start_server_with_counters(&config, None, None, TrailerSetting::default()).await;
+        let result = manager
+            .create_and_start_server_with_counters(&config, None, None, TrailerSetting::default())
+            .await;
         assert!(
             result.is_err(),
             "TCP端口被占用时启动服务端应返回错误,实际: {:?}",
@@ -331,7 +335,9 @@ mod tests {
             server_port: port,
             ..Default::default()
         };
-        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
+        let result = manager
+            .create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default())
+            .await;
         assert!(result.is_err(), "连接被拒绝时应返回错误,实际: {:?}", result);
     }
 
@@ -346,7 +352,9 @@ mod tests {
             server_port: 80,
             ..Default::default()
         };
-        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
+        let result = manager
+            .create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default())
+            .await;
         assert!(result.is_err(), "无效地址应返回错误,实际: {:?}", result);
 
         // 域名同样不支持(网络层只做 SocketAddr 解析, 无 DNS)
@@ -356,7 +364,9 @@ mod tests {
             server_port: 80,
             ..Default::default()
         };
-        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
+        let result = manager
+            .create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default())
+            .await;
         assert!(result.is_err(), "域名地址应返回错误,实际: {:?}", result);
     }
 
@@ -411,7 +421,9 @@ mod tests {
             local_address: Some("::1".to_string()),
             ..Default::default()
         };
-        let result = manager.create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default()).await;
+        let result = manager
+            .create_and_connect_client_with_counters(&config, None, None, TrailerSetting::default())
+            .await;
         let msg = result.expect_err("地址族不一致应返回错误").to_string();
         assert!(
             msg.contains("地址族不一致"),
@@ -442,7 +454,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client_with_counters(&config, Some(tx), None, TrailerSetting::default())
+            .create_and_connect_client_with_counters(
+                &config,
+                Some(tx),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("配置本地绑定后 UDP 客户端应启动成功");
 
@@ -485,7 +502,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_start_server_with_counters(&server_config, Some(tx.clone()), None, TrailerSetting::default())
+            .create_and_start_server_with_counters(
+                &server_config,
+                Some(tx.clone()),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("服务端应启动成功");
 
@@ -496,7 +518,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
+            .create_and_connect_client_with_counters(
+                &client_config,
+                Some(tx),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("客户端应连接成功");
 
@@ -593,7 +620,12 @@ mod tests {
                         ..Default::default()
                     };
                     manager
-                        .create_and_connect_client_with_counters(&config, Some(tx), None, TrailerSetting::default())
+                        .create_and_connect_client_with_counters(
+                            &config,
+                            Some(tx),
+                            None,
+                            TrailerSetting::default(),
+                        )
                         .await
                         .expect("客户端应连接成功");
 
@@ -663,7 +695,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client_with_counters(&config, Some(tx), None, TrailerSetting::default())
+            .create_and_connect_client_with_counters(
+                &config,
+                Some(tx),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("未配置本地绑定时 UDP 客户端应启动成功");
 
@@ -737,7 +774,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_start_server_with_counters(&server_config, Some(tx.clone()), None, TrailerSetting::default())
+            .create_and_start_server_with_counters(
+                &server_config,
+                Some(tx.clone()),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("服务端应启动成功");
 
@@ -748,7 +790,12 @@ mod tests {
             ..Default::default()
         };
         manager
-            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
+            .create_and_connect_client_with_counters(
+                &client_config,
+                Some(tx),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("客户端应连接成功");
 
@@ -819,7 +866,12 @@ mod tests {
         let (tx, rx) = smol::channel::unbounded::<ConnectionEvent>();
         let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
         manager
-            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
+            .create_and_connect_client_with_counters(
+                &client_config,
+                Some(tx),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("客户端应连接成功");
 
@@ -897,7 +949,12 @@ mod tests {
         let (tx, _rx) = smol::channel::unbounded::<ConnectionEvent>();
         let mut manager = NetworkConnectionManager::new().with_reply_rules(rules.clone());
         manager
-            .create_and_connect_client_with_counters(&client_config, Some(tx), None, TrailerSetting::default())
+            .create_and_connect_client_with_counters(
+                &client_config,
+                Some(tx),
+                None,
+                TrailerSetting::default(),
+            )
             .await
             .expect("UDP 客户端应启动成功");
 

@@ -167,8 +167,7 @@ impl Serialize for ConnectionList {
         S: serde::Serializer,
     {
         // 把未识别条目按下标插回，让写回的数组顺序与用户上次看到的顺序一致
-        let mut merged: Vec<EntryRef<'_>> =
-            self.connections.iter().map(EntryRef::Known).collect();
+        let mut merged: Vec<EntryRef<'_>> = self.connections.iter().map(EntryRef::Known).collect();
         for (index, raw) in &self.unrecognized {
             merged.insert((*index).min(merged.len()), EntryRef::Raw(raw));
         }
@@ -249,11 +248,7 @@ impl ConfigStorage {
 
         // 确保配置目录存在；失败只告警：后续保存会静默失败，但不应阻止启动
         if let Err(e) = fs::create_dir_all(&config_dir) {
-            warn!(
-                "=== 创建配置目录失败({}): {} ===",
-                config_dir.display(),
-                e
-            );
+            warn!("=== 创建配置目录失败({}): {} ===", config_dir.display(), e);
         }
 
         let config = if config_file.exists() {
@@ -394,7 +389,11 @@ impl ConfigStorage {
     /// 用户只会看到"设置又丢了"却没有任何线索。
     fn save_and_log(&self) {
         if let Err(e) = self.save() {
-            warn!("=== 保存配置失败({}): {} ===", self.config_file.display(), e);
+            warn!(
+                "=== 保存配置失败({}): {} ===",
+                self.config_file.display(),
+                e
+            );
         }
     }
 
@@ -1050,10 +1049,7 @@ fn writer_loop(shared: Arc<WindowStateShared>) {
             Some((_, updated_at)) => WINDOW_STATE_DEBOUNCE.saturating_sub(updated_at.elapsed()),
             None => {
                 // 无待写数据：无限等待，由 request_save/flush 唤醒（不轮询，避免无谓唤醒）
-                let guard = shared
-                    .cvar
-                    .wait(inner)
-                    .unwrap_or_else(|e| e.into_inner());
+                let guard = shared.cvar.wait(inner).unwrap_or_else(|e| e.into_inner());
                 drop(guard);
                 continue;
             }
@@ -1132,7 +1128,13 @@ mod tests {
         assert!(config.reply_rules.connections.is_empty());
         assert_eq!(config.reply_rules.version, 1);
         // 行为等价于"升级前"：无规则可命中
-        assert!(config.reply_rules.connections.values().all(|rules| rules.is_empty()));
+        assert!(
+            config
+                .reply_rules
+                .connections
+                .values()
+                .all(|rules| rules.is_empty())
+        );
     }
 
     /// 更新版本写入的未知协议必须原样保留并插回原下标：
@@ -1159,7 +1161,9 @@ mod tests {
 
         // 旧版本保存后：未识别条目仍在原下标，内容一字未改
         let saved: serde_json::Value = serde_json::to_value(&config).unwrap();
-        let saved = saved["connections"].as_array().expect("connections 应为数组");
+        let saved = saved["connections"]
+            .as_array()
+            .expect("connections 应为数组");
         assert_eq!(saved.len(), 3, "未识别条目不能被丢弃");
         assert_eq!(saved[0]["config"]["id"], "keep-1");
         assert_eq!(saved[1]["config"]["id"], "from-future");
@@ -1201,11 +1205,12 @@ mod tests {
         let json = serde_json::to_string_pretty(&config).unwrap();
         let back: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.reply_rules, config.reply_rules);
-        assert!(back
-            .reply_rules
-            .connections
-            .values()
-            .any(|rules| rules.iter().any(|r| r.enabled)));
+        assert!(
+            back.reply_rules
+                .connections
+                .values()
+                .any(|rules| rules.iter().any(|r| r.enabled))
+        );
     }
 
     /// upsert 必须**原地替换**（保持列表顺序 = 求值优先级），新规则追加到末尾
@@ -1580,10 +1585,12 @@ mod tests {
         assert!(!storage.move_reply_rule("conn-x", &ic, 0));
         // 三个 id 都还在（没有被 move 弄丢）
         for id in [ia, ib, ic] {
-            assert!(storage
-                .rules_for_connection("conn-1")
-                .iter()
-                .any(|r| r.id == id));
+            assert!(
+                storage
+                    .rules_for_connection("conn-1")
+                    .iter()
+                    .any(|r| r.id == id)
+            );
         }
     }
 

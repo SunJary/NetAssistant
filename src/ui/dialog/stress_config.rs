@@ -774,7 +774,9 @@ fn render_trailer_chip(
         .when(selected, |d| {
             d.bg(theme.primary).text_color(theme.primary_foreground)
         })
-        .when(!selected, |d| d.bg(theme.border).text_color(theme.foreground))
+        .when(!selected, |d| {
+            d.bg(theme.border).text_color(theme.foreground)
+        })
         .child(label.to_string())
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             entity.update(cx, |app, cx| {

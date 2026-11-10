@@ -183,8 +183,7 @@ impl InputWithMode {
                             .cursor_pointer()
                             .child(Icon::new(IconName::Close).size(px(14.0)))
                             .tooltip(|window, cx| {
-                                Tooltip::new(t!("input_mode.clear").to_string())
-                                    .build(window, cx)
+                                Tooltip::new(t!("input_mode.clear").to_string()).build(window, cx)
                             })
                             .on_mouse_down(
                                 MouseButton::Left,

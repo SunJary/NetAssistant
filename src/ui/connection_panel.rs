@@ -220,8 +220,8 @@ impl<'a> ConnectionPanel<'a> {
                             .separator()
                             // 删除连接（直接执行, 不二次确认）
                             .item(
-                                PopupMenuItem::new(t!("context_menu.delete").to_string())
-                                    .on_click(move |_, _window, cx| {
+                                PopupMenuItem::new(t!("context_menu.delete").to_string()).on_click(
+                                    move |_, _window, cx| {
                                         let Some(app) = delete_app.upgrade() else {
                                             return;
                                         };
@@ -238,7 +238,8 @@ impl<'a> ConnectionPanel<'a> {
                                             }
                                             cx.notify();
                                         });
-                                    }),
+                                    },
+                                ),
                             )
                     }),
             );

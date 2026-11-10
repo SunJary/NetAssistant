@@ -267,9 +267,7 @@ impl CompiledTemplate {
     /// 规则在洪泛下完全不付这份成本(决策见 plan-reply-rules-expr.md §4.3)。
     pub fn needs_rx(&self) -> bool {
         self.segments.iter().any(|s| match s {
-            VarSegment::RxAccess { .. } | VarSegment::RxJson { .. } | VarSegment::RxMeta(_) => {
-                true
-            }
+            VarSegment::RxAccess { .. } | VarSegment::RxJson { .. } | VarSegment::RxMeta(_) => true,
             // 表达式可能引用 rx.* 或校验函数（二者都依赖接收帧）
             VarSegment::Expr(expr) => crate::reply::expr::needs_rx(expr),
             _ => false,

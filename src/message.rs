@@ -451,9 +451,8 @@ mod tests {
 
     #[test]
     fn test_message_with_transport_sets_topic_and_retain() {
-        let message =
-            Message::new(MessageDirection::Received, b"x".to_vec(), MessageType::Text)
-                .with_transport(Some("sensor/1".to_string()), true);
+        let message = Message::new(MessageDirection::Received, b"x".to_vec(), MessageType::Text)
+            .with_transport(Some("sensor/1".to_string()), true);
         assert_eq!(message.topic.as_deref(), Some("sensor/1"));
         assert!(message.retain);
 

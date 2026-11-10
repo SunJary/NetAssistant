@@ -1,14 +1,14 @@
-use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::Theme;
 use gpui_kit::component::Icon;
 use gpui_kit::component::IconName;
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::StyledExt as _;
+use gpui_kit::component::Theme;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::input::{Editor, EditorState, Input, InputState};
+use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
@@ -18,10 +18,9 @@ use crate::core::toolbox::{
     SelectionTool, ToolCategory, compute_tool, resolve_tools, selection_tools,
 };
 use crate::core::toolbox_extra::{
-    base64_decode, base64_encode, file_hash_algo, format_file_size, hash_md5, hash_sha1,
-    hash_sha224, hash_sha256, hash_sha384, hash_sha512, json_minify, json_pretty,
-    now_local_string, now_millis_string, parse_time_input, url_decode, url_encode, FILE_HASH_ALGOS,
-    RelativeTime,
+    FILE_HASH_ALGOS, RelativeTime, base64_decode, base64_encode, file_hash_algo, format_file_size,
+    hash_md5, hash_sha1, hash_sha224, hash_sha256, hash_sha384, hash_sha512, json_minify,
+    json_pretty, now_local_string, now_millis_string, parse_time_input, url_decode, url_encode,
 };
 use chrono::Weekday;
 
@@ -196,9 +195,21 @@ impl<'a> ToolboxPanel<'a> {
                 "toolbox.category_checksum",
                 "toolbox-nav-checksum",
             ),
-            (ToolCategory::Hash, "toolbox.category_hash", "toolbox-nav-hash"),
-            (ToolCategory::Time, "toolbox.category_time", "toolbox-nav-time"),
-            (ToolCategory::Json, "toolbox.category_json", "toolbox-nav-json"),
+            (
+                ToolCategory::Hash,
+                "toolbox.category_hash",
+                "toolbox-nav-hash",
+            ),
+            (
+                ToolCategory::Time,
+                "toolbox.category_time",
+                "toolbox-nav-time",
+            ),
+            (
+                ToolCategory::Json,
+                "toolbox.category_json",
+                "toolbox-nav-json",
+            ),
             (
                 ToolCategory::Encoding,
                 "toolbox.category_encoding",
@@ -225,14 +236,16 @@ impl<'a> ToolboxPanel<'a> {
                     })
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(move |app: &mut NetAssistantApp,
-                                         _event: &MouseDownEvent,
-                                         _window: &mut Window,
-                                         cx: &mut Context<NetAssistantApp>| {
-                            // 纯切换分组；各组输入互相独立，切换后内容保留
-                            app.toolbox_active_group = category;
-                            cx.notify();
-                        }),
+                        cx.listener(
+                            move |app: &mut NetAssistantApp,
+                                  _event: &MouseDownEvent,
+                                  _window: &mut Window,
+                                  cx: &mut Context<NetAssistantApp>| {
+                                // 纯切换分组；各组输入互相独立，切换后内容保留
+                                app.toolbox_active_group = category;
+                                cx.notify();
+                            },
+                        ),
                     )
                     .child(t!(title_key).to_string()),
             );
@@ -399,7 +412,11 @@ impl<'a> ToolboxPanel<'a> {
                 .py_0p5()
                 .text_xs()
                 .font_medium()
-                .text_color(if on { theme.primary } else { theme.muted_foreground })
+                .text_color(if on {
+                    theme.primary
+                } else {
+                    theme.muted_foreground
+                })
                 .when(on, |seg| seg.bg(theme.primary.opacity(0.1)))
                 .hover(|style| style.text_color(theme.primary))
         };
@@ -415,9 +432,14 @@ impl<'a> ToolboxPanel<'a> {
                 segment("hash-mode-text", !file_active)
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                            app.hide_hash_file(window, cx);
-                        }),
+                        cx.listener(
+                            |app: &mut NetAssistantApp,
+                             _event: &MouseDownEvent,
+                             window: &mut Window,
+                             cx: &mut Context<NetAssistantApp>| {
+                                app.hide_hash_file(window, cx);
+                            },
+                        ),
                     )
                     .child(t!("toolbox.mode_text").to_string()),
             )
@@ -426,9 +448,14 @@ impl<'a> ToolboxPanel<'a> {
                 segment("hash-mode-file", file_active)
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                            app.on_hash_file_button(window, cx);
-                        }),
+                        cx.listener(
+                            |app: &mut NetAssistantApp,
+                             _event: &MouseDownEvent,
+                             window: &mut Window,
+                             cx: &mut Context<NetAssistantApp>| {
+                                app.on_hash_file_button(window, cx);
+                            },
+                        ),
                     )
                     .child(t!("toolbox.hash_file_button").to_string()),
             )
@@ -487,14 +514,19 @@ impl<'a> ToolboxPanel<'a> {
             if let Some((cached_source, results)) = &self.app.toolbox_kdf_cache {
                 if cached_source == &source {
                     mid_header = Some((rows.len(), t!("toolbox.passhash_group").to_string()));
-                    rows.extend(metas.iter().zip(results.iter()).map(
-                        |((id, name), result)| match result {
-                            Ok(value) => OutputRow::result(id, name.to_string(), value.clone()),
-                            Err(()) => {
-                                OutputRow::error(id, name.to_string(), "toolbox.passhash_failed")
-                            }
-                        },
-                    ));
+                    rows.extend(
+                        metas
+                            .iter()
+                            .zip(results.iter())
+                            .map(|((id, name), result)| match result {
+                                Ok(value) => OutputRow::result(id, name.to_string(), value.clone()),
+                                Err(()) => OutputRow::error(
+                                    id,
+                                    name.to_string(),
+                                    "toolbox.passhash_failed",
+                                ),
+                            }),
+                    );
                 }
             }
         }
@@ -614,11 +646,19 @@ impl<'a> ToolboxPanel<'a> {
             .bg(theme.background)
             .rounded_md()
             .border_1()
-            .border_color(if job.error.is_some() { theme.danger } else { theme.primary })
+            .border_color(if job.error.is_some() {
+                theme.danger
+            } else {
+                theme.primary
+            })
             .child(
                 Icon::new(CustomIconName::File)
                     .size_3()
-                    .text_color(if job.error.is_some() { theme.danger } else { theme.primary }),
+                    .text_color(if job.error.is_some() {
+                        theme.danger
+                    } else {
+                        theme.primary
+                    }),
             )
             .child(
                 div()
@@ -650,30 +690,36 @@ impl<'a> ToolboxPanel<'a> {
                     .hover(|style| style.text_color(theme.danger))
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(|app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                            app.clear_hash_file(window, cx);
-                        }),
+                        cx.listener(
+                            |app: &mut NetAssistantApp,
+                             _event: &MouseDownEvent,
+                             window: &mut Window,
+                             cx: &mut Context<NetAssistantApp>| {
+                                app.clear_hash_file(window, cx);
+                            },
+                        ),
                     )
                     .child("✕"),
             );
 
         // 算法 chips：勾选 = 计算并展示；取消勾选仅隐藏（缓存保留，重勾零成本）
-        let chips = div()
-            .flex()
-            .items_center()
-            .gap_1p5()
-            .flex_wrap()
-            .w_full()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(t!("toolbox.hash_file_algos").to_string()),
-            )
-            .children(FILE_HASH_ALGOS.iter().map(|algo| {
-                let on = job.selected.contains(&algo.id);
-                let algo_id = algo.id;
-                div()
+        let chips =
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .flex_wrap()
+                .w_full()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(t!("toolbox.hash_file_algos").to_string()),
+                )
+                .children(FILE_HASH_ALGOS.iter().map(|algo| {
+                    let on = job.selected.contains(&algo.id);
+                    let algo_id = algo.id;
+                    div()
                     .id(SharedString::from(format!("hash-algo-{}", algo.id)))
                     .cursor_pointer()
                     .px_2()
@@ -696,7 +742,7 @@ impl<'a> ToolboxPanel<'a> {
                         }),
                     )
                     .child(algo.label.to_string())
-            }));
+                }));
 
         // 对比输入框（与文本模式共用；文件模式支持按长度自动勾选算法）
         let compare_extra = Some(
@@ -768,7 +814,11 @@ impl<'a> ToolboxPanel<'a> {
                     ),
                     OutputRow::result("time-utc", t!("toolbox.time_utc").to_string(), view.utc),
                 ],
-                None => vec![OutputRow::error("time-ts", String::new(), "toolbox.time_invalid")],
+                None => vec![OutputRow::error(
+                    "time-ts",
+                    String::new(),
+                    "toolbox.time_invalid",
+                )],
             }
         };
 
@@ -793,22 +843,23 @@ impl<'a> ToolboxPanel<'a> {
             input_state,
             rows,
             Some(
-                fill_button("toolbox-time-fill-ts").on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(
-                        |app: &mut NetAssistantApp,
-                         _event: &MouseDownEvent,
-                         window: &mut Window,
-                         cx: &mut Context<NetAssistantApp>| {
-                            let now = now_millis_string();
-                            app.toolbox_ts_input.update(cx, |input, cx| {
-                                input.set_value(now, window, cx);
-                            });
-                        },
-                    ),
-                )
-                .child(t!("toolbox.time_fill_now").to_string())
-                .into_any_element(),
+                fill_button("toolbox-time-fill-ts")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(
+                            |app: &mut NetAssistantApp,
+                             _event: &MouseDownEvent,
+                             window: &mut Window,
+                             cx: &mut Context<NetAssistantApp>| {
+                                let now = now_millis_string();
+                                app.toolbox_ts_input.update(cx, |input, cx| {
+                                    input.set_value(now, window, cx);
+                                });
+                            },
+                        ),
+                    )
+                    .child(t!("toolbox.time_fill_now").to_string())
+                    .into_any_element(),
             ),
             cx,
         )
@@ -834,7 +885,11 @@ impl<'a> ToolboxPanel<'a> {
                     OutputRow::result("time-ms", t!("toolbox.time_ts_ms").to_string(), view.ts_ms),
                 ],
                 None => {
-                    vec![OutputRow::error("time-date", String::new(), "toolbox.time_invalid")]
+                    vec![OutputRow::error(
+                        "time-date",
+                        String::new(),
+                        "toolbox.time_invalid",
+                    )]
                 }
             }
         };
@@ -860,22 +915,23 @@ impl<'a> ToolboxPanel<'a> {
             input_state,
             rows,
             Some(
-                fill_button("toolbox-time-fill-date").on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(
-                        |app: &mut NetAssistantApp,
-                         _event: &MouseDownEvent,
-                         window: &mut Window,
-                         cx: &mut Context<NetAssistantApp>| {
-                            let now = now_local_string();
-                            app.toolbox_date_input.update(cx, |input, cx| {
-                                input.set_value(now, window, cx);
-                            });
-                        },
-                    ),
-                )
-                .child(t!("toolbox.time_fill_now").to_string())
-                .into_any_element(),
+                fill_button("toolbox-time-fill-date")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(
+                            |app: &mut NetAssistantApp,
+                             _event: &MouseDownEvent,
+                             window: &mut Window,
+                             cx: &mut Context<NetAssistantApp>| {
+                                let now = now_local_string();
+                                app.toolbox_date_input.update(cx, |input, cx| {
+                                    input.set_value(now, window, cx);
+                                });
+                            },
+                        ),
+                    )
+                    .child(t!("toolbox.time_fill_now").to_string())
+                    .into_any_element(),
             ),
             cx,
         );
@@ -998,13 +1054,15 @@ impl<'a> ToolboxPanel<'a> {
                 })
                 .on_mouse_down(
                     MouseButton::Left,
-                    cx.listener(move |app: &mut NetAssistantApp,
-                                     _event: &MouseDownEvent,
-                                     _window: &mut Window,
-                                     cx: &mut Context<NetAssistantApp>| {
-                        app.toolbox_json_pretty = set_pretty;
-                        cx.notify();
-                    }),
+                    cx.listener(
+                        move |app: &mut NetAssistantApp,
+                              _event: &MouseDownEvent,
+                              _window: &mut Window,
+                              cx: &mut Context<NetAssistantApp>| {
+                            app.toolbox_json_pretty = set_pretty;
+                            cx.notify();
+                        },
+                    ),
                 )
                 .child(label)
         };

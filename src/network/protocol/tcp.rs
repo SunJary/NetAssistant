@@ -5,8 +5,8 @@ use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch, WireMe
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::decoder::CodecFactory;
 use crate::network::protocol::frame::{flush_batch, process_frame_shared};
-use crate::reply::exec::RuleWireMode;
 use crate::reply::ReplyRulesStore;
+use crate::reply::exec::RuleWireMode;
 use bytes::BytesMut;
 use log::{debug, error, info};
 use smol::channel::{Sender, unbounded as smol_unbounded};

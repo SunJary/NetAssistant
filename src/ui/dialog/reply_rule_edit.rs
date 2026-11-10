@@ -447,7 +447,11 @@ impl CondDraft {
                 cmp = *c;
                 CondKind::FieldEq
             }
-            MatchNode::JsonEq { path, cmp: c, value } => {
+            MatchNode::JsonEq {
+                path,
+                cmp: c,
+                value,
+            } => {
                 values.insert("path".into(), path.clone());
                 values.insert("value".into(), value.clone());
                 json_cmp = *c;
@@ -3050,8 +3054,7 @@ fn run_test(app: &mut NetAssistantApp, cx: &mut App) {
         connections,
         ..Default::default()
     });
-    let frame: Arc<crate::reply::RxFrame> =
-        Arc::new(crate::reply::RxFrame::new(bytes, source));
+    let frame: Arc<crate::reply::RxFrame> = Arc::new(crate::reply::RxFrame::new(bytes, source));
     let rules = store.enabled_rules();
     let (outcome, rendered) = crate::reply::exec::dry_run(&store, rules.as_slice(), &frame);
 

@@ -1176,8 +1176,14 @@ mod tests {
             cmp: crate::reply::model::JsonCmp::Gt,
             value: "30".to_string(),
         });
-        assert!(hit(&rules, br#"{"data":{"items":[{"temp":1},{"temp":36.5}]}}"#));
-        assert!(!hit(&rules, br#"{"data":{"items":[{"temp":1},{"temp":30}]}}"#));
+        assert!(hit(
+            &rules,
+            br#"{"data":{"items":[{"temp":1},{"temp":36.5}]}}"#
+        ));
+        assert!(!hit(
+            &rules,
+            br#"{"data":{"items":[{"temp":1},{"temp":30}]}}"#
+        ));
         // string 上 Gt 恒 false
         assert!(!hit(
             &rules,

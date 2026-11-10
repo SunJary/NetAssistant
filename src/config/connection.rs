@@ -266,7 +266,10 @@ fn default_keep_alive() -> u16 {
 
 /// 生成 MQTT Client ID（规划 §5.1: `netassist-{uuid 前 8 位}`）
 pub fn generate_mqtt_client_id() -> String {
-    format!("netassist-{}", &uuid::Uuid::new_v4().simple().to_string()[..8])
+    format!(
+        "netassist-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    )
 }
 
 /// MQTT 遗嘱消息设置（首版 payload 仅文本；规划 §5.1）

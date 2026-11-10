@@ -839,7 +839,8 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
+        let mut engine =
+            StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
 
         // 收集事件直到 Finished
         let mut got_finished = false;
@@ -913,7 +914,8 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
+        let mut engine =
+            StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
 
         let mut got_finished = false;
         while let Ok(event) = tokio::time::timeout(Duration::from_secs(10), receiver.recv()).await {
@@ -1003,7 +1005,8 @@ mod tests {
             timeout_ms: 2000,
         };
 
-        let mut engine = StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
+        let mut engine =
+            StressTestEngine::start(config, TrailerKind::None, "test".to_string(), sender);
 
         // 收集快照, 找到首个 elapsed_ms >= 1000 的快照
         let mut snapshot_at_1s: Option<StressStats> = None;

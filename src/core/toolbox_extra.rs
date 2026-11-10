@@ -382,9 +382,7 @@ pub fn password_pbkdf2_sha256(password: &str) -> Result<String, ()> {
 
 /// 标准 base64 去填充（PHC 规范的 B64 编码）
 fn b64_nopad(bytes: &[u8]) -> String {
-    base64_encode_bytes(bytes)
-        .trim_end_matches('=')
-        .to_string()
+    base64_encode_bytes(bytes).trim_end_matches('=').to_string()
 }
 
 /// 16 字节系统熵（密码哈希随机盐）
@@ -405,12 +403,36 @@ pub struct HashAlgo {
 }
 
 pub const FILE_HASH_ALGOS: &[HashAlgo] = &[
-    HashAlgo { id: "md5", label: "MD5", hex_len: 32 },
-    HashAlgo { id: "sha1", label: "SHA-1", hex_len: 40 },
-    HashAlgo { id: "sha224", label: "SHA-224", hex_len: 56 },
-    HashAlgo { id: "sha256", label: "SHA-256", hex_len: 64 },
-    HashAlgo { id: "sha384", label: "SHA-384", hex_len: 96 },
-    HashAlgo { id: "sha512", label: "SHA-512", hex_len: 128 },
+    HashAlgo {
+        id: "md5",
+        label: "MD5",
+        hex_len: 32,
+    },
+    HashAlgo {
+        id: "sha1",
+        label: "SHA-1",
+        hex_len: 40,
+    },
+    HashAlgo {
+        id: "sha224",
+        label: "SHA-224",
+        hex_len: 56,
+    },
+    HashAlgo {
+        id: "sha256",
+        label: "SHA-256",
+        hex_len: 64,
+    },
+    HashAlgo {
+        id: "sha384",
+        label: "SHA-384",
+        hex_len: 96,
+    },
+    HashAlgo {
+        id: "sha512",
+        label: "SHA-512",
+        hex_len: 128,
+    },
 ];
 
 pub fn file_hash_algo(id: &str) -> Option<&'static HashAlgo> {
@@ -479,14 +501,21 @@ pub struct FileHashResult {
 
 /// 单遍顺序读取文件，同一循环喂给全部传入算法（磁盘只读一遍，
 /// 勾选多个算法不叠加 IO 成本）。结果顺序与 ids 一致；未知 id 报错。
-pub fn file_digest_set(path: &std::path::Path, ids: &[&'static str]) -> std::io::Result<Vec<FileHashResult>> {
+pub fn file_digest_set(
+    path: &std::path::Path,
+    ids: &[&'static str],
+) -> std::io::Result<Vec<FileHashResult>> {
     use std::io::Read;
 
     let mut hashers = ids
         .iter()
         .map(|id| {
-            AnyHasher::new(id)
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("未知哈希算法：{id}")))
+            AnyHasher::new(id).ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("未知哈希算法：{id}"),
+                )
+            })
         })
         .collect::<std::io::Result<Vec<_>>>()?;
 
@@ -505,7 +534,10 @@ pub fn file_digest_set(path: &std::path::Path, ids: &[&'static str]) -> std::io:
     Ok(hashers
         .into_iter()
         .zip(ids.iter())
-        .map(|(h, id)| FileHashResult { id, hex: h.finalize_hex() })
+        .map(|(h, id)| FileHashResult {
+            id,
+            hex: h.finalize_hex(),
+        })
         .collect())
 }
 
@@ -562,14 +594,23 @@ mod tests {
             .unwrap();
         assert_eq!(view.ts_sec, expected.timestamp().to_string());
         // 双向一致：换算出的秒级时间戳再解析，本地时间应回到原样
-        assert_eq!(parse_time_input(&view.ts_sec).unwrap().local, "2026-01-02 03:04:05");
+        assert_eq!(
+            parse_time_input(&view.ts_sec).unwrap().local,
+            "2026-01-02 03:04:05"
+        );
     }
 
     #[test]
     fn test_parse_date_only_and_slash() {
         // 仅日期按本地午夜解释，本地时间字符串与时区无关
-        assert_eq!(parse_time_input("2026-10-11").unwrap().local, "2026-10-11 00:00:00");
-        assert_eq!(parse_time_input("2026/10/11").unwrap().local, "2026-10-11 00:00:00");
+        assert_eq!(
+            parse_time_input("2026-10-11").unwrap().local,
+            "2026-10-11 00:00:00"
+        );
+        assert_eq!(
+            parse_time_input("2026/10/11").unwrap().local,
+            "2026-10-11 00:00:00"
+        );
         assert_eq!(
             parse_time_input("2026-10-11T12:30:45").unwrap().local,
             "2026-10-11 12:30:45"
@@ -683,7 +724,10 @@ mod tests {
     #[test]
     fn test_json_pretty_and_minify() {
         let pretty = json_pretty(r#"{"a":1,"b":[true,null]}"#).unwrap();
-        assert_eq!(pretty, "{\n  \"a\": 1,\n  \"b\": [\n    true,\n    null\n  ]\n}");
+        assert_eq!(
+            pretty,
+            "{\n  \"a\": 1,\n  \"b\": [\n    true,\n    null\n  ]\n}"
+        );
         assert_eq!(json_minify(r#" { "a" : 1 } "#).unwrap(), r#"{"a":1}"#);
         // 标量也是合法 JSON
         assert_eq!(json_pretty("42").unwrap(), "42");
@@ -726,10 +770,7 @@ mod tests {
         assert_eq!(hash_sha384("").len(), 96);
         assert_eq!(hash_sha512("").len(), 128);
         // UTF-8 多字节输入按字节摘要且输出稳定
-        assert_eq!(
-            hash_md5("你好"),
-            "7eca689f0d3389d9dea66ae112e5cfd7"
-        );
+        assert_eq!(hash_md5("你好"), "7eca689f0d3389d9dea66ae112e5cfd7");
     }
 
     // ---- 密码哈希（KDF） ----
@@ -737,7 +778,10 @@ mod tests {
     #[test]
     fn test_password_hash_formats() {
         let bcrypt_hash = password_bcrypt("123456").unwrap();
-        assert!(bcrypt_hash.starts_with("$2b$06$"), "格式不符: {bcrypt_hash}");
+        assert!(
+            bcrypt_hash.starts_with("$2b$06$"),
+            "格式不符: {bcrypt_hash}"
+        );
         let argon2_hash = password_argon2id("123456").unwrap();
         assert!(
             argon2_hash.starts_with("$argon2id$v=19$m=8192,t=1,p=1$"),
@@ -765,25 +809,38 @@ mod tests {
         let bcrypt_hash = password_bcrypt("p@ss").unwrap();
         assert!(bcrypt::verify("p@ss", &bcrypt_hash).unwrap());
 
-        use argon2::password_hash::phc::PasswordHash as Ph;
         use argon2::password_hash::PasswordVerifier;
+        use argon2::password_hash::phc::PasswordHash as Ph;
         let argon2_hash = password_argon2id("p@ss").unwrap();
         let parsed = Ph::new(&argon2_hash).unwrap();
-        assert!(Argon2::default().verify_password("p@ss".as_bytes(), &parsed).is_ok());
+        assert!(
+            Argon2::default()
+                .verify_password("p@ss".as_bytes(), &parsed)
+                .is_ok()
+        );
         // 错误密码必须验证失败
-        assert!(Argon2::default().verify_password(b"wrong", &parsed).is_err());
+        assert!(
+            Argon2::default()
+                .verify_password(b"wrong", &parsed)
+                .is_err()
+        );
     }
 
     #[test]
     fn test_json5_loose_fallback() {
         // JS 对象字面量（无引号 key + 单引号 + 尾逗号 + 注释）→ 归一化为标准 JSON
-        let loose = "{\n  // 行注释\n  name: 'net-assistant',\n  ports: [8000, 8001,],\n  debug: true,\n}";
+        let loose =
+            "{\n  // 行注释\n  name: 'net-assistant',\n  ports: [8000, 8001,],\n  debug: true,\n}";
         let pretty = json_pretty(loose).unwrap();
         let value: serde_json::Value = serde_json::from_str(&pretty).unwrap();
         assert_eq!(value["name"], "net-assistant");
         assert_eq!(value["ports"][1], 8001);
         // 压缩走同一解析路径
-        assert!(json_minify(loose).unwrap().contains("\"ports\":[8000,8001]"));
+        assert!(
+            json_minify(loose)
+                .unwrap()
+                .contains("\"ports\":[8000,8001]")
+        );
         // 标准 JSON 仍走原路径（结果不变）
         assert_eq!(json_minify("{\"a\":1}").unwrap(), "{\"a\":1}");
         // JS 特有内容（函数 / undefined）两种解析都失败 → None
@@ -832,7 +889,10 @@ mod file_hash_tests {
         let results = file_digest_set(&path, &["sha256"]).expect("计算失败");
         std::fs::remove_file(&path).ok();
 
-        assert_eq!(results[0].hex, hash_sha256(std::str::from_utf8(&content).unwrap()));
+        assert_eq!(
+            results[0].hex,
+            hash_sha256(std::str::from_utf8(&content).unwrap())
+        );
     }
 
     #[test]

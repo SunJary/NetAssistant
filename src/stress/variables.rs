@@ -116,13 +116,8 @@ mod tests {
         let mut c = 5u64;
         let ts_before = Local::now().timestamp_millis();
         let mut out = String::new();
-        CompiledTemplate::new("${seq}|${worker_id}|${counter}|${timestamp}").render(
-            &s,
-            3,
-            &mut c,
-            false,
-            &mut out,
-        );
+        CompiledTemplate::new("${seq}|${worker_id}|${counter}|${timestamp}")
+            .render(&s, 3, &mut c, false, &mut out);
         let ts_after = Local::now().timestamp_millis();
         // timestamp 在渲染内部取,允许 ±几毫秒误差
         let expected_prefix = "0|3|6|";
