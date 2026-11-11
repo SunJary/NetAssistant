@@ -1,6 +1,6 @@
 ---
 title: MQTTX 替代品 - NetAssistant vs MQTTX 客户端对比
-description: "NetAssistant 与 MQTTX 客户端对比：Rust 原生构建、内存约 20MB、MQTT 3.1.1 客户端；MQTTX 功能更完善（MQTT 5.0、TLS、脚本、可视化），本页如实列出差距与 NetAssistant 在 MQTT 模式下的功能边界。"
+description: "NetAssistant 与 MQTTX 对比：Rust 原生、内存约 20MB、MQTT 3.1.1 客户端；MQTTX 功能更全（MQTT 5.0、TLS、脚本），本页列出两者的功能边界。"
 ---
 
 # NetAssistant vs MQTTX：轻量级 MQTT 客户端对比
@@ -8,6 +8,8 @@ description: "NetAssistant 与 MQTTX 客户端对比：Rust 原生构建、内�
 如果你用过 **MQTTX**——那个基于 Electron 的 MQTT 客户端——可能注意到它日常常驻内存通常在**几百 MB**（约 300~500MB，随连接数和消息量浮动）。NetAssistant 是 **Rust 原生构建**的网络调试工具，内存占用约 **20MB**。
 
 但先说清楚：**MQTTX 的 MQTT 功能比 NetAssistant 完善得多**。这个页面不是要证明 NetAssistant 能完全替代 MQTTX，而是如实对比两者差异，说明 NetAssistant 在 MQTT 模式下**到底支持什么、不支持什么**，帮你按需选择。
+
+想先看 MQTT 模式支持的具体能力与操作步骤，见 [MQTT 客户端](/mqtt-client)。
 
 ## 技术栈的根本差异
 

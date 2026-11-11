@@ -1,6 +1,6 @@
 ---
-title: TCP/UDP Debugging - Sticky Packets & Four Decoders
-description: "TCP sticky packet and packet fragmentation guide: raw, line-delimited, length-prefix and JSON decoders; hex mode, periodic send, auto-reply, message management, IPv6 and UDP broadcast device discovery."
+title: TCP/UDP Debugging - Sticky Packets & Decoders
+description: "TCP sticky packet guide: raw, line-delimited, length-prefix and JSON decoders, plus hex mode, auto-reply, IPv6 and UDP broadcast device discovery."
 ---
 
 # TCP/UDP Debugging
@@ -8,6 +8,8 @@ description: "TCP sticky packet and packet fragmentation guide: raw, line-delimi
 ## TCP Decoders
 
 TCP is a byte-stream protocol and suffers from sticky/split packet issues. NetAssistant offers four decoders on the connection detail page — pick one based on your protocol format:
+
+For the underlying causes and framing options, see [TCP sticky packets](/en/tcp-sticky-packet).
 
 | Decoder | Use Case |
 | ------- | -------- |
@@ -122,6 +124,8 @@ Note: with a fixed local port, rapid TCP reconnects may fail briefly with a clea
 
 ## UDP Scenarios
 
+For UDP client/server, broadcast and multi-device replies in depth, see the [UDP debug tool](/en/udp-debug-tool).
+
 ### Manual Client Addition
 
 UDP is connectionless, so a server cannot inherently detect its clients. In UDP server mode:
@@ -136,6 +140,8 @@ UDP is connectionless, so a server cannot inherently detect its clients. In UDP 
 
 When you need to discover IoT/embedded devices on the local network:
 
+For broadcast address choices, handling unexpected replies and troubleshooting missing responses, see [UDP broadcast device discovery](/en/udp-broadcast-device-discovery).
+
 1. Send a discovery command to the broadcast address (e.g. `192.168.1.255`)
 2. Replies from all devices are displayed normally (never filtered by source address)
 3. Device replies from non-target addresses are marked with a **light-red highlight** on the source address, with an "Unexpected address reply" tooltip on hover
@@ -149,6 +155,8 @@ When you need to discover IoT/embedded devices on the local network:
 - **Per-client message view**: in server mode, the left panel shows the list of connected clients; click a client address to view only that client's messages, and click again to deselect and show all messages
 
 ## Hex Mode & HEX Editor
+
+For hex mode, text conversion and checksums in depth, see [hex send](/en/hex-send).
 
 ![Hex mode screenshot](../../../assets/screenshots/en/screenshot_hex.png)
 

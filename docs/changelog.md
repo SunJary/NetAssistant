@@ -1,11 +1,16 @@
 ---
 title: 更新日志
-description: NetAssistant 网络调试助手版本更新记录与路线图：TCP 解码器、UDP 广播设备发现、高并发压力测试、多语言界面、十六进制编辑器等新功能；支持 Windows、Linux、macOS 的 x64 与 ARM64。
+description: NetAssistant 版本更新记录与路线图：TCP 解码器、UDP 广播设备发现、高并发压力测试、多语言界面、十六进制编辑器，覆盖 Windows、Linux、macOS。
 ---
 
 # 更新日志
 
 所有正式版本的更新记录发布在 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 页面。
+
+## v1.4.2 <Badge type="tip" text="2026-11-10" />
+
+- **回复规则导入 / 导出**：支持将一个连接的回复规则打包导出为规则包文件，也可从规则包文件导入到当前连接；导入时可选择合并或覆盖，便于在多台机器间迁移规则
+- **回复规则复制到连接**：在回复规则对话框中可一键将当前连接的规则复制到其他连接，省去逐条重建；适合多连接复用同一套应答逻辑
 
 ## v1.4.1 <Badge type="tip" text="2026-10-31" />
 

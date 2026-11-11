@@ -1,11 +1,16 @@
 ---
 title: Changelog
-description: "NetAssistant changelog and roadmap: TCP decoders, UDP broadcast device discovery, high-concurrency stress testing, multi-language UI and hex editor features; available on Windows, Linux and macOS for both x64 and ARM64."
+description: "NetAssistant changelog: TCP decoders, UDP broadcast device discovery, stress testing, multi-language UI and hex editor, on Windows, Linux and macOS."
 ---
 
 # Changelog
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
+
+## v1.4.2 <Badge type="tip" text="2026-11-10" />
+
+- **Reply rule import / export**: export a connection's reply rules as a rule bundle file, or import a bundle into the current connection; import supports merge or overwrite, making it easy to move rules between machines
+- **Copy reply rules to another connection**: copy the current connection's rules to other connections in one click instead of rebuilding them one by one; useful when multiple connections share the same response logic
 
 ## v1.4.1 <Badge type="tip" text="2026-10-31" />
 

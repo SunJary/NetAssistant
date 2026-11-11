@@ -62,5 +62,5 @@ ARM64 设备（树莓派 5、ARM 服务器等）请将上述文件名中的 `x86
 
 接下来可以：
 
-- 调试 TCP 协议时遇到粘包问题？→ 阅读 [TCP/UDP 调试](/guide/tcp-udp)
+- 调试 TCP 协议时遇到粘包问题？→ 阅读 [TCP/UDP 调试](/guide/tcp-udp)，或看更系统的 [TCP 粘包与拆包](/tcp-sticky-packet)
 - 需要模拟对端响应、周期发送或压测？→ 阅读 [压力测试](/guide/stress)

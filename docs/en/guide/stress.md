@@ -1,11 +1,13 @@
 ---
-title: Stress Testing - High-Concurrency QPS & Latency Percentiles
-description: "NetAssistant built-in TCP/UDP high-concurrency stress testing guide: Ping-Pong and throughput modes, variable templates, real-time QPS and latency percentiles (p50/p95/p99), CSV report export."
+title: Stress Testing - QPS & Latency Percentiles
+description: "NetAssistant TCP/UDP stress testing guide: Ping-Pong and throughput modes, variable templates, live QPS, p50/p95/p99 latency and CSV report export."
 ---
 
 # Stress Testing
 
 NetAssistant ships with a built-in TCP/UDP high-concurrency stress test engine for evaluating a server's concurrent throughput, latency distribution and stability. The engine is a standalone logic layer with zero GPUI dependency, and uses a token bucket for precise send-rate control.
+
+For the overall capability, how it differs from JMeter/wrk and when to use it, see [TCP/UDP stress testing](/en/tcp-stress-test).
 
 ## Configuring a Test
 

@@ -1,6 +1,7 @@
 ---
 title: MQTTX Alternative - NetAssistant vs MQTTX Client Comparison
-description: "NetAssistant vs MQTTX: a Rust native tool using about 20MB of memory with an MQTT 3.1.1 client, while MQTTX is more feature-complete (MQTT 5.0, TLS, scripting, charts). This page honestly lists the gaps and what NetAssistant's MQTT mode actually supports."
+titleTemplate: ':title'
+description: "NetAssistant vs MQTTX: a Rust native MQTT 3.1.1 client using about 20MB, versus MQTTX with MQTT 5.0, TLS and scripting. An honest look at the gaps."
 ---
 
 # NetAssistant vs MQTTX: A Lightweight MQTT Client Comparison
@@ -8,6 +9,8 @@ description: "NetAssistant vs MQTTX: a Rust native tool using about 20MB of memo
 If you've used **MQTTX** — the Electron-based MQTT client — you've probably noticed it typically sits at **a few hundred MB of memory** (roughly 300-500MB, depending on open connections and message volume). NetAssistant is built with **Rust natively** and uses about **20MB**.
 
 But let's be clear up front: **MQTTX is far more capable for MQTT than NetAssistant**. This page is not claiming NetAssistant can fully replace MQTTX. It is an honest comparison of what NetAssistant's MQTT mode **does and does not support**, so you can choose what fits.
+
+For what MQTT mode supports and how to use it, see the [MQTT client](/en/mqtt-client).
 
 ## Fundamental Tech Stack Differences
 

@@ -7,6 +7,8 @@ description: NetAssistant 内置 TCP/UDP 高并发压力测试教程：Ping-Pong
 
 NetAssistant 内置 TCP/UDP 高并发压力测试引擎，用于对服务端进行并发吞吐、延迟分布和稳定性评估。压测引擎为零 GPUI 依赖的独立逻辑层，基于令牌桶精确控制发送速率。
 
+想先了解压测能力全貌、与 JMeter/wrk 的差异和选型建议，见 [TCP/UDP 压测工具](/tcp-stress-test)。
+
 ## 配置压测
 
 1. 通过标签页上的「压测」入口切换到压力测试页面

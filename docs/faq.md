@@ -1,6 +1,6 @@
 ---
 title: 常见问题 FAQ - 网络调试助手支持 Mac 吗？
-description: NetAssistant 网络调试助手常见问题：是否支持 macOS 与 Linux、与网络调试助手（NetAssist）的区别、winget 安装命令、Linux deb/AppImage 下载、TCP 粘包处理与高并发压测。
+description: NetAssistant 常见问题：是否支持 macOS 与 Linux、与网络调试助手（NetAssist）的区别、winget 安装、Linux 安装包、TCP 粘包处理与高并发压测。
 head:
   - - script
     - type: application/ld+json

@@ -1,9 +1,9 @@
 ---
 layout: home
 
-title: NetAssistant 官网 - 跨平台 TCP/UDP/MQTT 网络调试助手，免费下载
+title: NetAssistant 官网 - 跨平台 TCP/UDP 网络调试助手，免费下载
 titleTemplate: ':title'
-description: NetAssistant 是基于 Rust 的开源跨平台网络调试工具：TCP/UDP 客户端与服务端、MQTT 3.1.1 客户端、内置工具箱、四种解码器、消息管理与高并发压力测试，支持 Windows、Linux、macOS（x64 与 ARM64 原生构建）。
+description: NetAssistant 是基于 Rust 的开源跨平台网络调试工具：TCP/UDP 客户端与服务端、MQTT 3.1.1、内置工具箱、四种解码器与高并发压测，支持 Windows、Linux、macOS。
 
 head:
   - - script
@@ -96,3 +96,22 @@ features:
 - **开源免费**：基于 Apache-2.0 许可证，欢迎参与贡献
 
 更多功能细节请查看 [功能特性](/features)，上手请阅读 [使用指南](/guide/)。想了解它与网络调试助手等工具的区别，可参考[同类工具对比](/comparison)；其他疑问见[常见问题](/faq)。
+
+## 按平台下载
+
+- [Windows 网络调试助手](/windows-network-debug-tool)：winget 一条命令安装，支持 Windows 10/11（x64 与 ARM64）
+- [macOS 网络调试助手](/mac-network-debug-tool)：Universal DMG，支持 Apple Silicon 与 Intel
+- [Linux 网络调试助手](/linux-network-debug-tool)：deb / AppImage / tar.gz，支持 x86_64 与 ARM64
+
+## 热门内容
+
+- [NetAssist 替代品：网络调试助手对比与迁移](/compare/netassist)
+- [TCP 调试工具：收发、解码与粘包处理](/tcp-debug-tool)
+- [UDP 调试工具：无连接收发与多设备回复](/udp-debug-tool)
+- [Socket 调试工具：端口监听与连通性排查](/socket-debug-tool)
+- [十六进制发送：HEX 收发与文本转换](/hex-send)
+- [Modbus TCP 调试：报文构造与 CRC16 校验](/modbus-tcp)
+- [TCP 粘包与拆包：原因、四种解决方案与调试方法](/tcp-sticky-packet)
+- [MQTT 客户端：轻量级 MQTT 3.1.1 调试工具](/mqtt-client)
+- [TCP/UDP 压测：QPS 与 p99 延迟测试](/tcp-stress-test)
+- [UDP 广播设备发现：局域网设备搜索与排查](/udp-broadcast-device-discovery)

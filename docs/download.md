@@ -1,11 +1,86 @@
 ---
 title: 下载 NetAssistant - Windows / Linux / macOS 官方免费下载
-description: 下载 NetAssistant 跨平台网络调试工具：支持 Windows、Linux、macOS 的 x64 与 ARM64；winget 安装、Linux deb/AppImage/tar.gz、macOS 安装包与源码编译方式，附系统要求。
+titleTemplate: ':title'
+description: 下载 NetAssistant 跨平台网络调试工具：Windows、Linux、macOS 的 x64 与 ARM64，winget、deb/AppImage/tar.gz 与源码编译方式，附系统要求。
+head:
+  - - script
+    - type: application/ld+json
+    - |
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "NetAssistant",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
+            "description": "跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、MQTT 3.1.1、粘包解码、十六进制收发与压力测试。",
+            "url": "https://netassistant.trydo.top/download",
+            "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
+            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
+              { "@type": "ListItem", "position": 2, "name": "下载", "item": "https://netassistant.trydo.top/download" }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "NetAssistant 是免费的吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购、订阅或功能限制。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持哪些操作系统？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "支持 Windows 10 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Windows 上怎么安装？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "推荐使用 winget：在终端执行 winget install SunJary.NetAssistant 即可，后续用 winget upgrade 升级。也可以下载安装程序或免安装 zip。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "有 ARM64 版本吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "有。Windows、Linux 均提供 aarch64 构建，macOS 提供 Intel 与 Apple Silicon 通用的 DMG，适合 Surface Pro X、树莓派 5、M 系列 Mac 等设备。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "macOS 提示无法验证开发者怎么办？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "这是未公证应用的正常提示，并非应用损坏。右键点击 NetAssistant 选择「打开」，或在「系统设置 → 隐私与安全性」中选择「仍要打开」即可。"
+                }
+              }
+            ]
+          }
+        ]
+      }
 ---
 
 # 下载
 
 NetAssistant 支持 Windows、Linux 和 macOS，各平台均提供 x64 与 ARM64 版本。以下下载链接始终指向[最新版本](https://github.com/sunjary/netassistant/releases/latest)的文件，点击即直接下载；历史版本请见 [GitHub Releases](https://github.com/sunjary/netassistant/releases)。
+
+按平台查看详细安装说明：[Windows](/windows-network-debug-tool) · [macOS](/mac-network-debug-tool) · [Linux](/linux-network-debug-tool)。
 
 ## Windows
 
@@ -107,3 +182,27 @@ sudo apt install libfuse2
 ```bash
 sudo apt install libgtk-3-0
 ```
+
+## 常见问题
+
+### NetAssistant 是免费的吗？
+
+是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购、订阅或功能限制。
+
+### 支持哪些操作系统？
+
+支持 Windows 10 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。
+
+### Windows 上怎么安装？
+
+推荐使用 winget：在终端执行 `winget install SunJary.NetAssistant` 即可，后续用 `winget upgrade` 升级。也可以下载安装程序或免安装 zip。
+
+### 有 ARM64 版本吗？
+
+有。Windows、Linux 均提供 aarch64 构建，macOS 提供 Intel 与 Apple Silicon 通用的 DMG，适合 Surface Pro X、树莓派 5、M 系列 Mac 等设备。
+
+### macOS 提示无法验证开发者怎么办？
+
+这是未公证应用的正常提示，并非应用损坏。右键点击 NetAssistant 选择「打开」，或在「系统设置 → 隐私与安全性」中选择「仍要打开」即可。
+
+更多问题见 [常见问题 FAQ](/faq)，版本更新见 [更新日志](/changelog)。

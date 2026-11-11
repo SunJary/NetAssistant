@@ -1,6 +1,6 @@
 ---
-title: FAQ - Does the Network Debugging Assistant Support macOS?
-description: "NetAssistant FAQ: macOS & Linux availability, difference from NetAssist, winget install command, Linux deb/AppImage downloads, TCP sticky packet handling and high-concurrency stress testing."
+title: FAQ - Does NetAssistant Support macOS?
+description: "NetAssistant FAQ: macOS and Linux availability, the difference from NetAssist, winget install, Linux packages, TCP sticky packets and stress testing."
 head:
   - - script
     - type: application/ld+json

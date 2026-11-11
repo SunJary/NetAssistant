@@ -1,6 +1,6 @@
 ---
-title: Getting Started - Installation & Your First Packet
-description: "NetAssistant installation and getting-started guide: Windows (winget), Linux (AppImage) and macOS install options, with native x64 and ARM64 builds, plus a three-step first TCP/UDP debugging session."
+title: Getting Started - Install & First Packet
+description: "Install NetAssistant on Windows (winget), Linux (AppImage) or macOS, then run your first TCP/UDP session in three steps, with x64 and ARM64 builds."
 ---
 
 # Getting Started
@@ -62,5 +62,5 @@ See the [Download page](/en/download) for more details.
 
 Next steps:
 
-- Running into sticky packet issues while debugging TCP? → Read [TCP/UDP Debugging](/en/guide/tcp-udp)
+- Running into sticky packet issues while debugging TCP? → Read [TCP/UDP Debugging](/en/guide/tcp-udp), or the deeper [TCP sticky packets](/en/tcp-sticky-packet) guide
 - Need to simulate peer responses, send periodically, or run stress tests? → Read [Stress Testing](/en/guide/stress)

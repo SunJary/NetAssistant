@@ -1,11 +1,86 @@
 ---
-title: Download NetAssistant - Official Free Download for Windows, Linux & macOS
-description: "Download NetAssistant cross-platform network debugging tool: available for Windows, Linux and macOS on x64 and ARM64 via winget, deb/AppImage/tar.gz packages, or building from source, with system requirements."
+title: Download NetAssistant - Free for Windows, Linux & macOS
+titleTemplate: ':title'
+description: "Download NetAssistant for Windows, Linux and macOS on x64 and ARM64: winget, deb/AppImage/tar.gz packages, or build from source, with system requirements."
+head:
+  - - script
+    - type: application/ld+json
+    - |
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "NetAssistant",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
+            "description": "A cross-platform network debugging tool with TCP/UDP client and server, MQTT 3.1.1, framing decoders, hex payloads and stress testing.",
+            "url": "https://netassistant.trydo.top/en/download",
+            "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
+            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
+              { "@type": "ListItem", "position": 2, "name": "Download", "item": "https://netassistant.trydo.top/en/download" }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is NetAssistant free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. NetAssistant is open source under the Apache-2.0 license with all features free to use, no in-app purchases, subscriptions or feature limits."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which operating systems are supported?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Windows 10 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I install on Windows?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Use winget: run winget install SunJary.NetAssistant in a terminal and upgrade later with winget upgrade. You can also use the installer or a portable zip."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is there an ARM64 build?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Windows and Linux ship aarch64 builds, and macOS offers a universal DMG for both Intel and Apple Silicon, covering Surface Pro X, Raspberry Pi 5 and M-series Macs."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "macOS says it cannot verify the developer. What should I do?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "This is normal for unsigned, non-notarized apps and does not mean the app is damaged. Right-click NetAssistant and choose Open, or go to System Settings → Privacy & Security and click Open Anyway."
+                }
+              }
+            ]
+          }
+        ]
+      }
 ---
 
 # Download
 
 NetAssistant is available for Windows, Linux and macOS, with both x64 and ARM64 builds for each platform. The download links below always point to the files of the [latest release](https://github.com/sunjary/netassistant/releases/latest) — click to download directly. Older versions can be found on [GitHub Releases](https://github.com/sunjary/netassistant/releases).
+
+Platform-specific install guides: [Windows](/en/windows-network-debug-tool) · [macOS](/en/mac-network-debug-tool) · [Linux](/en/linux-network-debug-tool).
 
 ## Windows
 
@@ -107,3 +182,27 @@ sudo apt install libfuse2
 ```bash
 sudo apt install libgtk-3-0
 ```
+
+## FAQ
+
+### Is NetAssistant free?
+
+Yes. NetAssistant is open source under the Apache-2.0 license with all features free to use, no in-app purchases, subscriptions or feature limits.
+
+### Which operating systems are supported?
+
+Windows 10 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds.
+
+### How do I install on Windows?
+
+Use winget: run `winget install SunJary.NetAssistant` in a terminal and upgrade later with `winget upgrade`. You can also use the installer or a portable zip.
+
+### Is there an ARM64 build?
+
+Yes. Windows and Linux ship aarch64 builds, and macOS offers a universal DMG for both Intel and Apple Silicon, covering Surface Pro X, Raspberry Pi 5 and M-series Macs.
+
+### macOS says it cannot verify the developer. What should I do?
+
+This is normal for unsigned, non-notarized apps and does not mean the app is damaged. Right-click NetAssistant and choose **Open**, or go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+See the [FAQ](/en/faq) for more questions and the [changelog](/en/changelog) for releases.

@@ -1,11 +1,76 @@
 ---
 title: 同类工具对比 - NetAssistant vs NetAssist、Packet Sender
-description: NetAssistant 与网络调试助手（NetAssist）、SocketTool、Packet Sender、Wireshark 等 TCP/UDP 网络调试工具对比：跨平台（Windows / Linux / macOS，x64 与 ARM64 原生构建）、开源免费、内置压力测试，为什么选择 NetAssistant。
+titleTemplate: ':title'
+description: NetAssistant 与网络调试助手（NetAssist）、Packet Sender、Wireshark 等 TCP/UDP 调试工具对比：跨平台、开源免费、内置压测，说明为什么选择 NetAssistant。
+head:
+  - - script
+    - type: application/ld+json
+    - |
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "NetAssistant",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
+            "description": "开源跨平台网络调试工具，与 NetAssist、Packet Sender、Wireshark 对比，支持 TCP/UDP 粘包解码与内置压测。",
+            "url": "https://netassistant.trydo.top/comparison",
+            "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
+            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
+              { "@type": "ListItem", "position": 2, "name": "同类工具对比", "item": "https://netassistant.trydo.top/comparison" }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "NetAssistant 和网络调试助手（NetAssist）有什么区别？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "NetAssist 仅限 Windows 且闭源；NetAssistant 免费开源、跨 Windows/Linux/macOS，内置四种 TCP 粘包解码器和基于 QPS、p50/p95/p99 的压力测试。详细迁移步骤见 NetAssist 替代指南。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "NetAssistant 能替代 Packet Sender 吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "看场景。Packet Sender 有 SSL/DTLS、HTTP 客户端和 CLI 自动化；如果你需要 TCP 粘包自动解码、按客户端查看消息或内置压测，NetAssistant 更合适。两者可以并存。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "为什么不直接用 Wireshark？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Wireshark 是抓包分析工具，不做收发交互调试。NetAssistant 可以作为 TCP/UDP 客户端或服务端与对端做协议交互，两者互补：联调用 NetAssistant，抓包分析用 Wireshark。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "NetAssistant 是免费的吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购或订阅。"
+                }
+              }
+            ]
+          }
+        ]
+      }
 ---
 
 # 同类工具对比
 
-NetAssistant 是开源的跨平台网络调试助手。很多开发者用过**网络调试助手（NetAssist）**、**SocketTool**、**Packet Sender** 或 **Wireshark**，下面从实际使用场景出发做一个客观对比，方便你判断是否值得切换。
+NetAssistant 是开源的跨平台网络调试助手。很多开发者用过**网络调试助手（NetAssist）**、**SocketTool**、**Packet Sender** 或 **Wireshark**，下面从实际使用场景出发做一个客观对比，方便你判断是否值得切换。如果你正在找 NetAssist 的替代品，逐项对比和迁移步骤见 [NetAssist 替代指南](/compare/netassist)。
 
 ## 开发背景
 
@@ -48,5 +113,23 @@ NetAssistant 是开源的跨平台网络调试助手。很多开发者用过**�
 ## 如何迁移
 
 NetAssistant 可以自由添加 TCP/UDP 客户端和服务端连接，操作方式与常用调试助手一致：输入 IP:端口 → 连接 → 发送消息。首次使用参考[快速上手](/guide/)，5 分钟内即可跑通第一条报文。
+
+## 常见问题
+
+### NetAssistant 和网络调试助手（NetAssist）有什么区别？
+
+NetAssist 仅限 Windows 且闭源；NetAssistant 免费开源、跨 Windows/Linux/macOS，内置四种 TCP 粘包解码器和基于 QPS、p50/p95/p99 的压力测试。详细迁移步骤见 [NetAssist 替代指南](/compare/netassist)。
+
+### NetAssistant 能替代 Packet Sender 吗？
+
+看场景。Packet Sender 有 SSL/DTLS、HTTP 客户端和 CLI 自动化；如果你需要 TCP 粘包自动解码、按客户端查看消息或内置压测，NetAssistant 更合适。两者可以并存。
+
+### 为什么不直接用 Wireshark？
+
+Wireshark 是抓包分析工具，不做收发交互调试。NetAssistant 可以作为 TCP/UDP 客户端或服务端与对端做协议交互，两者互补：联调用 NetAssistant，抓包分析用 Wireshark。
+
+### NetAssistant 是免费的吗？
+
+是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购或订阅。
 
 > 如果你正在寻找**网络调试助手的 Linux/Mac 替代品**或**开源 TCP/UDP 调试工具**，可以下载 NetAssistant 试试：[下载](/download)。
