@@ -55,7 +55,9 @@ fn process_frame(
         sender.try_send(wire).is_ok()
     };
     process_frame_shared(
-        data,
+        // TCP 解码器产出 `BytesMut`：此处一次性转 `Arc<[u8]>`（拷贝 1 次，
+        // 与改造前持平）。MQTT 路径在 payload 上完成同样的单次转换（P1）
+        Arc::from(&data[..]),
         processor,
         batch,
         counters,

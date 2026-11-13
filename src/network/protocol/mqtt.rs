@@ -19,13 +19,13 @@ use crate::network::events::{
 };
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::frame::{flush_batch, process_frame_shared};
+use crate::network::protocol::mqtt_tls::build_transport;
 use crate::reply::ReplyRulesStore;
 use crate::reply::exec::RuleWireMode;
-use bytes::BytesMut;
 use log::{debug, error, info, warn};
 use rumqttc::{AsyncClient, Event, LastWill, MqttOptions, Outgoing, Packet, SubscribeReasonCode};
 use rust_i18n::t;
-use smol::channel::{Sender, unbounded as smol_unbounded};
+use smol::channel::{Sender, bounded as smol_bounded, unbounded as smol_unbounded};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -35,6 +35,13 @@ use tokio_util::sync::CancellationToken;
 
 /// rumqttc 内部请求通道容量（发布速率由 broker 确认节奏天然背压；规划 §6.2）
 const REQUEST_CHANNEL_CAP: usize = 10;
+
+/// 发布写通道容量（F-4）。
+///
+/// 有界队列给「断线期间持续发送」一个明确的内存上界：任务 B 阻塞在
+/// `client.publish().await`（rumqttc 内部通道满）时，生产端 `try_send` 失败即
+/// 丢弃并告警，不会无界堆积，也不会阻塞 UI 或规则应答（F-5）。
+const WRITE_CHANNEL_CAP: usize = 1024;
 
 /// 单批聚合上限：达到即立即推送 `MessagesReceived`，避免洪泛订阅下批次无界增长（规划 §11）
 const BATCH_MAX: usize = 64;
@@ -61,7 +68,7 @@ fn broker_endpoint_sentinel() -> SocketAddr {
 ///
 /// `client_id` 为空时强制 clean session：rumqttc 在「空 client_id + clean_session=false」
 /// 时会 panic（`set_clean_session` 断言），此处提前规避。
-fn build_options(config: &ClientConfig) -> MqttOptions {
+fn build_options(config: &ClientConfig) -> Result<MqttOptions, String> {
     let settings = config.mqtt.clone().unwrap_or_default();
     let mut options = MqttOptions::new(
         settings.client_id.clone(),
@@ -85,7 +92,11 @@ fn build_options(config: &ClientConfig) -> MqttOptions {
             will.retain,
         ));
     }
-    options
+    // TLS：仅启用时覆盖 transport（默认 Transport::Tcp，行为不变）
+    if let Some(tls) = settings.tls.as_ref().filter(|t| t.enabled) {
+        options.set_transport(build_transport(tls)?);
+    }
+    Ok(options)
 }
 
 /// 把 broker `host:port` 解析为 `SocketAddr`（供 `Connected` 事件与规则引擎 `source` 使用）。
@@ -107,6 +118,39 @@ async fn resolve_broker_endpoint(host: &str, port: u16) -> SocketAddr {
             broker_endpoint_sentinel()
         }
     }
+}
+
+/// 把连接失败映射为可读文案：TLS 握手失败给出具体处置建议，其余保持原始错误。
+fn describe_connect_error(err: &rumqttc::ConnectionError) -> String {
+    match err {
+        rumqttc::ConnectionError::Tls(rumqttc::TlsError::TLS(
+            rustls::Error::InvalidCertificate(cert_err),
+        )) => match cert_err {
+            // rumqttc 用 broker 地址作为证书校验主机名，IP 连接 + 域名证书必失败
+            rustls::CertificateError::NotValidForName
+            | rustls::CertificateError::NotValidForNameContext { .. } => {
+                t!("mqtt_net.tls_error_hostname").to_string()
+            }
+            rustls::CertificateError::UnknownIssuer => {
+                t!("mqtt_net.tls_error_unknown_issuer").to_string()
+            }
+            _ => t!("mqtt_net.tls_error_generic", reason => err.to_string()).to_string(),
+        },
+        _ => err.to_string(),
+    }
+}
+
+/// 同类告警去重：仅当文案与上次不同才发送（P4）。
+///
+/// 断网期间 rumqttc 按 backoff 周期反复失败，若每轮都发 `Warning`，底部提示会
+/// 反复刷新。连接恢复（CONNACK）或进入终态时调用方需把 `last` 清空，
+/// 否则「断开 → 重连 → 再断开」的第二次提示会被错误抑制。
+fn should_emit_warning(last: &mut Option<String>, message: &str) -> bool {
+    if last.as_deref() == Some(message) {
+        return false;
+    }
+    *last = Some(message.to_string());
+    true
 }
 
 /// MQTT 帧处理：应答按 D-3 语义回发到**收到该消息的 topic**。
@@ -139,7 +183,9 @@ fn process_frame_mqtt(
             .is_ok()
     };
     process_frame_shared(
-        BytesMut::from(payload),
+        // P1：`Bytes` → `Arc<[u8]>` 只做这一次拷贝（改造前是
+        // `BytesMut::from` 再 `Arc::from` 的两次），规则引擎与明细共享同一份
+        Arc::from(payload),
         processor,
         batch,
         counters,
@@ -215,11 +261,27 @@ impl NetworkConnection for MqttClient {
                 config.server_address, config.server_port, client_id
             );
 
-            let options = build_options(&config);
+            let options = match build_options(&config) {
+                Ok(options) => options,
+                Err(reason) => {
+                    // TLS 配置在建立网络连接前即失败：直接上报终态错误，不 spawn 任何任务
+                    error!("MQTT TLS 配置无效: {}", reason);
+                    if let Some(sender) = &event_sender {
+                        let _ = sender
+                            .send(ConnectionEvent::Error(
+                                config.id.clone(),
+                                t!("mqtt_net.tls_config_failed", reason => reason).to_string(),
+                            ))
+                            .await;
+                    }
+                    return Ok(());
+                }
+            };
             let (client, mut eventloop) = AsyncClient::new(options, REQUEST_CHANNEL_CAP);
 
             // 写通道（发布，与既有发送点共用 WireMessage）/ 订阅控制通道 / 重连信号
-            let (write_tx, write_rx) = smol_unbounded::<WireMessage>();
+            // 发布通道有界（F-4）；控制与恢复信号频率极低，保持无界不影响内存
+            let (write_tx, write_rx) = smol_bounded::<WireMessage>(WRITE_CHANNEL_CAP);
             let (control_tx, control_rx) = smol_unbounded::<MqttCommand>();
             let (restore_tx, restore_rx) = smol_unbounded::<()>();
 
@@ -261,6 +323,8 @@ impl NetworkConnection for MqttClient {
                 // 终态错误路径标记（F2/D-B）：已发 `Error` 的路径退出时**不再补发**
                 // `Disconnected`，避免把 `ConnectionStatus::Error` 覆盖成「已断开」
                 let mut terminal_error = false;
+                // 上一次已发送的告警文案（P4：同类告警只在变化时发一次）
+                let mut last_warning: Option<String> = None;
                 // 取消后**不立即退出**，而是进入「排空」态继续 poll，直到观察到
                 // `Outgoing::Disconnect`（该事件返回时报文已 write+flush 到网络）或超时。
                 //
@@ -296,6 +360,8 @@ impl NetworkConnection for MqttClient {
                     };
                     match polled {
                         Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                            // 连接已恢复：清空告警去重状态，使下次断线仍能提示（P4）
+                            last_warning = None;
                             if connected_once {
                                 // 重连：broker 不保留订阅（Clean Session=true），通知任务 B 重订阅
                                 info!("MQTT 已重连");
@@ -390,12 +456,13 @@ impl NetworkConnection for MqttClient {
                             }
                             if !connected_once {
                                 // 首次连接失败 → 终态
-                                error!("MQTT 首次连接失败: {}", e);
+                                let reason = describe_connect_error(&e);
+                                error!("MQTT 首次连接失败: {}", reason);
                                 if let Some(s) = &read_event_sender {
                                     let _ = s
                                         .send(ConnectionEvent::Error(
                                             read_config_id.clone(),
-                                            t!("mqtt_net.connect_failed", reason => e.to_string())
+                                            t!("mqtt_net.connect_failed", reason => reason)
                                                 .to_string(),
                                         ))
                                         .await;
@@ -405,14 +472,15 @@ impl NetworkConnection for MqttClient {
                                 read_cancel.cancel();
                                 break;
                             }
-                            // 运行中被动断开：rumqttc 内建自动重连，仅提示（非终态）
+                            // 运行中被动断开：rumqttc 内建自动重连，仅提示（非终态）。
+                            // P4：同一文案只提示一次，避免 backoff 期间刷屏
                             warn!("MQTT 连接断开，自动重连中: {}", e);
-                            if let Some(s) = &read_event_sender {
+                            let message = t!("mqtt_net.reconnecting").to_string();
+                            if should_emit_warning(&mut last_warning, &message)
+                                && let Some(s) = &read_event_sender
+                            {
                                 let _ = s
-                                    .send(ConnectionEvent::Warning(
-                                        read_config_id.clone(),
-                                        t!("mqtt_net.reconnecting").to_string(),
-                                    ))
+                                    .send(ConnectionEvent::Warning(read_config_id.clone(), message))
                                     .await;
                             }
                         }
@@ -572,14 +640,20 @@ impl NetworkConnection for MqttClient {
                             match msg {
                                 Ok(wire) => {
                                     let len = wire.len() as u64;
-                                    match wire.mqtt_meta().cloned() {
-                                        Some(meta) => {
-                                            let payload = wire.into_data();
+                                    // P2：消费式解构，payload 与 meta 全部 move，
+                                    // 不再 `mqtt_meta().cloned()` + `topic.clone()` 两次克隆
+                                    let (payload, meta) = wire.into_parts();
+                                    match meta {
+                                        Some(MqttPublishMeta {
+                                            topic,
+                                            qos,
+                                            retain,
+                                        }) => {
                                             match client
                                                 .publish(
-                                                    meta.topic.clone(),
-                                                    meta.qos.to_rumqttc(),
-                                                    meta.retain,
+                                                    topic.as_str(),
+                                                    qos.to_rumqttc(),
+                                                    retain,
                                                     payload,
                                                 )
                                                 .await
@@ -596,7 +670,7 @@ impl NetworkConnection for MqttClient {
                                                 }
                                                 Err(e) => warn!(
                                                     "MQTT 发布到 '{}' 失败: {:?}",
-                                                    meta.topic, e
+                                                    topic, e
                                                 ),
                                             }
                                         }
@@ -697,7 +771,9 @@ impl NetworkServer for MqttServer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::connection::{ConnectionType, MqttSettings, WillSettings};
+    use crate::config::connection::{
+        ConnectionType, MqttSettings, TlsSettings, TlsVerifyMode, WillSettings,
+    };
     use crate::core::message_processor::DefaultMessageProcessor;
     use crate::reply::model::{MatchNode, ReplyPayload, ReplyRule, ReplyRulesConfig, RuleCodec};
 
@@ -756,9 +832,10 @@ mod tests {
                 qos: Qos::AtLeastOnce,
                 retain: true,
             }),
+            tls: None,
         });
 
-        let options = build_options(&config);
+        let options = build_options(&config).expect("明文配置应可构造");
         assert_eq!(
             options.broker_address(),
             ("broker.example".to_string(), 1883)
@@ -786,11 +863,62 @@ mod tests {
             clean_session: false,
             ..MqttSettings::default()
         });
-        let options = build_options(&config);
+        let options = build_options(&config).expect("空 client_id 配置应可构造");
         assert!(
             options.clean_session(),
             "空 client_id 时必须强制 clean session"
         );
+    }
+
+    /// 启用 TLS 时 transport 必须是 Tls；未启用时保持默认 Tcp（行为不变）。
+    #[test]
+    fn test_build_options_applies_tls_transport_only_when_enabled() {
+        let with_tls = mqtt_config(MqttSettings {
+            client_id: "cid".to_string(),
+            tls: Some(TlsSettings {
+                enabled: true,
+                verify: TlsVerifyMode::Insecure,
+                ..TlsSettings::default()
+            }),
+            ..MqttSettings::default()
+        });
+        let options = build_options(&with_tls).expect("跳过校验配置应可构造");
+        assert!(matches!(options.transport(), rumqttc::Transport::Tls(_)));
+
+        let plain = mqtt_config(MqttSettings {
+            client_id: "cid".to_string(),
+            ..MqttSettings::default()
+        });
+        let options = build_options(&plain).expect("明文配置应可构造");
+        assert!(matches!(options.transport(), rumqttc::Transport::Tcp));
+
+        // enabled=false 等价于未配置 TLS
+        let disabled = mqtt_config(MqttSettings {
+            client_id: "cid".to_string(),
+            tls: Some(TlsSettings {
+                enabled: false,
+                verify: TlsVerifyMode::CustomCa,
+                ca_path: None,
+                ..TlsSettings::default()
+            }),
+            ..MqttSettings::default()
+        });
+        let options = build_options(&disabled).expect("未启用的 TLS 配置不应参与构造");
+        assert!(matches!(options.transport(), rumqttc::Transport::Tcp));
+    }
+
+    /// P4：同一文案只发一次；文案变化重新发送；清空后同样的文案可再次发送。
+    #[test]
+    fn warning_dedup_emits_only_on_change() {
+        let mut last = None;
+        assert!(should_emit_warning(&mut last, "重连中"));
+        assert!(!should_emit_warning(&mut last, "重连中"));
+        assert!(should_emit_warning(&mut last, "订阅失败"));
+        assert!(should_emit_warning(&mut last, "重连中"));
+
+        // CONNACK 后清空 → 下一次同样的告警必须能发出
+        last = None;
+        assert!(should_emit_warning(&mut last, "重连中"));
     }
 
     /// IP 字面量 broker 直接解析为 SocketAddr（不依赖 DNS）。
@@ -833,12 +961,13 @@ mod tests {
         assert!(batch.messages[0].retain, "接收消息携带 retain 标记");
 
         let wire = rx.try_recv().expect("应答必须投递到写通道");
-        assert_eq!(wire.data(), b"RULE", "应答载荷原样");
-        let meta = wire.mqtt_meta().expect("应答必须携带 topic 元数据");
+        assert!(wire.bypasses_trailer(), "MQTT 载荷不得追加连接 trailer");
+        let (payload, meta) = wire.into_parts();
+        assert_eq!(payload, b"RULE", "应答载荷原样");
+        let meta = meta.expect("应答必须携带 topic 元数据");
         assert_eq!(meta.topic, "sensor/1/temp", "应答回发到原 topic");
         assert_eq!(meta.qos, Qos::AtMostOnce, "应答 QoS 首版固定 0");
         assert!(!meta.retain);
-        assert!(wire.bypasses_trailer(), "MQTT 载荷不得追加连接 trailer");
     }
 
     /// 未启用规则时不产生应答（快速路径），帧仍进明细。

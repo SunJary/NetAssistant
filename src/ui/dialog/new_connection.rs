@@ -12,14 +12,14 @@ use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::DialogFooter;
-use gpui_kit::component::input::Input;
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use rust_i18n::t;
 
-use crate::app::NetAssistantApp;
-use crate::config::connection::{DecoderConfig, Qos};
+use crate::app::{MqttTlsFile, NetAssistantApp};
+use crate::config::connection::{DecoderConfig, Qos, TlsVerifyMode};
 
 use super::{dialog_content_max_height, dialog_height};
 
@@ -188,6 +188,7 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
         // MQTT 基础区（Client ID / 用户名 / 密码 / KeepAlive）
         .when(is_mqtt, |this| {
             this.child(render_mqtt_base_fields(app, theme, cx))
+                .child(render_mqtt_tls_fields(app, theme, cx))
         })
         // 更多设置折叠区
         .child(
@@ -446,6 +447,208 @@ fn render_mqtt_base_fields(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &Ap
         )
 }
 
+/// 渲染 MQTT TLS 分区（开关 / 校验模式 / 证书路径 / ALPN）
+fn render_mqtt_tls_fields(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
+    let state = app.read(cx);
+    let enabled = state.edit_mqtt_tls_enabled;
+    let verify = state.edit_mqtt_tls_verify;
+
+    let app_toggle = app.clone();
+
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(
+            Checkbox::new("mqtt-tls-enable")
+                .label(t!("new_connection.mqtt_tls_label").to_string())
+                .checked(enabled)
+                .on_click(move |checked: &bool, window, cx| {
+                    let checked = *checked;
+                    app_toggle.update(cx, |app, cx| {
+                        app.edit_mqtt_tls_enabled = checked;
+                        // 端口联动：只在仍是默认端口时切换，不覆盖用户自定义值
+                        let port = app.port_input.read(cx).value().trim().to_string();
+                        let target = if checked && port == "1883" {
+                            Some("8883")
+                        } else if !checked && port == "8883" {
+                            Some("1883")
+                        } else {
+                            None
+                        };
+                        if let Some(target) = target {
+                            app.port_input
+                                .update(cx, |input, cx| input.set_value(target, window, cx));
+                        }
+                        cx.notify();
+                    });
+                }),
+        )
+        .when(enabled, |this| {
+            this.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .pl_2()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(field_label(
+                                theme,
+                                t!("new_connection.mqtt_tls_verify_label").to_string(),
+                            ))
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .child(render_tls_verify_chip(
+                                        app,
+                                        &t!("new_connection.mqtt_tls_verify_system"),
+                                        TlsVerifyMode::SystemRoots,
+                                        theme,
+                                        cx,
+                                        verify,
+                                    ))
+                                    .child(render_tls_verify_chip(
+                                        app,
+                                        &t!("new_connection.mqtt_tls_verify_custom_ca"),
+                                        TlsVerifyMode::CustomCa,
+                                        theme,
+                                        cx,
+                                        verify,
+                                    ))
+                                    .child(render_tls_verify_chip(
+                                        app,
+                                        &t!("new_connection.mqtt_tls_verify_insecure"),
+                                        TlsVerifyMode::Insecure,
+                                        theme,
+                                        cx,
+                                        verify,
+                                    )),
+                            ),
+                    )
+                    // 自定义 CA 模式才需要填 CA 路径
+                    .when(verify == TlsVerifyMode::CustomCa, |this| {
+                        this.child(render_tls_file_field(
+                            app,
+                            theme,
+                            "mqtt-tls-pick-ca",
+                            t!("new_connection.mqtt_tls_ca_label").to_string(),
+                            &state.mqtt_tls_ca_input,
+                            MqttTlsFile::Ca,
+                        ))
+                    })
+                    .child(render_tls_file_field(
+                        app,
+                        theme,
+                        "mqtt-tls-pick-cert",
+                        t!("new_connection.mqtt_tls_client_cert_label").to_string(),
+                        &state.mqtt_tls_cert_input,
+                        MqttTlsFile::ClientCert,
+                    ))
+                    .child(render_tls_file_field(
+                        app,
+                        theme,
+                        "mqtt-tls-pick-key",
+                        t!("new_connection.mqtt_tls_client_key_label").to_string(),
+                        &state.mqtt_tls_key_input,
+                        MqttTlsFile::ClientKey,
+                    ))
+                    // 跳过校验的安全提示（不阻塞保存）
+                    .when(verify == TlsVerifyMode::Insecure, |this| {
+                        this.child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.warning)
+                                .child(t!("new_connection.mqtt_tls_insecure_hint").to_string()),
+                        )
+                    })
+                    // SNI 限制提示：rumqttc 用地址作为证书校验名
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(gpui_kit::rgb(0x9ca3af))
+                            .child(t!("new_connection.mqtt_tls_sni_hint").to_string()),
+                    ),
+            )
+        })
+}
+
+/// 渲染 TLS 证书路径行（输入框 + 选择文件按钮）
+fn render_tls_file_field(
+    app: &Entity<NetAssistantApp>,
+    theme: &Theme,
+    button_id: &'static str,
+    label: String,
+    input: &Entity<InputState>,
+    kind: MqttTlsFile,
+) -> Div {
+    let entity = app.clone();
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(field_label(theme, label))
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .items_center()
+                .child(div().flex_1().child(Input::new(input).cleanable(true)))
+                .child(
+                    Button::new(button_id)
+                        .outline()
+                        .label(t!("new_connection.mqtt_tls_pick_file").to_string())
+                        .on_click(move |_, _, cx| {
+                            entity.update(cx, |app, cx| app.pick_mqtt_tls_file(kind, cx));
+                        }),
+                ),
+        )
+}
+
+/// 渲染 TLS 校验模式芯片
+fn render_tls_verify_chip(
+    app: &Entity<NetAssistantApp>,
+    label: &str,
+    mode: TlsVerifyMode,
+    theme: &Theme,
+    _cx: &App,
+    selected: TlsVerifyMode,
+) -> Div {
+    let is_selected = selected == mode;
+    let is_insecure = mode == TlsVerifyMode::Insecure;
+    let entity = app.clone();
+    div()
+        .px_3()
+        .py_1()
+        .rounded_md()
+        .border_1()
+        .border_color(theme.border)
+        .cursor_pointer()
+        // 「跳过校验」选中时用警示色描边，避免用户误以为与严格校验等价
+        .when(is_selected && is_insecure, |div| {
+            div.bg(theme.background)
+                .text_color(theme.warning)
+                .border_color(theme.warning)
+        })
+        .when(is_selected && !is_insecure, |div| {
+            div.bg(theme.primary).text_color(theme.primary_foreground)
+        })
+        .when(!is_selected, |div| {
+            div.bg(theme.border).text_color(theme.foreground)
+        })
+        .child(div().text_sm().font_medium().child(label.to_string()))
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                app.edit_mqtt_tls_verify = mode;
+                cx.notify();
+            });
+        })
+}
+
 /// 渲染 MQTT 专属更多设置（Clean Session / 遗嘱消息）
 fn render_mqtt_advanced(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
     let state = app.read(cx);
@@ -570,6 +773,24 @@ fn render_mqtt_advanced(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) 
                     ),
             )
         })
+        // ALPN 属于低频配置，收进「更多设置」避免干扰主流程
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(field_label(
+                    theme,
+                    t!("new_connection.mqtt_tls_alpn_label").to_string(),
+                ))
+                .child(Input::new(&state.mqtt_tls_alpn_input).cleanable(true))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(gpui_kit::rgb(0x9ca3af))
+                        .child(t!("new_connection.mqtt_tls_alpn_hint").to_string()),
+                ),
+        )
 }
 
 /// 渲染遗嘱 QoS 选择芯片

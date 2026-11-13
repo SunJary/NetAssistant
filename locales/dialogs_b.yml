@@ -129,14 +129,62 @@ new_connection:
     zh-CN: QoS 2
     en: QoS 2
   error_bad_keep_alive:
-    zh-CN: 心跳间隔无效（需为 1-65535 的数字）
-    en: Invalid keep alive (a number between 1-65535)
+    zh-CN: 心跳间隔无效（需为 5-65535 的数字）
+    en: Invalid keep alive (a number between 5-65535)
   error_empty_will_topic:
     zh-CN: 启用遗嘱消息时，遗嘱主题不能为空
     en: Will topic cannot be empty when the will message is enabled
   error_password_requires_username:
     zh-CN: 填写密码时用户名不能为空（MQTT 要求密码依附于用户名）
     en: Username is required when a password is set (MQTT requires a username for a password)
+  mqtt_tls_label:
+    zh-CN: 启用 TLS/SSL
+    en: Enable TLS/SSL
+  mqtt_tls_verify_label:
+    zh-CN: 证书校验
+    en: Certificate Verification
+  mqtt_tls_verify_system:
+    zh-CN: 系统根证书
+    en: System Roots
+  mqtt_tls_verify_custom_ca:
+    zh-CN: 自定义 CA
+    en: Custom CA
+  mqtt_tls_verify_insecure:
+    zh-CN: 跳过校验（不安全）
+    en: Skip Verification (Insecure)
+  mqtt_tls_ca_label:
+    zh-CN: CA 证书（PEM）
+    en: CA Certificate (PEM)
+  mqtt_tls_ca_placeholder:
+    zh-CN: CA 证书 PEM 路径
+    en: Path to the CA certificate (PEM)
+  mqtt_tls_client_cert_label:
+    zh-CN: 客户端证书（可选）
+    en: Client Certificate (optional)
+  mqtt_tls_client_key_label:
+    zh-CN: 客户端私钥（可选）
+    en: Client Key (optional)
+  mqtt_tls_alpn_label:
+    zh-CN: ALPN（可选，逗号分隔）
+    en: ALPN (optional, comma separated)
+  mqtt_tls_alpn_hint:
+    zh-CN: 多数 broker 不需要，仅特殊网关/负载均衡要求时填写
+    en: Most brokers do not require it; only for specific gateways or load balancers
+  mqtt_tls_pick_file:
+    zh-CN: 选择文件
+    en: Choose File
+  mqtt_tls_insecure_hint:
+    zh-CN: 跳过校验仅用于自签证书调试，存在中间人风险
+    en: Skipping verification is for self-signed debugging only and is vulnerable to MITM
+  mqtt_tls_sni_hint:
+    zh-CN: 证书校验使用当前地址作为主机名，请填写域名而非 IP
+    en: The address is used as the TLS hostname; use a domain name instead of an IP
+  error_tls_ca_required:
+    zh-CN: 自定义 CA 模式必须填写 CA 证书路径
+    en: A CA certificate path is required in Custom CA mode
+  error_tls_client_auth_incomplete:
+    zh-CN: 客户端证书与私钥必须成对填写
+    en: Client certificate and key must be provided together
 
 variable_picker:
   title:

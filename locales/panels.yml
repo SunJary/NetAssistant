@@ -818,6 +818,51 @@ mqtt_net:
   missing_topic_meta:
     zh-CN: MQTT 发布缺少主题，消息已忽略
     en: MQTT publish is missing a topic; message dropped
+  tls_config_failed:
+    zh-CN: "TLS 配置无效: %{reason}"
+    en: "Invalid TLS configuration: %{reason}"
+  tls_build_failed:
+    zh-CN: "TLS 配置构建失败: %{reason}"
+    en: "Failed to build TLS configuration: %{reason}"
+  tls_file_read_failed:
+    zh-CN: "证书文件读取失败: %{path}（%{reason}）"
+    en: "Failed to read certificate file: %{path} (%{reason})"
+  tls_root_certs_unavailable:
+    zh-CN: 无法加载系统根证书，请改用自定义 CA 或检查系统证书存储
+    en: System root certificates are unavailable; use a custom CA or check the system trust store
+  tls_ca_required:
+    zh-CN: 自定义 CA 模式必须填写 CA 证书路径
+    en: A CA certificate path is required in Custom CA mode
+  tls_ca_parse_failed:
+    zh-CN: "CA 证书解析失败: %{path}（%{reason}）"
+    en: "Failed to parse CA certificate: %{path} (%{reason})"
+  tls_ca_empty:
+    zh-CN: "CA 证书文件不包含有效证书: %{path}"
+    en: "CA certificate file contains no valid certificate: %{path}"
+  tls_cert_parse_failed:
+    zh-CN: "客户端证书解析失败: %{path}（%{reason}）"
+    en: "Failed to parse client certificate: %{path} (%{reason})"
+  tls_cert_empty:
+    zh-CN: "客户端证书文件不包含有效证书: %{path}"
+    en: "Client certificate file contains no valid certificate: %{path}"
+  tls_key_parse_failed:
+    zh-CN: "客户端私钥解析失败: %{path}（%{reason}）"
+    en: "Failed to parse client key: %{path} (%{reason})"
+  tls_key_empty:
+    zh-CN: "客户端私钥文件不包含有效私钥: %{path}"
+    en: "Client key file contains no valid private key: %{path}"
+  tls_client_auth_incomplete:
+    zh-CN: 客户端证书与私钥必须成对填写
+    en: Client certificate and key must be provided together
+  tls_error_hostname:
+    zh-CN: "TLS 证书与地址不匹配：地址会作为证书校验的主机名，请填写域名而非 IP"
+    en: "TLS certificate does not match the address: the address is used as the certificate hostname; use a domain name instead of an IP"
+  tls_error_unknown_issuer:
+    zh-CN: "TLS 证书链不受信：请改用「自定义 CA」导入 broker 的 CA 证书，或临时勾选「跳过校验」"
+    en: "Untrusted TLS certificate chain: import the broker CA via Custom CA, or temporarily enable Skip Verification"
+  tls_error_generic:
+    zh-CN: "TLS 握手失败: %{reason}"
+    en: "TLS handshake failed: %{reason}"
 
 mqtt_history:
   tooltip:

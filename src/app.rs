@@ -7,7 +7,7 @@ use crate::config;
 use crate::config::app_stats::AppStats;
 use crate::config::connection::{
     ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, MqttSettings, Qos,
-    TrailerKind, WillSettings, generate_mqtt_client_id,
+    TlsSettings, TlsVerifyMode, TrailerKind, WillSettings, generate_mqtt_client_id,
 };
 use crate::config::storage::{ConfigStorage, MqttTopicHistoryEntry};
 use crate::core::toolbox::ToolCategory;
@@ -78,6 +78,20 @@ enum ReplyBundleReadError {
     Io(String),
     TooLarge(u64),
     Bundle(BundleError),
+}
+
+/// MQTT TLS 文件选择目标（CA / 客户端证书 / 客户端私钥）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MqttTlsFile {
+    Ca,
+    ClientCert,
+    ClientKey,
+}
+
+/// 读取输入框并 trim；空串 → None（TLS 证书路径/ALPN 等可选字段共用）
+fn trimmed_input(cx: &App, input: &Entity<InputState>) -> Option<String> {
+    let value = input.read(cx).value().trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
 }
 
 /// 把规则包解析错误映射成用户可读文案（区分"不是规则包"与"内容损坏"）
@@ -171,6 +185,18 @@ pub struct NetAssistantApp {
     pub mqtt_will_payload_input: Entity<InputState>,
     pub edit_mqtt_will_qos: Qos,
     pub mqtt_will_retain: bool,
+    /// TLS 启用开关（仅 MQTT；关闭时其余 TLS 字段不参与构造）
+    pub edit_mqtt_tls_enabled: bool,
+    /// TLS 证书校验模式
+    pub edit_mqtt_tls_verify: TlsVerifyMode,
+    /// CA 证书路径（自定义 CA 模式必填）
+    pub mqtt_tls_ca_input: Entity<InputState>,
+    /// 客户端证书路径（双向认证，可选）
+    pub mqtt_tls_cert_input: Entity<InputState>,
+    /// 客户端私钥路径（双向认证，可选）
+    pub mqtt_tls_key_input: Entity<InputState>,
+    /// ALPN 列表（逗号分隔，可选）
+    pub mqtt_tls_alpn_input: Entity<InputState>,
 
     // 解码器选择对话框状态(打开时创建, 关闭时置 None)
     pub decoder_selection_dialog: Option<DecoderSelectionDialogState>,
@@ -366,6 +392,23 @@ impl NetAssistantApp {
         let mqtt_keep_alive_input = cx.new(|cx| InputState::new(window, cx));
         let mqtt_will_topic_input = cx.new(|cx| InputState::new(window, cx));
         let mqtt_will_payload_input = cx.new(|cx| InputState::new(window, cx));
+        // TLS 证书路径输入（可手动填写，也可由「选择文件」回填）
+        let mqtt_tls_ca_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_tls_ca_placeholder").to_string())
+        });
+        let mqtt_tls_cert_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_optional_placeholder").to_string())
+        });
+        let mqtt_tls_key_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_optional_placeholder").to_string())
+        });
+        let mqtt_tls_alpn_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_optional_placeholder").to_string())
+        });
 
         // 初始化空的连接标签页状态（不预先创建）
         let connection_tabs = IndexMap::new();
@@ -495,6 +538,12 @@ impl NetAssistantApp {
             mqtt_will_payload_input,
             edit_mqtt_will_qos: Qos::AtMostOnce,
             mqtt_will_retain: false,
+            edit_mqtt_tls_enabled: false,
+            edit_mqtt_tls_verify: TlsVerifyMode::SystemRoots,
+            mqtt_tls_ca_input,
+            mqtt_tls_cert_input,
+            mqtt_tls_key_input,
+            mqtt_tls_alpn_input,
             // 初始化解码器选择对话框状态
             decoder_selection_dialog: None,
             server_expanded: true,
@@ -2016,6 +2065,17 @@ impl NetAssistantApp {
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
         self.edit_mqtt_will_qos = Qos::AtMostOnce;
         self.mqtt_will_retain = false;
+        // TLS 默认关闭（与历史行为一致）
+        self.edit_mqtt_tls_enabled = false;
+        self.edit_mqtt_tls_verify = TlsVerifyMode::SystemRoots;
+        self.mqtt_tls_ca_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.mqtt_tls_cert_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.mqtt_tls_key_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.mqtt_tls_alpn_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
 
         let default_host = if is_client { "127.0.0.1" } else { "0.0.0.0" };
         self.host_input.update(cx, |i, cx| {
@@ -2168,6 +2228,23 @@ impl NetAssistantApp {
             }
         }
 
+        // TLS 回填（None = 明文；选中系统根证书即视为已开启）
+        let tls = settings.tls.unwrap_or_default();
+        self.edit_mqtt_tls_enabled = tls.enabled;
+        self.edit_mqtt_tls_verify = tls.verify;
+        self.mqtt_tls_ca_input.update(cx, |i, cx| {
+            i.set_value(tls.ca_path.clone().unwrap_or_default(), window, cx)
+        });
+        self.mqtt_tls_cert_input.update(cx, |i, cx| {
+            i.set_value(tls.client_cert_path.clone().unwrap_or_default(), window, cx)
+        });
+        self.mqtt_tls_key_input.update(cx, |i, cx| {
+            i.set_value(tls.client_key_path.clone().unwrap_or_default(), window, cx)
+        });
+        self.mqtt_tls_alpn_input.update(cx, |i, cx| {
+            i.set_value(tls.alpn.clone().unwrap_or_default(), window, cx)
+        });
+
         // 命令式打开对话框(由 Root 管理层叠)
         open_new_connection_dialog(cx.entity().downgrade(), window, cx);
     }
@@ -2293,7 +2370,8 @@ impl NetAssistantApp {
                 .trim()
                 .to_string();
             let keep_alive_secs = match keep_alive_str.parse::<u16>() {
-                Ok(v) if v > 0 => v,
+                // rumqttc 对 keep_alive 断言 >= 5s，低于该值会 panic，这里提前拦截
+                Ok(v) if v >= 5 => v,
                 _ => {
                     self.connection_form_error =
                         Some(t!("new_connection.error_bad_keep_alive").to_string());
@@ -2323,6 +2401,34 @@ impl NetAssistantApp {
             } else {
                 None
             };
+            // TLS 设置（仅启用时构造；路径留空视为未填写）
+            let tls = if self.edit_mqtt_tls_enabled {
+                let ca_path = trimmed_input(cx, &self.mqtt_tls_ca_input);
+                let client_cert_path = trimmed_input(cx, &self.mqtt_tls_cert_input);
+                let client_key_path = trimmed_input(cx, &self.mqtt_tls_key_input);
+                if self.edit_mqtt_tls_verify == TlsVerifyMode::CustomCa && ca_path.is_none() {
+                    self.connection_form_error =
+                        Some(t!("new_connection.error_tls_ca_required").to_string());
+                    cx.notify();
+                    return false;
+                }
+                if client_cert_path.is_some() != client_key_path.is_some() {
+                    self.connection_form_error =
+                        Some(t!("new_connection.error_tls_client_auth_incomplete").to_string());
+                    cx.notify();
+                    return false;
+                }
+                Some(TlsSettings {
+                    enabled: true,
+                    verify: self.edit_mqtt_tls_verify,
+                    ca_path,
+                    client_cert_path,
+                    client_key_path,
+                    alpn: trimmed_input(cx, &self.mqtt_tls_alpn_input),
+                })
+            } else {
+                None
+            };
             Some(MqttSettings {
                 client_id,
                 username,
@@ -2330,6 +2436,7 @@ impl NetAssistantApp {
                 keep_alive_secs,
                 clean_session: self.edit_mqtt_clean_session,
                 will,
+                tls,
             })
         } else {
             None
@@ -2722,6 +2829,32 @@ impl NetAssistantApp {
             job.active = false;
         }
         cx.notify();
+    }
+
+    /// MQTT TLS：选择证书/私钥文件并回填对应输入框（取消则保持原值）
+    pub fn pick_mqtt_tls_file(&mut self, kind: MqttTlsFile, cx: &mut Context<Self>) {
+        cx.spawn(
+            async move |this: WeakEntity<Self>, async_cx: &mut AsyncApp| {
+                let Some(file) = rfd::AsyncFileDialog::new()
+                    .add_filter("PEM", &["pem", "crt", "cer", "key"])
+                    .pick_file()
+                    .await
+                else {
+                    return;
+                };
+                let path = file.path().display().to_string();
+                let _ = this.update(async_cx, |app, cx| {
+                    let input = match kind {
+                        MqttTlsFile::Ca => app.mqtt_tls_ca_input.clone(),
+                        MqttTlsFile::ClientCert => app.mqtt_tls_cert_input.clone(),
+                        MqttTlsFile::ClientKey => app.mqtt_tls_key_input.clone(),
+                    };
+                    Self::set_input_value_synced(input, path, None, cx);
+                    cx.notify();
+                });
+            },
+        )
+        .detach();
     }
 
     /// Hash 块：选择文件计算摘要（默认仅勾选 SHA-256，算法 chips 可加选）

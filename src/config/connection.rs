@@ -4,6 +4,42 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+/// MQTT TLS 证书校验模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TlsVerifyMode {
+    /// 系统根证书（默认）
+    #[default]
+    SystemRoots,
+    /// 仅信任指定 CA 文件
+    CustomCa,
+    /// 跳过证书链与主机名校验（自签调试；仍然加密传输）
+    Insecure,
+}
+
+/// MQTT TLS 设置（仅 protocol == Mqtt 且 enabled 时生效）。
+///
+/// 只持久化证书**文件路径**，不写 PEM 内容：连接配置可安全导出/分享。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct TlsSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub verify: TlsVerifyMode,
+    /// CA 证书 PEM 路径（verify == CustomCa 时必填）
+    #[serde(default)]
+    pub ca_path: Option<String>,
+    /// 客户端证书 PEM（双向认证，可选；与 client_key_path 成对出现）
+    #[serde(default)]
+    pub client_cert_path: Option<String>,
+    /// 客户端私钥 PEM（PKCS#8 / PKCS#1 / SEC1，可选）
+    #[serde(default)]
+    pub client_key_path: Option<String>,
+    /// ALPN 协议列表（逗号分隔；留空则不下发）
+    #[serde(default)]
+    pub alpn: Option<String>,
+}
+
 /// 连接类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -297,6 +333,9 @@ pub struct MqttSettings {
     pub clean_session: bool,
     #[serde(default)]
     pub will: Option<WillSettings>,
+    /// TLS 设置（None = 明文连接，行为与历史版本一致）
+    #[serde(default)]
+    pub tls: Option<TlsSettings>,
 }
 
 impl Default for MqttSettings {
@@ -308,6 +347,7 @@ impl Default for MqttSettings {
             keep_alive_secs: default_keep_alive(),
             clean_session: true,
             will: None,
+            tls: None,
         }
     }
 }
@@ -506,7 +546,7 @@ impl ConnectionConfig {
 mod tests {
     use super::{
         ClientConfig, ConnectionConfig, ConnectionType, MqttSettings, Qos, ServerConfig,
-        TrailerKind, WillSettings, apply_trailer,
+        TlsSettings, TlsVerifyMode, TrailerKind, WillSettings, apply_trailer,
     };
 
     #[test]
@@ -522,6 +562,14 @@ mod tests {
                 payload: "offline".to_string(),
                 qos: Qos::AtLeastOnce,
                 retain: true,
+            }),
+            tls: Some(TlsSettings {
+                enabled: true,
+                verify: TlsVerifyMode::CustomCa,
+                ca_path: Some("D:/certs/ca.pem".to_string()),
+                client_cert_path: None,
+                client_key_path: None,
+                alpn: Some("mqtt".to_string()),
             }),
         };
         let json = serde_json::to_string(&settings).unwrap();
@@ -539,6 +587,23 @@ mod tests {
         assert!(settings.username.is_none());
         assert!(settings.password.is_none());
         assert!(settings.will.is_none());
+        assert!(settings.tls.is_none(), "默认不启用 TLS");
+    }
+
+    /// 旧配置的 mqtt 段没有 tls 字段 → None（明文），不得反序列化失败。
+    #[test]
+    fn mqtt_settings_backward_compatible_without_tls_field() {
+        let legacy = r#"{
+            "client_id": "netassist-legacy",
+            "username": null,
+            "password": null,
+            "keep_alive_secs": 60,
+            "clean_session": true,
+            "will": null
+        }"#;
+        let settings: MqttSettings = serde_json::from_str(legacy).unwrap();
+        assert!(settings.tls.is_none());
+        assert_eq!(settings.client_id, "netassist-legacy");
     }
 
     #[test]

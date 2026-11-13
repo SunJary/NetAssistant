@@ -13,7 +13,6 @@ use crate::message::{Message, MessageDirection, MessageType};
 use crate::network::events::{ConnectionEvent, NetCounters, ReceivedBatch};
 use crate::reply::exec::{RuleWireMode, handle_frame, rule_wire_mode};
 use crate::reply::{ReplyRulesStore, RxFrame};
-use bytes::BytesMut;
 use log::{error, warn};
 use smol::channel::Sender;
 use std::net::SocketAddr;
@@ -35,7 +34,7 @@ pub(crate) type ReplyDelivery<'a> = &'a dyn Fn(Arc<[u8]>, RuleWireMode) -> bool;
 /// `process_received_message_with_transport` 的默认实现还原为默认值，行为逐字不变。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn process_frame_shared(
-    data: BytesMut,
+    data: Arc<[u8]>,
     processor: &Arc<dyn MessageProcessor>,
     batch: &mut ReceivedBatch,
     counters: &Option<NetCounters>,
@@ -48,9 +47,10 @@ pub(crate) fn process_frame_shared(
     deliver_reply: ReplyDelivery<'_>,
 ) {
     let raw_len = data.len() as u64;
-    // P-6：整帧只复制一次（`BytesMut` → `Arc<[u8]>`），规则引擎的 `RxFrame`
-    // 与消息明细共享同一份缓冲，不再各复制一份。
-    let raw: Arc<[u8]> = Arc::from(&data[..]);
+    // P-6：整帧只复制一次，且由调用方在构造 `Arc<[u8]>` 时完成。
+    // 本函数不再二次拷贝 —— MQTT 路径由此从「BytesMut::from + Arc::from」两次
+    // 拷贝降为一次（P1）。
+    let raw = data;
 
     if rules.is_enabled() {
         // P-6：`raw` 已由调用方与本帧的 Message 共享，这里不再 `to_vec()`

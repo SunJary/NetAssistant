@@ -126,9 +126,17 @@ impl WireMessage {
         self.target
     }
 
-    /// MQTT 发布元数据（None = 非 MQTT 发布；MQTT 写任务据此取 topic/QoS）
+    /// MQTT 发布元数据（只读）。生产路径已改为 [`Self::into_parts`] 消费式取用，
+    /// 该访问器仅保留给单测断言 topic/QoS 使用。
+    #[cfg(test)]
     pub fn mqtt_meta(&self) -> Option<&MqttPublishMeta> {
         self.mqtt_meta.as_ref()
+    }
+
+    /// 消费式解构：发布路径用 move 取走 payload 与元数据，避免整份 meta 与
+    /// topic 各克隆一次（P2）。TCP/UDP 写路径不使用本方法。
+    pub fn into_parts(self) -> (Vec<u8>, Option<MqttPublishMeta>) {
+        (self.data, self.mqtt_meta)
     }
 }
 
@@ -333,17 +341,19 @@ mod tests {
             retain: false,
         };
         let msg = WireMessage::inherit_mqtt(b"23.5".to_vec(), meta.clone());
-        assert_eq!(msg.data(), b"23.5", "payload 必须原样传递");
-        assert_eq!(msg.mqtt_meta(), Some(&meta), "topic/QoS 必须随数据传递");
         assert!(msg.bypasses_trailer(), "MQTT 载荷不得追加连接 trailer");
         assert!(msg.target().is_none(), "MQTT 不使用 UDP 目标语义");
+        let (payload, got) = msg.into_parts();
+        assert_eq!(payload, b"23.5", "payload 必须原样传递");
+        assert_eq!(got, Some(meta), "topic/QoS 必须随数据传递");
     }
 
     /// 回归：非 MQTT 发送路径不受新增字段影响（meta 恒 None）。
     #[test]
     fn wire_message_inherit_has_no_mqtt_meta() {
         let msg = WireMessage::inherit(b"hi".to_vec());
-        assert!(msg.mqtt_meta().is_none());
         assert!(!msg.bypasses_trailer(), "普通发送仍继承连接 trailer");
+        let (_, meta) = msg.into_parts();
+        assert!(meta.is_none());
     }
 }
