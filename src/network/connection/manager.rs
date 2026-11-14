@@ -1,7 +1,10 @@
-use crate::config::connection::{ClientConfig, ConnectionType, ServerConfig, TrailerSetting};
+use crate::config::connection::{
+    ClientConfig, ConnectionType, MqttVersion, ServerConfig, TrailerSetting,
+};
 use crate::network::events::ConnectionEvent;
 use crate::network::interfaces::{NetworkConnection, NetworkFactory, NetworkServer};
 use crate::network::protocol::mqtt::{MqttClient, MqttServer};
+use crate::network::protocol::mqtt_v5::MqttV5Client;
 use crate::network::protocol::tcp::{TcpClient, TcpServer};
 use crate::network::protocol::udp::{UdpClient, UdpServer};
 use crate::reply::ReplyRulesStore;
@@ -35,14 +38,30 @@ impl NetworkFactory for DefaultNetworkFactory {
                 trailer,
                 reply_rules,
             )),
-            // MQTT 客户端（占位：connect 返回明确错误，规划步骤 4 实现双任务模型）
-            ConnectionType::Mqtt => Box::new(MqttClient::new(
-                config.clone(),
-                event_sender,
-                net_counters,
-                trailer,
-                reply_rules,
-            )),
+            // MQTT 客户端：按配置的协议版本分流，3.1.1 行为与历史版本完全一致
+            ConnectionType::Mqtt => {
+                let version = config
+                    .mqtt
+                    .as_ref()
+                    .map(|s| s.protocol_version)
+                    .unwrap_or_default();
+                match version {
+                    MqttVersion::V311 => Box::new(MqttClient::new(
+                        config.clone(),
+                        event_sender,
+                        net_counters,
+                        trailer,
+                        reply_rules,
+                    )),
+                    MqttVersion::V5 => Box::new(MqttV5Client::new(
+                        config.clone(),
+                        event_sender,
+                        net_counters,
+                        trailer,
+                        reply_rules,
+                    )),
+                }
+            }
         }
     }
 

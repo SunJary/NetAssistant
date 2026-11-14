@@ -4,6 +4,19 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+/// MQTT 协议版本
+///
+/// 持久化为 "3.1.1" / "5.0"（而非 "v311"/"v5"）：配置文件是用户可见的，
+/// 与 MQTTX / 各 broker 文档的写法保持一致，减少理解成本。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum MqttVersion {
+    #[default]
+    #[serde(rename = "3.1.1")]
+    V311,
+    #[serde(rename = "5.0")]
+    V5,
+}
+
 /// MQTT TLS 证书校验模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -333,6 +346,15 @@ pub struct MqttSettings {
     pub clean_session: bool,
     #[serde(default)]
     pub will: Option<WillSettings>,
+    /// 协议版本（旧配置无此字段 → 3.1.1，行为与历史版本一致）
+    #[serde(default)]
+    pub protocol_version: MqttVersion,
+    /// 会话过期时间（仅 5.0 生效；None = 不下发该属性，0 = 断开即过期）
+    #[serde(default)]
+    pub session_expiry_secs: Option<u32>,
+    /// 接收最大值（仅 5.0 生效；None = 不下发该属性）
+    #[serde(default)]
+    pub receive_maximum: Option<u16>,
     /// TLS 设置（None = 明文连接，行为与历史版本一致）
     #[serde(default)]
     pub tls: Option<TlsSettings>,
@@ -347,6 +369,9 @@ impl Default for MqttSettings {
             keep_alive_secs: default_keep_alive(),
             clean_session: true,
             will: None,
+            protocol_version: MqttVersion::V311,
+            session_expiry_secs: None,
+            receive_maximum: None,
             tls: None,
         }
     }
@@ -545,8 +570,8 @@ impl ConnectionConfig {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClientConfig, ConnectionConfig, ConnectionType, MqttSettings, Qos, ServerConfig,
-        TlsSettings, TlsVerifyMode, TrailerKind, WillSettings, apply_trailer,
+        ClientConfig, ConnectionConfig, ConnectionType, MqttSettings, MqttVersion, Qos,
+        ServerConfig, TlsSettings, TlsVerifyMode, TrailerKind, WillSettings, apply_trailer,
     };
 
     #[test]
@@ -563,6 +588,9 @@ mod tests {
                 qos: Qos::AtLeastOnce,
                 retain: true,
             }),
+            protocol_version: MqttVersion::V5,
+            session_expiry_secs: Some(300),
+            receive_maximum: Some(20),
             tls: Some(TlsSettings {
                 enabled: true,
                 verify: TlsVerifyMode::CustomCa,
@@ -573,8 +601,27 @@ mod tests {
             }),
         };
         let json = serde_json::to_string(&settings).unwrap();
+        // 版本用可读的 "5.0"，而非枚举名
+        assert!(json.contains("\"protocol_version\":\"5.0\""));
         let back: MqttSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(back, settings);
+    }
+
+    #[test]
+    fn mqtt_version_serde_uses_readable_labels() {
+        assert_eq!(
+            serde_json::to_string(&MqttVersion::V311).unwrap(),
+            "\"3.1.1\""
+        );
+        assert_eq!(serde_json::to_string(&MqttVersion::V5).unwrap(), "\"5.0\"");
+        assert_eq!(
+            serde_json::from_str::<MqttVersion>("\"3.1.1\"").unwrap(),
+            MqttVersion::V311
+        );
+        assert_eq!(
+            serde_json::from_str::<MqttVersion>("\"5.0\"").unwrap(),
+            MqttVersion::V5
+        );
     }
 
     #[test]
@@ -587,12 +634,15 @@ mod tests {
         assert!(settings.username.is_none());
         assert!(settings.password.is_none());
         assert!(settings.will.is_none());
+        assert_eq!(settings.protocol_version, MqttVersion::V311);
+        assert!(settings.session_expiry_secs.is_none());
+        assert!(settings.receive_maximum.is_none());
         assert!(settings.tls.is_none(), "默认不启用 TLS");
     }
 
-    /// 旧配置的 mqtt 段没有 tls 字段 → None（明文），不得反序列化失败。
+    /// 旧配置的 mqtt 段没有新增字段 → 版本 3.1.1、v5 属性为 None，不得反序列化失败。
     #[test]
-    fn mqtt_settings_backward_compatible_without_tls_field() {
+    fn mqtt_settings_backward_compatible_without_new_fields() {
         let legacy = r#"{
             "client_id": "netassist-legacy",
             "username": null,
@@ -604,6 +654,9 @@ mod tests {
         let settings: MqttSettings = serde_json::from_str(legacy).unwrap();
         assert!(settings.tls.is_none());
         assert_eq!(settings.client_id, "netassist-legacy");
+        assert_eq!(settings.protocol_version, MqttVersion::V311);
+        assert!(settings.session_expiry_secs.is_none());
+        assert!(settings.receive_maximum.is_none());
     }
 
     #[test]

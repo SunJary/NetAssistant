@@ -93,6 +93,15 @@ To be clear: it is built for basic MQTT debugging, **not a full MQTTX replacemen
 
 Create an MQTT connection with broker address and port (default 1883), client ID, username/password and keep-alive. Additional settings cover clean session and last-will messages (topic / payload / QoS / retain).
 
+### MQTT 5.0 (optional)
+
+Use **Protocol Version** to switch between **3.1.1** (default) and **5.0**. With 5.0 selected, Additional settings expose two connect properties:
+
+- **Session Expiry (seconds)**: leave empty to omit; 0 expires the session on disconnect, a positive value keeps it until then.
+- **Receive Maximum**: 1-65535, leave empty to omit; limits how many QoS 1/2 publishes may be in flight.
+
+Under 5.0, rejected subscriptions report the SUBACK reason code (e.g. not authorized, invalid topic filter) plus the broker reason string, and broker-initiated disconnects show their reason. User properties, Topic Alias, Response Topic and other advanced properties are not editable yet; QoS, retain and last-will behave the same as in 3.1.1.
+
 ### Subscription management
 
 Add, edit or remove subscriptions at runtime without reconnecting. Subscriptions are isolated per connection and restored automatically after reconnect. The list fills the sidebar and scrolls when needed; hover to see the full topic, double-click to copy it.

@@ -19,7 +19,7 @@ use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::{MqttTlsFile, NetAssistantApp};
-use crate::config::connection::{DecoderConfig, Qos, TlsVerifyMode};
+use crate::config::connection::{DecoderConfig, MqttVersion, Qos, TlsVerifyMode};
 
 use super::{dialog_content_max_height, dialog_height};
 
@@ -445,6 +445,68 @@ fn render_mqtt_base_fields(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &Ap
                 ))
                 .child(Input::new(&state.mqtt_keep_alive_input).cleanable(true)),
         )
+        // 协议版本：切换只影响提交内容，表单里已填的 v5 属性保留不丢
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(field_label(
+                    theme,
+                    t!("new_connection.mqtt_protocol_version_label").to_string(),
+                ))
+                .child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(render_mqtt_version_chip(
+                            app,
+                            "3.1.1",
+                            MqttVersion::V311,
+                            theme,
+                            cx,
+                        ))
+                        .child(render_mqtt_version_chip(
+                            app,
+                            "5.0",
+                            MqttVersion::V5,
+                            theme,
+                            cx,
+                        )),
+                ),
+        )
+}
+
+/// 渲染 MQTT 协议版本芯片
+fn render_mqtt_version_chip(
+    app: &Entity<NetAssistantApp>,
+    label: &str,
+    version: MqttVersion,
+    theme: &Theme,
+    cx: &App,
+) -> Div {
+    let is_selected = app.read(cx).edit_mqtt_version == version;
+    let entity = app.clone();
+    div()
+        .px_3()
+        .py_1()
+        .rounded_md()
+        .border_1()
+        .border_color(theme.border)
+        .cursor_pointer()
+        .when(is_selected, |div| {
+            div.bg(theme.primary).text_color(theme.primary_foreground)
+        })
+        .when(!is_selected, |div| {
+            div.bg(theme.border).text_color(theme.foreground)
+        })
+        .child(div().text_sm().font_medium().child(label.to_string()))
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            entity.update(cx, |app, cx| {
+                app.edit_mqtt_version = version;
+                cx.notify();
+            });
+        })
 }
 
 /// 渲染 MQTT TLS 分区（开关 / 校验模式 / 证书路径 / ALPN）
@@ -656,6 +718,7 @@ fn render_mqtt_advanced(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) 
     let clean_session = state.edit_mqtt_clean_session;
     let will_retain = state.mqtt_will_retain;
     let qos = state.edit_mqtt_will_qos;
+    let version = state.edit_mqtt_version;
 
     let app_clean = app.clone();
     let app_will = app.clone();
@@ -678,6 +741,48 @@ fn render_mqtt_advanced(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) 
                     });
                 }),
         )
+        // MQTT 5 专属连接属性：切回 3.1.1 时保留输入（只是不提交）
+        .when(version == MqttVersion::V5, |this| {
+            this.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .pl_2()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(field_label(
+                                theme,
+                                t!("new_connection.mqtt_session_expiry_label").to_string(),
+                            ))
+                            .child(Input::new(&state.mqtt_session_expiry_input).cleanable(true))
+                            .child(
+                                div().text_xs().text_color(gpui_kit::rgb(0x9ca3af)).child(
+                                    t!("new_connection.mqtt_session_expiry_hint").to_string(),
+                                ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(field_label(
+                                theme,
+                                t!("new_connection.mqtt_receive_maximum_label").to_string(),
+                            ))
+                            .child(Input::new(&state.mqtt_receive_max_input).cleanable(true))
+                            .child(
+                                div().text_xs().text_color(gpui_kit::rgb(0x9ca3af)).child(
+                                    t!("new_connection.mqtt_receive_maximum_hint").to_string(),
+                                ),
+                            ),
+                    ),
+            )
+        })
         // 遗嘱消息
         .child(
             Checkbox::new("mqtt-will-enable")

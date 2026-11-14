@@ -6,8 +6,8 @@ use rust_i18n::t;
 use crate::config;
 use crate::config::app_stats::AppStats;
 use crate::config::connection::{
-    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, MqttSettings, Qos,
-    TlsSettings, TlsVerifyMode, TrailerKind, WillSettings, generate_mqtt_client_id,
+    ConnectionConfig, ConnectionStatus, ConnectionType, DecoderConfig, MqttSettings, MqttVersion,
+    Qos, TlsSettings, TlsVerifyMode, TrailerKind, WillSettings, generate_mqtt_client_id,
 };
 use crate::config::storage::{ConfigStorage, MqttTopicHistoryEntry};
 use crate::core::toolbox::ToolCategory;
@@ -179,6 +179,12 @@ pub struct NetAssistantApp {
     pub mqtt_password_input: Entity<InputState>,
     pub mqtt_keep_alive_input: Entity<InputState>,
     pub edit_mqtt_clean_session: bool,
+    /// 协议版本（仅 MQTT；3.1.1 / 5.0）
+    pub edit_mqtt_version: MqttVersion,
+    /// 会话过期秒数（仅 5.0 提交；留空不下发）
+    pub mqtt_session_expiry_input: Entity<InputState>,
+    /// 接收最大值（仅 5.0 提交；留空不下发）
+    pub mqtt_receive_max_input: Entity<InputState>,
     /// 遗嘱消息启用开关（关闭时不下发 will）
     pub mqtt_will_enabled: bool,
     pub mqtt_will_topic_input: Entity<InputState>,
@@ -390,6 +396,14 @@ impl NetAssistantApp {
                 .masked(true)
         });
         let mqtt_keep_alive_input = cx.new(|cx| InputState::new(window, cx));
+        let mqtt_session_expiry_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_optional_placeholder").to_string())
+        });
+        let mqtt_receive_max_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.mqtt_optional_placeholder").to_string())
+        });
         let mqtt_will_topic_input = cx.new(|cx| InputState::new(window, cx));
         let mqtt_will_payload_input = cx.new(|cx| InputState::new(window, cx));
         // TLS 证书路径输入（可手动填写，也可由「选择文件」回填）
@@ -533,6 +547,9 @@ impl NetAssistantApp {
             mqtt_password_input,
             mqtt_keep_alive_input,
             edit_mqtt_clean_session: true,
+            edit_mqtt_version: MqttVersion::V311,
+            mqtt_session_expiry_input,
+            mqtt_receive_max_input,
             mqtt_will_enabled: false,
             mqtt_will_topic_input,
             mqtt_will_payload_input,
@@ -2058,6 +2075,11 @@ impl NetAssistantApp {
         self.mqtt_keep_alive_input
             .update(cx, |i, cx| i.set_value("60".to_string(), window, cx));
         self.edit_mqtt_clean_session = true;
+        self.edit_mqtt_version = MqttVersion::V311;
+        self.mqtt_session_expiry_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
+        self.mqtt_receive_max_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
         self.mqtt_will_enabled = false;
         self.mqtt_will_topic_input
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
@@ -2207,6 +2229,27 @@ impl NetAssistantApp {
             i.set_value(settings.keep_alive_secs.to_string(), window, cx)
         });
         self.edit_mqtt_clean_session = settings.clean_session;
+        self.edit_mqtt_version = settings.protocol_version;
+        self.mqtt_session_expiry_input.update(cx, |i, cx| {
+            i.set_value(
+                settings
+                    .session_expiry_secs
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+                window,
+                cx,
+            )
+        });
+        self.mqtt_receive_max_input.update(cx, |i, cx| {
+            i.set_value(
+                settings
+                    .receive_maximum
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+                window,
+                cx,
+            )
+        });
         match settings.will {
             Some(w) => {
                 self.mqtt_will_enabled = true;
@@ -2379,6 +2422,53 @@ impl NetAssistantApp {
                     return false;
                 }
             };
+            // 仅 5.0 提交 v5 连接属性；切回 3.1.1 时输入保留在表单但不提交
+            let (session_expiry_secs, receive_maximum) = if self.edit_mqtt_version
+                == MqttVersion::V5
+            {
+                let expiry_str = self
+                    .mqtt_session_expiry_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .to_string();
+                let session_expiry_secs = if expiry_str.is_empty() {
+                    None
+                } else {
+                    match expiry_str.parse::<u32>() {
+                        Ok(v) => Some(v),
+                        Err(_) => {
+                            self.connection_form_error =
+                                Some(t!("new_connection.error_bad_session_expiry").to_string());
+                            cx.notify();
+                            return false;
+                        }
+                    }
+                };
+                let max_str = self
+                    .mqtt_receive_max_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .to_string();
+                let receive_maximum = if max_str.is_empty() {
+                    None
+                } else {
+                    // Receive Maximum 合法范围 1-65535，0 是协议禁止值
+                    match max_str.parse::<u16>() {
+                        Ok(v) if v >= 1 => Some(v),
+                        _ => {
+                            self.connection_form_error =
+                                Some(t!("new_connection.error_bad_receive_maximum").to_string());
+                            cx.notify();
+                            return false;
+                        }
+                    }
+                };
+                (session_expiry_secs, receive_maximum)
+            } else {
+                (None, None)
+            };
             let will = if self.mqtt_will_enabled {
                 let topic = self
                     .mqtt_will_topic_input
@@ -2436,6 +2526,9 @@ impl NetAssistantApp {
                 keep_alive_secs,
                 clean_session: self.edit_mqtt_clean_session,
                 will,
+                protocol_version: self.edit_mqtt_version,
+                session_expiry_secs,
+                receive_maximum,
                 tls,
             })
         } else {

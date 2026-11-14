@@ -34,30 +34,30 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 /// rumqttc 内部请求通道容量（发布速率由 broker 确认节奏天然背压；规划 §6.2）
-const REQUEST_CHANNEL_CAP: usize = 10;
+pub(crate) const REQUEST_CHANNEL_CAP: usize = 10;
 
 /// 发布写通道容量（F-4）。
 ///
 /// 有界队列给「断线期间持续发送」一个明确的内存上界：任务 B 阻塞在
 /// `client.publish().await`（rumqttc 内部通道满）时，生产端 `try_send` 失败即
 /// 丢弃并告警，不会无界堆积，也不会阻塞 UI 或规则应答（F-5）。
-const WRITE_CHANNEL_CAP: usize = 1024;
+pub(crate) const WRITE_CHANNEL_CAP: usize = 1024;
 
 /// 单批聚合上限：达到即立即推送 `MessagesReceived`，避免洪泛订阅下批次无界增长（规划 §11）
-const BATCH_MAX: usize = 64;
+pub(crate) const BATCH_MAX: usize = 64;
 
 /// 取消后等待 DISCONNECT 报文写出的上限（规划 §6.2）。
 ///
 /// 正常情况下任务 B 入队的 Disconnect 请求会在毫秒级被 poll 消费；该超时只用于
 /// 兜底异常路径（broker 不回包、请求分支因 inflight 满/碰撞被禁用），避免退出挂死。
-const DISCONNECT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
+pub(crate) const DISCONNECT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// `disconnect()` 等待任务 A（事件循环）退出的上限（规划 D-A/F1）。
 ///
 /// 取 `DISCONNECT_DRAIN_TIMEOUT`（2s 排空上限）+ 余量：`manager` 在建新连接前会
 /// `await` 旧实例的 `disconnect()`，任务 A 退出后其 `Disconnected` 必然先于新连接的
 /// `ClientWriteSenderReady` 入队，从而避免旧连接的事件误删新连接的写通道。
-const DISCONNECT_WAIT_TASK_TIMEOUT: Duration = Duration::from_secs(3);
+pub(crate) const DISCONNECT_WAIT_TASK_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// broker 端点解析失败时的哨兵地址（规划 §6.3①：规则引擎 `source` 用哨兵兜底）
 fn broker_endpoint_sentinel() -> SocketAddr {
@@ -102,7 +102,7 @@ fn build_options(config: &ClientConfig) -> Result<MqttOptions, String> {
 /// 把 broker `host:port` 解析为 `SocketAddr`（供 `Connected` 事件与规则引擎 `source` 使用）。
 ///
 /// `lookup_host` 同时支持 IP 字面量与主机名；失败时返回哨兵地址（规划 §6.3①）。
-async fn resolve_broker_endpoint(host: &str, port: u16) -> SocketAddr {
+pub(crate) async fn resolve_broker_endpoint(host: &str, port: u16) -> SocketAddr {
     let target = if host.contains(':') && !host.contains('[') {
         format!("[{}]:{}", host, port)
     } else {
@@ -145,7 +145,7 @@ fn describe_connect_error(err: &rumqttc::ConnectionError) -> String {
 /// 断网期间 rumqttc 按 backoff 周期反复失败，若每轮都发 `Warning`，底部提示会
 /// 反复刷新。连接恢复（CONNACK）或进入终态时调用方需把 `last` 清空，
 /// 否则「断开 → 重连 → 再断开」的第二次提示会被错误抑制。
-fn should_emit_warning(last: &mut Option<String>, message: &str) -> bool {
+pub(crate) fn should_emit_warning(last: &mut Option<String>, message: &str) -> bool {
     if last.as_deref() == Some(message) {
         return false;
     }
@@ -158,7 +158,7 @@ fn should_emit_warning(last: &mut Option<String>, message: &str) -> bool {
 /// 复用共享骨架 `process_frame_shared`：规则引擎调用 / 计数 / `ReceivedBatch` 组装
 /// 与其他协议逐字一致，仅应答投递闭包不同（携带 topic/QoS）。
 #[allow(clippy::too_many_arguments)]
-fn process_frame_mqtt(
+pub(crate) fn process_frame_mqtt(
     payload: &[u8],
     topic: &str,
     retain: bool,
@@ -832,7 +832,7 @@ mod tests {
                 qos: Qos::AtLeastOnce,
                 retain: true,
             }),
-            tls: None,
+            ..MqttSettings::default()
         });
 
         let options = build_options(&config).expect("明文配置应可构造");

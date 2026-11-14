@@ -101,6 +101,27 @@ new_connection:
   mqtt_keep_alive_label:
     zh-CN: 心跳间隔（秒）
     en: Keep Alive (seconds)
+  mqtt_protocol_version_label:
+    zh-CN: 协议版本
+    en: Protocol Version
+  mqtt_session_expiry_label:
+    zh-CN: 会话过期（秒）
+    en: Session Expiry (seconds)
+  mqtt_session_expiry_hint:
+    zh-CN: 留空则不下发；0 表示断开即过期
+    en: Leave empty to omit; 0 means the session expires on disconnect
+  mqtt_receive_maximum_label:
+    zh-CN: 接收最大值
+    en: Receive Maximum
+  mqtt_receive_maximum_hint:
+    zh-CN: 1-65535，留空则不下发
+    en: 1-65535; leave empty to omit
+  error_bad_session_expiry:
+    zh-CN: 会话过期无效（需为 0-4294967295 的数字，或留空）
+    en: Invalid session expiry (a number between 0-4294967295, or leave empty)
+  error_bad_receive_maximum:
+    zh-CN: 接收最大值无效（需为 1-65535 的数字，或留空）
+    en: Invalid receive maximum (a number between 1-65535, or leave empty)
   mqtt_clean_session_label:
     zh-CN: 清理会话（Clean Session）
     en: Clean Session

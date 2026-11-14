@@ -806,6 +806,60 @@ mqtt_net:
   suback_rejected:
     zh-CN: Broker 拒绝了部分订阅
     en: Broker rejected some subscriptions
+  suback_rejected_reason:
+    zh-CN: "Broker 拒绝了订阅: %{reason}"
+    en: "Broker rejected the subscription: %{reason}"
+  suback_reason_with_server:
+    zh-CN: "%{reason}（broker 说明: %{detail}）"
+    en: "%{reason} (broker: %{detail})"
+  suback_reason_success:
+    zh-CN: 订阅成功
+    en: Subscription accepted
+  suback_reason_failure:
+    zh-CN: 订阅失败（未指明原因）
+    en: Subscription failed (unspecified)
+  suback_reason_unspecified:
+    zh-CN: 未指明错误
+    en: Unspecified error
+  suback_reason_implementation_specific:
+    zh-CN: 实现特定错误
+    en: Implementation specific error
+  suback_reason_not_authorized:
+    zh-CN: 未授权
+    en: Not authorized
+  suback_reason_topic_filter_invalid:
+    zh-CN: 主题过滤器非法
+    en: Topic filter invalid
+  suback_reason_pkid_in_use:
+    zh-CN: 报文标识符已被占用
+    en: Packet identifier in use
+  suback_reason_quota_exceeded:
+    zh-CN: 配额超限
+    en: Quota exceeded
+  suback_reason_shared_not_supported:
+    zh-CN: 不支持共享订阅
+    en: Shared subscriptions not supported
+  suback_reason_sub_id_not_supported:
+    zh-CN: 不支持订阅标识符
+    en: Subscription identifiers not supported
+  suback_reason_wildcard_not_supported:
+    zh-CN: 不支持通配符订阅
+    en: Wildcard subscriptions not supported
+  server_disconnect:
+    zh-CN: "Broker 主动断开连接（%{code}）"
+    en: "Broker closed the connection (%{code})"
+  server_disconnect_reason:
+    zh-CN: "Broker 主动断开连接（%{code}: %{reason}）"
+    en: "Broker closed the connection (%{code}: %{reason})"
+  connack_refused:
+    zh-CN: "Broker 拒绝连接（%{code}）"
+    en: "Broker refused the connection (%{code})"
+  publish_rejected:
+    zh-CN: "发布被 Broker 拒绝（%{code}）"
+    en: "Publish rejected by broker (%{code})"
+  publish_rejected_reason:
+    zh-CN: "发布被 Broker 拒绝（%{code}: %{reason}）"
+    en: "Publish rejected by broker (%{code}: %{reason})"
   connect_failed:
     zh-CN: "MQTT 连接失败: %{reason}"
     en: "MQTT connect failed: %{reason}"
