@@ -20,6 +20,18 @@ fn main() {
             println!("cargo:rustc-link-arg=/stack:{}", 8 * 1024 * 1024);
         }
 
+        // Windows Server 2016 (10.0.14393) 没有系统 ICU(1703 才引入)。
+        // gpui 平台层的 jump list 代码静态导入 u_strlen, 但本项目从未调用该功能,
+        // 因此改为延迟加载: DLL 缺失时不再阻断进程启动, 也不会产生任何运行时调用。
+        if cfg!(target_env = "msvc") {
+            println!("cargo:rustc-link-arg=/DELAYLOAD:icuuc.dll");
+            // 兼容旧版 windows-rs bindings(0.57/0.58 映射到 icu.dll)重新出现的场景;
+            // 当前依赖无该导入, 链接器会报 LNK4199, 这条告警本身就是预期行为。
+            println!("cargo:rustc-link-arg=/DELAYLOAD:icu.dll");
+            println!("cargo:rustc-link-arg=/IGNORE:4199");
+            println!("cargo:rustc-link-arg=delayimp.lib");
+        }
+
         let mut res = winres::WindowsResource::new();
         res.set_icon("assets/icon/icon.ico");
         res.set_version_info(winres::VersionInfo::PRODUCTVERSION, 0x0001000000000000);
