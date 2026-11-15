@@ -1,6 +1,6 @@
 ---
-title: MQTT Client - Lightweight MQTT 3.1.1 Debug Tool
-description: "Lightweight MQTT 3.1.1 client with subscriptions, QoS 0/1/2, retain, last-will & auto-reply in a ~20MB Rust app. MQTT 5.0, TLS and WebSocket not supported."
+title: MQTT Client - Lightweight MQTT Debug Tool
+description: "Lightweight MQTT 3.1.1 / 5.0 client with TLS, subscriptions, QoS 0/1/2, retain, last-will & auto-reply in a ~20MB Rust app."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "A lightweight MQTT 3.1.1 client built into a network debugging tool, with subscriptions, QoS 0/1/2, retain, last-will and auto-reply.",
+            "description": "A lightweight MQTT 3.1.1 / 5.0 client with TLS, built into a network debugging tool, with subscriptions, QoS 0/1/2, retain, last-will and auto-reply.",
             "url": "https://netassistant.trydo.top/en/mqtt-client",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -35,7 +35,7 @@ head:
                 "name": "Does NetAssistant support MQTT 5.0?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Not yet. NetAssistant implements an MQTT 3.1.1 client for basic subscribe, publish and device debugging. For MQTT 5.0 features, use MQTTX or an EMQX client."
+                  "text": "Yes. NetAssistant offers MQTT 3.1.1 and 5.0 as selectable protocol versions. The 5.0 mode covers version selection, session expiry, receive maximum and reason codes; advanced features such as user properties and subscription identifiers are not provided."
                 }
               },
               {
@@ -43,7 +43,7 @@ head:
                 "name": "Does it support MQTT over TLS or WebSocket?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Not yet. The current version connects to the broker over plain TCP only; TLS, MQTT over WebSocket and MQTT 5.0 are not supported."
+                  "text": "TLS is supported; MQTT over WebSocket is not. Enable TLS in the connection settings and choose system roots, a custom CA or skipped verification, with an optional client certificate and private key for mutual TLS. It applies to both 3.1.1 and 5.0."
                 }
               },
               {
@@ -51,7 +51,7 @@ head:
                 "name": "Can NetAssistant replace MQTTX?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "For basic MQTT 3.1.1 subscribe, publish and lightweight debugging, yes. For MQTT 5.0, TLS, scripting or large-scale connection management, MQTTX is the better fit."
+                  "text": "For basic MQTT subscribe, publish and lightweight debugging, yes. For MQTT over WebSocket, scripting, data visualization or fuller 5.0 features, MQTTX is the better fit."
                 }
               },
               {
@@ -70,9 +70,9 @@ head:
 
 # Lightweight MQTT Client: Subscribe, Publish and Debug
 
-If you only need to connect to a broker occasionally to check whether a device is publishing, whether the topic is right or whether QoS is working, installing an Electron client is overkill. NetAssistant includes an **MQTT 3.1.1 client** in the same app as its TCP/UDP tools, built with Rust and using about 20MB of memory.
+If you only need to connect to a broker occasionally to check whether a device is publishing, whether the topic is right or whether QoS is working, installing an Electron client is overkill. NetAssistant includes an **MQTT client** (MQTT 3.1.1 / 5.0) in the same app as its TCP/UDP tools, built with Rust and using about 20MB of memory.
 
-To be clear: it is built for basic MQTT debugging, **not a full MQTTX replacement**. MQTT 5.0, TLS, WebSocket and scripting are not supported yet.
+To be clear: it is built for basic MQTT debugging, **not a full MQTTX replacement**. TLS and MQTT 5.0 are supported (5.0 covers the basics); MQTT over WebSocket and scripting are still not supported.
 
 > [Download NetAssistant](/en/download) · [Detailed MQTTX comparison](/en/comparison-mqttx) · [All features](/en/features)
 
@@ -85,13 +85,23 @@ To be clear: it is built for basic MQTT debugging, **not a full MQTTX replacemen
 - **Developers who want fewer apps**: keep TCP/UDP and MQTT debugging in one tool
 - **Low-memory environments**: avoid a several-hundred-MB client for occasional MQTT checks
 
-**Not ideal for**: MQTT 5.0 properties, mutual TLS, WebSocket, scripting or large-scale connection management. Use MQTTX, EMQX or another dedicated client for those.
+**Not ideal for**: MQTT over WebSocket, full 5.0 features such as user properties, scripting or large-scale connection management. Use MQTTX, EMQX or another dedicated client for those.
 
 ## Core features
 
 ### Connection settings
 
-Create an MQTT connection with broker address and port (default 1883), client ID, username/password and keep-alive. Additional settings cover clean session and last-will messages (topic / payload / QoS / retain).
+Create an MQTT connection with broker address and port (default 1883), client ID, username/password and keep-alive; the protocol version can be 3.1.1 (default) or 5.0. Additional settings cover clean session and last-will messages (topic / payload / QoS / retain).
+
+### MQTT over TLS
+
+With TLS enabled the connection is encrypted, for both 3.1.1 and 5.0. Certificate verification has three modes:
+
+- **System roots** (default): verify against the system trust store
+- **Custom CA**: a PEM file path, filled in with the file picker, for brokers using a private CA
+- **Verification skipped**: no certificate check, for self-signed testing only; traffic is still encrypted
+
+Mutual TLS optionally takes a client certificate and private key (PEM, PKCS#8 / PKCS#1 / SEC1), which must be provided as a pair; ALPN is optional, comma-separated and omitted when empty. Only certificate file paths are saved, never the PEM content. Handshake failures such as an expired certificate, hostname mismatch or untrusted chain report a readable cause and suggested fix.
 
 ### MQTT 5.0 (optional)
 
@@ -100,7 +110,7 @@ Use **Protocol Version** to switch between **3.1.1** (default) and **5.0**. With
 - **Session Expiry (seconds)**: leave empty to omit; 0 expires the session on disconnect, a positive value keeps it until then.
 - **Receive Maximum**: 1-65535, leave empty to omit; limits how many QoS 1/2 publishes may be in flight.
 
-Under 5.0, rejected subscriptions report the SUBACK reason code (e.g. not authorized, invalid topic filter) plus the broker reason string, and broker-initiated disconnects show their reason. User properties, Topic Alias, Response Topic and other advanced properties are not editable yet; QoS, retain and last-will behave the same as in 3.1.1.
+Under 5.0, a rejected CONNACK, a failed SUBACK and a broker-initiated DISCONNECT all show the reason code plus the broker reason string; Clean Start reuses the Clean Session switch and is forced when the client ID is empty. User properties, Will Delay, subscription identifiers, shared subscriptions and other advanced features are not provided; QoS, retain and last-will behave the same as in 3.1.1.
 
 ### Subscription management
 
@@ -134,28 +144,28 @@ Auto-reply publishes the response back to the topic that received the message. P
 | ---- | ---- | ---- |
 | Stack | Rust + GPUI native | Electron + Vue |
 | Memory | About 20MB | Several hundred MB |
-| MQTT version | MQTT 3.1.1 | MQTT 3.1.1 / 5.0 |
-| TLS / WebSocket | Not yet | Yes |
+| MQTT version | MQTT 3.1.1 / 5.0 (basics) | MQTT 3.1.1 / 5.0 (more complete) |
+| TLS / WebSocket | TLS yes (three verification modes, mutual TLS); WebSocket no | Both yes |
 | Scripting | No | Yes |
 | Connection management | Basic multi-connection | More advanced |
 | TCP/UDP debugging integration | Same app | Separate app |
 | Price | Free and open source | Free |
 
-Bottom line: **choose NetAssistant for basic MQTT 3.1.1 debugging, and MQTTX for the full MQTT ecosystem**. See the [MQTTX comparison](/en/comparison-mqttx) for details.
+Bottom line: **choose NetAssistant for basic MQTT debugging, and MQTTX for WebSocket, scripting or fuller 5.0 features**. See the [MQTTX comparison](/en/comparison-mqttx) for details.
 
 ## FAQ
 
 ### Does NetAssistant support MQTT 5.0?
 
-Not yet. It implements MQTT 3.1.1 for basic subscribe, publish and device debugging.
+Yes. The protocol version can be switched between 3.1.1 and 5.0, and 5.0 covers session expiry, receive maximum, reason codes and other basics; advanced features such as user properties and subscription identifiers are not provided.
 
 ### Does it support TLS or WebSocket?
 
-Not yet. It connects to the broker over plain TCP only.
+TLS is supported; MQTT over WebSocket is not. Choose system roots, a custom CA or skipped verification, with an optional client certificate and private key for mutual TLS.
 
 ### Can it replace MQTTX?
 
-It covers basic subscribe, publish and lightweight debugging. For MQTT 5.0, TLS, scripting or large-scale connection management, MQTTX is better.
+It covers basic subscribe, publish and lightweight debugging. For MQTT over WebSocket, scripting, data visualization or fuller 5.0 features, MQTTX is better.
 
 ### Does it support QoS 2 and retain?
 

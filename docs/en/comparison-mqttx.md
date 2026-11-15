@@ -1,7 +1,7 @@
 ---
 title: MQTTX Alternative - NetAssistant vs MQTTX Client Comparison
 titleTemplate: ':title'
-description: "NetAssistant vs MQTTX: a Rust native MQTT 3.1.1 client using about 20MB, versus MQTTX with MQTT 5.0, TLS and scripting. An honest look at the gaps."
+description: "NetAssistant vs MQTTX: a Rust native MQTT 3.1.1 / 5.0 client with TLS using about 20MB, versus MQTTX with WebSocket, scripting and fuller 5.0 support. An honest look at the gaps."
 ---
 
 # NetAssistant vs MQTTX: A Lightweight MQTT Client Comparison
@@ -30,8 +30,8 @@ The Rust native build removes that overhead: no JS engine, no DOM tree, no rende
 
 | Dimension | NetAssistant (MQTT mode) | MQTTX |
 | --------- | ---- | ---- |
-| MQTT version | ✅ 3.1.1 | ✅ 3.1.1 / 5.0 |
-| MQTT over TLS | ❌ Not supported yet | ✅ |
+| MQTT version | ✅ 3.1.1 / 5.0 (basics) | ✅ 3.1.1 / 5.0 (more complete) |
+| MQTT over TLS | ✅ Three verification modes + mutual TLS | ✅ |
 | MQTT over WebSocket | ❌ Not supported yet | ✅ |
 | Connection management | ✅ Multi-tab | ✅ Grouped connection list |
 | Subscription management | ✅ Add / edit / remove at runtime, auto-restored after reconnect | ✅ Wildcard subscription tree |
@@ -57,7 +57,7 @@ Some general features are hidden for MQTT connections by design — these are pr
 - **No stress testing**: the stress tab is not rendered for MQTT connections; the stress engine applies to TCP/UDP only
 - **No decoders and no send trailer**: MQTT defines message boundaries itself, so line / length-prefix / JSON framing is unnecessary
 - **No line-by-line send tasks or scheduled tasks**: the send-task entry is hidden in MQTT mode; periodic send remains available
-- **No TLS, MQTT 5.0 or MQTT over WebSocket in the first release**
+- **MQTT over WebSocket is not supported**; **MQTT 5.0 covers the basics only** (protocol version, session expiry, receive maximum, reason codes), with user properties, Will Delay, subscription identifiers, shared subscriptions and other advanced features not provided
 - **Auto-reply condition scope**: byte-level and JSON-field conditions apply to the MQTT payload; the source-address condition refers to the broker address, not the device; decoder-related conditions (frame trailer, etc.) do not apply
 - **Auto-reply reply parameters**: replies always go to the topic the message arrived on, with QoS 0 and retain=false
 
@@ -72,8 +72,8 @@ NetAssistant has a few capabilities MQTTX does not have at all, but they **only 
 
 ## Giving MQTTX Its Due
 
-- **MQTT 5.0 support**: NetAssistant only supports 3.1.1; if your broker runs 5.0, MQTTX is the choice
-- **TLS / WebSocket**: encrypted connections are standard in production; NetAssistant hasn't built them yet
+- **Fuller MQTT 5.0 support**: NetAssistant supports 3.1.1 / 5.0 with the basic connect properties, but user properties, Will Delay, subscription identifiers, shared subscriptions and other advanced features still need MQTTX
+- **MQTT over WebSocket**: NetAssistant connects to the broker over TCP only, so brokers or gateways that require WebSocket need MQTTX; TLS is supported by both, and NetAssistant adds three verification modes plus mutual TLS
 - **Scripting automation**: MQTTX's JavaScript engine handles complex data processing and automated testing
 - **Data visualization**: MQTTX's chart panels are well suited to streaming sensor data
 - **Subscription UX**: MQTTX's wildcard subscription tree is more intuitive
@@ -87,8 +87,8 @@ NetAssistant has a few capabilities MQTTX does not have at all, but they **only 
 
 ## Summary
 
-MQTTX is the most feature-complete open-source MQTT client. If you need MQTT 5.0, TLS, scripting automation or data visualization, it remains the clear choice.
+MQTTX is the most feature-complete open-source MQTT client. If you need MQTT over WebSocket, full 5.0 features, scripting automation or data visualization, it remains the clear choice. TLS is supported by both: NetAssistant offers system roots / custom CA / skipped verification plus mutual TLS, so a standard encrypted connection is no reason to switch.
 
-NetAssistant's MQTT support is "adequate" rather than exhaustive: 3.1.1, subscription management, QoS 0/1/2, retain, will messages, auto-reply and periodic send are there, while stress testing, decoders and line/scheduled tasks apply only to TCP/UDP. If you want an **extremely lightweight MQTT debugger**, or need to **debug MQTT together with TCP/UDP**, give it a try — it won't fully replace MQTTX, but it may fit certain workflows better.
+NetAssistant's MQTT support is "adequate" rather than exhaustive: 3.1.1 / 5.0, TLS, subscription management, QoS 0/1/2, retain, will messages, auto-reply and periodic send are there, but 5.0 covers the basics only and MQTT over WebSocket is not supported; stress testing, decoders and line/scheduled tasks apply only to TCP/UDP. If you want an **extremely lightweight MQTT debugger**, or need to **debug MQTT together with TCP/UDP**, give it a try — it won't fully replace MQTTX, but it may fit certain workflows better.
 
 > Want to try it? [Download NetAssistant](/en/download)

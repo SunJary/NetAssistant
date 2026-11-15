@@ -11,7 +11,7 @@ By platform: [Windows network debugging tool](/en/windows-network-debug-tool) ·
 
 ## Core Features
 
-- **Multi-protocol support**: full support for TCP/UDP client and server modes, plus an MQTT 3.1.1 client; see the [TCP debug tool](/en/tcp-debug-tool), [UDP debug tool](/en/udp-debug-tool) and [Socket debug tool](/en/socket-debug-tool)
+- **Multi-protocol support**: full support for TCP/UDP client and server modes, plus an MQTT 3.1.1 / 5.0 client; see the [TCP debug tool](/en/tcp-debug-tool), [UDP debug tool](/en/udp-debug-tool) and [Socket debug tool](/en/socket-debug-tool)
 - **Built-in toolbox**: open it from the wrench icon at the right of the tab bar; switch between Convert / Checksum / Hash / Time / JSON / Encoding groups, results appear as you type and every row has a copy button
 - **IPv4/IPv6 dual stack**: supports both IPv4 and IPv6, adapting to any network environment
 - **Multiple TCP decoders**: raw data, line-delimited, length-prefix and JSON decoders for different protocol formats, effectively solving TCP sticky packet issues
@@ -56,12 +56,14 @@ For the causes, four framing solutions and debugging steps, see [TCP sticky pack
 
 ## MQTT Debugging
 
-- **MQTT 3.1.1 client**: integrated into the client connection system — choose MQTT when creating a connection and fill in the broker address and port (default 1883), Client ID, optional username/password and KeepAlive; "More Settings" holds Clean Session and last-will settings (topic / payload / QoS / retain)
+- **MQTT client**: choose MQTT 3.1.1 (default) or 5.0 as the protocol version, integrated into the client connection system — choose MQTT when creating a connection and fill in the broker address and port (default 1883), Client ID, optional username/password and KeepAlive; "More Settings" holds Clean Session and last-will settings (topic / payload / QoS / retain)
+- **MQTT over TLS**: enable TLS encryption for both 3.1.1 and 5.0; certificate verification has three modes: system roots (default), custom CA (PEM file path, with a file picker) and verification skipped (insecure, for self-signed testing only, traffic is still encrypted); an optional client certificate and private key (PEM, provided as a pair) enable mutual TLS; ALPN is optional, comma-separated and omitted when empty; handshake failures report a readable cause and suggested fix
+- **MQTT 5.0**: connect properties include session expiry (seconds, omitted when empty, 0 expires on disconnect) and receive maximum (1-65535, omitted when empty); Clean Start reuses the Clean Session switch and is forced when the Client ID is empty; rejected CONNACK, failed SUBACK and broker-initiated DISCONNECT show the reason code and the broker reason string
 - **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and restored automatically after an automatic reconnect; the list fills the side panel and scrolls inside it, shows the full topic on hover and copies the topic on double-click
 - **Publishing**: set topic, QoS (0/1/2) and retain in the send area while the payload keeps using text / hex mode; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS and retain), persisted per connection with up to 20 entries
 - **Message display**: every message carries a topic pill (retain is marked), and double-clicking the pill copies the raw topic; the existing log, search, export, JSON formatting and reply rules all work as before
 - **Auto reply**: replies are published back to the topic the message arrived on; periodic send also uses the current publish topic
-- **Protocol constraints**: decoders and the suffix selector are hidden for MQTT, and stress testing, line-send tasks and timed tasks are not offered; the first version does not support TLS, MQTT 5.0 or MQTT over WebSocket
+- **Protocol constraints**: decoders and the suffix selector are hidden for MQTT, and stress testing, line-send tasks and timed tasks are not offered; MQTT over WebSocket is not supported, and advanced 5.0 features (user properties, Will Delay, subscription identifiers, shared subscriptions, etc.) are not provided
 
 For full connection parameters, subscription management and the feature boundary, see the [MQTT client](/en/mqtt-client).
 

@@ -43,7 +43,7 @@ head:
                 "name": "支持哪些操作系统？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持 Windows 10 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。"
+                  "text": "支持 Windows 10 1709 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。"
                 }
               },
               {
@@ -151,7 +151,7 @@ chmod +x netassistant
 
 | 平台 | 要求 |
 | ---- | ---- |
-| Windows | Windows 10 或更高版本（x64 / ARM64） |
+| Windows | Windows 10 1709（Build 16299）或更高版本，含 Windows 11（x64 / ARM64）。支持 Windows Server 2019 及以上，不支持 Windows Server 2016 及更早系统 |
 | Linux | Ubuntu 22.04 及以上（x86_64 / ARM64），需 Vulkan 兼容 GPU |
 | macOS | macOS 10.15 或更高版本 |
 
@@ -191,7 +191,7 @@ sudo apt install libgtk-3-0
 
 ### 支持哪些操作系统？
 
-支持 Windows 10 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。
+支持 Windows 10 1709 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。
 
 ### Windows 上怎么安装？
 

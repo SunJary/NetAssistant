@@ -1,6 +1,6 @@
 ---
 title: MQTT 客户端 - 轻量级 MQTT 调试工具
-description: NetAssistant 内置轻量级 MQTT 3.1.1 客户端，支持订阅管理、QoS 0/1/2、retain、遗嘱与自动回复；Rust 原生构建，内存约 20MB，暂不支持 MQTT 5.0 与 TLS。
+description: NetAssistant 内置轻量级 MQTT 客户端，协议版本可选 3.1.1 与 5.0，支持 TLS、订阅管理、QoS 0/1/2、retain、遗嘱与自动回复；Rust 原生构建，内存约 20MB。
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "内置 MQTT 3.1.1 客户端的轻量级网络调试工具，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复。",
+            "description": "内置 MQTT 客户端（3.1.1 / 5.0）的轻量级网络调试工具，支持 TLS、订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复。",
             "url": "https://netassistant.trydo.top/mqtt-client",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -35,7 +35,7 @@ head:
                 "name": "NetAssistant 支持 MQTT 5.0 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "暂不支持。NetAssistant 目前实现的是 MQTT 3.1.1 客户端，适合基础订阅、发布与设备联调；如果需要 MQTT 5.0 特性，建议使用 MQTTX 或 EMQX 提供的客户端。"
+                  "text": "支持。NetAssistant 提供 MQTT 3.1.1 与 5.0 两种协议版本，可在连接配置中切换；5.0 覆盖版本选择、会话过期、接收最大值与原因码等基础能力，用户属性、订阅标识符等高级特性暂未提供。"
                 }
               },
               {
@@ -43,7 +43,7 @@ head:
                 "name": "支持 MQTT over TLS 或 WebSocket 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "暂不支持。当前版本只支持 TCP 直连 Broker，不支持 TLS、MQTT over WebSocket 和 MQTT 5.0。"
+                  "text": "支持 TLS，不支持 MQTT over WebSocket。TLS 可在连接配置中开启，证书校验可选系统根证书、自定义 CA 或跳过校验，并支持客户端证书与私钥做双向认证，3.1.1 与 5.0 均生效。"
                 }
               },
               {
@@ -51,7 +51,7 @@ head:
                 "name": "NetAssistant 能替代 MQTTX 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "如果你只需要 MQTT 3.1.1 的订阅、发布和轻量调试，NetAssistant 可以覆盖；如果需要 MQTT 5.0、TLS、脚本自动化或大规模连接管理，MQTTX 更合适。"
+                  "text": "如果你只需要 MQTT 的订阅、发布和轻量调试，NetAssistant 可以覆盖；如果需要 MQTT over WebSocket、脚本自动化、数据可视化或更完整的 5.0 特性，MQTTX 更合适。"
                 }
               },
               {
@@ -70,9 +70,9 @@ head:
 
 # 轻量级 MQTT 客户端：订阅、发布与调试
 
-如果你只是偶尔连一下 Broker，验证设备有没有发消息、topic 对不对、QoS 有没有生效，专门装一个 Electron 客户端并不划算。NetAssistant 内置 **MQTT 3.1.1 客户端**，和 TCP/UDP 调试在同一个应用里，Rust 原生构建，内存约 20MB。
+如果你只是偶尔连一下 Broker，验证设备有没有发消息、topic 对不对、QoS 有没有生效，专门装一个 Electron 客户端并不划算。NetAssistant 内置 **MQTT 客户端**（MQTT 3.1.1 / 5.0），和 TCP/UDP 调试在同一个应用里，Rust 原生构建，内存约 20MB。
 
-先说清楚边界：它适合基础 MQTT 调试，**不是 MQTTX 的完整替代品**。MQTT 5.0、TLS、WebSocket 和脚本自动化暂不支持。
+先说清楚边界：它适合基础 MQTT 调试，**不是 MQTTX 的完整替代品**。TLS 与 MQTT 5.0 已经支持（5.0 覆盖基础特性），MQTT over WebSocket 与脚本自动化仍不支持。
 
 > [下载 NetAssistant](/download) · [和 MQTTX 的详细对比](/comparison-mqttx) · [全部功能](/features)
 
@@ -85,13 +85,23 @@ head:
 - **需要少装一个客户端的人**：TCP/UDP 联调和 MQTT 调试用同一个工具
 - **低内存环境**：不想为偶尔的 MQTT 调试常驻几百 MB 内存
 
-**不适合**：需要 MQTT 5.0 属性、TLS 双向认证、WebSocket、脚本自动化或大量连接管理的场景，建议使用 MQTTX、EMQX 或其他专业客户端。
+**不适合**：需要 MQTT over WebSocket、用户属性等完整 5.0 特性、脚本自动化或大量连接管理的场景，建议使用 MQTTX、EMQX 或其他专业客户端。
 
 ## 核心功能
 
 ### 连接配置
 
-新建连接选择 MQTT，填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive。「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）。
+新建连接选择 MQTT，填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive；协议版本可选 3.1.1（默认）与 5.0。「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）。
+
+### MQTT over TLS
+
+开启 TLS 后连接经加密传输，对 3.1.1 与 5.0 同时生效。证书校验分三档：
+
+- **系统根证书**（默认）：按系统信任链校验证书
+- **自定义 CA**：填 PEM 文件路径，「选择文件」可直接回填，适合自建 CA 签发的 Broker 证书
+- **跳过校验**：不校验证书，仅用于自签证书联调，传输仍然加密
+
+双向认证可选填客户端证书与私钥（PEM，支持 PKCS#8 / PKCS#1 / SEC1），需成对填写；ALPN 可选、逗号分隔，留空不下发。连接配置只保存证书文件路径、不保存 PEM 内容。证书过期、主机名不匹配、证书链不受信任等握手失败会给出可读原因与处置建议。
 
 ### MQTT 5.0（可选）
 
@@ -100,7 +110,7 @@ head:
 - **会话过期（秒）**：留空不下发；填 0 表示断开即过期，大于 0 时 broker 在过期前保留会话。
 - **接收最大值**：1-65535，留空不下发，用于限定 broker 可同时在途的 QoS 1/2 报文数。
 
-5.0 下订阅被拒时，提示会带出 SUBACK 的 reason code（如未授权、主题过滤器非法）与 broker 的 reason string；broker 主动断开也会显示具体原因。当前版本不提供用户属性、Topic Alias、Response Topic 等高级属性编辑，QoS、retain、遗嘱与 3.1.1 行为一致。
+5.0 下 CONNACK 连接被拒、SUBACK 订阅失败与 broker 主动 DISCONNECT 都会显示具体原因码与 broker 说明；Clean Start 沿用 Clean Session 开关，Client ID 为空时强制 clean start。当前版本不提供用户属性、Will Delay、订阅标识符、共享订阅等高级特性，QoS、retain、遗嘱与 3.1.1 行为一致。
 
 ### 订阅管理
 
@@ -134,28 +144,28 @@ head:
 | ---- | ---- | ---- |
 | 技术栈 | Rust + GPUI 原生 | Electron + Vue |
 | 内存占用 | 约 20MB | 日常几百 MB |
-| MQTT 版本 | MQTT 3.1.1 | MQTT 3.1.1 / 5.0 |
-| TLS / WebSocket | 暂不支持 | 支持 |
+| MQTT 版本 | MQTT 3.1.1 / 5.0（基础特性） | MQTT 3.1.1 / 5.0（更完整） |
+| TLS / WebSocket | TLS 支持（三档校验、双向认证）；WebSocket 不支持 | 均支持 |
 | 脚本自动化 | 无 | 支持 |
 | 连接管理 | 基础多连接 | 更完善 |
 | 与 TCP/UDP 调试集成 | 同一应用 | 独立应用 |
 | 价格 | 免费开源 | 免费 |
 
-结论：**基础 MQTT 3.1.1 调试选 NetAssistant，需要完整 MQTT 生态选 MQTTX**。详细差异见 [MQTTX 对比](/comparison-mqttx)。
+结论：**基础 MQTT 调试选 NetAssistant，需要 WebSocket、脚本自动化或完整 5.0 特性选 MQTTX**。详细差异见 [MQTTX 对比](/comparison-mqttx)。
 
 ## 常见问题
 
 ### 支持 MQTT 5.0 吗？
 
-暂不支持。当前实现的是 MQTT 3.1.1，适合基础订阅、发布与设备联调。
+支持。协议版本可在 3.1.1 与 5.0 之间切换，5.0 覆盖会话过期、接收最大值、原因码等基础能力；用户属性、订阅标识符、共享订阅等高级特性暂未提供。
 
 ### 支持 TLS 或 WebSocket 吗？
 
-暂不支持。当前只支持 TCP 直连 Broker，不支持 TLS、MQTT over WebSocket 和 MQTT 5.0。
+支持 TLS，不支持 MQTT over WebSocket。TLS 证书校验可选系统根证书、自定义 CA 或跳过校验，并支持客户端证书与私钥做双向认证。
 
 ### 能替代 MQTTX 吗？
 
-基础订阅、发布与轻量调试可以覆盖；需要 MQTT 5.0、TLS、脚本自动化或大规模连接管理时，MQTTX 更合适。
+基础订阅、发布与轻量调试可以覆盖；需要 MQTT over WebSocket、脚本自动化、数据可视化或更完整的 5.0 特性时，MQTTX 更合适。
 
 ### 支持 QoS 2 和 retain 吗？
 

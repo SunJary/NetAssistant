@@ -142,7 +142,7 @@ NetAssistant 的报文以聊天式记录展示，支持关键字搜索、收藏�
 
 ### MQTT 与多协议
 
-NetAssist 专注于 TCP/UDP。NetAssistant 在同一个工具里增加了 MQTT 3.1.1 客户端，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复；MQTT 5.0 与 TLS 暂不支持。
+NetAssist 专注于 TCP/UDP。NetAssistant 在同一个工具里增加了 MQTT 客户端，协议版本可选 3.1.1 与 5.0，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复，并支持 TLS（含三档证书校验与双向认证）；MQTT over WebSocket 与 5.0 高级特性未提供。
 
 ### 自动化能力
 
@@ -199,7 +199,7 @@ NetAssistant 不依赖云端服务，收发数据在本机与目标端之间传�
 
 ### 支持 MQTT 吗？
 
-NetAssistant 支持 MQTT 3.1.1 客户端；NetAssist 不提供 MQTT 功能。MQTT 5.0、TLS 与 MQTT over WebSocket 暂不支持。
+NetAssistant 支持 MQTT 3.1.1 / 5.0 客户端与 TLS；NetAssist 不提供 MQTT 功能。MQTT over WebSocket 与 5.0 高级特性未提供。
 
 ## 相关页面
 

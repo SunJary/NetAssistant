@@ -25,8 +25,8 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 ## ✨ 功能特性
 
 ### 核心功能
-- **多协议支持**：完整支持 TCP/UDP 客户端和服务端模式，以及 MQTT 3.1.1 客户端
-- **MQTT 客户端**：支持 QoS 0/1/2、Clean Session、KeepAlive 与遗嘱消息；可运行时订阅/取消订阅，断线自动重连并恢复订阅；发布区可设置 topic、QoS 与 retain，并按连接保存最近发布过的 topic 历史；消息记录显示 topic 标签，自动回复的应答回发到收到消息的 topic
+- **多协议支持**：完整支持 TCP/UDP 客户端和服务端模式，以及 MQTT 3.1.1 / 5.0 客户端
+- **MQTT 客户端**：协议版本可选 MQTT 3.1.1（默认）与 5.0；支持 QoS 0/1/2、Clean Session、KeepAlive 与遗嘱消息；支持 TLS，证书校验可选系统根证书 / 自定义 CA / 跳过校验，可配客户端证书与私钥做双向认证；5.0 下可设会话过期与接收最大值，连接被拒、订阅失败与 broker 主动断开显示可读原因码；可运行时订阅/取消订阅，断线自动重连并恢复订阅；发布区可设置 topic、QoS 与 retain，并按连接保存最近发布过的 topic 历史；消息记录显示 topic 标签，自动回复的应答回发到收到消息的 topic
 - **内置工具箱**：标签栏右侧扳手图标打开工具箱，内置转换（文本 ⇄ Hex）、校验（XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32）、哈希（MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512、bcrypt / Argon2id / PBKDF2-SHA256 密码哈希、文件摘要与哈希对比）、时间戳 ⇄ 日期、JSON 美化/压缩（兼容 JSON5）、Base64 / URL 编解码
 - **IPv4/IPv6 双栈**：同时支持 IPv4 和 IPv6 协议，适应各种网络环境
 - **多种 TCP 解码器**：支持原始数据、基于行的解码、长度前缀解码和 JSON 解码，满足不同协议格式需求，有效解决 TCP 粘包问题
@@ -141,7 +141,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 
 ### 系统要求
 
-- **Windows**: 10 或更高版本
+- **Windows**: Windows 10 1709（Build 16299）或更高版本，含 Windows 11；支持 Windows Server 2019 及以上，不支持 Windows Server 2016 及更早系统
 - **Linux**: 需要 GTK3 库（如 Ubuntu 22.04 及以上版本）
 - **macOS**: 10.15 或更高版本
 
@@ -529,7 +529,7 @@ netassistant/
 - [x] 文件数据源（v1.2.0）
 - [x] 多语言支持（v1.1.0）
 - [x] 十六进制编辑器（v1.1.0）
-- [ ] MQTT over TLS / MQTT 5.0
+- [x] MQTT over TLS / MQTT 5.0（v1.5.0）
 - [ ] 支持 SSE 调试
 - [ ] 支持更多数据格式的编解码
 - [ ] 支持 WebSocket 协议
@@ -537,7 +537,7 @@ netassistant/
 ## ❓ 常见问题
 
 **Q: 支持哪些操作系统？**  
-A: 支持 Windows 10/11、Linux（需要 GTK3）和 macOS 10.15+。
+A: 支持 Windows 10 1709+/Windows 11（不含 Windows Server 2016 及更早系统）、Linux（需要 GTK3）和 macOS 10.15+。
 
 **Q: 可以同时管理多少个连接？**  
 A: 理论上没有限制，取决于系统资源。实际使用中同时管理 10-20 个连接完全没问题。
@@ -549,7 +549,7 @@ A: 红色地址表示这条消息来自「非预期地址」，这是专门为**
 A: v1.3.0 起「固定自动回复」已升级为**回复规则**引擎：每条规则由「匹配条件 + 应答动作」组成，支持包含字节、掩码、前缀+长度区间、偏移取值、正则、来源地址（CIDR）、校验值验算等条件的任意嵌套；旧版固定自动回复内容可在规则管理中一键迁移为等价规则。
 
 **Q: 支持 MQTT 调试吗？**  
-A: 支持。v1.4.0 起内置 MQTT 3.1.1 客户端，支持 QoS 0/1/2、Clean Session、KeepAlive、遗嘱消息、运行时订阅管理与发布 topic 历史；暂不支持 TLS、MQTT 5.0 与 MQTT over WebSocket。
+A: 支持。v1.4.0 起内置 MQTT 客户端，v1.5.0 起可选 MQTT 3.1.1 与 5.0，并支持 TLS（系统根证书 / 自定义 CA / 跳过校验，可配双向认证）；支持 QoS 0/1/2、Clean Session、KeepAlive、遗嘱消息、运行时订阅管理与发布 topic 历史。MQTT over WebSocket 仍不支持，5.0 仅覆盖版本选择、会话过期、接收最大值与原因码等基础能力。
 
 **Q: 工具箱在哪里打开？**  
 A: 点击标签栏右侧的扳手图标即可打开工具箱；它作为常驻标签页存在，再次点击图标可返回连接标签页。

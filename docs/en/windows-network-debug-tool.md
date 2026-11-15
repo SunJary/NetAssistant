@@ -35,7 +35,7 @@ head:
                 "name": "Does NetAssistant support Windows 7?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. NetAssistant requires Windows 10 or later and is available for both x64 and ARM64."
+                  "text": "No. NetAssistant requires Windows 10 version 1709 (Build 16299) or later and does not support Windows Server 2016 or earlier; x64 and ARM64 builds are available."
                 }
               },
               {
@@ -153,7 +153,7 @@ See the full [tool comparison](/en/comparison), or read the [NetAssist alternati
 
 | Item | Requirement |
 | ---- | ---- |
-| OS | Windows 10 or later |
+| OS | Windows 10 version 1709 (Build 16299) or later, including Windows 11; Windows Server 2016 and earlier are not supported |
 | Architecture | x64 or ARM64 |
 | Installation | winget, installer or portable zip |
 | License | Apache-2.0, free to use |
@@ -166,7 +166,7 @@ Run `winget install SunJary.NetAssistant` in PowerShell or Terminal, or download
 
 ### Does NetAssistant support Windows 7?
 
-No. NetAssistant requires Windows 10 or later.
+No. NetAssistant requires Windows 10 version 1709 (Build 16299) or later, and does not support Windows Server 2016 or earlier.
 
 ### Is there a Windows ARM64 build?
 

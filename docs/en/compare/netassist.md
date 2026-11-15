@@ -142,7 +142,7 @@ NetAssistant presents traffic as a chat-style log with search, favorites, notes 
 
 ### MQTT and protocol coverage
 
-NetAssist focuses on TCP/UDP. NetAssistant adds an MQTT 3.1.1 client with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply. MQTT 5.0 and TLS are not supported yet.
+NetAssist focuses on TCP/UDP. NetAssistant adds an MQTT client (3.1.1 or 5.0 per connection) with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply, plus TLS with three verification modes and mutual TLS. MQTT over WebSocket and advanced 5.0 features are not provided.
 
 ### Automation
 
@@ -199,7 +199,7 @@ Yes. IPv4 and IPv6 addresses such as `::1` or `fe80::xxxx` are supported in both
 
 ### Does it support MQTT?
 
-NetAssistant includes an MQTT 3.1.1 client; NetAssist does not provide MQTT. MQTT 5.0, TLS and MQTT over WebSocket are not supported yet.
+NetAssistant includes an MQTT 3.1.1 / 5.0 client with TLS; NetAssist does not provide MQTT. MQTT over WebSocket and advanced 5.0 features are not provided.
 
 ## Related pages
 

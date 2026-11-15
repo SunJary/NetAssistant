@@ -11,7 +11,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 
 ## 核心功能
 
-- **多协议支持**：完整支持 TCP/UDP 客户端和服务端模式，以及 MQTT 3.1.1 客户端；专项用法见 [TCP 调试工具](/tcp-debug-tool)、[UDP 调试工具](/udp-debug-tool) 与 [Socket 调试工具](/socket-debug-tool)
+- **多协议支持**：完整支持 TCP/UDP 客户端和服务端模式，以及 MQTT 3.1.1 / 5.0 客户端；专项用法见 [TCP 调试工具](/tcp-debug-tool)、[UDP 调试工具](/udp-debug-tool) 与 [Socket 调试工具](/socket-debug-tool)
 - **内置工具箱**：标签栏右侧扳手图标打开常驻工具箱，左侧分组切换「转换 / 校验 / 哈希 / 时间 / JSON / 编码」，输入即出结果，结果行可一键复制
 - **IPv4/IPv6 双栈**：同时支持 IPv4 和 IPv6 协议，适应各种网络环境
 - **多种 TCP 解码器**：支持原始数据、基于行的解码、长度前缀解码和 JSON 解码，满足不同协议格式需求，有效解决 TCP 粘包问题
@@ -56,12 +56,14 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 
 ## MQTT 调试
 
-- **MQTT 3.1.1 客户端**：集成在客户端连接体系中，新建连接选择 MQTT 后填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive；「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）
+- **MQTT 客户端**：协议版本可选 MQTT 3.1.1（默认）与 5.0，集成在客户端连接体系中，新建连接选择 MQTT 后填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive；「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）
+- **MQTT over TLS**：可开启 TLS 加密，对 3.1.1 与 5.0 同时生效；证书校验三档：系统根证书（默认）、自定义 CA（PEM 文件路径，可文件选择）、跳过校验（不安全，仅自签联调，传输仍加密）；可填客户端证书与私钥做双向认证（PEM，成对填写）；ALPN 可选、留空不下发；握手失败给出可读原因与处置建议
+- **MQTT 5.0**：连接属性支持会话过期（秒，留空不下发，0 表示断开即过期）与接收最大值（1-65535，留空不下发）；Clean Start 沿用 Clean Session 开关，Client ID 为空时强制 clean start；CONNACK 连接被拒、SUBACK 订阅失败与 broker 主动 DISCONNECT 显示原因码与 broker 说明
 - **订阅管理**：运行时添加 / 编辑 / 取消订阅，无需重连；订阅严格按连接隔离，断线自动重连后自动恢复订阅；订阅列表占满侧栏高度、超出时框内滚动，悬停可查看完整 topic，双击复制 topic
 - **发布消息**：发送区设置 topic、QoS（0/1/2）与 retain，payload 沿用文本 / Hex 模式；topic 输入框右侧下拉可复用当前连接最近发送过的 topic（连同 QoS 与 retain），历史按连接持久化，最多保留 20 条
 - **消息展示**：每条消息显示 topic 标签（retain 消息带标记），双击 topic 标签可复制原始 topic；消息记录、搜索、导出、JSON 格式化、回复规则等既有能力全部复用
 - **自动回复**：应答自动回发到收到消息的 topic；周期发送同样按当前发布 topic 发送
-- **协议约束**：MQTT 下隐藏解码器与「结尾字符」，不提供压测、逐行发送与定时任务；首版暂不支持 TLS、MQTT 5.0 与 MQTT over WebSocket
+- **协议约束**：MQTT 下隐藏解码器与「结尾字符」，不提供压测、逐行发送与定时任务；MQTT over WebSocket 不支持，5.0 高级特性（用户属性、Will Delay、订阅标识符、共享订阅等）未提供
 
 完整的 MQTT 连接参数、订阅管理与功能边界，见 [MQTT 客户端](/mqtt-client)。
 

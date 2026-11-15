@@ -167,7 +167,7 @@ Packet Sender 的协议覆盖更广，支持 SSL/DTLS、HTTP 客户端与 CLI �
 
 ### 支持 MQTT 吗？
 
-支持 MQTT 3.1.1 客户端，包含订阅管理、QoS 0/1/2、retain 与遗嘱消息；暂不支持 MQTT 5.0、TLS 与 MQTT over WebSocket。
+支持 MQTT 3.1.1 / 5.0 客户端与 TLS，包含订阅管理、QoS 0/1/2、retain 与遗嘱消息；MQTT over WebSocket 与 5.0 高级特性未提供。
 
 ## 相关页面
 

@@ -43,7 +43,7 @@ head:
                 "name": "Which operating systems are supported?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Windows 10 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds."
+                  "text": "Windows 10 version 1709 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds."
                 }
               },
               {
@@ -151,7 +151,7 @@ chmod +x netassistant
 
 | Platform | Requirements |
 | -------- | ------------ |
-| Windows | Windows 10 or later (x64 / ARM64) |
+| Windows | Windows 10 version 1709 (Build 16299) or later, including Windows 11 (x64 / ARM64). Windows Server 2019 and later are supported; Windows Server 2016 and earlier are not |
 | Linux | Ubuntu 22.04 or later (x86_64 / ARM64), Vulkan-compatible GPU |
 | macOS | macOS 10.15 or later |
 
@@ -191,7 +191,7 @@ Yes. NetAssistant is open source under the Apache-2.0 license with all features 
 
 ### Which operating systems are supported?
 
-Windows 10 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds.
+Windows 10 version 1709 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds.
 
 ### How do I install on Windows?
 

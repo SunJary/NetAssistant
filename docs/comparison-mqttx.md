@@ -1,6 +1,6 @@
 ---
 title: MQTTX 替代品 - NetAssistant vs MQTTX 客户端对比
-description: "NetAssistant 与 MQTTX 对比：Rust 原生、内存约 20MB、MQTT 3.1.1 客户端；MQTTX 功能更全（MQTT 5.0、TLS、脚本），本页列出两者的功能边界。"
+description: "NetAssistant 与 MQTTX 对比：Rust 原生、内存约 20MB、MQTT 3.1.1 / 5.0 客户端并支持 TLS；MQTTX 功能更全（WebSocket、脚本、更完整的 5.0），本页列出两者的功能边界。"
 ---
 
 # NetAssistant vs MQTTX：轻量级 MQTT 客户端对比
@@ -29,8 +29,8 @@ Rust 原生构建把这部分开销砍掉了：没有 JS 引擎、没有 DOM 树
 
 | 维度 | NetAssistant（MQTT 模式） | MQTTX |
 | ---- | ---- | ---- |
-| MQTT 版本 | ✅ 3.1.1 | ✅ 3.1.1 / 5.0 |
-| MQTT over TLS | ❌ 暂不支持 | ✅ |
+| MQTT 版本 | ✅ 3.1.1 / 5.0（基础特性） | ✅ 3.1.1 / 5.0（更完整） |
+| MQTT over TLS | ✅ 三档证书校验 + 双向认证 | ✅ |
 | MQTT over WebSocket | ❌ 暂不支持 | ✅ |
 | 连接管理 | ✅ 多标签页 | ✅ 左侧连接列表分组 |
 | 订阅管理 | ✅ 运行时增 / 改 / 取消，断线重连后自动恢复 | ✅ 支持通配符订阅树 |
@@ -56,7 +56,7 @@ MQTT 连接会隐藏一部分通用功能，这是设计上的协议约束，不
 - **不提供压测**：压测 tab 在 MQTT 连接下不显示，压测引擎仅用于 TCP/UDP
 - **不提供解码器与「结尾字符」**：MQTT 的消息边界由协议自身保证，无需按行 / 长度前缀 / JSON 拆帧
 - **不提供逐行发送与定时任务**：发送任务入口在 MQTT 连接下隐藏；周期发送仍然可用
-- **首版不支持 TLS、MQTT 5.0、MQTT over WebSocket**
+- **不支持 MQTT over WebSocket**；**MQTT 5.0 仅覆盖基础特性**（协议版本、会话过期、接收最大值、原因码），用户属性、Will Delay、订阅标识符、共享订阅等未提供
 - **自动回复的条件范围**：字节级条件、JSON 字段条件作用于 MQTT 载荷；「来源地址」条件在 MQTT 下指向 broker 地址而非设备地址；解码器相关（帧尾等）条件不适用
 - **自动回复的应答参数**：固定回发到收到消息的 topic，QoS 0，retain=false
 
@@ -71,8 +71,8 @@ NetAssistant 还有几项 MQTTX 完全没有的能力，但它们**只在 TCP/UD
 
 ## 坦白说：MQTTX 做得更好的地方
 
-- **MQTT 5.0 支持**：NetAssistant 只支持 3.1.1，Broker 跑 5.0 时只能选 MQTTX
-- **TLS / WebSocket**：生产环境加密连接是标配，NetAssistant 首版还没做
+- **更完整的 MQTT 5.0 支持**：NetAssistant 已支持 3.1.1 / 5.0 与基础连接属性，但用户属性、Will Delay、订阅标识符、共享订阅等高级特性仍需 MQTTX
+- **MQTT over WebSocket**：NetAssistant 只支持 TCP 直连 Broker，走 WebSocket 的 Broker 或网关只能用 MQTTX；TLS 双方都支持，NetAssistant 还提供三档证书校验与双向认证
 - **脚本自动化**：MQTTX 的 JavaScript 脚本引擎可以做复杂数据处理和自动化测试
 - **数据可视化**：MQTTX 的折线图面板适合监控传感器数据流
 - **订阅管理体验**：MQTTX 的通配符订阅树更直观
@@ -86,8 +86,8 @@ NetAssistant 还有几项 MQTTX 完全没有的能力，但它们**只在 TCP/UD
 
 ## 总结
 
-MQTTX 是目前功能最完善的开源 MQTT 客户端。如果你需要 MQTT 5.0、TLS、脚本自动化或数据可视化，它仍然是首选。
+MQTTX 是目前功能最完善的开源 MQTT 客户端。如果你需要 MQTT over WebSocket、完整的 5.0 特性、脚本自动化或数据可视化，它仍然是首选。TLS 双方都支持：NetAssistant 提供系统根证书 / 自定义 CA / 跳过校验三档校验与双向认证，常规加密连接不必为此换工具。
 
-NetAssistant 的 MQTT 能力是「够用」级别：3.1.1、订阅管理、QoS 0/1/2、retain、遗嘱、自动回复、周期发送都有，但压测、解码器、逐行/定时任务这些能力只在 TCP/UDP 下生效。如果你要的是**极轻量的 MQTT 调试**，或者需要**和 TCP/UDP 一起调**，可以试试；它不会完全替代 MQTTX，但在特定场景下更顺手。
+NetAssistant 的 MQTT 能力是「够用」级别：3.1.1 / 5.0、TLS、订阅管理、QoS 0/1/2、retain、遗嘱、自动回复、周期发送都有，但 5.0 只覆盖基础特性，MQTT over WebSocket 不支持；压测、解码器、逐行/定时任务这些能力只在 TCP/UDP 下生效。如果你要的是**极轻量的 MQTT 调试**，或者需要**和 TCP/UDP 一起调**，可以试试；它不会完全替代 MQTTX，但在特定场景下更顺手。
 
 > 要不要试试看？[下载 NetAssistant](/download)

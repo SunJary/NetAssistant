@@ -35,7 +35,7 @@ head:
                 "name": "NetAssistant 支持 Windows 7 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不支持。NetAssistant 需要 Windows 10 或更高版本，建议使用 Windows 10/11 的 x64 或 ARM64 版本。"
+                  "text": "不支持。NetAssistant 需要 Windows 10 1709（Build 16299）或更高版本，不支持 Windows Server 2016 及更早系统；请使用 Windows 10/11 或 Windows Server 2019+ 的 x64 / ARM64 版本。"
                 }
               },
               {
@@ -153,7 +153,7 @@ TCP 是字节流协议，粘包/拆包无法避免。NetAssistant 提供原始�
 
 | 项目 | 要求 |
 | ---- | ---- |
-| 系统 | Windows 10 或更高版本 |
+| 系统 | Windows 10 1709（Build 16299）或更高版本，含 Windows 11；不支持 Windows Server 2016 及更早系统 |
 | 架构 | x64 或 ARM64 |
 | 安装方式 | winget、安装程序、免安装 zip |
 | 许可 | Apache-2.0，免费使用 |
@@ -166,7 +166,7 @@ TCP 是字节流协议，粘包/拆包无法避免。NetAssistant 提供原始�
 
 ### 支持 Windows 7 吗？
 
-不支持。NetAssistant 需要 Windows 10 或更高版本，建议使用 Windows 10/11 的 x64 或 ARM64 版本。
+不支持。NetAssistant 需要 Windows 10 1709（Build 16299）或更高版本，不支持 Windows Server 2016 及更早系统；请使用 Windows 10/11 或 Windows Server 2019+ 的 x64 / ARM64 版本。
 
 ### Windows ARM64 设备能用吗？
 

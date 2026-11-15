@@ -167,7 +167,7 @@ Packet Sender covers more protocols, including SSL/DTLS, HTTP and CLI automation
 
 ### Does it support MQTT?
 
-Yes, MQTT 3.1.1 with subscriptions, QoS 0/1/2, retain and last-will messages. MQTT 5.0, TLS and MQTT over WebSocket are not supported yet.
+Yes, MQTT 3.1.1 / 5.0 with TLS, subscriptions, QoS 0/1/2, retain and last-will messages. MQTT over WebSocket and advanced 5.0 features are not provided.
 
 ## Related pages
 

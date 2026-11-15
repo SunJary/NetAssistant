@@ -7,6 +7,26 @@ description: "NetAssistant changelog: TCP decoders, UDP broadcast device discove
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## v1.5.0 <Badge type="tip" text="2026-11-15" />
+
+- **MQTT over TLS**: MQTT connections can now use TLS (available for both 3.1.1 and 5.0), configured in the MQTT section of the new / edit connection dialog
+  - **Three verification modes**: system roots (default), custom CA (PEM file path, with a file picker) or skip verification (insecure, for self-signed debugging only - traffic is still encrypted)
+  - **Mutual TLS**: optional client certificate and private key (PEM, PKCS#8 / PKCS#1 / SEC1), provided as a pair
+  - **ALPN**: optional and comma separated, omitted when empty; most brokers do not need it, only specific gateways or load balancers
+  - **Readable handshake failures**: expired certificates, hostname mismatches and untrusted chains report the concrete cause and a suggested fix instead of a raw error code
+  - Only certificate file paths are stored, never PEM contents, so configs stay safe to export or share; TLS applies to both 3.1.1 and 5.0
+- **MQTT 5.0**: a new MQTT 5.0 client (powered by rumqttc v5) alongside the 3.1.1 client, selectable per connection
+  - **Protocol version**: a new selector offers 3.1.1 or 5.0; existing configs stay on 3.1.1 with unchanged behaviour
+  - **5.0 connect properties**: Session Expiry (seconds; leave empty to omit, 0 expires on disconnect) and Receive Maximum (1-65535; leave empty to omit)
+  - **Clean Start**: follows the Clean Session toggle, and is forced when the Client ID is empty so brokers do not reject an empty ID with a persistent session
+  - **Human readable reason codes**: CONNACK refusals, SUBACK failures and broker-initiated DISCONNECTs show the reason code plus the broker's reason string
+  - Subscription management, publish (QoS / retain), last will, message log, auto-reply and subscription restore after reconnect all behave the same as with 3.1.1
+
+Fixes and improvements:
+
+- The MQTT receive path skips one full-frame copy, lowering CPU and memory cost for large payloads
+- The installer now requires Windows 10 version 1709 (Build 16299) or later and shows a clear message on unsupported systems such as Windows Server 2016, instead of installing an app that cannot start
+
 ## v1.4.2 <Badge type="tip" text="2026-11-10" />
 
 - **Reply rule import / export**: export a connection's reply rules as a rule bundle file, or import a bundle into the current connection; import supports merge or overwrite, making it easy to move rules between machines

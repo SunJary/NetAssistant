@@ -23,9 +23,16 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+; 与 Zed 一致: 系统版本过低时由安装器直接拦截, 避免"装完打不开"。
+; 16299 = Windows 10 1709; gpui 的 DirectWrite 文本系统要求 1703+, 这里取与 Zed 相同的保守值。
+MinVersion=10.0.16299
 PrivilegesRequired=lowest
 UninstallDisplayName=NetAssistant
 UninstallDisplayIcon={app}\netassistant.exe
+
+[Messages]
+; 系统版本低于 MinVersion 时的提示(覆盖 Inno 默认的英文 WindowsVersionNotSupported, 文案与 Zed 相同)
+WindowsVersionNotSupported=此程序不支持当前计算机运行的 Windows 版本。
 
 [Files]
 Source: "..\target\x86_64-pc-windows-msvc\release\netassistant.exe"; DestDir: "{app}"; Flags: ignoreversion

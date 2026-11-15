@@ -7,7 +7,7 @@ description: NetAssistant 安装与快速上手教程：Windows（winget）、Li
 
 ## 系统要求
 
-- **Windows**：10 或更高版本，x64 与 ARM64 均可
+- **Windows**：Windows 10 1709（Build 16299）或更高版本，含 Windows 11；支持 Windows Server 2019 及以上，不支持 Windows Server 2016 及更早系统，x64 与 ARM64 均可
 - **Linux**：需要 GTK3 库（如 Ubuntu 22.04 及以上版本），x86_64 与 ARM64 均可
 - **macOS**：10.15 或更高版本
 

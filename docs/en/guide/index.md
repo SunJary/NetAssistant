@@ -7,7 +7,7 @@ description: "Install NetAssistant on Windows (winget), Linux (AppImage) or macO
 
 ## System Requirements
 
-- **Windows**: 10 or later, on x64 or ARM64
+- **Windows**: Windows 10 version 1709 (Build 16299) or later, including Windows 11; Windows Server 2019 and later are supported, Windows Server 2016 and earlier are not, on x64 or ARM64
 - **Linux**: GTK3 library required (e.g. Ubuntu 22.04 or later), on x86_64 or ARM64
 - **macOS**: 10.15 or later
 

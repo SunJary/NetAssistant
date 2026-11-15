@@ -25,8 +25,8 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 ## ✨ Features
 
 ### Core Features
-- **Multi-protocol support**: Complete TCP/UDP client and server modes, plus an MQTT 3.1.1 client
-- **MQTT client**: QoS 0/1/2, Clean Session, KeepAlive and last-will messages; subscribe/unsubscribe at runtime with automatic reconnect and subscription restore; the publish row exposes topic, QoS and retain, with a per-connection history of recently used topics; messages show a topic pill, and auto replies go back to the topic the message arrived on
+- **Multi-protocol support**: Complete TCP/UDP client and server modes, plus an MQTT 3.1.1 / 5.0 client
+- **MQTT client**: MQTT 3.1.1 (default) or 5.0 per connection; QoS 0/1/2, Clean Session, KeepAlive and last-will messages; TLS with system roots / custom CA / verification skipped and optional client certificate plus private key for mutual TLS; 5.0 adds session expiry, receive maximum and readable reason codes for rejected connections, failed subscriptions and broker-initiated disconnects; subscribe/unsubscribe at runtime with automatic reconnect and subscription restore; the publish row exposes topic, QoS and retain, with a per-connection history of recently used topics; messages show a topic pill, and auto replies go back to the topic the message arrived on
 - **Built-in toolbox**: open it from the wrench icon at the right of the tab bar — text ⇄ Hex conversion, checksums (XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32), hashes (MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512, bcrypt / Argon2id / PBKDF2-SHA256 password hashes, file digests and hash comparison), timestamp ⇄ date, JSON beautify/minify (JSON5-compatible), and Base64 / URL encoding
 - **IPv4/IPv6 dual stack**: Supports both IPv4 and IPv6 protocols, adapting to various network environments
 - **Multiple TCP decoders**: Supports raw data, line-based decoding, length-prefixed decoding, and JSON decoding to meet different protocol format requirements, effectively solving TCP sticky packet issues
@@ -141,7 +141,7 @@ NetAssistant is a high-performance, modern **cross-platform** network debugging 
 
 ### System Requirements
 
-- **Windows**: 10 or later
+- **Windows**: Windows 10 version 1709 (Build 16299) or later, including Windows 11; Windows Server 2019 and later are supported, Windows Server 2016 and earlier are not
 - **Linux**: Requires GTK3 library (e.g., Ubuntu 22.04 and above)
 - **macOS**: 10.15 or later
 
@@ -530,7 +530,7 @@ netassistant/
 - [x] File data source (v1.2.0)
 - [x] Multi-language support (v1.1.0)
 - [x] Hex editor (v1.1.0)
-- [ ] MQTT over TLS / MQTT 5.0
+- [x] MQTT over TLS / MQTT 5.0 (v1.5.0)
 - [ ] Support SSE debugging
 - [ ] Support more data format encoding and decoding
 - [ ] Support WebSocket protocol
@@ -538,7 +538,7 @@ netassistant/
 ## ❓ FAQ
 
 **Q: Which operating systems are supported?**  
-A: Windows 10/11, Linux (requires GTK3), and macOS 10.15+.
+A: Windows 10 version 1709+ / Windows 11 (Windows Server 2016 and earlier are not supported), Linux (requires GTK3), and macOS 10.15+.
 
 **Q: How many connections can be managed simultaneously?**  
 A: There's no theoretical limit, depends on system resources. Managing 10-20 connections simultaneously works perfectly in practice.
@@ -550,7 +550,7 @@ A: Red addresses indicate the message came from an "unexpected address" — this
 A: Since v1.3.0 the fixed "auto-reply" has been upgraded to a **reply rules** engine: each rule is a match condition plus a reply action, supporting arbitrary nesting of conditions such as contains bytes, masks, prefix + length range, offset values, regex, source address (CIDR) and checksum validation; old fixed auto-reply content can be migrated to an equivalent rule in one click from the rule manager.
 
 **Q: Does it support MQTT debugging?**  
-A: Yes. Since v1.4.0 there is a built-in MQTT 3.1.1 client with QoS 0/1/2, Clean Session, KeepAlive, last-will messages, runtime subscription management and publish topic history. TLS, MQTT 5.0 and MQTT over WebSocket are not supported yet.
+A: Yes. Since v1.4.0 there is a built-in MQTT client; v1.5.0 adds MQTT 5.0 alongside 3.1.1 and TLS (system roots / custom CA / verification skipped, with optional mutual TLS), plus QoS 0/1/2, Clean Session, KeepAlive, last-will messages, runtime subscription management and publish topic history. MQTT over WebSocket is still not supported, and 5.0 covers only the basics: version selection, session expiry, receive maximum and reason codes.
 
 **Q: Where do I open the toolbox?**  
 A: Click the wrench icon at the right of the tab bar; the toolbox appears as a permanent tab, and clicking the icon again returns to connection tabs.
