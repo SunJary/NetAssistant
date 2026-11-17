@@ -255,8 +255,23 @@ impl NetCounters {
 pub enum MqttCommand {
     /// 订阅 topic（`topic` 支持 `+`/`#` 通配符，合法性由 broker 校验）
     Subscribe { topic: String, qos: Qos },
+    /// 一次 SUBSCRIBE 携带多个 filter，一个 SUBACK 按顺序返回多个 code。
+    ///
+    /// 重连恢复 / 批量订阅使用：网络层按 `CHUNK_SIZE` 切块，逐块等待 SUBACK，
+    /// 结果以 [`MqttSubAckItem`] 逐 topic 回报。
+    SubscribeBatch(Vec<(String, Qos)>),
     /// 取消订阅 topic
     Unsubscribe { topic: String },
+}
+
+/// 单个 topic 的订阅确认结果（SUBACK 逐 code 还原）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MqttSubAckItem {
+    pub topic: String,
+    /// true = broker 接受该订阅
+    pub ok: bool,
+    /// 失败原因（已翻译，含 broker reason string）；成功为 None
+    pub reason: Option<String>,
 }
 
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
@@ -293,12 +308,15 @@ pub enum ConnectionEvent {
     ServerDecoderControlSenderReady(String, SocketAddr, Sender<DecoderConfig>),
     /// MQTT 订阅控制发送器就绪(用于运行时订阅/取消, 无需重连; 规划 §5.3)
     ///
-    /// 注：**不提供 SubAck 事件** —— MQTT SUBACK 报文按协议仅含 pkid+返回码、不含 topic,
-    /// 且 rumqttc `subscribe` 不返回 pkid, topic↔确认无法关联(规划 D-10)。订阅列表由 UI
-    /// 乐观维护, SubAck 仅在网络层 debug log。
+    /// 订阅结果通过 [`ConnectionEvent::MqttSubAck`] 逐 topic 回报：
+    /// 网络层用 `Outgoing::Subscribe(pkid)` 把 SUBACK 的 pkid 关联回登记过的 topic。
     MqttControlSenderReady(String, Sender<MqttCommand>),
-    /// MQTT 重连成功后已自动恢复的订阅数量(仅提示条, 非终态; 规划 §6.4)
-    MqttSubscriptionsRestored(String, usize),
+    /// 单个 SUBSCRIBE 批次内逐 topic 的确认结果（成功 = broker 接受）。
+    MqttSubAck(String, Vec<MqttSubAckItem>),
+    /// 自动重连成功（首次连接仍发 `Connected`）。
+    ///
+    /// 应用层收到后按当前 enabled 列表重发 `SubscribeBatch`；订阅状态的唯一权威留在 app。
+    Reconnected(String),
     /// 非错误的短暂状态提示(如 "MQTT 已重连")。
     ///
     /// UI 侧以成功色展示并在数秒后自动消失; 与 `Warning` 区分:

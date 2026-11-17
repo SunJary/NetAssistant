@@ -40,14 +40,22 @@ pub struct MqttTopicHistoryEntry {
 /// 每连接 MQTT 发布历史（按 `connection_id` 索引，与 `FavoritesMap` 同构）。
 pub type MqttTopicHistoryMap = HashMap<String, Vec<MqttTopicHistoryEntry>>;
 
-/// 一条持久化的 MQTT 订阅（topic + QoS）。
+/// 一条持久化的 MQTT 订阅（topic + QoS + 启用状态）。
 ///
-/// 与运行期 `ConnectionTabState::mqtt_subscriptions: Vec<(String, Qos)>` 同构；
+/// 与运行期 `ConnectionTabState::mqtt_subscriptions` 同构；
 /// 用 u8 而非 serde `Qos`，理由同 `MqttTopicHistoryEntry`。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MqttSubscriptionEntry {
     pub topic: String,
     pub qos: u8,
+    /// 期望的启用状态；缺省 true 以兼容旧配置（升级前的订阅全部保持开启）。
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+/// serde 缺省值：旧配置没有 `enabled` 字段时视为开启。
+fn default_true() -> bool {
+    true
 }
 
 /// 每连接 MQTT 订阅（按 `connection_id` 索引）。
@@ -564,18 +572,28 @@ impl ConfigStorage {
             .unwrap_or(&[])
     }
 
-    /// 新增/更新一条 MQTT 订阅：同 topic 去重（命中则更新 QoS），保持插入顺序。
-    pub fn add_mqtt_subscription(&mut self, connection_id: &str, topic: &str, qos: u8) {
+    /// 新增/更新一条 MQTT 订阅：同 topic 去重（命中则更新 QoS 与启用状态），保持插入顺序。
+    pub fn add_mqtt_subscription(
+        &mut self,
+        connection_id: &str,
+        topic: &str,
+        qos: u8,
+        enabled: bool,
+    ) {
         let list = self
             .config
             .mqtt_subscriptions
             .entry(connection_id.to_string())
             .or_default();
         match list.iter_mut().find(|e| e.topic == topic) {
-            Some(e) => e.qos = qos,
+            Some(e) => {
+                e.qos = qos;
+                e.enabled = enabled;
+            }
             None => list.push(MqttSubscriptionEntry {
                 topic: topic.to_string(),
                 qos,
+                enabled,
             }),
         }
         if self.config.auto_save {
@@ -597,7 +615,8 @@ impl ConfigStorage {
     ///
     /// - `old == new` 时退化为仅更新 QoS；
     /// - 命中多条同 topic 只改第一条（调用方已前置判重，正常不会出现）；
-    /// - `new_topic` 命中其它条目时不做合并（由调用方负责拒绝），行为与 `add` 的幂等语义区分。
+    /// - `new_topic` 命中其它条目时不做合并（由调用方负责拒绝），行为与 `add` 的幂等语义区分；
+    /// - 编辑不改变 `enabled`（开关状态只由用户切换或 SUBACK 失败驱动）。
     pub fn update_mqtt_subscription(
         &mut self,
         connection_id: &str,
@@ -610,6 +629,25 @@ impl ConfigStorage {
                 e.topic = new_topic.to_string();
                 e.qos = qos;
             }
+        }
+        if self.config.auto_save {
+            self.save_and_log();
+        }
+    }
+
+    /// 更新一条已持久化订阅的启用状态（开关切换 / SUBACK 成功后落盘）。
+    ///
+    /// 订阅不存在时幂等返回（运行期与持久化可能存在瞬态不一致）。
+    pub fn set_mqtt_subscription_enabled(
+        &mut self,
+        connection_id: &str,
+        topic: &str,
+        enabled: bool,
+    ) {
+        if let Some(list) = self.config.mqtt_subscriptions.get_mut(connection_id)
+            && let Some(e) = list.iter_mut().find(|e| e.topic == topic)
+        {
+            e.enabled = enabled;
         }
         if self.config.auto_save {
             self.save_and_log();
@@ -1423,24 +1461,26 @@ mod tests {
         assert!(storage.mqtt_subscriptions("conn-1").is_empty());
 
         // 保序追加
-        storage.add_mqtt_subscription("conn-1", "a/b", 0);
-        storage.add_mqtt_subscription("conn-1", "c/d", 1);
+        storage.add_mqtt_subscription("conn-1", "a/b", 0, true);
+        storage.add_mqtt_subscription("conn-1", "c/d", 1, false);
         let list = storage.mqtt_subscriptions("conn-1");
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].topic, "a/b");
         assert_eq!(list[0].qos, 0);
+        assert!(list[0].enabled);
         assert_eq!(list[1].topic, "c/d");
         assert_eq!(list[1].qos, 1);
+        assert!(!list[1].enabled, "关闭状态必须落盘");
 
-        // 同 topic 去重：仅更新 QoS，长度与顺序不变
-        storage.add_mqtt_subscription("conn-1", "a/b", 2);
+        // 同 topic 去重：更新 QoS 与启用状态，长度与顺序不变
+        storage.add_mqtt_subscription("conn-1", "a/b", 2, true);
         let list = storage.mqtt_subscriptions("conn-1");
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].topic, "a/b");
         assert_eq!(list[0].qos, 2, "同 topic 应更新 QoS 而非新增");
 
         // 按连接隔离
-        storage.add_mqtt_subscription("conn-2", "x/y", 0);
+        storage.add_mqtt_subscription("conn-2", "x/y", 0, true);
         assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 2);
         assert_eq!(storage.mqtt_subscriptions("conn-2").len(), 1);
 
@@ -1463,7 +1503,7 @@ mod tests {
             id: "conn-b".to_string(),
             ..Default::default()
         }));
-        storage.add_mqtt_subscription("conn-b", "k/l", 1);
+        storage.add_mqtt_subscription("conn-b", "k/l", 1, true);
         storage.remove_client_connection("conn-b");
         assert!(storage.mqtt_subscriptions("conn-b").is_empty());
     }
@@ -1472,17 +1512,18 @@ mod tests {
     #[test]
     fn test_update_mqtt_subscription_keeps_order() {
         let mut storage = test_storage();
-        storage.add_mqtt_subscription("conn-1", "a/b", 0);
-        storage.add_mqtt_subscription("conn-1", "c/d", 1);
-        storage.add_mqtt_subscription("conn-1", "e/f", 2);
+        storage.add_mqtt_subscription("conn-1", "a/b", 0, true);
+        storage.add_mqtt_subscription("conn-1", "c/d", 1, false);
+        storage.add_mqtt_subscription("conn-1", "e/f", 2, true);
 
-        // 改 topic + QoS：位置不变
+        // 改 topic + QoS：位置不变，enabled 保持关闭
         storage.update_mqtt_subscription("conn-1", "c/d", "c/d2", 2);
         let list = storage.mqtt_subscriptions("conn-1");
         assert_eq!(list.len(), 3);
         assert_eq!(list[0].topic, "a/b");
         assert_eq!(list[1].topic, "c/d2", "编辑应就地替换 topic，保持原位置");
         assert_eq!(list[1].qos, 2);
+        assert!(!list[1].enabled, "编辑不得改变开关状态");
         assert_eq!(list[2].topic, "e/f");
 
         // old == new：仅更新 QoS
@@ -1493,11 +1534,55 @@ mod tests {
         assert_eq!(list[0].qos, 2, "old==new 应退化为仅更新 QoS");
 
         // 跨连接隔离：conn-2 不受影响，编辑不存在的 topic 幂等
-        storage.add_mqtt_subscription("conn-2", "x/y", 0);
+        storage.add_mqtt_subscription("conn-2", "x/y", 0, true);
         storage.update_mqtt_subscription("conn-1", "nope", "nope2", 1);
         assert_eq!(storage.mqtt_subscriptions("conn-1").len(), 3);
         assert_eq!(storage.mqtt_subscriptions("conn-2").len(), 1);
         assert_eq!(storage.mqtt_subscriptions("conn-2")[0].topic, "x/y");
+    }
+
+    /// 开关状态落盘：set_enabled 只改目标条目；不存在的 topic 幂等。
+    #[test]
+    fn test_set_mqtt_subscription_enabled() {
+        let mut storage = test_storage();
+        storage.add_mqtt_subscription("conn-1", "a/b", 0, true);
+        storage.add_mqtt_subscription("conn-1", "c/d", 1, true);
+
+        storage.set_mqtt_subscription_enabled("conn-1", "a/b", false);
+        let list = storage.mqtt_subscriptions("conn-1");
+        assert!(!list[0].enabled);
+        assert!(list[1].enabled, "只改目标条目");
+
+        storage.set_mqtt_subscription_enabled("conn-1", "a/b", true);
+        assert!(storage.mqtt_subscriptions("conn-1")[0].enabled);
+
+        // 不存在 / 跨连接：幂等且不越界
+        storage.set_mqtt_subscription_enabled("conn-1", "nope", false);
+        storage.set_mqtt_subscription_enabled("conn-2", "a/b", false);
+        assert!(storage.mqtt_subscriptions("conn-2").is_empty());
+    }
+
+    /// 旧配置的订阅条目无 `enabled` 字段 → 默认视为开启（零迁移）。
+    #[test]
+    fn test_legacy_mqtt_subscription_defaults_to_enabled() {
+        let json = r#"{
+        "connections": [],
+        "auto_save": true,
+        "save_interval": 30,
+        "window_x": null,
+        "window_y": null,
+        "window_width": null,
+        "window_height": null,
+        "sidebar_width": null,
+        "sidebar_collapsed": null,
+        "mqtt_subscriptions": {
+            "conn-1": [{ "topic": "a/b", "qos": 1 }]
+        }
+    }"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        let list = &config.mqtt_subscriptions["conn-1"];
+        assert_eq!(list.len(), 1);
+        assert!(list[0].enabled, "旧配置缺省应视为开启");
     }
 
     /// 旧配置无 `mqtt_subscriptions` 字段 → 空 map（零迁移）

@@ -34,10 +34,12 @@ use crate::stress::port_range::EphemeralPortRange;
 use crate::stress::{StressEvent, StressStats, StressTestConfig, TabViewMode};
 use crate::utils::file_source::{FileSourceError, validate_len};
 use crate::utils::hex::convert_value;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::notification::Notification;
 
 use crate::ui::connection_tab::{
-    ConnectionTabState, ROW_RECENT_CAP, ROW_RECENT_WINDOW, SEARCH_RECALC_MIN_INTERVAL,
-    STATUS_HINT_TTL,
+    ConnectionTabState, MqttSubscriptionState, ROW_RECENT_CAP, ROW_RECENT_WINDOW,
+    SEARCH_RECALC_MIN_INTERVAL, STATUS_HINT_TTL,
 };
 use crate::ui::dialog::{
     DecoderSelectionDialogState, ImportFileDialogState, MqttSubscriptionDialogState,
@@ -1009,6 +1011,10 @@ impl NetAssistantApp {
             return false;
         }
 
+        let is_connected = self
+            .connection_tabs
+            .get(tab_id)
+            .is_some_and(|tab| tab.is_connected);
         let delivered = match self.mqtt_control_senders.get(tab_id) {
             Some(sender) => sender
                 .try_send(MqttCommand::Subscribe {
@@ -1029,13 +1035,18 @@ impl NetAssistantApp {
         // 持久化订阅（按连接隔离）：重开标签页/重启后自动恢复，与收藏同款心智。
         // 先写 storage 再改 tab 状态，避免同时可变借用 self.storage 与 self.connection_tabs。
         self.storage
-            .add_mqtt_subscription(tab_id, &topic, qos as u8);
+            .add_mqtt_subscription(tab_id, &topic, qos as u8, true);
         if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
-            // 乐观入列 / 已订阅则更新 QoS（重发订阅幂等）
-            if let Some(entry) = tab.mqtt_subscriptions.iter_mut().find(|(t, _)| *t == topic) {
-                entry.1 = qos;
+            // 已订阅则更新 QoS 并重新进入 pending；新条目默认开启
+            if let Some(entry) = tab.mqtt_subscriptions.iter_mut().find(|s| s.topic == topic) {
+                entry.qos = qos;
+                entry.enabled = true;
+                entry.pending = is_connected;
+                entry.error = None;
             } else {
-                tab.mqtt_subscriptions.push((topic, qos));
+                let mut state = MqttSubscriptionState::new(topic, qos, true);
+                state.pending = is_connected;
+                tab.mqtt_subscriptions.push(state);
             }
             tab.mqtt_sub_error = None;
         }
@@ -1072,7 +1083,7 @@ impl NetAssistantApp {
             && self
                 .connection_tabs
                 .get(tab_id)
-                .is_some_and(|tab| tab.mqtt_subscriptions.iter().any(|(t, _)| *t == new_topic))
+                .is_some_and(|tab| tab.mqtt_subscriptions.iter().any(|s| s.topic == new_topic))
         {
             if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
                 tab.mqtt_sub_error = Some(t!("mqtt_subscriptions.exists").to_string());
@@ -1081,14 +1092,24 @@ impl NetAssistantApp {
             return false;
         }
 
-        // 已连接才下发；未连接仅持久化 + 列表更新
+        // 已连接且该条处于启用态才下发；停用态编辑只改列表与持久化
         let is_connected = self
             .connection_tabs
             .get(tab_id)
             .is_some_and(|tab| tab.is_connected);
+        let enabled = self
+            .connection_tabs
+            .get(tab_id)
+            .and_then(|tab| {
+                tab.mqtt_subscriptions
+                    .iter()
+                    .find(|s| s.topic == old_topic)
+                    .map(|s| s.enabled)
+            })
+            .unwrap_or(true);
 
         let mut unsub_failed = false;
-        if is_connected {
+        if is_connected && enabled {
             // 先订新：失败即中止，旧订阅与列表保持不变（无状态漂移）
             let sub_ok = self
                 .mqtt_control_senders
@@ -1133,9 +1154,14 @@ impl NetAssistantApp {
             if let Some(entry) = tab
                 .mqtt_subscriptions
                 .iter_mut()
-                .find(|(t, _)| *t == old_topic)
+                .find(|s| s.topic == old_topic)
             {
-                *entry = (new_topic, qos);
+                entry.topic = new_topic;
+                entry.qos = qos;
+                if enabled {
+                    entry.pending = is_connected;
+                    entry.error = None;
+                }
             }
             tab.mqtt_sub_error = if unsub_failed {
                 Some(t!("connection_tab.mqtt_unsubscribe_failed").to_string())
@@ -1168,10 +1194,169 @@ impl NetAssistantApp {
         // 同步删除持久化订阅（投递失败时上面已提前返回，保持乐观语义不误删）
         self.storage.remove_mqtt_subscription(tab_id, &topic);
         if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
-            tab.mqtt_subscriptions.retain(|(t, _)| *t != topic);
+            tab.mqtt_subscriptions.retain(|s| s.topic != topic);
             tab.mqtt_sub_error = None;
         }
         cx.notify();
+    }
+
+    /// 切换一条订阅的启用状态（侧栏行内开关入口）。
+    ///
+    /// - 开启：已连接则下发 `Subscribe` 并进入 pending（等 SUBACK 成功才点亮）；未连接仅记录期望态；
+    /// - 关闭：已连接则下发 `Unsubscribe` 并立即关闭；未连接时，持久会话（broker 仍保留订阅）
+    ///   拒绝本地关闭并提示，clean session 下允许纯本地关闭（对齐 MQTTX）。
+    pub fn mqtt_set_subscription_enabled(
+        &mut self,
+        tab_id: &str,
+        topic: &str,
+        enabled: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (current_enabled, current_qos, is_connected) = {
+            let Some(tab) = self.connection_tabs.get(tab_id) else {
+                return;
+            };
+            let Some(current) = tab.mqtt_subscriptions.iter().find(|s| s.topic == topic) else {
+                return;
+            };
+            (current.enabled, current.qos, tab.is_connected)
+        };
+        if current_enabled == enabled {
+            return;
+        }
+        let has_control = self.mqtt_control_senders.contains_key(tab_id);
+
+        if enabled {
+            if has_control {
+                let delivered = self
+                    .mqtt_control_senders
+                    .get(tab_id)
+                    .map(|sender| {
+                        sender
+                            .try_send(MqttCommand::Subscribe {
+                                topic: topic.to_string(),
+                                qos: current_qos,
+                            })
+                            .is_ok()
+                    })
+                    .unwrap_or(false);
+                if !delivered {
+                    if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                        tab.mqtt_sub_error =
+                            Some(t!("connection_tab.mqtt_subscribe_failed").to_string());
+                    }
+                    cx.notify();
+                    return;
+                }
+            }
+            self.storage
+                .set_mqtt_subscription_enabled(tab_id, topic, true);
+            if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                if let Some(sub) = tab.mqtt_subscriptions.iter_mut().find(|s| s.topic == topic) {
+                    sub.enabled = true;
+                    sub.pending = is_connected && has_control;
+                    sub.error = None;
+                }
+                tab.mqtt_sub_error = None;
+            }
+            cx.notify();
+            return;
+        }
+
+        // 关闭：离线且持久会话时 broker 仍保留订阅，拒绝本地关闭（对齐 MQTTX）
+        if !is_connected && self.mqtt_persistent_session(tab_id) {
+            let message = t!(
+                "connection_tab.mqtt_unsubscribe_persistent_offline",
+                topic => topic
+            )
+            .to_string();
+            window.push_notification(Notification::warning(message.clone()), cx);
+            if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                tab.mqtt_sub_error = Some(message);
+            }
+            cx.notify();
+            return;
+        }
+
+        if is_connected {
+            let delivered = self
+                .mqtt_control_senders
+                .get(tab_id)
+                .map(|sender| {
+                    sender
+                        .try_send(MqttCommand::Unsubscribe {
+                            topic: topic.to_string(),
+                        })
+                        .is_ok()
+                })
+                .unwrap_or(false);
+            if !delivered {
+                if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+                    tab.mqtt_sub_error =
+                        Some(t!("connection_tab.mqtt_unsubscribe_failed").to_string());
+                }
+                cx.notify();
+                return;
+            }
+        }
+        self.storage
+            .set_mqtt_subscription_enabled(tab_id, topic, false);
+        if let Some(tab) = self.connection_tabs.get_mut(tab_id) {
+            if let Some(sub) = tab.mqtt_subscriptions.iter_mut().find(|s| s.topic == topic) {
+                sub.enabled = false;
+                sub.pending = false;
+                sub.error = None;
+            }
+            tab.mqtt_sub_error = None;
+        }
+        cx.notify();
+    }
+
+    /// 该 tab 的连接是否使用持久会话（broker 会在离线期间保留订阅）。
+    ///
+    /// - MQTT 3.1.1：`clean_session == false` 即持久会话；
+    /// - MQTT 5：还要求 `session_expiry_secs > 0`（否则会话在断开时即过期）。
+    fn mqtt_persistent_session(&self, tab_id: &str) -> bool {
+        let Some(tab) = self.connection_tabs.get(tab_id) else {
+            return false;
+        };
+        let ConnectionConfig::Client(config) = &tab.connection_config else {
+            return false;
+        };
+        let Some(settings) = config.mqtt.as_ref() else {
+            return false;
+        };
+        if settings.clean_session {
+            return false;
+        }
+        match settings.protocol_version {
+            MqttVersion::V311 => true,
+            MqttVersion::V5 => settings.session_expiry_secs.unwrap_or(0) > 0,
+        }
+    }
+
+    /// 把该 tab 当前 `enabled == true` 的订阅合并成一条 `SubscribeBatch` 下发。
+    ///
+    /// 首次连接（控制通道就绪）与自动重连共用；返回实际下发的 topic 数。
+    fn resend_mqtt_subscriptions(&self, tab_id: &str) -> usize {
+        let Some(tab) = self.connection_tabs.get(tab_id) else {
+            return 0;
+        };
+        let batch: Vec<(String, Qos)> = tab
+            .mqtt_subscriptions
+            .iter()
+            .filter(|s| s.enabled)
+            .map(|s| (s.topic.clone(), s.qos))
+            .collect();
+        if batch.is_empty() {
+            return 0;
+        }
+        let count = batch.len();
+        match self.mqtt_control_senders.get(tab_id) {
+            Some(sender) if sender.try_send(MqttCommand::SubscribeBatch(batch)).is_ok() => count,
+            _ => 0,
+        }
     }
 
     // ===== 定时任务(心跳) =====
@@ -1410,16 +1595,18 @@ impl NetAssistantApp {
             if !favorited.is_empty() {
                 tab_state.favorited_contents = Arc::new(favorited);
             }
-            // 回灌该连接已持久化的 MQTT 订阅：连接建立后由 MqttControlSenderReady 统一重发
-            // SUBSCRIBE，故重开标签页 / 重启后订阅自动恢复（与收藏同款）。
-            let saved_subs: Vec<(String, Qos)> = self
+            // 回灌该连接已持久化的 MQTT 订阅（含启用状态）：连接建立后由
+            // MqttControlSenderReady / Reconnected 统一重发启用项，故重开标签页 /
+            // 重启后订阅自动恢复，关闭项保持关闭（与收藏同款）。
+            let saved_subs: Vec<MqttSubscriptionState> = self
                 .storage
                 .mqtt_subscriptions(&tab_id)
                 .iter()
                 .map(|e| {
-                    (
+                    MqttSubscriptionState::new(
                         e.topic.clone(),
                         Qos::try_from(e.qos).unwrap_or(Qos::AtMostOnce),
+                        e.enabled,
                     )
                 })
                 .collect();
@@ -5158,6 +5345,9 @@ impl NetAssistantApp {
                 }
                 // 连接建立: 若有持久化的定时任务(心跳)则创建(启用态立即开始)
                 self.ensure_timed_task(&tab_id, cx);
+                // MQTT：控制通道先于本事件就绪，且此刻会话已建立，重发启用项可避免
+                // 「首连多次重试时 SUBSCRIBE 请求被 rumqttc 丢弃」造成界面与 broker 漂移。
+                self.resend_mqtt_subscriptions(&tab_id);
             }
             ConnectionEvent::Disconnected(tab_id) => {
                 if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
@@ -5169,6 +5359,10 @@ impl NetAssistantApp {
                     }
                     tab_state.local_endpoint = None;
                     tab_state.status_hint = None;
+                    // 断线后所有等待 SUBACK 的条目归零：重连会重新下发启用项
+                    for sub in &mut tab_state.mqtt_subscriptions {
+                        sub.pending = false;
+                    }
                     cx.notify();
                 }
                 self.client_write_senders.remove(&tab_id);
@@ -5298,38 +5492,78 @@ impl NetAssistantApp {
                 );
                 self.mqtt_control_senders
                     .insert(tab_id.clone(), control_sender);
-                // 控制通道就绪(首次连接 / 手动重连): 按界面订阅列表重建网络层 active 列表,
-                // 修复「手动重连后 broker 端订阅丢失、界面却仍显示已订阅」的漂移
-                // (规划 D-10 只覆盖 rumqttc 自动重连, 此处补齐手动重连)。
-                if let Some(subs) = self
-                    .connection_tabs
-                    .get(&tab_id)
-                    .map(|t| t.mqtt_subscriptions.clone())
-                {
-                    if let Some(sender) = self.mqtt_control_senders.get(&tab_id) {
-                        for (topic, qos) in subs {
-                            let _ = sender.try_send(MqttCommand::Subscribe { topic, qos });
-                        }
-                    }
-                }
+                // 注意：这里只保存通道，不立即下发订阅。控制通道在 CONNACK 之前就绪，
+                // 此时投递的 SUBSCRIBE 可能在首连重试中被 rumqttc 丢弃（clean session
+                // 会清空 pending）；统一在 Connected / Reconnected 时重发启用项。
             }
-            ConnectionEvent::MqttSubscriptionsRestored(tab_id, count) => {
-                // 非终态提示: 仅在状态区短暂显示"重连后已重新发起订阅", 不动连接状态。
-                // 走 `status_hint`(成功色 + 自动消失)而非 `error_message`(红色常驻):
-                // 这是正常状态变化, 不该被误认为故障。
-                // 注: 仅表示已向 broker 重发 SUBSCRIBE; SUBACK 返回 0x80 的条目实际被拒,
-                // 但协议上无法与 topic 关联(D-10), 故文案不承诺"已恢复/已订阅成功"。
+            ConnectionEvent::Reconnected(tab_id) => {
+                // 自动重连成功：与 MqttControlSenderReady 共用同一份「重发启用项」逻辑。
+                // 非终态提示走 `status_hint`（成功色 + 自动消失），文案不承诺"订阅成功"。
+                let count = self.resend_mqtt_subscriptions(&tab_id);
                 debug!(
                     "[handle_connection_events] MQTT 重连后已重新发起 {} 个订阅: {}",
                     count, tab_id
                 );
-                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                if count > 0
+                    && let Some(tab_state) = self.connection_tabs.get_mut(&tab_id)
+                {
                     tab_state.status_hint = Some((
                         t!("connection_tab.mqtt_subscriptions_restored", count => count)
                             .to_string(),
                         Instant::now(),
                     ));
                     cx.notify();
+                }
+            }
+            ConnectionEvent::MqttSubAck(tab_id, items) => {
+                let mut failures: Vec<String> = Vec::new();
+                if let Some(tab_state) = self.connection_tabs.get_mut(&tab_id) {
+                    for item in &items {
+                        let Some(sub) = tab_state
+                            .mqtt_subscriptions
+                            .iter_mut()
+                            .find(|s| s.topic == item.topic)
+                        else {
+                            // pending 期间被删除：迟到 ack 直接忽略
+                            continue;
+                        };
+                        sub.pending = false;
+                        if item.ok {
+                            sub.error = None;
+                        } else {
+                            // 用户确认：所有失败（含超时）都自动关闭并保留条目供手动重试
+                            sub.enabled = false;
+                            sub.error = item.reason.clone();
+                            failures.push(
+                                t!(
+                                    "connection_tab.mqtt_subscribe_rejected",
+                                    topic => item.topic.clone(),
+                                    reason => item.reason.clone().unwrap_or_default()
+                                )
+                                .to_string(),
+                            );
+                        }
+                    }
+                    cx.notify();
+                }
+                // 落盘：成功保持开启（覆盖旧值），失败持久化为关闭，重启后不再自动订阅
+                for item in &items {
+                    self.storage
+                        .set_mqtt_subscription_enabled(&tab_id, &item.topic, item.ok);
+                }
+                if !failures.is_empty() {
+                    // 行内图标之外再推右上角通知，保证列表滚动时也能看到；
+                    // `defer` 避免在实体更新期间同步借窗口导致重入（不长期持有 Window）。
+                    cx.defer(move |cx| {
+                        let Some(window_handle) = cx.active_window() else {
+                            return;
+                        };
+                        let _ = window_handle.update(cx, |_view, window, cx| {
+                            for message in &failures {
+                                window.push_notification(Notification::error(message.clone()), cx);
+                            }
+                        });
+                    });
                 }
             }
             ConnectionEvent::ServerClientConnected(tab_id, addr, write_sender) => {

@@ -11,7 +11,7 @@ use crate::ui::dialog::{
 use gpui_kit::base::{SelectableText, TextSelection};
 use gpui_kit::component::ElementExt as _;
 use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::component::{ActiveTheme as _, Sizable, StyledExt};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable, StyledExt};
 use gpui_kit::component::{
     Icon, IconName, Size, Theme, WindowExt as _,
     checkbox::Checkbox,
@@ -21,6 +21,7 @@ use gpui_kit::component::{
     menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
     notification::Notification,
     scroll::{Scrollbar, ScrollbarHandle, ScrollbarMode},
+    spinner::Spinner,
     switch::Switch,
     tooltip::Tooltip,
 };
@@ -76,6 +77,32 @@ pub const ROW_ANIM_FLOOD_THRESHOLD: usize = 20;
 /// 这类提示描述的是正常状态变化而非错误：用成功色短暂展示后自动消失，
 /// 不能像 `error_message` 那样常驻红色，否则会一直留在面板底部被误认为故障。
 pub const STATUS_HINT_TTL: Duration = Duration::from_secs(5);
+
+/// 一条 MQTT 订阅的运行期状态（乐观维护 + 逐 topic 确认）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MqttSubscriptionState {
+    pub topic: String,
+    pub qos: Qos,
+    /// 期望的启用状态（成功/未连接时为 true；SUBACK 失败或手动关闭后为 false）
+    pub enabled: bool,
+    /// 已下发 SUBSCRIBE、等待 SUBACK（视觉上开关保持关闭并禁用）
+    pub pending: bool,
+    /// 最近一次失败原因（行内红色感叹号 tooltip 内容）
+    pub error: Option<String>,
+}
+
+impl MqttSubscriptionState {
+    /// 新建一条默认开启的订阅。
+    pub fn new(topic: String, qos: Qos, enabled: bool) -> Self {
+        Self {
+            topic,
+            qos,
+            enabled,
+            pending: false,
+            error: None,
+        }
+    }
+}
 
 /// 统一行高提示的估算值（单行消息约 88–96px：页眉行 + 气泡 + 按钮行 + gap_1×2）。
 /// 供 `refresh_row_hint` 施加给 ListState，使滚动条拇指从首帧起长度稳定。
@@ -256,8 +283,8 @@ pub struct ConnectionTabState {
     pub send_trailer_setting: TrailerSetting,
 
     // ===== MQTT 订阅/发布（仅 MQTT 客户端；规划 §8.3）=====
-    /// 已订阅列表（乐观维护，D-10；元素 = (topic, qos)）
-    pub mqtt_subscriptions: Vec<(String, Qos)>,
+    /// 已订阅列表（含启用/等待确认/失败原因，逐 topic 与 SUBACK 对齐）
+    pub mqtt_subscriptions: Vec<MqttSubscriptionState>,
     /// 发送区：发布 topic 输入（publish 不允许通配符）
     pub mqtt_publish_topic_input: Entity<InputState>,
     /// 每 tab 共享的 MQTT 发布元数据 cell（规划 D-C/D-D）：与 `periodic_source.mqtt_meta`
@@ -1754,12 +1781,25 @@ impl<'a> ConnectionTab<'a> {
                     .into_any_element(),
             );
         } else {
-            for (topic, qos) in subs.iter() {
-                let row_qos = *qos;
+            for sub in subs.iter() {
+                let topic = sub.topic.clone();
+                let row_qos = sub.qos;
+                let is_on = sub.enabled && !sub.pending;
+                let pending = sub.pending;
+                let row_error = sub.error.clone();
+                let topic_color = if is_on {
+                    theme.foreground
+                } else {
+                    theme.muted_foreground
+                };
                 // 框架右键菜单的项闭包用: 渲染期捕获（菜单只在打开那一刻惰性构建）
                 let menu_weak = cx.entity().downgrade();
                 let menu_tab = tab_id.clone();
                 let menu_topic = topic.clone();
+                // 开关回调: 与右键菜单同款弱引用, 避免渲染单元长期持有 app
+                let switch_weak = cx.entity().downgrade();
+                let switch_tab = tab_id.clone();
+                let switch_topic = topic.clone();
                 rows.push(
                     // 悬停提示改为**向上**弹出: gpui 原生 `.tooltip()` 固定落在光标右下方且
                     // 无方向参数, 这里改用 HoverCard —— `Anchor::BottomCenter` 把内容底边
@@ -1788,10 +1828,10 @@ impl<'a> ConnectionTab<'a> {
                                         .text_ellipsis()
                                         .whitespace_nowrap()
                                         .text_xs()
-                                        .text_color(theme.foreground)
+                                        .text_color(topic_color)
                                         .child(topic.clone()),
                                 )
-                                // QoS 小徽标(行宽紧张时优先让 topic 截断)
+                                // QoS 小徽标(行宽紧张时优先让 topic 截断; 停用行降透明度)
                                 .child(
                                     div()
                                         .flex_shrink_0()
@@ -1801,7 +1841,57 @@ impl<'a> ConnectionTab<'a> {
                                         .bg(theme.border)
                                         .text_xs()
                                         .text_color(theme.muted_foreground)
-                                        .child(qos_label(*qos)),
+                                        .opacity(if is_on { 1.0 } else { 0.5 })
+                                        .child(qos_label(row_qos)),
+                                )
+                                // 失败原因: 行内红色感叹号 + hover tooltip（不占纵向空间）
+                                .when_some(row_error, |row, err| {
+                                    row.child(
+                                        div()
+                                            .id(format!("mqtt-sub-error-{}", topic))
+                                            .flex_shrink_0()
+                                            .flex()
+                                            .items_center()
+                                            .child(
+                                                Icon::new(IconName::CircleAlert)
+                                                    .size(px(12.0))
+                                                    .text_color(theme.danger),
+                                            )
+                                            .tooltip(move |window, cx| {
+                                                Tooltip::new(err.clone()).build(window, cx)
+                                            }),
+                                    )
+                                })
+                                // 等待 SUBACK: 开关保持关闭并禁用, 用 Spinner 表达进行中
+                                .when(pending, |row| {
+                                    row.child(
+                                        div()
+                                            .flex_shrink_0()
+                                            .child(Spinner::new().with_size(Size::XSmall)),
+                                    )
+                                })
+                                // 订阅开关: pending 期间禁用; 只在 SUBACK 成功后点亮
+                                .child(
+                                    div().flex_shrink_0().child(
+                                        Switch::new(format!("mqtt-sub-switch-{}", topic))
+                                            .checked(is_on)
+                                            .disabled(pending)
+                                            .with_size(Size::Small)
+                                            .on_change(move |next, window, cx| {
+                                                let Some(app) = switch_weak.upgrade() else {
+                                                    return;
+                                                };
+                                                let next = *next;
+                                                let (tab_id, topic) =
+                                                    (switch_tab.clone(), switch_topic.clone());
+                                                app.update(cx, |app, cx| {
+                                                    app.mqtt_set_subscription_enabled(
+                                                        &tab_id, &topic, next, window, cx,
+                                                    );
+                                                    cx.notify();
+                                                });
+                                            }),
+                                    ),
                                 )
                                 // 双击行复制 topic 名称, 复制成功推一条通知(右上角轻提示, 自动消失)
                                 .on_mouse_down(MouseButton::Left, {

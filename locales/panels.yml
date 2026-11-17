@@ -482,6 +482,12 @@ connection_tab:
   mqtt_subscribe_failed:
     zh-CN: 订阅失败（连接未就绪）
     en: Failed to subscribe (not connected)
+  mqtt_subscribe_rejected:
+    zh-CN: "订阅「%{topic}」失败: %{reason}"
+    en: "Failed to subscribe to \"%{topic}\": %{reason}"
+  mqtt_unsubscribe_persistent_offline:
+    zh-CN: "持久会话下 broker 仍保留订阅「%{topic}」，请连接后再取消"
+    en: "The broker keeps \"%{topic}\" in the persistent session; connect first to unsubscribe"
   mqtt_unsubscribe_failed:
     zh-CN: 取消订阅失败（连接未就绪）
     en: Failed to unsubscribe (not connected)
@@ -806,6 +812,15 @@ mqtt_net:
   suback_rejected:
     zh-CN: Broker 拒绝了部分订阅
     en: Broker rejected some subscriptions
+  suback_timeout:
+    zh-CN: 等待订阅确认超时
+    en: Timed out waiting for subscription confirmation
+  suback_code_mismatch:
+    zh-CN: broker 返回的确认数量与订阅数量不一致
+    en: Broker returned a mismatched number of acknowledgement codes
+  suback_not_authorized_topic:
+    zh-CN: "主题「%{topic}」没有权限"
+    en: "No permission for topic \"%{topic}\""
   suback_rejected_reason:
     zh-CN: "Broker 拒绝了订阅: %{reason}"
     en: "Broker rejected the subscription: %{reason}"

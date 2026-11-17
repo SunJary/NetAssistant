@@ -12,21 +12,24 @@
 use crate::config::connection::{ClientConfig, Qos, ServerConfig};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::network::events::{
-    ConnectionEvent, MqttCommand, MqttPublishMeta, NetCounters, ReceivedBatch, WireMessage,
+    ConnectionEvent, MqttCommand, MqttPublishMeta, MqttSubAckItem, NetCounters, ReceivedBatch,
+    WireMessage,
 };
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::frame::flush_batch;
 use crate::network::protocol::mqtt::{
     BATCH_MAX, DISCONNECT_DRAIN_TIMEOUT, DISCONNECT_WAIT_TASK_TIMEOUT, REQUEST_CHANNEL_CAP,
-    WRITE_CHANNEL_CAP, process_frame_mqtt, resolve_broker_endpoint, should_emit_warning,
+    WRITE_CHANNEL_CAP, emit_expired_subscriptions, process_frame_mqtt, resolve_broker_endpoint,
+    should_emit_warning, wait_for_subscribe_slot,
 };
 use crate::network::protocol::mqtt_tls::build_transport;
+use crate::network::protocol::subscription_tracker::{CHUNK_SIZE, SubscriptionTracker};
 use crate::reply::ReplyRulesStore;
 use log::{debug, error, info, warn};
 use rumqttc::Outgoing;
 use rumqttc::v5::mqttbytes::QoS as V5Qos;
 use rumqttc::v5::mqttbytes::v5::{
-    ConnectReturnCode, DisconnectReasonCode, LastWill, Packet, PubAckReason, PubRecReason,
+    ConnectReturnCode, DisconnectReasonCode, Filter, LastWill, Packet, PubAckReason, PubRecReason,
     SubscribeReasonCode,
 };
 use rumqttc::v5::{AsyncClient, Event, MqttOptions, StateError};
@@ -177,24 +180,59 @@ fn subscribe_reason_text(code: SubscribeReasonCode) -> String {
     }
 }
 
-/// 把一组失败 reason code（去重）+ broker reason string 组装成一句可读原因。
-fn describe_suback_failure(codes: &[SubscribeReasonCode], server: Option<&str>) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    for code in codes {
-        let text = subscribe_reason_text(*code);
-        if !parts.contains(&text) {
-            parts.push(text);
-        }
-    }
-    let joined = parts.join(", ");
+/// 单个 reason code → 可读原因（附 broker reason string）。
+fn suback_reason(code: SubscribeReasonCode, server: Option<&str>) -> String {
+    let reason = subscribe_reason_text(code);
     match server.filter(|s| !s.is_empty()) {
         Some(detail) => t!(
             "mqtt_net.suback_reason_with_server",
-            reason => joined,
+            reason => reason,
             detail => detail
         )
         .to_string(),
-        None => t!("mqtt_net.suback_rejected_reason", reason => joined).to_string(),
+        None => reason,
+    }
+}
+
+/// 按 `CHUNK_SIZE` 切块下发订阅，逐块登记 tracker；同步下发失败则回滚并回报失败。
+async fn dispatch_subscribe_v5(
+    client: &AsyncClient,
+    tracker: &Arc<StdMutex<SubscriptionTracker>>,
+    event_sender: &Option<Sender<ConnectionEvent>>,
+    config_id: &str,
+    topics: Vec<(String, Qos)>,
+) {
+    for chunk in topics.chunks(CHUNK_SIZE) {
+        wait_for_subscribe_slot(tracker).await;
+        let names: Vec<String> = chunk.iter().map(|(topic, _)| topic.clone()).collect();
+        if let Ok(mut guard) = tracker.lock() {
+            guard.queue(names);
+        }
+        let filters: Vec<Filter> = chunk
+            .iter()
+            .map(|(topic, qos)| Filter::new(topic.clone(), to_v5_qos(*qos)))
+            .collect();
+        if let Err(e) = client.subscribe_many(filters).await {
+            warn!("MQTT5 批量订阅失败（{} 个 topic）: {:?}", chunk.len(), e);
+            if let Ok(mut guard) = tracker.lock() {
+                guard.rollback_last();
+            }
+            if let Some(sender) = event_sender {
+                let items: Vec<MqttSubAckItem> = chunk
+                    .iter()
+                    .map(|(topic, _)| MqttSubAckItem {
+                        topic: topic.clone(),
+                        ok: false,
+                        reason: Some(
+                            t!("mqtt_net.subscribe_failed", topic => topic.clone()).to_string(),
+                        ),
+                    })
+                    .collect();
+                let _ = sender
+                    .send(ConnectionEvent::MqttSubAck(config_id.to_string(), items))
+                    .await;
+            }
+        }
     }
 }
 
@@ -290,10 +328,11 @@ impl NetworkConnection for MqttV5Client {
             };
             let (client, mut eventloop) = AsyncClient::new(options, REQUEST_CHANNEL_CAP);
 
-            // 写通道（发布）/ 订阅控制通道 / 重连信号
+            // 写通道（发布）/ 订阅控制通道
             let (write_tx, write_rx) = smol_bounded::<WireMessage>(WRITE_CHANNEL_CAP);
             let (control_tx, control_rx) = smol_unbounded::<MqttCommand>();
-            let (restore_tx, restore_rx) = smol_unbounded::<()>();
+            // 订阅确认追踪（与 v4 共用同一份实现）
+            let subscription_tracker = Arc::new(StdMutex::new(SubscriptionTracker::default()));
 
             if let Some(sender) = &event_sender {
                 if let Err(e) = sender
@@ -331,6 +370,7 @@ impl NetworkConnection for MqttV5Client {
             let read_processor = message_processor.clone();
             let read_counters = net_counters.clone();
             let read_rules = reply_rules.clone();
+            let read_tracker = subscription_tracker.clone();
             let reply_sender = write_tx.clone();
             let read_handle = tokio::spawn(async move {
                 let mut batch = ReceivedBatch::with_capacity(BATCH_MAX);
@@ -340,6 +380,29 @@ impl NetworkConnection for MqttV5Client {
                 let mut last_warning: Option<String> = None;
                 // 取消后进入排空态，等待 DISCONNECT 真正写出或超时（与 v4 相同语义）
                 let mut drain_deadline: Option<tokio::time::Instant> = None;
+                // SUBACK 超时检查必须是独立任务：与 `eventloop.poll()` 共用 `select!` 会
+                // 在 tick 就绪时丢弃尚未完成的 poll future（取消半途读写，破坏连接）。
+                let tick_tracker = read_tracker.clone();
+                let tick_sender = read_event_sender.clone();
+                let tick_config_id = read_config_id.clone();
+                let tick_cancel = read_cancel.clone();
+                let tick_handle = tokio::spawn(async move {
+                    let mut tick = tokio::time::interval(Duration::from_secs(1));
+                    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                    loop {
+                        tokio::select! {
+                            _ = tick_cancel.cancelled() => break,
+                            _ = tick.tick() => {
+                                emit_expired_subscriptions(
+                                    &tick_tracker,
+                                    &tick_sender,
+                                    &tick_config_id,
+                                )
+                                .await;
+                            }
+                        }
+                    }
+                });
                 loop {
                     if read_cancel.is_cancelled() && drain_deadline.is_none() {
                         info!("MQTT5 收到取消信号，排空等待 DISCONNECT 报文写出");
@@ -369,6 +432,11 @@ impl NetworkConnection for MqttV5Client {
                             // 连接已恢复：清空告警去重状态，使下次断线仍能提示（P4）
                             last_warning = None;
                             if connected_once {
+                                // 重连：旧会话的 pkid 不会再收到 SUBACK，清空追踪状态。
+                                // 首次连接不能 reset（会清掉 MqttControlSenderReady 提前登记的批次）。
+                                if let Ok(mut guard) = read_tracker.lock() {
+                                    guard.reset();
+                                }
                                 info!("MQTT5 已重连");
                                 if let Some(s) = &read_event_sender {
                                     // 重连成功是正常状态变化：走 StatusHint（成功色 + 自动消失）
@@ -378,8 +446,11 @@ impl NetworkConnection for MqttV5Client {
                                             t!("mqtt_net.reconnected").to_string(),
                                         ))
                                         .await;
+                                    // 订阅权威在 app：由 app 按当前 enabled 列表重发批次
+                                    let _ = s
+                                        .send(ConnectionEvent::Reconnected(read_config_id.clone()))
+                                        .await;
                                 }
-                                let _ = restore_tx.try_send(());
                             } else {
                                 connected_once = true;
                                 info!("MQTT5 连接成功（CONNACK 已确认）: {}", broker_endpoint);
@@ -411,32 +482,75 @@ impl NetworkConnection for MqttV5Client {
                         }
                         Ok(Event::Incoming(Packet::SubAck(ack))) => {
                             // v5 的 SUBACK 是 reason code 数组，且带可选的 reason string
-                            let failures: Vec<SubscribeReasonCode> = ack
+                            let server = ack
+                                .properties
+                                .as_ref()
+                                .and_then(|p| p.reason_string.as_deref());
+                            let codes: Vec<Option<String>> = ack
                                 .return_codes
                                 .iter()
-                                .copied()
-                                .filter(|c| !matches!(c, SubscribeReasonCode::Success(_)))
+                                .map(|code| match code {
+                                    SubscribeReasonCode::Success(_) => None,
+                                    other => Some(suback_reason(*other, server)),
+                                })
                                 .collect();
-                            if failures.is_empty() {
-                                debug!(
-                                    "MQTT5 SUBACK: pkid={}, codes={:?}",
-                                    ack.pkid, ack.return_codes
-                                );
-                            } else {
-                                let server = ack
-                                    .properties
-                                    .as_ref()
-                                    .and_then(|p| p.reason_string.as_deref());
-                                let reason = describe_suback_failure(&failures, server);
-                                warn!("MQTT5 SUBACK 含失败原因: pkid={}, {}", ack.pkid, reason);
-                                if let Some(s) = &read_event_sender {
-                                    let _ = s
-                                        .send(ConnectionEvent::Warning(
-                                            read_config_id.clone(),
-                                            reason,
-                                        ))
-                                        .await;
+                            // NotAuthorized 需要逐 topic 的精确文案（「主题「xx」没有权限」）
+                            let unauthorized: Vec<bool> = ack
+                                .return_codes
+                                .iter()
+                                .map(|code| matches!(code, SubscribeReasonCode::NotAuthorized))
+                                .collect();
+                            let resolved = read_tracker
+                                .lock()
+                                .ok()
+                                .and_then(|mut guard| guard.resolve(ack.pkid, &codes));
+                            match resolved {
+                                Some(mut items) => {
+                                    if items.len() == unauthorized.len() {
+                                        for (item, denied) in
+                                            items.iter_mut().zip(unauthorized.iter())
+                                        {
+                                            if !*denied {
+                                                continue;
+                                            }
+                                            let reason = t!(
+                                                "mqtt_net.suback_not_authorized_topic",
+                                                topic => item.topic.clone()
+                                            )
+                                            .to_string();
+                                            item.reason =
+                                                Some(match server.filter(|s| !s.is_empty()) {
+                                                    Some(detail) => t!(
+                                                        "mqtt_net.suback_reason_with_server",
+                                                        reason => reason,
+                                                        detail => detail
+                                                    )
+                                                    .to_string(),
+                                                    None => reason,
+                                                });
+                                        }
+                                    }
+                                    if items.iter().any(|item| !item.ok) {
+                                        warn!(
+                                            "MQTT5 SUBACK 含失败原因: pkid={}, {:?}",
+                                            ack.pkid, ack.return_codes
+                                        );
+                                    } else {
+                                        debug!(
+                                            "MQTT5 SUBACK: pkid={}, codes={:?}",
+                                            ack.pkid, ack.return_codes
+                                        );
+                                    }
+                                    if let Some(s) = &read_event_sender {
+                                        let _ = s
+                                            .send(ConnectionEvent::MqttSubAck(
+                                                read_config_id.clone(),
+                                                items,
+                                            ))
+                                            .await;
+                                    }
                                 }
+                                None => debug!("MQTT5 忽略未知/已超时的 SUBACK: pkid={}", ack.pkid),
                             }
                         }
                         Ok(Event::Incoming(Packet::PubAck(ack))) => {
@@ -485,6 +599,21 @@ impl NetworkConnection for MqttV5Client {
                             // PubComp/PubRel/PingResp/UnsubAck 等握手报文
                             debug!("MQTT5 收到报文: {:?}", other);
                         }
+                        Ok(Event::Outgoing(Outgoing::Subscribe(pkid))) => {
+                            // SUBSCRIBE 已写出：把 pkid 与任务 B 预登记的最早批次绑定
+                            let bound = read_tracker
+                                .lock()
+                                .map(|mut guard| guard.bind(pkid))
+                                .unwrap_or(false);
+                            if bound {
+                                debug!("MQTT5 SUBSCRIBE 已写出，绑定 pkid={}", pkid);
+                            } else {
+                                debug!(
+                                    "MQTT5 Outgoing::Subscribe(pkid={}) 无待绑定批次（重连残留）",
+                                    pkid
+                                );
+                            }
+                        }
                         Ok(Event::Outgoing(out)) => {
                             debug!("MQTT5 发出报文: {:?}", out);
                             // 排空完成的唯一可靠信号：该事件返回前报文已 write+flush 到网络
@@ -494,6 +623,10 @@ impl NetworkConnection for MqttV5Client {
                             }
                         }
                         Err(e) => {
+                            // 连接异常：旧会话的 SUBACK 不会再到达，清空追踪状态
+                            if let Ok(mut guard) = read_tracker.lock() {
+                                guard.reset();
+                            }
                             if read_cancel.is_cancelled() {
                                 break;
                             }
@@ -559,6 +692,8 @@ impl NetworkConnection for MqttV5Client {
                         flush_batch(&read_event_sender, &read_config_id, &mut batch);
                     }
                 }
+                // 停止超时检查，避免在 Disconnected 之后仍推 MqttSubAck
+                tick_handle.abort();
                 flush_batch(&read_event_sender, &read_config_id, &mut batch);
                 if !terminal_error && let Some(s) = &read_event_sender {
                     let _ = s
@@ -576,13 +711,11 @@ impl NetworkConnection for MqttV5Client {
             let write_event_sender = event_sender.clone();
             let write_config_id = config.id.clone();
             let write_counters = net_counters.clone();
+            let write_tracker = subscription_tracker.clone();
             tokio::spawn(async move {
-                // 乐观维护的订阅列表（SUBACK 无法关联 topic）
-                let mut active: Vec<(String, Qos)> = Vec::new();
                 // 接收端用 Option 包装：通道关闭后置 None 让分支退化为 pending，避免 select! 忙转
                 let mut write_rx = Some(write_rx);
                 let mut control_rx = Some(control_rx);
-                let mut restore_rx = Some(restore_rx);
                 loop {
                     tokio::select! {
                         biased;
@@ -593,48 +726,7 @@ impl NetworkConnection for MqttV5Client {
                             break;
                         }
 
-                        // 任务 A 的重连信号：重新订阅全部 active 列表（幂等）
-                        restored = async {
-                            match restore_rx.as_ref() {
-                                Some(rx) => rx.recv().await,
-                                None => std::future::pending::<
-                                    Result<(), smol::channel::RecvError>,
-                                >()
-                                .await,
-                            }
-                        } => {
-                            match restored {
-                                Ok(()) => {
-                                    let count = active.len();
-                                    for (topic, qos) in &active {
-                                        if let Err(e) = client
-                                            .subscribe(topic.clone(), to_v5_qos(*qos))
-                                            .await
-                                        {
-                                            warn!("MQTT5 重连后重新发起订阅 '{}' 失败: {:?}", topic, e);
-                                        }
-                                    }
-                                    debug!("MQTT5 重连后已重新发起订阅 {} 个 topic", count);
-                                    if count > 0
-                                        && let Some(s) = &write_event_sender
-                                    {
-                                        let _ = s
-                                            .send(ConnectionEvent::MqttSubscriptionsRestored(
-                                                write_config_id.clone(),
-                                                count,
-                                            ))
-                                            .await;
-                                    }
-                                }
-                                // 通道关闭 → 置 None 让分支退化为 pending（防止 select! 忙转）
-                                Err(_) => {
-                                    debug!("MQTT5 重连恢复通道已关闭, 不再接收重订阅信号");
-                                    restore_rx = None;
-                                }
-                            }
-                        }
-
-                        // 订阅 / 取消订阅（运行时下发，无需重连；乐观维护 active 列表）
+                        // 订阅 / 取消订阅（运行时下发，无需重连）
                         cmd = async {
                             match control_rx.as_ref() {
                                 Some(rx) => rx.recv().await,
@@ -646,29 +738,28 @@ impl NetworkConnection for MqttV5Client {
                         } => {
                             match cmd {
                                 Ok(MqttCommand::Subscribe { topic, qos }) => {
-                                    match client.subscribe(topic.clone(), to_v5_qos(qos)).await {
-                                        Ok(()) => {
-                                            match active.iter_mut().find(|(t, _)| *t == topic) {
-                                                Some(entry) => entry.1 = qos,
-                                                None => active.push((topic, qos)),
-                                            }
-                                        }
-                                        Err(e) => {
-                                            warn!("MQTT5 订阅 '{}' 失败: {:?}", topic, e);
-                                            if let Some(s) = &write_event_sender {
-                                                let _ = s
-                                                    .send(ConnectionEvent::Warning(
-                                                        write_config_id.clone(),
-                                                        t!("mqtt_net.subscribe_failed", topic => topic.clone()).to_string(),
-                                                    ))
-                                                    .await;
-                                            }
-                                        }
-                                    }
+                                    dispatch_subscribe_v5(
+                                        &client,
+                                        &write_tracker,
+                                        &write_event_sender,
+                                        &write_config_id,
+                                        vec![(topic, qos)],
+                                    )
+                                    .await;
+                                }
+                                Ok(MqttCommand::SubscribeBatch(topics)) => {
+                                    dispatch_subscribe_v5(
+                                        &client,
+                                        &write_tracker,
+                                        &write_event_sender,
+                                        &write_config_id,
+                                        topics,
+                                    )
+                                    .await;
                                 }
                                 Ok(MqttCommand::Unsubscribe { topic }) => {
                                     match client.unsubscribe(topic.clone()).await {
-                                        Ok(()) => active.retain(|(t, _)| *t != topic),
+                                        Ok(()) => {}
                                         Err(e) => {
                                             warn!("MQTT5 取消订阅 '{}' 失败: {:?}", topic, e);
                                             if let Some(s) = &write_event_sender {
@@ -946,22 +1037,19 @@ mod tests {
 
     /// SUBACK 失败码映射为可读原因，并附 broker 的 reason string。
     #[test]
-    fn test_describe_suback_failure_is_readable() {
-        let codes = [
-            SubscribeReasonCode::NotAuthorized,
-            SubscribeReasonCode::TopicFilterInvalid,
-        ];
-        let msg = describe_suback_failure(&codes, Some("denied by ACL"));
+    fn test_suback_reason_is_readable() {
+        let msg = suback_reason(SubscribeReasonCode::NotAuthorized, Some("denied by ACL"));
         assert!(msg.contains(&t!("mqtt_net.suback_reason_not_authorized").to_string()));
-        assert!(msg.contains(&t!("mqtt_net.suback_reason_topic_filter_invalid").to_string()));
         assert!(
             msg.contains("denied by ACL"),
             "应带上 broker 的 reason string: {msg}"
         );
 
-        // 无 reason string 时只展示具体原因，不出现空的说明占位
-        let plain = describe_suback_failure(&codes, None);
-        assert!(!plain.contains("broker"));
+        let invalid = suback_reason(SubscribeReasonCode::TopicFilterInvalid, None);
+        assert_eq!(
+            invalid,
+            t!("mqtt_net.suback_reason_topic_filter_invalid").to_string()
+        );
     }
 
     /// broker 主动断开：文案同时带 reason code 与 reason string。
