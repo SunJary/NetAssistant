@@ -15,8 +15,8 @@ use crate::config::connection::{ClientConfig, Qos, ServerConfig};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::message::MessageType;
 use crate::network::events::{
-    ConnectionEvent, MqttCommand, MqttPublishMeta, MqttSubAckItem, NetCounters, ReceivedBatch,
-    WireMessage,
+    ConnectionEvent, MqttCommand, MqttPublishFailure, MqttPublishMeta, MqttSubAckItem, NetCounters,
+    ReceivedBatch, WireMessage,
 };
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::frame::{flush_batch, process_frame_shared};
@@ -778,10 +778,32 @@ impl NetworkConnection for MqttClient {
                                                         c.add_sent_bytes(len);
                                                     }
                                                 }
-                                                Err(e) => warn!(
-                                                    "MQTT 发布到 '{}' 失败: {:?}",
-                                                    topic, e
-                                                ),
+                                                Err(e) => {
+                                                    warn!(
+                                                        "MQTT 发布到 '{}' 失败: {:?}",
+                                                        topic, e
+                                                    );
+                                                    // 3.1.1 的 PUBACK 没有 reason code，broker 拒收
+                                                    // 无法检测；这里只上报可确定的本地投递失败。
+                                                    if let Some(s) = &write_event_sender {
+                                                        let message = t!(
+                                                            "mqtt_net.publish_failed_local",
+                                                            topic => topic.clone(),
+                                                            reason => format!("{e:?}")
+                                                        )
+                                                        .to_string();
+                                                        let _ = s
+                                                            .send(ConnectionEvent::MqttPublishFailed(
+                                                                write_config_id.clone(),
+                                                                MqttPublishFailure {
+                                                                    topic: topic.clone(),
+                                                                    qos,
+                                                                    message,
+                                                                },
+                                                            ))
+                                                            .await;
+                                                    }
+                                                }
                                             }
                                         }
                                         // 兜底（F3）：正常情况下引擎/手动发送都会带 meta，理论不再命中；

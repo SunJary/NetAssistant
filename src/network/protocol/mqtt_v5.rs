@@ -12,8 +12,8 @@
 use crate::config::connection::{ClientConfig, Qos, ServerConfig};
 use crate::core::message_processor::{DefaultMessageProcessor, MessageProcessor};
 use crate::network::events::{
-    ConnectionEvent, MqttCommand, MqttPublishMeta, MqttSubAckItem, NetCounters, ReceivedBatch,
-    WireMessage,
+    ConnectionEvent, MqttCommand, MqttPublishFailure, MqttPublishMeta, MqttSubAckItem, NetCounters,
+    ReceivedBatch, WireMessage,
 };
 use crate::network::interfaces::{NetworkConnection, NetworkServer};
 use crate::network::protocol::frame::flush_batch;
@@ -23,14 +23,15 @@ use crate::network::protocol::mqtt::{
     should_emit_warning, wait_for_subscribe_slot,
 };
 use crate::network::protocol::mqtt_tls::build_transport;
+use crate::network::protocol::publish_tracker::PublishTracker;
 use crate::network::protocol::subscription_tracker::{CHUNK_SIZE, SubscriptionTracker};
 use crate::reply::ReplyRulesStore;
 use log::{debug, error, info, warn};
 use rumqttc::Outgoing;
 use rumqttc::v5::mqttbytes::QoS as V5Qos;
 use rumqttc::v5::mqttbytes::v5::{
-    ConnectReturnCode, DisconnectReasonCode, Filter, LastWill, Packet, PubAckReason, PubRecReason,
-    SubscribeReasonCode,
+    ConnectReturnCode, DisconnectReasonCode, Filter, LastWill, Packet, PubAckReason, PubCompReason,
+    PubRecReason, SubscribeReasonCode,
 };
 use rumqttc::v5::{AsyncClient, Event, MqttOptions, StateError};
 use rust_i18n::t;
@@ -38,7 +39,7 @@ use smol::channel::{Sender, bounded as smol_bounded, unbounded as smol_unbounded
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 /// 项目 Qos → rumqttc v5 QoS。
@@ -240,16 +241,89 @@ async fn dispatch_subscribe_v5(
 ///
 /// v4 的 PUBACK 只有报文标识符，v5 起 broker 可以拒绝单条发布
 /// （未授权 / 配额超限 / 载荷格式非法）而不影响连接，这是 v5 独有的排障信息。
-fn describe_publish_rejected(code: &impl std::fmt::Debug, reason_string: Option<&str>) -> String {
-    let code = format!("{code:?}");
-    match reason_string.filter(|s| !s.is_empty()) {
-        Some(detail) => t!(
-            "mqtt_net.publish_rejected_reason",
-            code => code,
-            reason => detail
-        )
-        .to_string(),
-        None => t!("mqtt_net.publish_rejected", code => code).to_string(),
+///
+/// `topic` 为 `None` 表示无法还原主题（旧会话残留 / 未登记的确认），
+/// 此时退化为不带主题的通用文案；`NotAuthorized` 使用带主题的专用文案，
+/// 与订阅失败的「主题「xx」没有权限」保持一致。
+fn describe_publish_rejected(
+    topic: Option<&str>,
+    code: &impl std::fmt::Debug,
+    reason_string: Option<&str>,
+) -> String {
+    let code_text = format!("{code:?}");
+    let detail = reason_string.filter(|s| !s.is_empty());
+    match topic {
+        Some(topic) if code_text == "NotAuthorized" => {
+            t!("mqtt_net.publish_not_authorized_topic", topic => topic).to_string()
+        }
+        Some(topic) => match detail {
+            Some(detail) => t!(
+                "mqtt_net.publish_rejected_topic_reason",
+                topic => topic,
+                code => code_text,
+                reason => detail
+            )
+            .to_string(),
+            None => {
+                t!("mqtt_net.publish_rejected_topic", topic => topic, code => code_text).to_string()
+            }
+        },
+        None => match detail {
+            Some(detail) => t!(
+                "mqtt_net.publish_rejected_reason",
+                code => code_text,
+                reason => detail
+            )
+            .to_string(),
+            None => t!("mqtt_net.publish_rejected", code => code_text).to_string(),
+        },
+    }
+}
+
+/// 把 broker 的拒收确认转成 `MqttPublishFailed` 事件。
+///
+/// 主题从 [`PublishTracker`] 按 pkid 还原；无法还原（旧会话残留 / 未登记）时
+/// 用空主题退化为通用文案，事件仍会发出，避免漏掉用户可见的失败。
+async fn emit_publish_rejected(
+    event_sender: &Option<Sender<ConnectionEvent>>,
+    config_id: &str,
+    tracker: &Arc<StdMutex<PublishTracker>>,
+    pkid: u16,
+    code: &impl std::fmt::Debug,
+    reason_string: Option<&str>,
+) {
+    let resolved = tracker
+        .lock()
+        .ok()
+        .and_then(|mut guard| guard.resolve(pkid));
+    let (topic, qos) = match resolved {
+        Some((topic, qos)) => (topic, qos),
+        None => (String::new(), Qos::AtMostOnce),
+    };
+    let message = describe_publish_rejected(
+        if topic.is_empty() {
+            None
+        } else {
+            Some(topic.as_str())
+        },
+        code,
+        reason_string,
+    );
+    warn!(
+        "MQTT5 发布被拒绝: pkid={}, topic='{}', {}",
+        pkid, topic, message
+    );
+    if let Some(s) = event_sender {
+        let _ = s
+            .send(ConnectionEvent::MqttPublishFailed(
+                config_id.to_string(),
+                MqttPublishFailure {
+                    topic,
+                    qos,
+                    message,
+                },
+            ))
+            .await;
     }
 }
 
@@ -333,6 +407,9 @@ impl NetworkConnection for MqttV5Client {
             let (control_tx, control_rx) = smol_unbounded::<MqttCommand>();
             // 订阅确认追踪（与 v4 共用同一份实现）
             let subscription_tracker = Arc::new(StdMutex::new(SubscriptionTracker::default()));
+            // 发布确认追踪：PUBACK/PUBREC/PUBCOMP 只带 pkid，需还原主题才能提示「xx 主题没有权限」。
+            // 仅 v5 需要（3.1.1 的 PUBACK 没有 reason code）。
+            let publish_tracker = Arc::new(StdMutex::new(PublishTracker::default()));
 
             if let Some(sender) = &event_sender {
                 if let Err(e) = sender
@@ -371,6 +448,7 @@ impl NetworkConnection for MqttV5Client {
             let read_counters = net_counters.clone();
             let read_rules = reply_rules.clone();
             let read_tracker = subscription_tracker.clone();
+            let read_publish_tracker = publish_tracker.clone();
             let reply_sender = write_tx.clone();
             let read_handle = tokio::spawn(async move {
                 let mut batch = ReceivedBatch::with_capacity(BATCH_MAX);
@@ -383,6 +461,7 @@ impl NetworkConnection for MqttV5Client {
                 // SUBACK 超时检查必须是独立任务：与 `eventloop.poll()` 共用 `select!` 会
                 // 在 tick 就绪时丢弃尚未完成的 poll future（取消半途读写，破坏连接）。
                 let tick_tracker = read_tracker.clone();
+                let tick_publish_tracker = read_publish_tracker.clone();
                 let tick_sender = read_event_sender.clone();
                 let tick_config_id = read_config_id.clone();
                 let tick_cancel = read_cancel.clone();
@@ -399,6 +478,14 @@ impl NetworkConnection for MqttV5Client {
                                     &tick_config_id,
                                 )
                                 .await;
+                                // 发布记录只做 TTL 清理（不主动上报失败）：ACK 丢失时避免 map 泄漏
+                                let cleared = tick_publish_tracker
+                                    .lock()
+                                    .map(|mut guard| guard.expire(Instant::now()))
+                                    .unwrap_or(0);
+                                if cleared > 0 {
+                                    debug!("MQTT5 清理 {} 条超时发布记录", cleared);
+                                }
                             }
                         }
                     }
@@ -554,45 +641,74 @@ impl NetworkConnection for MqttV5Client {
                             }
                         }
                         Ok(Event::Incoming(Packet::PubAck(ack))) => {
-                            // 非 Success 表示 broker 拒收这条 QoS1 发布（连接仍可用）
-                            if !matches!(ack.reason, PubAckReason::Success) {
+                            // Success / NoMatchingSubscribers（消息已接受，仅当前无订阅者）都不是失败；
+                            // 其余 reason code 表示 broker 拒收这条 QoS1 发布（连接仍可用）。
+                            if matches!(
+                                ack.reason,
+                                PubAckReason::Success | PubAckReason::NoMatchingSubscribers
+                            ) {
+                                // 成功确认：立即消费在途记录，否则 QoS1 高频发布会在 TTL 内累积
+                                let _ = read_publish_tracker
+                                    .lock()
+                                    .map(|mut guard| guard.resolve(ack.pkid));
+                            } else {
                                 let detail = ack
                                     .properties
                                     .as_ref()
                                     .and_then(|p| p.reason_string.as_deref());
-                                let message = describe_publish_rejected(&ack.reason, detail);
-                                warn!("MQTT5 发布被拒绝: pkid={}, {}", ack.pkid, message);
-                                if should_emit_warning(&mut last_warning, &message)
-                                    && let Some(s) = &read_event_sender
-                                {
-                                    let _ = s
-                                        .send(ConnectionEvent::Warning(
-                                            read_config_id.clone(),
-                                            message,
-                                        ))
-                                        .await;
-                                }
+                                emit_publish_rejected(
+                                    &read_event_sender,
+                                    &read_config_id,
+                                    &read_publish_tracker,
+                                    ack.pkid,
+                                    &ack.reason,
+                                    detail,
+                                )
+                                .await;
                             }
                         }
                         Ok(Event::Incoming(Packet::PubRec(rec))) => {
-                            // QoS2 第一段确认：失败码同样只拒绝该条消息
-                            if !matches!(rec.reason, PubRecReason::Success) {
+                            // QoS2 第一段确认：失败码只拒绝该条消息，连接不受影响。
+                            // 成功时保留在途记录，等 PUBCOMP 再清理（其失败码也要能还原主题）。
+                            if !matches!(
+                                rec.reason,
+                                PubRecReason::Success | PubRecReason::NoMatchingSubscribers
+                            ) {
                                 let detail = rec
                                     .properties
                                     .as_ref()
                                     .and_then(|p| p.reason_string.as_deref());
-                                let message = describe_publish_rejected(&rec.reason, detail);
-                                warn!("MQTT5 发布被拒绝: pkid={}, {}", rec.pkid, message);
-                                if should_emit_warning(&mut last_warning, &message)
-                                    && let Some(s) = &read_event_sender
-                                {
-                                    let _ = s
-                                        .send(ConnectionEvent::Warning(
-                                            read_config_id.clone(),
-                                            message,
-                                        ))
-                                        .await;
-                                }
+                                emit_publish_rejected(
+                                    &read_event_sender,
+                                    &read_config_id,
+                                    &read_publish_tracker,
+                                    rec.pkid,
+                                    &rec.reason,
+                                    detail,
+                                )
+                                .await;
+                            }
+                        }
+                        Ok(Event::Incoming(Packet::PubComp(comp))) => {
+                            // QoS2 完成：无论成功与否都在此消费在途记录
+                            if matches!(comp.reason, PubCompReason::Success) {
+                                let _ = read_publish_tracker
+                                    .lock()
+                                    .map(|mut guard| guard.resolve(comp.pkid));
+                            } else {
+                                let detail = comp
+                                    .properties
+                                    .as_ref()
+                                    .and_then(|p| p.reason_string.as_deref());
+                                emit_publish_rejected(
+                                    &read_event_sender,
+                                    &read_config_id,
+                                    &read_publish_tracker,
+                                    comp.pkid,
+                                    &comp.reason,
+                                    detail,
+                                )
+                                .await;
                             }
                         }
                         Ok(Event::Incoming(other)) => {
@@ -614,6 +730,22 @@ impl NetworkConnection for MqttV5Client {
                                 );
                             }
                         }
+                        Ok(Event::Outgoing(Outgoing::Publish(pkid))) => {
+                            // PUBLISH 已写出：把 pkid 与任务 B 预登记的最早发布绑定。
+                            // pkid == 0 是 QoS 0（无确认）：不查表也不打日志，避免高频发送时刷屏。
+                            if pkid != 0 {
+                                let bound = read_publish_tracker
+                                    .lock()
+                                    .map(|mut guard| guard.bind(pkid))
+                                    .unwrap_or(false);
+                                if !bound {
+                                    debug!(
+                                        "MQTT5 Outgoing::Publish(pkid={}) 无待绑定发布（重连残留）",
+                                        pkid
+                                    );
+                                }
+                            }
+                        }
                         Ok(Event::Outgoing(out)) => {
                             debug!("MQTT5 发出报文: {:?}", out);
                             // 排空完成的唯一可靠信号：该事件返回前报文已 write+flush 到网络
@@ -623,8 +755,11 @@ impl NetworkConnection for MqttV5Client {
                             }
                         }
                         Err(e) => {
-                            // 连接异常：旧会话的 SUBACK 不会再到达，清空追踪状态
+                            // 连接异常：旧会话的 SUBACK / PUBACK 不会再到达，清空追踪状态
                             if let Ok(mut guard) = read_tracker.lock() {
+                                guard.reset();
+                            }
+                            if let Ok(mut guard) = read_publish_tracker.lock() {
                                 guard.reset();
                             }
                             if read_cancel.is_cancelled() {
@@ -712,6 +847,7 @@ impl NetworkConnection for MqttV5Client {
             let write_config_id = config.id.clone();
             let write_counters = net_counters.clone();
             let write_tracker = subscription_tracker.clone();
+            let write_publish_tracker = publish_tracker.clone();
             tokio::spawn(async move {
                 // 接收端用 Option 包装：通道关闭后置 None 让分支退化为 pending，避免 select! 忙转
                 let mut write_rx = Some(write_rx);
@@ -800,6 +936,11 @@ impl NetworkConnection for MqttV5Client {
                                             qos,
                                             retain,
                                         }) => {
+                                            // QoS1/2 先登记，等 Outgoing::Publish(pkid) 绑定；
+                                            // QoS0 没有确认，不入表（queue 内部也会忽略）。
+                                            if let Ok(mut guard) = write_publish_tracker.lock() {
+                                                guard.queue(topic.clone(), qos);
+                                            }
                                             match client
                                                 .publish(
                                                     topic.as_str(),
@@ -816,10 +957,35 @@ impl NetworkConnection for MqttV5Client {
                                                         c.add_sent_bytes(len);
                                                     }
                                                 }
-                                                Err(e) => warn!(
-                                                    "MQTT5 发布到 '{}' 失败: {:?}",
-                                                    topic, e
-                                                ),
+                                                Err(e) => {
+                                                    // 请求没进 rumqttc：回滚登记，避免后续发布整体错位
+                                                    if let Ok(mut guard) =
+                                                        write_publish_tracker.lock()
+                                                    {
+                                                        guard.rollback_last();
+                                                    }
+                                                    warn!("MQTT5 发布到 '{}' 失败: {:?}", topic, e);
+                                                    // 本地投递失败对所有 QoS 都提示：这是可确定的发送失败
+                                                    // （QoS0 的 broker 拒收无法检测，但本地失败可以）。
+                                                    if let Some(s) = &write_event_sender {
+                                                        let message = t!(
+                                                            "mqtt_net.publish_failed_local",
+                                                            topic => topic.clone(),
+                                                            reason => format!("{e:?}")
+                                                        )
+                                                        .to_string();
+                                                        let _ = s
+                                                            .send(ConnectionEvent::MqttPublishFailed(
+                                                                write_config_id.clone(),
+                                                                MqttPublishFailure {
+                                                                    topic: topic.clone(),
+                                                                    qos,
+                                                                    message,
+                                                                },
+                                                            ))
+                                                            .await;
+                                                    }
+                                                }
                                             }
                                         }
                                         None => {
@@ -1026,13 +1192,34 @@ mod tests {
     /// 发布确认失败码映射为可读原因，并附 broker 的 reason string。
     #[test]
     fn test_describe_publish_rejected_is_readable() {
-        let plain = describe_publish_rejected(&PubAckReason::NotAuthorized, None);
-        assert!(plain.contains("NotAuthorized"));
+        // 未授权使用带主题的专用文案，与订阅失败保持一致
+        let unauthorized =
+            describe_publish_rejected(Some("sensor/1"), &PubAckReason::NotAuthorized, None);
+        assert_eq!(
+            unauthorized,
+            t!("mqtt_net.publish_not_authorized_topic", topic => "sensor/1").to_string()
+        );
 
-        let with_detail =
-            describe_publish_rejected(&PubRecReason::QuotaExceeded, Some("quota full"));
+        // 其他失败码带主题与 broker reason string
+        let with_detail = describe_publish_rejected(
+            Some("sensor/1"),
+            &PubRecReason::QuotaExceeded,
+            Some("quota full"),
+        );
+        assert!(
+            with_detail.contains("sensor/1"),
+            "应带上主题: {with_detail}"
+        );
         assert!(with_detail.contains("QuotaExceeded"));
         assert!(with_detail.contains("quota full"));
+
+        // 主题无法还原时退化为不含主题的通用文案
+        let unknown_topic = describe_publish_rejected(None, &PubAckReason::NotAuthorized, None);
+        assert!(unknown_topic.contains("NotAuthorized"));
+        assert!(
+            !unknown_topic.contains("sensor/1"),
+            "不应凭空生成主题: {unknown_topic}"
+        );
     }
 
     /// SUBACK 失败码映射为可读原因，并附 broker 的 reason string。

@@ -875,6 +875,18 @@ mqtt_net:
   publish_rejected_reason:
     zh-CN: "发布被 Broker 拒绝（%{code}: %{reason}）"
     en: "Publish rejected by broker (%{code}: %{reason})"
+  publish_not_authorized_topic:
+    zh-CN: "主题「%{topic}」没有权限"
+    en: "No permission to publish to \"%{topic}\""
+  publish_rejected_topic:
+    zh-CN: "发布到「%{topic}」被拒绝（%{code}）"
+    en: "Publish to \"%{topic}\" was rejected (%{code})"
+  publish_rejected_topic_reason:
+    zh-CN: "发布到「%{topic}」被拒绝（%{code}: %{reason}）"
+    en: "Publish to \"%{topic}\" was rejected (%{code}: %{reason})"
+  publish_failed_local:
+    zh-CN: "向「%{topic}」发送失败: %{reason}"
+    en: "Failed to send to \"%{topic}\": %{reason}"
   connect_failed:
     zh-CN: "MQTT 连接失败: %{reason}"
     en: "MQTT connect failed: %{reason}"

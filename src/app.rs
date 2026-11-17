@@ -60,6 +60,12 @@ use std::time::{Duration, Instant};
 /// 工具箱标签页的特殊 id：不占据 connection_tabs（连接体系），仅占据一个标签栏位置
 pub const TOOLBOX_TAB_ID: &str = "__toolbox__";
 
+/// MQTT 发布失败通知去重窗口：相同文案（已含主题与原因）在该时间内只弹一次。
+///
+/// 发送任务/周期发送会高频发布同一主题，ACL 拒绝时若逐条弹通知会刷屏；
+/// 日志仍逐条记录，不受此限制影响。
+const PUBLISH_TOAST_COOLDOWN: Duration = Duration::from_secs(3);
+
 /// 文件哈希任务代数计数器：每次选新文件递增，后台结果回写时校验
 static TOOLBOX_HASH_JOB_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -273,6 +279,9 @@ pub struct NetAssistantApp {
     pub server_decoder_controls: HashMap<String, HashMap<SocketAddr, Sender<DecoderConfig>>>,
     // MQTT 订阅控制发送器映射（用于运行时订阅/取消，无需重连；规划 §5.3）
     pub mqtt_control_senders: HashMap<String, Sender<MqttCommand>>,
+    // MQTT 发布失败通知去重：key = 完整文案（含主题与原因），value = 上次弹出时刻。
+    // 发送任务高频发布同一无权限主题时，避免右上角通知刷屏。
+    pub mqtt_publish_toast_at: HashMap<String, Instant>,
     // 回复规则集共享状态(UI 下发整表 → 网络层按规则求值)
     //
     // 全局唯一：规则是**可分享的知识资产**，不绑定连接（决策 D-2）。
@@ -590,6 +599,7 @@ impl NetAssistantApp {
             decoder_control_senders,
             server_decoder_controls,
             mqtt_control_senders,
+            mqtt_publish_toast_at: HashMap::new(),
             // 回复规则集：从持久化配置构造，并把同一份 store 注入网络管理器，
             // 使客户端连接与 UI 共享同一个规则集（UDP/TCP 客户端构造时注入）
             reply_rules_store,
@@ -5562,6 +5572,46 @@ impl NetAssistantApp {
                             for message in &failures {
                                 window.push_notification(Notification::error(message.clone()), cx);
                             }
+                        });
+                    });
+                }
+            }
+            ConnectionEvent::MqttPublishFailed(tab_id, failure) => {
+                // 标签页已关闭：丢弃孤儿连接的迟到确认，避免对已关闭连接弹提示
+                if !self.connection_tabs.contains_key(&tab_id) {
+                    debug!(
+                        "[handle_connection_events] 忽略已关闭标签页的发布失败: tab={}",
+                        tab_id
+                    );
+                } else if self
+                    .mqtt_publish_toast_at
+                    .get(&failure.message)
+                    .is_some_and(|at| at.elapsed() < PUBLISH_TOAST_COOLDOWN)
+                {
+                    // 同一文案（含主题与原因）冷却期内只弹一次，日志仍逐条记录
+                    debug!(
+                        "[handle_connection_events] 发布失败通知去重: tab={}, {}",
+                        tab_id, failure.message
+                    );
+                } else {
+                    let now = Instant::now();
+                    // 顺带清理过期项，避免长期运行时 map 累积
+                    self.mqtt_publish_toast_at
+                        .retain(|_, at| now.duration_since(*at) < PUBLISH_TOAST_COOLDOWN);
+                    self.mqtt_publish_toast_at
+                        .insert(failure.message.clone(), now);
+                    debug!(
+                        "[handle_connection_events] MQTT 发布失败: tab={}, topic='{}', qos={:?}, {}",
+                        tab_id, failure.topic, failure.qos, failure.message
+                    );
+                    let message = failure.message;
+                    // `defer` 避免在实体更新期间同步借窗口导致重入（与订阅失败通知一致）。
+                    cx.defer(move |cx| {
+                        let Some(window_handle) = cx.active_window() else {
+                            return;
+                        };
+                        let _ = window_handle.update(cx, |_view, window, cx| {
+                            window.push_notification(Notification::error(message.clone()), cx);
                         });
                     });
                 }

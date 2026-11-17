@@ -274,6 +274,21 @@ pub struct MqttSubAckItem {
     pub reason: Option<String>,
 }
 
+/// 单条 MQTT 发布失败（broker 拒收或本地投递失败）。
+///
+/// `message` 已由网络层完成 i18n 拼装（含主题名），UI 直接展示并据此去重；
+/// `topic` / `qos` 保留结构化信息，便于日志与后续扩展。
+/// QoS 0 无 broker 回执，只可能因本地投递失败进入本事件。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MqttPublishFailure {
+    /// 失败发布的目标主题；无法还原时为空字符串（如重连后重发的旧在途报文）
+    pub topic: String,
+    /// 失败发布的 QoS
+    pub qos: Qos,
+    /// 用户可读的完整文案
+    pub message: String,
+}
+
 /// 连接事件枚举，用于在网络线程和UI线程之间传递信息
 #[derive(Debug)]
 pub enum ConnectionEvent {
@@ -313,6 +328,11 @@ pub enum ConnectionEvent {
     MqttControlSenderReady(String, Sender<MqttCommand>),
     /// 单个 SUBSCRIBE 批次内逐 topic 的确认结果（成功 = broker 接受）。
     MqttSubAck(String, Vec<MqttSubAckItem>),
+    /// 单条 MQTT 发布失败（broker 拒收 / 本地投递失败）。
+    ///
+    /// 与 `Warning` 分开：后者还承载重连、UDP 超限等连接级提示，
+    /// 这里只用于「某条发布没有成功」，UI 以右上角通知呈现且不影响连接状态。
+    MqttPublishFailed(String, MqttPublishFailure),
     /// 自动重连成功（首次连接仍发 `Connected`）。
     ///
     /// 应用层收到后按当前 enabled 列表重发 `SubscribeBatch`；订阅状态的唯一权威留在 app。
