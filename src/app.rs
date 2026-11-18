@@ -5541,17 +5541,14 @@ impl NetAssistantApp {
                         if item.ok {
                             sub.error = None;
                         } else {
-                            // 用户确认：所有失败（含超时）都自动关闭并保留条目供手动重试
+                            // 用户确认：所有失败（含超时）都自动关闭并保留条目供手动重试。
+                            // reason 已自带 topic（网络层逐 topic 生成），通知直接展示，避免重复。
                             sub.enabled = false;
-                            sub.error = item.reason.clone();
-                            failures.push(
-                                t!(
-                                    "connection_tab.mqtt_subscribe_rejected",
-                                    topic => item.topic.clone(),
-                                    reason => item.reason.clone().unwrap_or_default()
-                                )
-                                .to_string(),
-                            );
+                            let reason = item.reason.clone().unwrap_or_else(|| {
+                                t!("connection_tab.mqtt_subscribe_failed").to_string()
+                            });
+                            sub.error = Some(reason.clone());
+                            failures.push(reason);
                         }
                     }
                     cx.notify();

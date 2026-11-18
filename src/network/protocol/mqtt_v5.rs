@@ -581,30 +581,34 @@ impl NetworkConnection for MqttV5Client {
                                     other => Some(suback_reason(*other, server)),
                                 })
                                 .collect();
-                            // NotAuthorized 需要逐 topic 的精确文案（「主题「xx」没有权限」）
-                            let unauthorized: Vec<bool> = ack
-                                .return_codes
-                                .iter()
-                                .map(|code| matches!(code, SubscribeReasonCode::NotAuthorized))
-                                .collect();
+                            // 逐 topic 生成自带 topic 的失败文案，通知可直接展示，
+                            // 避免「订阅「x」失败: 主题「x」没有权限」这类重复。
                             let resolved = read_tracker
                                 .lock()
                                 .ok()
                                 .and_then(|mut guard| guard.resolve(ack.pkid, &codes));
                             match resolved {
                                 Some(mut items) => {
-                                    if items.len() == unauthorized.len() {
-                                        for (item, denied) in
-                                            items.iter_mut().zip(unauthorized.iter())
+                                    if items.len() == ack.return_codes.len() {
+                                        for (item, code) in
+                                            items.iter_mut().zip(ack.return_codes.iter())
                                         {
-                                            if !*denied {
+                                            if item.ok {
                                                 continue;
                                             }
-                                            let reason = t!(
-                                                "mqtt_net.suback_not_authorized_topic",
-                                                topic => item.topic.clone()
-                                            )
-                                            .to_string();
+                                            let reason = match code {
+                                                SubscribeReasonCode::NotAuthorized => t!(
+                                                    "mqtt_net.suback_not_authorized_topic",
+                                                    topic => item.topic.clone()
+                                                )
+                                                .to_string(),
+                                                other => t!(
+                                                    "mqtt_net.suback_reason_topic",
+                                                    topic => item.topic.clone(),
+                                                    reason => subscribe_reason_text(*other)
+                                                )
+                                                .to_string(),
+                                            };
                                             item.reason =
                                                 Some(match server.filter(|s| !s.is_empty()) {
                                                     Some(detail) => t!(

@@ -89,14 +89,16 @@ impl SubscriptionTracker {
             return None;
         }
         let items = if codes.len() != batch.topics.len() {
-            let reason = t!("mqtt_net.suback_code_mismatch").to_string();
+            // 协议错误：数量对不上，整批失败；文案自带 topic，便于直接用于通知
             batch
                 .topics
                 .into_iter()
                 .map(|topic| MqttSubAckItem {
+                    reason: Some(
+                        t!("mqtt_net.suback_code_mismatch", topic => topic.clone()).to_string(),
+                    ),
                     topic,
                     ok: false,
-                    reason: Some(reason.clone()),
                 })
                 .collect()
         } else {
@@ -127,15 +129,16 @@ impl SubscriptionTracker {
         for batch in self.inflight.values_mut() {
             if !batch.timed_out && now >= batch.deadline {
                 batch.timed_out = true;
-                let reason = t!("mqtt_net.suback_timeout").to_string();
                 expired.push(
                     batch
                         .topics
                         .iter()
                         .map(|topic| MqttSubAckItem {
+                            reason: Some(
+                                t!("mqtt_net.suback_timeout", topic => topic.clone()).to_string(),
+                            ),
                             topic: topic.clone(),
                             ok: false,
-                            reason: Some(reason.clone()),
                         })
                         .collect(),
                 );
@@ -215,13 +218,10 @@ mod tests {
             .expect("数量不匹配仍应返回整批失败");
         assert_eq!(items.len(), 2, "两个 topic 都要有结果");
         assert!(items.iter().all(|item| !item.ok));
-        let expected = t!("mqtt_net.suback_code_mismatch").to_string();
-        assert!(
-            items
-                .iter()
-                .all(|item| item.reason.as_deref() == Some(expected.as_str())),
-            "失败原因应为协议数量不一致"
-        );
+        let expected_a = t!("mqtt_net.suback_code_mismatch", topic => "a").to_string();
+        let expected_b = t!("mqtt_net.suback_code_mismatch", topic => "b").to_string();
+        assert_eq!(items[0].reason.as_deref(), Some(expected_a.as_str()));
+        assert_eq!(items[1].reason.as_deref(), Some(expected_b.as_str()));
     }
 
     #[test]
@@ -263,13 +263,12 @@ mod tests {
         assert!(expired[0][0].reason.is_some());
 
         // 迟到 SUBACK 必须被吞掉
-        assert!(tracker.resolve(11, &[None]).is_none(), "超时批次应吞掉迟到 ack");
-        // 且不会重复上报超时
         assert!(
-            tracker
-                .expire(Instant::now() + ACK_TIMEOUT * 2)
-                .is_empty()
+            tracker.resolve(11, &[None]).is_none(),
+            "超时批次应吞掉迟到 ack"
         );
+        // 且不会重复上报超时
+        assert!(tracker.expire(Instant::now() + ACK_TIMEOUT * 2).is_empty());
     }
 
     #[test]

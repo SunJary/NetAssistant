@@ -534,7 +534,21 @@ impl NetworkConnection for MqttClient {
                                 .ok()
                                 .and_then(|mut guard| guard.resolve(ack.pkid, &codes));
                             match resolved {
-                                Some(items) => {
+                                Some(mut items) => {
+                                    // 3.1.1 只有 0x80 FAILURE、无法区分原因：统一成
+                                    // 「主题「xx」的订阅被 broker 拒绝」；数量不一致时保留
+                                    // tracker 给出的逐 topic 协议错误文案。
+                                    if items.len() == ack.return_codes.len() {
+                                        for item in items.iter_mut().filter(|item| !item.ok) {
+                                            item.reason = Some(
+                                                t!(
+                                                    "mqtt_net.suback_rejected_topic",
+                                                    topic => item.topic.clone()
+                                                )
+                                                .to_string(),
+                                            );
+                                        }
+                                    }
                                     if items.iter().any(|item| !item.ok) {
                                         warn!(
                                             "MQTT SUBACK 含失败返回码: pkid={}, {:?}",
