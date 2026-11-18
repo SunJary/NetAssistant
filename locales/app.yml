@@ -36,6 +36,12 @@ context_menu:
   edit:
     zh-CN: 编辑连接
     en: Edit Connection
+  rename:
+    zh-CN: 重命名连接
+    en: Rename Connection
+  duplicate:
+    zh-CN: 复制连接
+    en: Duplicate Connection
   delete:
     zh-CN: 删除连接
     en: Delete Connection

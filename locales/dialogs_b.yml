@@ -1,4 +1,4 @@
-# 弹窗与压测面板文案 (new_connection.rs / variable_picker.rs / add_client.rs / favorite_remark.rs / favorite_list.rs / stress_panel.rs)
+# 弹窗与压测面板文案 (new_connection.rs / rename_connection.rs / variable_picker.rs / add_client.rs / favorite_remark.rs / favorite_list.rs / stress_panel.rs)
 _version: 2
 
 new_connection:
@@ -8,6 +8,15 @@ new_connection:
   new_title:
     zh-CN: 新建连接
     en: New Connection
+  copy_title:
+    zh-CN: 复制连接
+    en: Duplicate Connection
+  name_label:
+    zh-CN: 连接名称（可选）
+    en: Connection Name (Optional)
+  name_placeholder:
+    zh-CN: 留空则仅显示地址
+    en: Leave empty to show address only
   host_label:
     zh-CN: 主机地址
     en: Host
@@ -995,3 +1004,17 @@ stress_panel:
   validate_failed:
     zh-CN: 校验失败
     en: Validation Failed
+
+rename_connection:
+  title:
+    zh-CN: 重命名连接
+    en: Rename Connection
+  placeholder:
+    zh-CN: 留空则仅显示地址
+    en: Leave empty to show address only
+  confirm:
+    zh-CN: 保存
+    en: Save
+  cancel:
+    zh-CN: 取消
+    en: Cancel

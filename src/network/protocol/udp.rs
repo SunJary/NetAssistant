@@ -1028,6 +1028,7 @@ mod tests {
     fn udp_server_config(port: u16) -> ServerConfig {
         ServerConfig {
             id: "srv".to_string(),
+            name: None,
             protocol: crate::config::connection::ConnectionType::Udp,
             listen_address: "127.0.0.1".to_string(),
             listen_port: port,

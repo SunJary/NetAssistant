@@ -1150,7 +1150,31 @@ impl<'a> ConnectionTab<'a> {
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
-                            .child(self.tab_state.address()),
+                            // 有名称时标题显示名称，地址仍由下方「地址:」行展示
+                            .child(
+                                self.tab_state
+                                    .connection_config
+                                    .name()
+                                    .map(|name| name.to_string())
+                                    .unwrap_or_else(|| self.tab_state.address()),
+                            ),
+                    )
+                    // 编辑连接（与右键菜单同一入口）
+                    .child(
+                        div()
+                            .p_1()
+                            .rounded_md()
+                            .cursor_pointer()
+                            .flex_shrink_0()
+                            .text_color(theme.muted_foreground)
+                            .hover(|style| style.bg(theme.border))
+                            .child(Icon::new(CustomIconName::Pencil).size(px(14.0)))
+                            .on_mouse_down(MouseButton::Left, cx.listener({
+                                let tab_id_edit = tab_id.clone();
+                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                    app.open_edit_connection(tab_id_edit.clone(), window, cx);
+                                }
+                            })),
                     )
                     .child(
                         div()
@@ -1271,6 +1295,39 @@ impl<'a> ConnectionTab<'a> {
                                                 .clone()
                                                 .unwrap_or_else(|| "—".to_string()),
                                         ),
+                                ),
+                        )
+                    })
+                    // 用户名（仅 MQTT；未填写显示占位符）
+                    .when(is_mqtt, |div_builder| {
+                        let username = match &self.tab_state.connection_config {
+                            ConnectionConfig::Client(client) => {
+                                client.mqtt.as_ref().and_then(|m| m.username.clone())
+                            }
+                            ConnectionConfig::Server(_) => None,
+                        };
+                        div_builder.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .child(t!("connection_tab.username_label").to_string()),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_medium()
+                                        .text_color(theme.foreground)
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .child(username.unwrap_or_else(|| "—".to_string())),
                                 ),
                         )
                     })

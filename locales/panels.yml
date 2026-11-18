@@ -458,6 +458,9 @@ connection_tab:
   status_label:
     zh-CN: "状态:"
     en: "Status:"
+  username_label:
+    zh-CN: "用户名:"
+    en: "Username:"
   decoder_label:
     zh-CN: "解码器:"
     en: "Decoder:"

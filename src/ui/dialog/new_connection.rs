@@ -40,7 +40,10 @@ pub fn open_new_connection_dialog(
             };
             let app = entity.read(cx);
             let is_edit = app.editing_connection_id.is_some();
-            let title = if is_edit {
+            let is_copy = app.copying_from_id.is_some();
+            let title = if is_copy {
+                t!("new_connection.copy_title").to_string()
+            } else if is_edit {
                 t!("new_connection.edit_title").to_string()
             } else {
                 t!("new_connection.new_title").to_string()
@@ -73,6 +76,7 @@ pub fn open_new_connection_dialog(
                 move |_, _, cx| {
                     let _ = app.update(cx, |app, cx| {
                         app.editing_connection_id = None;
+                        app.copying_from_id = None;
                         cx.notify();
                     });
                     true
@@ -121,6 +125,21 @@ fn render_form(app: &Entity<NetAssistantApp>, theme: &Theme, cx: &App) -> Div {
                 .text_size(px(12.0))
                 .child(err)
         }))
+        // 连接名称（可选；留空则列表仅显示地址）
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_semibold()
+                        .text_color(theme.foreground)
+                        .child(t!("new_connection.name_label").to_string()),
+                )
+                .child(Input::new(&state.connection_name_input).cleanable(true)),
+        )
         // 主机地址（必填）
         .child(
             div()

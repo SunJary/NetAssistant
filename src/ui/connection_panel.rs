@@ -27,44 +27,22 @@ impl<'a> ConnectionPanel<'a> {
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
 
-        // 提取客户端连接信息（ID、IP、端口、类型）
-        let client_info: Vec<(String, String, u16, String)> = self
+        // 提取客户端连接信息（ID、展示名：名称 @ 地址 [类型]）
+        let client_info: Vec<(String, String)> = self
             .app
             .storage
             .client_connections()
             .iter()
-            .map(|c| {
-                if let ConnectionConfig::Client(client) = c {
-                    (
-                        client.id.clone(),
-                        client.server_address.clone(),
-                        client.server_port,
-                        client.protocol.to_string(),
-                    )
-                } else {
-                    (String::new(), String::new(), 0, String::new())
-                }
-            })
+            .map(|c| (c.id().to_string(), c.display_label()))
             .collect();
 
-        // 提取服务端连接信息（ID、IP、端口、类型）
-        let server_info: Vec<(String, String, u16, String)> = self
+        // 提取服务端连接信息（ID、展示名：名称 @ 地址 [类型]）
+        let server_info: Vec<(String, String)> = self
             .app
             .storage
             .server_connections()
             .iter()
-            .map(|c| {
-                if let ConnectionConfig::Server(server) = c {
-                    (
-                        server.id.clone(),
-                        server.listen_address.clone(),
-                        server.listen_port,
-                        server.protocol.to_string(),
-                    )
-                } else {
-                    (String::new(), String::new(), 0, String::new())
-                }
-            })
+            .map(|c| (c.id().to_string(), c.display_label()))
             .collect();
 
         div()
@@ -115,20 +93,16 @@ impl<'a> ConnectionPanel<'a> {
         content_id: &'static str,
         title: String,
         is_expanded: bool,
-        items: Vec<(String, String, u16, String)>,
+        items: Vec<(String, String)>,
         new_button_id: &'static str,
         is_client: bool,
     ) -> Div {
         let theme = cx.theme().clone();
         let mut content_div = div().flex().flex_col().gap_2().id(content_id).pl_3();
 
-        for (conn_id, host, port, protocol) in items.iter() {
+        for (conn_id, display_text) in items.iter() {
             let conn_id_clone1 = conn_id.clone();
-            let _host_clone = host.clone();
-            let _port_clone = *port;
-            let _protocol_clone = protocol.clone();
             let is_client_clone = is_client;
-            let display_text = format!("{}:{} [{}]", host, port, protocol);
             // 右键菜单项闭包用: 行渲染期捕获（框架菜单只在打开那一刻惰性构建）
             let menu_app_weak = cx.entity().downgrade();
             let menu_conn_id = conn_id.clone();
@@ -146,7 +120,10 @@ impl<'a> ConnectionPanel<'a> {
                     .bg(theme.secondary)
                     .rounded_md()
                     .hover(|style| style.bg(theme.border))
-                    .child(display_text)
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .whitespace_nowrap()
+                    .child(display_text.clone())
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(
@@ -200,6 +177,10 @@ impl<'a> ConnectionPanel<'a> {
                     .context_menu(move |menu, _window, _cx| {
                         let edit_app = menu_app_weak.clone();
                         let edit_conn_id = menu_conn_id.clone();
+                        let rename_app = menu_app_weak.clone();
+                        let rename_conn_id = menu_conn_id.clone();
+                        let copy_app = menu_app_weak.clone();
+                        let copy_conn_id = menu_conn_id.clone();
                         let delete_app = menu_app_weak.clone();
                         let delete_conn_id = menu_conn_id.clone();
                         menu
@@ -216,6 +197,33 @@ impl<'a> ConnectionPanel<'a> {
                                         });
                                     },
                                 ),
+                            )
+                            // 重命名连接（名称可清空）
+                            .item(
+                                PopupMenuItem::new(t!("context_menu.rename").to_string()).on_click(
+                                    move |_, window, cx| {
+                                        let Some(app) = rename_app.upgrade() else {
+                                            return;
+                                        };
+                                        let conn_id = rename_conn_id.clone();
+                                        app.update(cx, |app, cx| {
+                                            app.open_rename_connection(conn_id, window, cx);
+                                        });
+                                    },
+                                ),
+                            )
+                            // 复制连接（预填副本，确认后作为新连接保存）
+                            .item(
+                                PopupMenuItem::new(t!("context_menu.duplicate").to_string())
+                                    .on_click(move |_, window, cx| {
+                                        let Some(app) = copy_app.upgrade() else {
+                                            return;
+                                        };
+                                        let conn_id = copy_conn_id.clone();
+                                        app.update(cx, |app, cx| {
+                                            app.open_copy_connection(conn_id, window, cx);
+                                        });
+                                    }),
                             )
                             .separator()
                             // 删除连接（直接执行, 不二次确认）

@@ -487,6 +487,25 @@ impl ConfigStorage {
         }
     }
 
+    /// 重命名连接（name 为 None/空串 = 清除名称）
+    pub fn rename_connection(&mut self, connection_id: &str, name: Option<String>) {
+        let Some(target) = self
+            .config
+            .connections
+            .iter_mut()
+            .find(|c| c.id() == connection_id)
+        else {
+            return;
+        };
+        match target {
+            ConnectionConfig::Client(client) => client.name = name,
+            ConnectionConfig::Server(server) => server.name = name,
+        }
+        if self.config.auto_save {
+            self.save_and_log();
+        }
+    }
+
     pub fn add_favorite(&mut self, connection_id: &str, item: FavoriteItem) {
         self.config
             .favorites

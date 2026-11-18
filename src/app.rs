@@ -45,7 +45,8 @@ use crate::ui::dialog::{
     DecoderSelectionDialogState, ImportFileDialogState, MqttSubscriptionDialogState,
     ReplyRuleEditDialogState, ReplyRulesCopyDialogState, ReplyRulesDialogState,
     StressConfigDialogState, TimedTaskDialogState, TransferStatusKind, open_import_file_dialog,
-    open_new_connection_dialog, open_stress_config_dialog, open_timed_task_dialog,
+    open_new_connection_dialog, open_rename_connection_dialog, open_stress_config_dialog,
+    open_timed_task_dialog,
 };
 use crate::ui::main_window::MainWindow;
 
@@ -162,6 +163,8 @@ pub struct NetAssistantApp {
     // 客户端连接相关状态
     pub client_expanded: bool,
     pub new_connection_is_client: bool,
+    /// 连接名称输入（可选；留空时列表仅显示地址）
+    pub connection_name_input: Entity<InputState>,
     pub host_input: Entity<InputState>,
     pub port_input: Entity<InputState>,
     /// 本地绑定地址输入(仅客户端, 留空=自动选择网卡)
@@ -175,9 +178,16 @@ pub struct NetAssistantApp {
     // 连接编辑对话框状态（新建/编辑共用）
     // None=新建模式, Some(id)=编辑模式
     pub editing_connection_id: Option<String>,
+    /// 复制连接模式来源 id（None = 普通新建/编辑；Some = 从该连接复制并新建）
+    pub copying_from_id: Option<String>,
     pub edit_message_input_mode: String,
     pub edit_decoder_config: DecoderConfig,
     pub show_connection_advanced: bool,
+
+    // 重命名连接对话框状态
+    /// Some(id) = 打开态；确认后写入该连接名称
+    pub rename_connection_id: Option<String>,
+    pub rename_connection_input: Entity<InputState>,
 
     // MQTT 表单状态（仅协议为 MQTT 时渲染与回填；规划 §8.1）
     /// Broker 地址复用 `host_input`，端口复用 `port_input`；以下为 MQTT 专属字段
@@ -385,6 +395,13 @@ impl NetAssistantApp {
         let storage = ConfigStorage::new();
 
         // 使用window创建InputState实体
+        let connection_name_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("new_connection.name_placeholder").to_string())
+        });
+        let rename_connection_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t!("rename_connection.placeholder").to_string())
+        });
         let host_input = cx.new(|cx| InputState::new(window, cx));
         let port_input = cx.new(|cx| InputState::new(window, cx));
         let local_address_input = cx.new(|cx| {
@@ -541,6 +558,7 @@ impl NetAssistantApp {
             storage,
             client_expanded: true,
             new_connection_is_client: true,
+            connection_name_input,
             host_input,
             port_input,
             local_address_input,
@@ -549,9 +567,12 @@ impl NetAssistantApp {
             connection_form_error: None,
             // 初始化连接编辑对话框状态
             editing_connection_id: None,
+            copying_from_id: None,
             edit_message_input_mode: String::from("text"),
             edit_decoder_config: DecoderConfig::default(),
             show_connection_advanced: false,
+            rename_connection_id: None,
+            rename_connection_input,
             // 初始化 MQTT 表单状态
             mqtt_client_id_input,
             mqtt_username_input,
@@ -2255,12 +2276,15 @@ impl NetAssistantApp {
         cx: &mut Context<Self>,
     ) {
         self.editing_connection_id = None;
+        self.copying_from_id = None;
         self.new_connection_is_client = is_client;
         self.new_connection_protocol = String::from("TCP");
         self.show_connection_advanced = false;
         self.connection_form_error = None;
         self.edit_message_input_mode = String::from("text");
         self.edit_decoder_config = DecoderConfig::default();
+        self.connection_name_input
+            .update(cx, |i, cx| i.set_value(String::new(), window, cx));
         // MQTT 表单重置为默认值（Client ID 预填自动生成值，KeepAlive 60，Clean Session 开）
         self.mqtt_client_id_input.update(cx, |i, cx| {
             i.set_value(generate_mqtt_client_id(), window, cx)
@@ -2334,17 +2358,108 @@ impl NetAssistantApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let config = self
-            .storage
+        let Some(config) = self.find_connection_config(&connection_id) else {
+            return;
+        };
+
+        self.editing_connection_id = Some(connection_id);
+        self.copying_from_id = None;
+        self.fill_connection_form(&config, window, cx);
+
+        // 命令式打开对话框(由 Root 管理层叠)
+        open_new_connection_dialog(cx.entity().downgrade(), window, cx);
+    }
+
+    /// 打开「复制连接」对话框：预填源配置，确认后作为新连接保存
+    ///
+    /// MQTT 必须换新 Client ID，否则同 Broker 上两个连接会互踢。
+    pub fn open_copy_connection(
+        &mut self,
+        connection_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(config) = self.find_connection_config(&connection_id) else {
+            return;
+        };
+
+        self.editing_connection_id = None;
+        self.copying_from_id = Some(connection_id);
+        self.fill_connection_form(&config, window, cx);
+
+        let copied_name = match config.name() {
+            Some(name) => format!("{name} copy"),
+            None => "copy".to_string(),
+        };
+        self.connection_name_input
+            .update(cx, |i, cx| i.set_value(copied_name, window, cx));
+        if config.protocol() == ConnectionType::Mqtt {
+            self.mqtt_client_id_input.update(cx, |i, cx| {
+                i.set_value(generate_mqtt_client_id(), window, cx)
+            });
+        }
+
+        open_new_connection_dialog(cx.entity().downgrade(), window, cx);
+    }
+
+    /// 打开「重命名连接」对话框（预填当前名称）
+    pub fn open_rename_connection(
+        &mut self,
+        connection_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(config) = self.find_connection_config(&connection_id) else {
+            return;
+        };
+        self.rename_connection_id = Some(connection_id);
+        let current_name = config.name().unwrap_or_default().to_string();
+        self.rename_connection_input
+            .update(cx, |i, cx| i.set_value(current_name, window, cx));
+        open_rename_connection_dialog(cx.entity().downgrade(), window, cx);
+    }
+
+    /// 保存重命名（空串 = 清除名称），返回是否成功（成功后由调用方关闭对话框）
+    pub fn confirm_rename_connection(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(connection_id) = self.rename_connection_id.take() else {
+            return false;
+        };
+        let value = self
+            .rename_connection_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        let name = if value.is_empty() { None } else { Some(value) };
+        self.storage.rename_connection(&connection_id, name.clone());
+        // 已打开的标签页同步名称，标签栏与信息面板立即刷新
+        if let Some(tab_state) = self.connection_tabs.get_mut(&connection_id) {
+            match &mut tab_state.connection_config {
+                ConnectionConfig::Client(c) => c.name = name,
+                ConnectionConfig::Server(c) => c.name = name,
+            }
+        }
+        cx.notify();
+        true
+    }
+
+    /// 按 id 查找连接配置（客户端 + 服务端）
+    fn find_connection_config(&self, connection_id: &str) -> Option<ConnectionConfig> {
+        self.storage
             .client_connections()
             .iter()
             .chain(self.storage.server_connections().iter())
             .find(|c| c.id() == connection_id)
-            .map(|c| (*c).clone());
+            .map(|c| (*c).clone())
+    }
 
-        let Some(config) = config else { return };
-
-        self.editing_connection_id = Some(connection_id);
+    /// 将连接配置回填到表单（编辑与复制共用）
+    fn fill_connection_form(
+        &mut self,
+        config: &ConnectionConfig,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.new_connection_is_client = config.is_client();
         self.new_connection_protocol = match config.protocol() {
             ConnectionType::Tcp => "TCP".to_string(),
@@ -2352,9 +2467,11 @@ impl NetAssistantApp {
             ConnectionType::Mqtt => "MQTT".to_string(),
         };
         self.connection_form_error = None;
+        self.connection_name_input.update(cx, |i, cx| {
+            i.set_value(config.name().unwrap_or_default().to_string(), window, cx)
+        });
 
-        let (address, port, message_input_mode, decoder, local_address, local_port) = match &config
-        {
+        let (address, port, message_input_mode, decoder, local_address, local_port) = match config {
             ConnectionConfig::Client(c) => (
                 c.server_address.clone(),
                 c.server_port,
@@ -2408,7 +2525,7 @@ impl NetAssistantApp {
         self.show_connection_advanced = true;
 
         // MQTT 字段回填（非 MQTT 配置回退为默认值，切到 MQTT 时表单即有合理默认）
-        let settings = match &config {
+        let settings = match config {
             ConnectionConfig::Client(c) => c.mqtt.clone(),
             ConnectionConfig::Server(_) => None,
         }
@@ -2484,9 +2601,6 @@ impl NetAssistantApp {
         self.mqtt_tls_alpn_input.update(cx, |i, cx| {
             i.set_value(tls.alpn.clone().unwrap_or_default(), window, cx)
         });
-
-        // 命令式打开对话框(由 Root 管理层叠)
-        open_new_connection_dialog(cx.entity().downgrade(), window, cx);
     }
 
     /// 确认连接表单（新建或编辑），返回是否成功（成功后由调用方关闭对话框）
@@ -2495,6 +2609,17 @@ impl NetAssistantApp {
     /// 并返回 false 让对话框保持打开，不再静默拒绝。
     pub fn confirm_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.connection_form_error = None;
+
+        // 名称可选: 空串统一存为 None, 避免 Some("") 与 None 双态
+        let name = {
+            let v = self
+                .connection_name_input
+                .read(cx)
+                .value()
+                .trim()
+                .to_string();
+            if v.is_empty() { None } else { Some(v) }
+        };
 
         // 统一 trim: 尾随空白(复制粘贴常见)会把看似合法的输入判成非法
         let host = self.host_input.read(cx).value().trim().to_string();
@@ -2745,6 +2870,7 @@ impl NetAssistantApp {
             if let Some(mut existing) = existing {
                 match &mut existing {
                     ConnectionConfig::Client(c) => {
+                        c.name = name.clone();
                         c.server_address = host;
                         c.server_port = port;
                         c.message_input_mode = message_input_mode;
@@ -2755,6 +2881,7 @@ impl NetAssistantApp {
                         c.mqtt = mqtt_settings.clone();
                     }
                     ConnectionConfig::Server(c) => {
+                        c.name = name.clone();
                         c.listen_address = host;
                         c.listen_port = port;
                         c.message_input_mode = message_input_mode;
@@ -2786,6 +2913,7 @@ impl NetAssistantApp {
             };
             match &mut config {
                 ConnectionConfig::Client(c) => {
+                    c.name = name.clone();
                     c.message_input_mode = message_input_mode;
                     c.decoder_config = decoder_config;
                     c.local_address = local_address.clone();
@@ -2793,6 +2921,7 @@ impl NetAssistantApp {
                     c.mqtt = mqtt_settings.clone();
                 }
                 ConnectionConfig::Server(c) => {
+                    c.name = name.clone();
                     c.message_input_mode = message_input_mode;
                     c.decoder_config = decoder_config;
                 }
@@ -2804,6 +2933,8 @@ impl NetAssistantApp {
             self.active_tab = new_tab_id;
         }
 
+        // 复制模式在落库后结束
+        self.copying_from_id = None;
         // 重置协议为默认
         self.new_connection_protocol = String::from("TCP");
         cx.notify();

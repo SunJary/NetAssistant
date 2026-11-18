@@ -382,6 +382,9 @@ impl Default for MqttSettings {
 pub struct ClientConfig {
     #[serde(default = "generate_uuid")]
     pub id: String,
+    /// 连接名称（可选；None = 列表仅显示地址）
+    #[serde(default)]
+    pub name: Option<String>,
     pub protocol: ConnectionType,
     pub server_address: String,
     pub server_port: u16,
@@ -408,6 +411,7 @@ impl Default for ClientConfig {
     fn default() -> Self {
         Self {
             id: generate_uuid(),
+            name: None,
             protocol: ConnectionType::Tcp,
             server_address: "127.0.0.1".to_string(),
             server_port: 8080,
@@ -426,6 +430,9 @@ impl Default for ClientConfig {
 pub struct ServerConfig {
     #[serde(default = "generate_uuid")]
     pub id: String,
+    /// 连接名称（可选；None = 列表仅显示地址）
+    #[serde(default)]
+    pub name: Option<String>,
     pub protocol: ConnectionType,
     pub listen_address: String,
     pub listen_port: u16,
@@ -443,6 +450,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             id: generate_uuid(),
+            name: None,
             protocol: ConnectionType::Tcp,
             listen_address: "0.0.0.0".to_string(),
             listen_port: 8080,
@@ -537,10 +545,32 @@ impl ConnectionConfig {
         }
     }
 
+    /// 获取连接名称（None = 未命名）
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            ConnectionConfig::Client(config) => config.name.as_deref(),
+            ConnectionConfig::Server(config) => config.name.as_deref(),
+        }
+    }
+
+    /// 连接展示串：有名称 → `name @ host:port [TYPE]`，无名称 → `host:port [TYPE]`
+    pub fn display_label(&self) -> String {
+        let (host, port) = match self {
+            ConnectionConfig::Client(config) => (&config.server_address, config.server_port),
+            ConnectionConfig::Server(config) => (&config.listen_address, config.listen_port),
+        };
+        let address = format!("{}:{} [{}]", host, port, self.protocol());
+        match self.name() {
+            Some(name) => format!("{} @ {}", name, address),
+            None => address,
+        }
+    }
+
     /// 创建新的客户端连接配置（自动生成ID）
     pub fn new_client(server_address: String, server_port: u16, protocol: ConnectionType) -> Self {
         ConnectionConfig::Client(ClientConfig {
             id: generate_uuid(),
+            name: None,
             protocol,
             server_address,
             server_port,
@@ -557,6 +587,7 @@ impl ConnectionConfig {
     pub fn new_server(listen_address: String, listen_port: u16, protocol: ConnectionType) -> Self {
         ConnectionConfig::Server(ServerConfig {
             id: generate_uuid(),
+            name: None,
             protocol,
             listen_address,
             listen_port,
@@ -730,6 +761,31 @@ mod tests {
         let config: ClientConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.local_address, None);
         assert_eq!(config.local_port, None);
+    }
+
+    #[test]
+    /// 旧版配置 JSON(无 name 字段)反序列化为 None; 有名称时展示串带 `name @` 前缀
+    fn test_client_config_name_backward_compat_and_label() {
+        let json = r#"{
+            "id": "test-id",
+            "protocol": "mqtt",
+            "server_address": "broker.emqx.io",
+            "server_port": 1883,
+            "mqtt": {"client_id": "netassist-test"}
+        }"#;
+        let config: ClientConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.name, None);
+
+        let mut wrapper = ConnectionConfig::Client(config);
+        assert_eq!(wrapper.display_label(), "broker.emqx.io:1883 [MQTT]");
+
+        if let ConnectionConfig::Client(client) = &mut wrapper {
+            client.name = Some("测试 Broker".to_string());
+        }
+        assert_eq!(
+            wrapper.display_label(),
+            "测试 Broker @ broker.emqx.io:1883 [MQTT]"
+        );
     }
 
     #[test]

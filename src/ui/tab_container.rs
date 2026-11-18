@@ -54,7 +54,10 @@ impl<'a> TabContainer<'a> {
         let mut tabs = Vec::new();
 
         for (tab_id, tab_state) in &self.app.connection_tabs {
-            let address = tab_state.address();
+            let address = match tab_state.connection_config.name() {
+                Some(name) => format!("{} @ {}", name, tab_state.address()),
+                None => tab_state.address(),
+            };
             let protocol = tab_state.protocol();
             let connection_type = if tab_state.connection_config.is_client() {
                 "C"
