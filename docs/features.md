@@ -56,7 +56,7 @@ NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**
 
 ## MQTT 调试
 
-- **MQTT 客户端**：协议版本可选 MQTT 3.1.1（默认）与 5.0，集成在客户端连接体系中，新建连接选择 MQTT 后填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive；「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）
+- **MQTT 客户端**：协议版本可选 MQTT 5.0（新建默认）与 3.1.1，集成在客户端连接体系中，新建连接选择 MQTT 后填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive；「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）
 - **MQTT over TLS**：可开启 TLS 加密，对 3.1.1 与 5.0 同时生效；证书校验三档：系统根证书（默认）、自定义 CA（PEM 文件路径，可文件选择）、跳过校验（不安全，仅自签联调，传输仍加密）；可填客户端证书与私钥做双向认证（PEM，成对填写）；ALPN 可选、留空不下发；握手失败给出可读原因与处置建议
 - **MQTT 5.0**：连接属性支持会话过期（秒，留空不下发，0 表示断开即过期）与接收最大值（1-65535，留空不下发）；Clean Start 沿用 Clean Session 开关，Client ID 为空时强制 clean start；CONNACK 连接被拒、SUBACK 订阅失败与 broker 主动 DISCONNECT 显示原因码与 broker 说明
 - **订阅管理**：运行时添加 / 编辑 / 取消订阅，无需重连；订阅严格按连接隔离，断线自动重连后自动恢复订阅；订阅列表占满侧栏高度、超出时框内滚动，悬停可查看完整 topic，双击复制 topic

@@ -2127,7 +2127,7 @@ impl<'a> ConnectionTab<'a> {
                 });
             }
         };
-        let qos_chips = qos_chips_row(theme, qos, on_qos);
+        let qos_chips = qos_chips_row(theme, qos, "mqtt-publish-qos", on_qos);
 
         // retain 勾选: 仅改变发布元数据, 不改发送逻辑（规划 §8.3.2）
         let retain_tab_id = tab_id.clone();
@@ -4013,15 +4013,26 @@ pub(crate) fn qos_label(qos: Qos) -> String {
     }
 }
 
+/// QoS 语义词（芯片 hover 提示：至多一次 / 至少一次 / 仅一次）。
+pub(crate) fn qos_tooltip(qos: Qos) -> String {
+    match qos {
+        Qos::AtMostOnce => t!("qos_semantics.at_most_once").to_string(),
+        Qos::AtLeastOnce => t!("qos_semantics.at_least_once").to_string(),
+        Qos::ExactlyOnce => t!("qos_semantics.exactly_once").to_string(),
+    }
+}
+
 /// QoS 选择芯片行（侧栏快捷新增 / 发布行 / 订阅弹窗共用）。
 ///
 /// **不依赖 `Context<NetAssistantApp>`**：点击回调由调用方在构造处拼好，
 /// 因为弹窗内容闭包只拿得到 `App` + `Entity<NetAssistantApp>`，没有 `Context`，
 /// 旧版把 `cx.listener` 内联在此处的写法弹窗根本调不到。
 /// `on_click` 逐芯片捕获 `qos`，故要求 `Clone`。
+/// `id_prefix` 用于生成芯片的 element id（tooltip 需要 Stateful），不同调用点需传不同前缀。
 pub(crate) fn qos_chips_row(
     theme: &Theme,
     selected: Qos,
+    id_prefix: &'static str,
     on_click: impl Fn(Qos, &mut Window, &mut App) + Clone + 'static,
 ) -> Div {
     let mut row = div().flex().items_center().gap_1();
@@ -4030,6 +4041,9 @@ pub(crate) fn qos_chips_row(
         let on_click = on_click.clone();
         row = row.child(
             div()
+                .id(ElementId::Name(
+                    format!("{}-{}", id_prefix, qos as u8).into(),
+                ))
                 .flex_shrink_0()
                 .px_1p5()
                 .py_0p5()
@@ -4042,6 +4056,7 @@ pub(crate) fn qos_chips_row(
                     d.bg(theme.secondary).text_color(theme.secondary_foreground)
                 })
                 .child(div().text_xs().font_medium().child(qos_label(qos)))
+                .tooltip(move |window, cx| Tooltip::new(qos_tooltip(qos)).build(window, cx))
                 .on_mouse_down(
                     MouseButton::Left,
                     move |_event: &MouseDownEvent, window: &mut Window, cx: &mut App| {

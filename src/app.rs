@@ -2296,7 +2296,8 @@ impl NetAssistantApp {
         self.mqtt_keep_alive_input
             .update(cx, |i, cx| i.set_value("60".to_string(), window, cx));
         self.edit_mqtt_clean_session = true;
-        self.edit_mqtt_version = MqttVersion::V311;
+        // 新建连接默认 MQTT 5.0；编辑连接仍按已保存的 protocol_version 回填
+        self.edit_mqtt_version = MqttVersion::V5;
         self.mqtt_session_expiry_input
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
         self.mqtt_receive_max_input

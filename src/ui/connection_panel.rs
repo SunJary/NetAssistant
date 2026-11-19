@@ -2,6 +2,7 @@ use crate::custom_icons::CustomIconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::StyledExt;
 use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenuItem};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Icon, IconName};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -124,6 +125,11 @@ impl<'a> ConnectionPanel<'a> {
                     .text_ellipsis()
                     .whitespace_nowrap()
                     .child(display_text.clone())
+                    // 行内省略号截断时，hover 展示完整展示名（名称 @ 地址 [协议]）
+                    .tooltip({
+                        let tip = display_text.clone();
+                        move |window, cx| Tooltip::new(tip.clone()).build(window, cx)
+                    })
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(

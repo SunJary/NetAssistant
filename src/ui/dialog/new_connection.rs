@@ -14,12 +14,14 @@ use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::{MqttTlsFile, NetAssistantApp};
 use crate::config::connection::{DecoderConfig, MqttVersion, Qos, TlsVerifyMode};
+use crate::ui::connection_tab::qos_tooltip;
 
 use super::{dialog_content_max_height, dialog_height};
 
@@ -925,10 +927,13 @@ fn render_qos_chip(
     theme: &Theme,
     _cx: &App,
     selected: Qos,
-) -> Div {
+) -> impl IntoElement {
     let is_selected = selected == qos;
     let entity = app.clone();
     div()
+        .id(ElementId::Name(
+            format!("mqtt-will-qos-{}", qos as u8).into(),
+        ))
         .px_3()
         .py_1()
         .rounded_md()
@@ -940,6 +945,7 @@ fn render_qos_chip(
             div.bg(theme.border).text_color(theme.foreground)
         })
         .child(div().text_sm().font_medium().child(label.to_string()))
+        .tooltip(move |window, cx| Tooltip::new(qos_tooltip(qos)).build(window, cx))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             entity.update(cx, |app, cx| {
                 app.edit_mqtt_will_qos = qos;

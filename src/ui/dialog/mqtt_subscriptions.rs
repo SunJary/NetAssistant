@@ -189,7 +189,7 @@ fn render_body(app: &Entity<NetAssistantApp>, _window: &Window, cx: &App) -> Div
         .px_6()
         .pb_4()
         .child(div().w_full().child(Input::new(&input).cleanable(true)))
-        .child(qos_chips_row(&theme, qos, on_qos));
+        .child(qos_chips_row(&theme, qos, "mqtt-sub-qos", on_qos));
     if let Some(err) = error {
         body = body.child(
             div()

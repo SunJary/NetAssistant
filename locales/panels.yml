@@ -1,6 +1,18 @@
 # 面板/标签页/输入组件相关文案（connection_panel.rs / tab_container.rs / input_with_mode.rs / connection_tab.rs）
 _version: 2
 
+# QoS 语义词（QoS 芯片 hover 提示共用）
+qos_semantics:
+  at_most_once:
+    zh-CN: 至多一次
+    en: At most once
+  at_least_once:
+    zh-CN: 至少一次
+    en: At least once
+  exactly_once:
+    zh-CN: 仅一次
+    en: Exactly once
+
 connection_panel:
   client:
     zh-CN: 客户端连接
