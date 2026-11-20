@@ -14,18 +14,11 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "A cross-platform network debugging tool with TCP/UDP client and server, MQTT 3.1.1, framing decoders, hex payloads and stress testing.",
+            "description": "A cross-platform network debugging tool with TCP/UDP client and server, MQTT 3.1.1 / 5.0, framing decoders, hex payloads and TCP/UDP stress testing.",
             "url": "https://netassistant.trydo.top/en/download",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-          },
-          {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Download", "item": "https://netassistant.trydo.top/en/download" }
-            ]
           },
           {
             "@type": "FAQPage",
@@ -81,6 +74,8 @@ head:
 NetAssistant is available for Windows, Linux and macOS, with both x64 and ARM64 builds for each platform. The download links below always point to the files of the [latest release](https://github.com/sunjary/netassistant/releases/latest) — click to download directly. Older versions can be found on [GitHub Releases](https://github.com/sunjary/netassistant/releases).
 
 Platform-specific install guides: [Windows](/en/windows-network-debug-tool) · [macOS](/en/mac-network-debug-tool) · [Linux](/en/linux-network-debug-tool).
+
+<DownloadHero />
 
 ## Windows
 

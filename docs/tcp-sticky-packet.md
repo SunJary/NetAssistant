@@ -20,14 +20,6 @@ head:
             "mainEntityOfPage": "https://netassistant.trydo.top/tcp-sticky-packet"
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "使用指南", "item": "https://netassistant.trydo.top/guide/" },
-              { "@type": "ListItem", "position": 3, "name": "TCP 粘包与拆包", "item": "https://netassistant.trydo.top/tcp-sticky-packet" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "TCP 粘包和拆包有什么区别？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "粘包是接收方一次读到多条消息，拆包是一条消息被拆成多次读取。两者本质相同：TCP 是字节流，不保留发送时的消息边界，应用层必须自己定义如何判断一条消息的开始和结束。"
+                  "text": "粘包是一次读到多条消息，拆包是一条消息被拆成多次读取。两者本质相同：TCP 不保留消息边界，应用层需要自己分帧。"
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "为什么本地测试正常，线上却出现粘包？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "本地发送间隔大、数据量小，一次 send 往往对应一次 recv；线上网络延迟、Nagle 算法、接收缓冲区合并和并发都会改变读取边界。依赖“一次 send 对应一次 recv”的代码在线上就会失效。"
+                  "text": "本地发送间隔大、数据量小，一次 send 往往对应一次 recv；线上受 Nagle、缓冲区合并、网络延迟和并发影响，读取边界会变化。"
                 }
               },
               {
@@ -51,7 +43,15 @@ head:
                 "name": "长度前缀应该用大端还是小端？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "协议双方约定一致即可，推荐使用网络字节序（大端）。常见做法是 4 字节大端无符号整数表示负载长度，并设置最大帧长防止恶意长度导致内存问题。"
+                  "text": "双方约定一致即可，推荐网络字节序（大端）。常见做法是 4 字节大端无符号整数，并设置最大帧长。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "分隔符应该选什么？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "选消息内容中不会出现的字符序列。文本协议常用 \\n 或 \\r\\n；如果内容可能包含分隔符，需要转义，或改用长度前缀。"
                 }
               },
               {
@@ -59,7 +59,15 @@ head:
                 "name": "HTTP 为什么没有粘包问题？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "HTTP 在应用层定义了消息边界：HTTP/1.1 使用 Content-Length 或 chunked 分块，HTTP/2 使用带长度字段的帧。所谓“解决粘包”，本质上就是像 HTTP 一样在应用层定义边界。"
+                  "text": "HTTP 在应用层定义了消息边界：HTTP/1.1 使用 Content-Length 或 chunked，HTTP/2 使用带长度字段的帧。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "UDP 有粘包吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "UDP 是数据报协议，保留消息边界，不存在 TCP 意义上的粘包；但有丢包、乱序、重复和分片问题。"
                 }
               }
             ]

@@ -20,14 +20,6 @@ head:
             "mainEntityOfPage": "https://netassistant.trydo.top/en/compare/netassist"
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Comparison", "item": "https://netassistant.trydo.top/en/comparison" },
-              { "@type": "ListItem", "position": 3, "name": "NetAssist alternative", "item": "https://netassistant.trydo.top/en/compare/netassist" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "Is there a Mac version of NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. NetAssist is Windows-only. NetAssistant offers native macOS and Linux builds with TCP/UDP client and server support."
+                  "text": "No. NetAssist is Windows-only. NetAssistant offers native macOS and Linux builds."
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "Can NetAssistant fully replace NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "It covers basic TCP/UDP send and receive, hex mode, auto-reply and periodic sending, and adds four TCP sticky-packet decoders, built-in stress testing, message search/export and MQTT 3.1.1. If you only need basic send/receive, NetAssist remains usable."
+                  "text": "It covers basic TCP/UDP send/receive, hex mode, auto-reply and periodic sending, and adds four sticky-packet decoders, built-in TCP/UDP stress testing, message export and MQTT 3.1.1 / 5.0."
                 }
               },
               {
@@ -51,7 +43,7 @@ head:
                 "name": "Which is better on Windows?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "It depends on your needs. NetAssist is enough for basic TCP/UDP send/receive. NetAssistant is a better fit when you need sticky-packet decoding, QPS and latency-percentile stress testing, message management, MQTT or cross-platform support."
+                  "text": "NetAssist is enough for basic send/receive. NetAssistant is better for sticky-packet decoding, TCP/UDP QPS and latency-percentile stress testing, message management, MQTT or cross-platform work."
                 }
               },
               {
@@ -59,7 +51,31 @@ head:
                 "name": "Is NetAssistant free?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. NetAssistant is open source under Apache-2.0 and all features are free."
+                  "text": "Yes. It is open source under Apache-2.0 and all features are free."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is data uploaded to the cloud?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "NetAssistant does not depend on a cloud service; traffic goes between your machine and the target endpoint, and the source code is open for audit."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support IPv6?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. IPv4 and IPv6 addresses such as ::1 or fe80::xxxx are supported in both client and server modes."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support MQTT?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "NetAssistant includes an MQTT 3.1.1 / 5.0 client with TLS; NetAssist does not provide MQTT. MQTT over WebSocket and advanced 5.0 features are not provided."
                 }
               }
             ]
@@ -79,7 +95,7 @@ This page compares both tools by real usage scenarios so you can decide whether 
 ## Bottom line
 
 - **Only need basic TCP/UDP send and receive** and prefer the classic UI: NetAssist is still fine
-- **Need sticky-packet decoding, built-in stress testing, message search/export or MQTT**: NetAssistant is the better fit
+- **Need sticky-packet decoding, built-in TCP/UDP stress testing, message search/export or MQTT**: NetAssistant is the better fit
 - **Using macOS or Linux**: NetAssist is not available, so use NetAssistant
 - **Want open source and free access**: NetAssistant is Apache-2.0 licensed
 
@@ -94,7 +110,7 @@ This page compares both tools by real usage scenarios so you can decide whether 
 | TCP sticky-packet decoders | Raw / line / length-prefix / JSON | Limited |
 | Built-in stress testing | QPS + p50/p95/p99 | No |
 | IPv6 | Full support | Partial |
-| MQTT | MQTT 3.1.1 client | No |
+| MQTT | MQTT 3.1.1 / 5.0 client | No |
 | Message search/favorites/export | TXT / JSON / CSV | Limited |
 | Auto-reply / periodic send | Yes | Yes |
 | UI | Native GPUI rendering, dark mode, tabs | Traditional |
@@ -179,11 +195,11 @@ No. NetAssist is Windows-only. NetAssistant offers native macOS and Linux builds
 
 ### Can NetAssistant fully replace NetAssist?
 
-It covers basic TCP/UDP send/receive, hex mode, auto-reply and periodic sending, and adds four sticky-packet decoders, built-in stress testing, message export and MQTT 3.1.1.
+It covers basic TCP/UDP send/receive, hex mode, auto-reply and periodic sending, and adds four sticky-packet decoders, built-in TCP/UDP stress testing, message export and MQTT 3.1.1 / 5.0.
 
 ### Which is better on Windows?
 
-NetAssist is enough for basic send/receive. NetAssistant is better for sticky-packet decoding, QPS and latency-percentile stress testing, message management, MQTT or cross-platform work.
+NetAssist is enough for basic send/receive. NetAssistant is better for sticky-packet decoding, TCP/UDP QPS and latency-percentile stress testing, message management, MQTT or cross-platform work.
 
 ### Is NetAssistant free?
 

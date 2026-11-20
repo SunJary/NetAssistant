@@ -1,7 +1,6 @@
 ---
-title: NetAssistant vs NetAssist, Packet Sender & Similar Tools
-titleTemplate: ':title'
-description: "NetAssistant vs NetAssist, SocketTool, Packet Sender and Wireshark: cross-platform, open source and built-in stress testing. See why it is different."
+title: Network Debugging Tool Comparison - TCP/UDP Tools
+description: "NetAssistant vs SocketTool, Packet Sender and Wireshark: cross-platform, open source, built-in framing decoders and stress testing. NetAssist details are on its own page."
 head:
   - - script
     - type: application/ld+json
@@ -14,18 +13,11 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "An open-source cross-platform network debugging tool compared with NetAssist, Packet Sender and Wireshark, with TCP/UDP framing decoders and built-in stress testing.",
+            "description": "An open-source cross-platform network debugging tool compared with SocketTool, Packet Sender and Wireshark, with TCP/UDP framing decoders and built-in stress testing.",
             "url": "https://netassistant.trydo.top/en/comparison",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-          },
-          {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Comparison", "item": "https://netassistant.trydo.top/en/comparison" }
-            ]
           },
           {
             "@type": "FAQPage",
@@ -68,7 +60,7 @@ head:
       }
 ---
 
-# Comparison with Similar Tools
+# Network Debugging Tool Comparison
 
 NetAssistant is an open-source cross-platform network debugging tool. Many developers have used **NetAssist (网络调试助手)**, **SocketTool**, **Packet Sender** or **Wireshark** before. Below is an honest, scenario-based comparison to help you decide whether to switch. If you are looking for a NetAssist alternative, see the [NetAssist comparison and migration guide](/en/compare/netassist).
 
@@ -133,3 +125,14 @@ Wireshark is a capture and analysis tool, not an interactive send/receive debugg
 Yes. NetAssistant is open source under the Apache-2.0 license with all features free to use, no in-app purchases or subscriptions.
 
 > Looking for a **Linux/macOS alternative to NetAssist** or an **open-source TCP/UDP debugging tool**? Give NetAssistant a try: [Download](/en/download).
+
+## Related pages
+
+- [NetAssist alternative: comparison and migration](/en/compare/netassist)
+- [TCP debug tool](/en/tcp-debug-tool)
+- [UDP debug tool](/en/udp-debug-tool)
+- [Socket debug tool](/en/socket-debug-tool)
+- [TCP sticky packets](/en/tcp-sticky-packet)
+- [TCP/UDP stress testing](/en/tcp-stress-test)
+- [MQTT client comparison](/en/compare/)
+- [All features](/en/features)

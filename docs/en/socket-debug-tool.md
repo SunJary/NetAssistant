@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://netassistant.trydo.top/en/features" },
-              { "@type": "ListItem", "position": 3, "name": "Socket debug tool", "item": "https://netassistant.trydo.top/en/socket-debug-tool" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "What is a socket debug tool for?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "It works directly with TCP/UDP socket endpoints: connect to a remote port as a client or listen on a local port as a server, exchange raw bytes and inspect connection state without involving the business application."
+                  "text": "Working directly with TCP/UDP endpoints to connect, listen, exchange raw bytes and inspect connection state."
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "Can it debug serial ports or Unix domain sockets?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. NetAssistant supports TCP/UDP/MQTT network connections only. It has no serial port, COM port or Unix domain socket support."
+                  "text": "No. Only TCP/UDP/MQTT network connections are supported."
                 }
               },
               {
@@ -51,7 +43,7 @@ head:
                 "name": "What if listening on a port fails?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Check whether another process owns the port, whether a port below 1024 needs elevated privileges, whether the bound address belongs to a local interface, and whether a firewall or security tool blocks listening. Trying a high port quickly rules out permission issues."
+                  "text": "Check port ownership, privileges, bound address and firewall rules; a high port rules out permissions quickly."
                 }
               },
               {
@@ -59,7 +51,7 @@ head:
                 "name": "Can it test whether a port is reachable?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. Connect with a TCP client. Success means the handshake completed and the port is reachable. Connection refused usually means nothing is listening; a timeout points to a firewall or routing problem."
+                  "text": "Yes. A successful TCP connection means the port is reachable; refused usually means no listener, timeout suggests a firewall or route issue."
                 }
               }
             ]

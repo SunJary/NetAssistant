@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://netassistant.trydo.top/en/features" },
-              { "@type": "ListItem", "position": 3, "name": "TCP/UDP stress testing", "item": "https://netassistant.trydo.top/en/tcp-stress-test" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "How do I stress test a TCP server?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Open the stress testing page in NetAssistant, enter the target address, port, concurrent clients, send rate and payload, choose Ping-Pong or throughput mode and a short or long connection, then start. QPS, latency percentiles and failure reasons update live."
+                  "text": "Open the stress page, enter the target, concurrency, send rate and payload, choose the mode and connection type, then start."
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "Should I look at QPS or p99 latency?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Both. QPS shows throughput capacity, while p99 shows tail latency. Looking only at QPS can hide slow requests; looking only at p99 does not tell you how much throughput the system can sustain."
+                  "text": "Both. QPS shows throughput; p99 shows tail latency. Looking at only one can lead to the wrong conclusion."
                 }
               },
               {
@@ -51,7 +43,23 @@ head:
                 "name": "Does it support UDP stress testing?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. The stress engine supports both TCP and UDP. Ping-Pong mode measures RTT and latency percentiles; throughput mode measures maximum send capacity."
+                  "text": "Yes, both TCP and UDP support Ping-Pong and throughput modes."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support short connections?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Short connections create a new connection per request; long connections reuse them."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I export a report?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, export a CSV with QPS, latency percentiles and failure reasons."
                 }
               },
               {
@@ -59,7 +67,7 @@ head:
                 "name": "How is it different from JMeter or wrk?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "JMeter and wrk are better for scripted, distributed and CI-based load testing, mostly for HTTP. NetAssistant is a GUI tool for quick validation of raw TCP/UDP protocols during development and debugging; it does not replace a full load-testing platform."
+                  "text": "JMeter and wrk are better for scripting, distributed testing and CI. NetAssistant is better for GUI-based, raw TCP/UDP validation."
                 }
               }
             ]

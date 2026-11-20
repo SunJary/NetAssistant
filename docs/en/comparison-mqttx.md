@@ -1,14 +1,14 @@
 ---
 title: MQTTX Alternative - NetAssistant vs MQTTX Client Comparison
 titleTemplate: ':title'
-description: "NetAssistant vs MQTTX: a Rust native MQTT 3.1.1 / 5.0 client with TLS using about 20MB, versus MQTTX with WebSocket, scripting and fuller 5.0 support. An honest look at the gaps."
+description: "NetAssistant vs MQTTX: a Rust native MQTT 3.1.1 / 5.0 client with TLS using about 20MB. A lightweight alternative for low-memory, Windows field and mixed TCP/UDP work, while WebSocket, scripting and full 5.0 still point to MQTTX."
 ---
 
-# NetAssistant vs MQTTX: A Lightweight MQTT Client Comparison
+# MQTTX Alternative: NetAssistant vs MQTTX, a Lightweight Comparison
 
 If you've used **MQTTX** — the Electron-based MQTT client — you've probably noticed it typically sits at **a few hundred MB of memory** (roughly 300-500MB, depending on open connections and message volume). NetAssistant is built with **Rust natively** and uses about **20MB**.
 
-But let's be clear up front: **MQTTX is far more capable for MQTT than NetAssistant**. This page is not claiming NetAssistant can fully replace MQTTX. It is an honest comparison of what NetAssistant's MQTT mode **does and does not support**, so you can choose what fits.
+MQTTX is the more capable MQTT client, and this page does not pretend otherwise. It is not aiming for a "replace every feature" verdict; it compares the two honestly and explains when NetAssistant can stand in for MQTTX, and when MQTTX is still the right tool.
 
 For what MQTT mode supports and how to use it, see the [MQTT client](/en/mqtt-client).
 
@@ -78,7 +78,7 @@ NetAssistant has a few capabilities MQTTX does not have at all, but they **only 
 - **Data visualization**: MQTTX's chart panels are well suited to streaming sensor data
 - **Subscription UX**: MQTTX's wildcard subscription tree is more intuitive
 
-## When NetAssistant Is Worth a Shot
+## When It Can Replace MQTTX
 
 - **Memory-constrained environments**: when VS Code, Docker and a browser have already eaten most of your remote dev machine's memory, a 20MB MQTT client leaves more headroom
 - **MQTT alongside TCP/UDP debugging**: one tool with an MQTT client plus TCP/UDP clients and servers — no switching apps
@@ -89,6 +89,15 @@ NetAssistant has a few capabilities MQTTX does not have at all, but they **only 
 
 MQTTX is the most feature-complete open-source MQTT client. If you need MQTT over WebSocket, full 5.0 features, scripting automation or data visualization, it remains the clear choice. TLS is supported by both: NetAssistant offers system roots / custom CA / skipped verification plus mutual TLS, so a standard encrypted connection is no reason to switch.
 
-NetAssistant's MQTT support is "adequate" rather than exhaustive: 3.1.1 / 5.0, TLS, subscription management, QoS 0/1/2, retain, will messages, auto-reply and periodic send are there, but 5.0 covers the basics only and MQTT over WebSocket is not supported; stress testing, decoders and line/scheduled tasks apply only to TCP/UDP. If you want an **extremely lightweight MQTT debugger**, or need to **debug MQTT together with TCP/UDP**, give it a try — it won't fully replace MQTTX, but it may fit certain workflows better.
+NetAssistant's MQTT support is "adequate" rather than exhaustive: 3.1.1 / 5.0, TLS, subscription management, QoS 0/1/2, retain, will messages, auto-reply and periodic send are there, but 5.0 covers the basics only and MQTT over WebSocket is not supported; stress testing, decoders and line/scheduled tasks apply only to TCP/UDP. For **extremely lightweight MQTT debugging**, or when MQTT has to be **debugged together with TCP/UDP**, it is a lightweight alternative to MQTTX; keep MQTTX when you need WebSocket, scripting or full 5.0 coverage.
 
 > Want to try it? [Download NetAssistant](/en/download)
+
+## Related pages
+
+- [MQTT client comparison overview](/en/compare/)
+- [MQTT Explorer comparison](/en/compare/mqtt-explorer)
+- [MQTT.fx comparison](/en/compare/mqtt-fx)
+- [MQTT client capabilities and settings](/en/mqtt-client)
+- [MQTT tutorial](/en/guide/mqtt)
+- [Download NetAssistant](/en/download)

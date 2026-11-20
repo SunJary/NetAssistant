@@ -1,7 +1,6 @@
 ---
-title: 同类工具对比 - NetAssistant vs NetAssist、Packet Sender
-titleTemplate: ':title'
-description: NetAssistant 与网络调试助手（NetAssist）、Packet Sender、Wireshark 等 TCP/UDP 调试工具对比：跨平台、开源免费、内置压测，说明为什么选择 NetAssistant。
+title: 网络调试工具对比 - TCP/UDP 调试助手怎么选
+description: NetAssistant 与 Packet Sender、SocketTool、Wireshark 等 TCP/UDP 调试工具对比：跨平台、开源免费、内置压测与粘包解码；NetAssist 差异见专页。
 head:
   - - script
     - type: application/ld+json
@@ -14,18 +13,11 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "开源跨平台网络调试工具，与 NetAssist、Packet Sender、Wireshark 对比，支持 TCP/UDP 粘包解码与内置压测。",
+            "description": "开源跨平台网络调试工具，与 Packet Sender、SocketTool、Wireshark 对比，支持 TCP/UDP 粘包解码与内置压测。",
             "url": "https://netassistant.trydo.top/comparison",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-          },
-          {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "同类工具对比", "item": "https://netassistant.trydo.top/comparison" }
-            ]
           },
           {
             "@type": "FAQPage",
@@ -68,7 +60,7 @@ head:
       }
 ---
 
-# 同类工具对比
+# 网络调试工具对比
 
 NetAssistant 是开源的跨平台网络调试助手。很多开发者用过**网络调试助手（NetAssist）**、**SocketTool**、**Packet Sender** 或 **Wireshark**，下面从实际使用场景出发做一个客观对比，方便你判断是否值得切换。如果你正在找 NetAssist 的替代品，逐项对比和迁移步骤见 [NetAssist 替代指南](/compare/netassist)。
 
@@ -133,3 +125,14 @@ Wireshark 是抓包分析工具，不做收发交互调试。NetAssistant 可以
 是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购或订阅。
 
 > 如果你正在寻找**网络调试助手的 Linux/Mac 替代品**或**开源 TCP/UDP 调试工具**，可以下载 NetAssistant 试试：[下载](/download)。
+
+## 相关页面
+
+- [NetAssist 替代指南：逐项对比与迁移](/compare/netassist)
+- [TCP 调试工具](/tcp-debug-tool)
+- [UDP 调试工具](/udp-debug-tool)
+- [Socket 调试工具](/socket-debug-tool)
+- [TCP 粘包与拆包](/tcp-sticky-packet)
+- [TCP/UDP 压力测试](/tcp-stress-test)
+- [MQTT 客户端对比](/compare/)
+- [全部功能](/features)

@@ -1,6 +1,6 @@
 ---
 title: Windows Network Debugging Tool - TCP/UDP
-description: "Free, open-source Windows network debugging tool with TCP/UDP client and server, sticky-packet decoders, MQTT 3.1.1 debugging and built-in stress testing."
+description: "Free, open-source Windows network debugging tool with TCP/UDP client and server, sticky-packet decoders, MQTT 3.1.1 / 5.0 debugging and built-in TCP/UDP stress testing."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10, Windows 11",
-            "description": "Free, open-source Windows network debugging tool with TCP/UDP client and server, TCP sticky-packet decoders, MQTT debugging and stress testing.",
+            "description": "Free, open-source Windows network debugging tool with TCP/UDP client and server, TCP sticky-packet decoders, MQTT debugging, and TCP/UDP stress testing.",
             "url": "https://netassistant.trydo.top/en/windows-network-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -27,7 +27,7 @@ head:
                 "name": "How do I install NetAssistant on Windows?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "The recommended way is winget: run winget install SunJary.NetAssistant, then upgrade with winget upgrade SunJary.NetAssistant. You can also download the setup executable or a portable zip from the download page."
+                  "text": "Run winget install SunJary.NetAssistant in PowerShell or Terminal, or download the installer/portable zip from the download page."
                 }
               },
               {
@@ -35,7 +35,7 @@ head:
                 "name": "Does NetAssistant support Windows 7?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. NetAssistant requires Windows 10 version 1709 (Build 16299) or later and does not support Windows Server 2016 or earlier; x64 and ARM64 builds are available."
+                  "text": "No. NetAssistant requires Windows 10 version 1709 (Build 16299) or later, and does not support Windows Server 2016 or earlier."
                 }
               },
               {
@@ -43,7 +43,7 @@ head:
                 "name": "Is there a Windows ARM64 build?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. Download netassistant-windows-aarch64.zip for Surface Pro X, Snapdragon laptops and other ARM64 devices. winget and the installer currently provide x64 builds only."
+                  "text": "Yes. Download netassistant-windows-aarch64.zip for ARM64 devices."
                 }
               },
               {
@@ -51,7 +51,23 @@ head:
                 "name": "How is NetAssistant different from NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "NetAssist is a closed-source Windows-only tool. NetAssistant is free and open source, runs on Windows, macOS and Linux, and includes four TCP sticky-packet decoders plus built-in stress testing with QPS and p50/p95/p99 latency."
+                  "text": "NetAssist is Windows-only and closed source. NetAssistant is free, open source and cross-platform, with four TCP decoders and built-in stress testing. See the comparison for details."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is it free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. NetAssistant is released under the Apache-2.0 license and all features are free."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support IPv6?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Connections accept IPv4 or IPv6 addresses such as ::1 or fe80::xxxx in both client and server modes."
                 }
               }
             ]
@@ -60,11 +76,11 @@ head:
       }
 ---
 
-# Windows Network Debugging Tool: TCP/UDP/MQTT Debugging and Stress Testing
+# Windows Network Debugging Tool: TCP/UDP Debugging, Stress Testing and MQTT
 
 If you debug TCP/UDP on Windows, you have probably used **NetAssist** (网络调试助手): small and direct, but Windows-only, closed source, with limited help for TCP sticky packets and no built-in stress testing.
 
-NetAssistant is a free, open-source Windows network debugging tool for Windows 10/11. It combines a TCP/UDP client and server, four TCP decoders, MQTT 3.1.1 debugging, hex send/receive, message management and high-concurrency stress testing in one native desktop app.
+NetAssistant is a free, open-source Windows network debugging tool for Windows 10/11. It combines a TCP/UDP client and server, four TCP decoders, MQTT 3.1.1 / 5.0 debugging, hex send/receive, message management, and TCP/UDP-only high-concurrency stress testing in one native desktop app.
 
 > [Download for Windows](/en/download) · [All features](/en/features) · [Getting started](/en/guide/)
 
@@ -75,7 +91,7 @@ NetAssistant is a free, open-source Windows network debugging tool for Windows 1
 - **Free and open source**: Apache-2.0 licensed, all features available, source on GitHub
 - **Sticky-packet decoders**: raw, line-delimited, length-prefix and JSON TCP decoders
 - **Built-in stress testing**: QPS plus p50/p95/p99 latency without installing another tool
-- **Multiple protocols in one app**: TCP/UDP client and server, MQTT 3.1.1 client, IPv4/IPv6 dual stack
+- **Multiple protocols in one app**: TCP/UDP client and server, MQTT 3.1.1 / 5.0 client, IPv4/IPv6 dual stack
 - **Native performance**: Rust + Tokio, fast startup, low memory usage and a GPUI-rendered interface
 
 ## Install on Windows
@@ -120,7 +136,7 @@ TCP is a byte stream, so sticky and split packets are unavoidable. NetAssistant 
 
 Run high-concurrency TCP/UDP tests in Ping-Pong or throughput mode. See QPS, success rate, active connections, p50/p95/p99 latency and failure breakdown in real time, then export a CSV report. See the [stress testing guide](/en/guide/stress).
 
-### MQTT 3.1.1 debugging
+### MQTT 3.1.1 / 5.0 debugging
 
 Create an MQTT connection with broker address, client ID, credentials, keep-alive and last-will settings. Add or remove subscriptions at runtime and publish with topic, QoS and retain.
 

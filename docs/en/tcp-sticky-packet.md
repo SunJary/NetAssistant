@@ -20,14 +20,6 @@ head:
             "mainEntityOfPage": "https://netassistant.trydo.top/en/tcp-sticky-packet"
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Guide", "item": "https://netassistant.trydo.top/en/guide/" },
-              { "@type": "ListItem", "position": 3, "name": "TCP sticky packets", "item": "https://netassistant.trydo.top/en/tcp-sticky-packet" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "What is the difference between sticky and split packets?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Sticky packets mean one read returns multiple messages; split packets mean one message is read across multiple reads. Both are the same underlying issue: TCP is a byte stream and does not preserve message boundaries, so the application must define framing."
+                  "text": "Sticky packets merge multiple messages into one read; split packets divide one message across reads. Both mean the application has not defined message boundaries."
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "Why does it work locally but fail in production?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Locally, small writes with large gaps often map one send to one recv. In production, Nagle, receive-buffer coalescing, latency and concurrency change read boundaries, so code that assumes one send equals one recv will eventually break."
+                  "text": "Local tests often have small writes and large gaps, so one send tends to map to one recv. In production, Nagle, buffer coalescing, latency and concurrency change read boundaries."
                 }
               },
               {
@@ -51,7 +43,15 @@ head:
                 "name": "Should a length prefix be big-endian or little-endian?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Either works if both sides agree, but network byte order (big-endian) is the common convention. A 4-byte big-endian unsigned integer is typical, with a maximum frame size to prevent memory abuse."
+                  "text": "Either works if both sides agree, but big-endian network byte order is the common convention. Use a 4-byte unsigned integer and enforce a maximum frame size."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What delimiter should I use?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Choose a sequence that cannot appear in the payload. Text protocols commonly use \\n or \\r\\n; if the payload can contain it, escape it or use a length prefix instead."
                 }
               },
               {
@@ -59,7 +59,15 @@ head:
                 "name": "Why does HTTP not have sticky packets?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "HTTP defines message boundaries at the application layer: HTTP/1.1 uses Content-Length or chunked encoding, and HTTP/2 uses length-prefixed frames. Solving sticky packets means doing the same thing for your protocol."
+                  "text": "HTTP defines message boundaries at the application layer with Content-Length, chunked encoding or length-prefixed frames."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does UDP have sticky packets?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. UDP preserves message boundaries, but it can lose, reorder or duplicate datagrams and may fragment above the MTU."
                 }
               }
             ]

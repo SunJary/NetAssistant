@@ -1,6 +1,6 @@
 ---
 title: Linux 网络调试助手 - TCP/UDP 调试与压测
-description: NetAssistant 是 Linux 上的免费开源网络调试助手，提供 deb、AppImage、tar.gz 三种安装方式，支持 x86_64 与 ARM64，内置粘包解码、MQTT 与压测。
+description: NetAssistant 是 Linux 上的免费开源网络调试助手，提供 deb、AppImage、tar.gz 三种安装方式，支持 x86_64 与 ARM64，内置粘包解码、MQTT 以及 TCP/UDP 压测。
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Linux x86_64, Linux ARM64",
-            "description": "Linux 上的免费开源网络调试助手，提供 deb、AppImage、tar.gz 安装包，支持 x86_64 与 ARM64，内置 TCP/UDP 客户端与服务端、粘包解码、MQTT 调试与压力测试。",
+            "description": "Linux 上的免费开源网络调试助手，提供 deb、AppImage、tar.gz 安装包，支持 x86_64 与 ARM64，内置 TCP/UDP 客户端与服务端、粘包解码、MQTT 调试，以及仅用于 TCP/UDP 的压力测试。",
             "url": "https://netassistant.trydo.top/linux-network-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -27,7 +27,7 @@ head:
                 "name": "Linux 上怎么安装 NetAssistant？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Debian/Ubuntu 及衍生版推荐下载 deb 包，执行 sudo apt install ./netassistant-linux-x86_64.deb 自动解析依赖；其他发行版可用 AppImage 或 tar.gz。"
+                  "text": "Debian/Ubuntu 及衍生版推荐下载 deb 包，执行 sudo apt install ./netassistant-linux-x86_64.deb 自动解析依赖；其他发行版可用 AppImage 或 tar.gz。详见下载页。"
                 }
               },
               {
@@ -35,12 +35,20 @@ head:
                 "name": "AppImage 启动报 FUSE 错误怎么办？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "首次运行 AppImage 若提示 FUSE 相关错误，先安装 libfuse2：sudo apt install libfuse2，然后再运行 AppImage。"
+                  "text": "先安装 libfuse2：sudo apt install libfuse2，然后再运行 AppImage。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "Linux 版支持 ARM64 和树莓派吗？",
+                "name": "启动报缺少 libgtk-3.so.0 怎么办？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "安装 GTK3：sudo apt install libgtk-3-0。裸二进制与 tar.gz 版本需要自行安装该依赖。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持 ARM64 和树莓派吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
                   "text": "支持。提供 aarch64 的 deb、AppImage 与 tar.gz，可在树莓派 5、ARM 服务器等设备上运行。"
@@ -48,7 +56,7 @@ head:
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 有命令行版本吗？",
+                "name": "有命令行版本吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
                   "text": "目前只提供图形界面版本，没有 CLI。如果需要脚本化测试，可以继续使用 nc、socat、iperf 等命令行工具；NetAssistant 适合需要图形界面、粘包解码和实时指标的场景。"
@@ -64,7 +72,7 @@ head:
 
 Linux 上的网络工具很多，但大多数是 `nc`、`socat`、`tcpdump` 这类命令行工具：灵活，却看不到报文交互过程，处理 TCP 粘包要自己写解析，压测还要另找工具。
 
-NetAssistant 是 Linux 上的图形化网络调试助手，免费开源，提供 **deb、AppImage、tar.gz** 三种安装方式，支持 x86_64 与 ARM64（含树莓派）。TCP/UDP 客户端与服务端、四种粘包解码器、MQTT 3.1.1 调试和高并发压力测试都在同一个应用里。
+NetAssistant 是 Linux 上的图形化网络调试助手，免费开源，提供 **deb、AppImage、tar.gz** 三种安装方式，支持 x86_64 与 ARM64（含树莓派）。TCP/UDP 客户端与服务端、四种粘包解码器、MQTT 3.1.1 / 5.0 调试，以及仅用于 TCP/UDP 的高并发压力测试都在同一个应用里。
 
 > [下载 Linux 版](/download) · [查看全部功能](/features) · [快速上手](/guide/)
 
@@ -140,7 +148,7 @@ Linux 服务端最常见的问题之一就是 TCP 粘包。NetAssistant 在接�
 
 ### MQTT 调试
 
-内置 MQTT 3.1.1 客户端，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复，适合物联网与 Broker 联调。
+内置 MQTT 3.1.1 / 5.0 客户端，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复，适合物联网与 Broker 联调。
 
 ### 内置工具箱
 

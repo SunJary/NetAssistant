@@ -1,629 +1,225 @@
-# NetAssistant - 网络调试助手
+# NetAssistant - TCP/UDP/MQTT 网络调试助手
 
 <div align="center">
 
-**一个基于 Rust 构建的高性能、现代化的网络调试工具**
+**Rust 构建的高性能跨平台网络调试工具：TCP/UDP 客户端与服务端、MQTT 3.1.1/5.0、内置压测与校验工具箱**
 
 [![Rust](https://img.shields.io/badge/Rust-2024-orange.svg)](https://www.rust-lang.org)
-[![Release](https://img.shields.io/github/v/release/sunjary/netassistant)](https://github.com/sunjary/netassistant/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/sunjary/netassistant/total)](https://github.com/sunjary/netassistant/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/sunjary/netassistant/releases)
+[![Release](https://img.shields.io/github/v/release/SunJary/NetAssistant)](https://github.com/SunJary/NetAssistant/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/SunJary/NetAssistant/total)](https://github.com/SunJary/NetAssistant/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com/SunJary/NetAssistant/releases)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-[English](README-en.md) | 中文 | [📖 官网 / 在线文档](https://netassistant.trydo.top/)
+**免费开源 · 约 20MB · 无需注册**
+
+[⬇️ Windows](https://github.com/SunJary/NetAssistant/releases/latest/download/netassistant-windows-x86_64-setup.exe) ·
+[⬇️ macOS](https://github.com/SunJary/NetAssistant/releases/latest/download/netassistant-macos-universal.dmg) ·
+[⬇️ Linux](https://github.com/SunJary/NetAssistant/releases/latest/download/netassistant-linux-x86_64.deb) ·
+[📖 在线文档](https://netassistant.trydo.top/)
+
+[English](README-en.md) | 中文
 
 </div>
 
----
-
-## 简介
+![NetAssistant 主界面](assets/screenshots/zh/screenshot_client.png)
 
-NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**网络调试工具，专为开发者设计，**支持 Windows、Linux 和 macOS 系统**。它提供了直观的界面，用于测试和调试网络通信，支持 TCP/UDP 协议的客户端和服务端模式，帮助开发者快速验证网络通信逻辑和数据格式，是网络应用开发、硬件调试和嵌入式系统开发的得力助手。
+## 为什么选 NetAssistant
 
-> 🌐 官网与在线文档：[https://netassistant.trydo.top/](https://netassistant.trydo.top/)（功能特性、使用指南、压力测试教程与更新日志）
+- **一套工具覆盖三种协议**：TCP/UDP 客户端与服务端、MQTT 3.1.1/5.0，不用在多个工具之间来回切换。
+- **轻量且快**：Rust + GPUI，启动 < 100ms，内存占用 < 20MB，消息列表保持 60fps。
+- **调试闭环完整**：文本/Hex 收发、四种 TCP 解码器、回复规则、周期发送、内置压测与 CSV 报告。
+- **跨平台、开源免费**：Windows 10+、macOS 10.15+、Linux（GTK3），Apache-2.0，无账号、无云上传。
 
-## ✨ 功能特性
+## 核心功能
 
-### 核心功能
-- **多协议支持**：完整支持 TCP/UDP 客户端和服务端模式，以及 MQTT 3.1.1 / 5.0 客户端
-- **MQTT 客户端**：协议版本可选 MQTT 5.0（新建默认）与 3.1.1；支持 QoS 0/1/2、Clean Session、KeepAlive 与遗嘱消息；支持 TLS，证书校验可选系统根证书 / 自定义 CA / 跳过校验，可配客户端证书与私钥做双向认证；5.0 下可设会话过期与接收最大值，连接被拒、订阅失败与 broker 主动断开显示可读原因码；可运行时订阅/取消订阅，断线自动重连并恢复订阅；发布区可设置 topic、QoS 与 retain，并按连接保存最近发布过的 topic 历史；消息记录显示 topic 标签，自动回复的应答回发到收到消息的 topic
-- **内置工具箱**：标签栏右侧扳手图标打开工具箱，内置转换（文本 ⇄ Hex）、校验（XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32）、哈希（MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512、bcrypt / Argon2id / PBKDF2-SHA256 密码哈希、文件摘要与哈希对比）、时间戳 ⇄ 日期、JSON 美化/压缩（兼容 JSON5）、Base64 / URL 编解码
-- **IPv4/IPv6 双栈**：同时支持 IPv4 和 IPv6 协议，适应各种网络环境
-- **多种 TCP 解码器**：支持原始数据、基于行的解码、长度前缀解码和 JSON 解码，满足不同协议格式需求，有效解决 TCP 粘包问题
-- **JSON 格式化**：发送框在文本模式提供「美化/压缩」按钮格式化待发送内容；接收区顶部可切换「原始/美化/压缩」全局显示格式，支持美化缩进和压缩展示，非JSON内容原样返回
-- **聊天式报文记录**：直观展示报文交互过程，便于调试和分析
-- **配置持久化**：自动保存连接配置，下次启动直接使用
-- **多语言界面**：内置中文与 English 界面，可在主窗口菜单中切换并记住选择
-- **十六进制编辑器**：HEX 编辑器支持十六进制与文本双视图编辑报文；输入框右键菜单支持剪切 / 复制 / 粘贴 / 全选，并可对输入内容直接计算 XOR、累加和 Sum8、LRC、CRC16-Modbus、CRC16-CCITT-FALSE、CRC32 校验值
-- **文件数据源**：从本地文件读取内容作为报文填入发送框，支持 UTF-8 / GBK / ANSI 编码选择与内容预览，上限 1 MiB
-- **ASCII ↔ Hex 双向互转**：文本/十六进制模式切换时按 UTF-8 整体互转；右键菜单「转换为 Hex / 转换为文本」在只读窗口中展示结果并可一键复制，不可打印字节以 `\xNN` 转义，往返转换字节级一致
-- **客户端本地地址绑定**：新建/编辑连接「更多设置」中可指定本地 IP 与本地端口，适配多网卡及对端按源地址过滤的场景；连接成功后信息面板显示实际生效的本地端点
+- **TCP/UDP 调试**：客户端与服务端、IPv4/IPv6、多标签、UDP 广播与多设备回复、本地地址绑定。
+- **报文处理**：文本 ⇄ Hex、原始/行/长度前缀/JSON 四种解码器、JSON 美化、搜索、收藏、TXT/JSON/CSV 导出、实时日志。
+- **自动化**：周期发送、逐行发送、定时任务、条件回复规则，以及 `${seq}`、`${timestamp}`、`${uuid}` 等变量模板。
+- **压力测试**：TCP/UDP Ping-Pong 与吞吐模式、短/长连接、QPS、p50/p95/p99、失败分类、CSV 报告。
+- **MQTT 客户端**：3.1.1/5.0、QoS 0/1/2、TLS 与双向认证、遗嘱消息、订阅恢复、断线自动重连。
+- **内置工具箱**：转换、校验（XOR/Sum8/LRC/CRC16/CRC32）、哈希、时间戳、JSON、Base64/URL 编解码。
 
-### 消息管理功能
-- **复制消息**：快速复制单条消息内容到剪贴板，支持文本和十六进制两种格式
-- **消息文本可选中**：气泡正文支持拖选、双击选词、三击选行，`Ctrl/Cmd+C` 复制选中片段；右键菜单可复制选中或全文，并对选中内容（未选中时对整条消息）执行文本 ⇄ Hex 转换与六种校验，结果在只读窗口中展示；拖选时高亮实时跟随鼠标
-- **双击复制来源**：双击消息来源地址可直接复制 `ip:port`；MQTT 连接下双击 topic 标签可复制原始 topic，便于粘贴到订阅或发布输入框
-- **收藏消息**：将重要消息添加到收藏夹，支持为收藏项添加备注说明，并提供关键字搜索
-- **实时日志记录**：手动开启后所有收发消息实时异步写入日志文件（每条flush落盘），支持自定义保存路径，断开连接自动刷新关闭；日志文件名可点击打开目录
-- **随时手动导出**：不需要一直记日志？可随时导出当前消息记录为 TXT/JSON/CSV 格式文件，便于归档、分享和二次分析
-- **UDP 广播回复智能展示**：针对上位机/物联网设备发现场景优化，向广播地址发送指令后接收所有设备回复，非预期地址的回复用红色高亮标识，不丢失重要响应
-- **连接配置编辑**：已保存的连接配置支持直接编辑修改，无需删除重建
-- **消息搜索**：`Ctrl+F` 或点击工具栏放大镜打开非模态搜索浮层，实时显示命中计数 `i/n`，支持上/下环形跳转并在消息列表中高亮定位
-- **消息条数上限**：可设置「保留最后 N 条」（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息以控制内存占用；与自动滚动联动，关闭自动滚动时停止淘汰（此时消息持续累积、内存随消息量增长，清空或重新设置条数上限后释放）
+完整说明见 [功能特性](https://netassistant.trydo.top/features)。
 
-### 自动化测试功能
-- **回复规则**：按连接的规则引擎，用字节级条件（包含字节、定长精确/掩码匹配、前缀+长度区间、偏移字节/整数、帧尾、正则、来源地址（支持 CIDR）、JSON 字段、校验值验算等，可「全部/任一/取反」任意嵌套）匹配收到的报文并自动应答；JSON 字段条件支持 `data.items[0].temp` 等路径与 `== / != / > / >= / < / <= / 包含 / 存在` 运算符；应答支持接收帧变量与动态变量，可单独设置编码方式；规则按连接隔离，支持启用/停用、复制、拖拽排序（自上而下、命中即停）、触发统计与编辑内联试跑，旧版固定自动回复内容可一键迁移为等价规则
-- **消息变量**：发送框、定时任务与回复规则统一支持 `${seq}`、`${timestamp}`、`${uuid}`、`${random:min:max}` 等通用变量，以及 `${rx.*}` 接收帧变量（`raw` / `hex` / `ascii` / `base64` 与 `u8` / `u16be` / `i32le` 等整数取值）、`${rx.json:路径}` JSON 字段取值、发送时生成的校验值（如 `${crc16modbus:off:len}`）与 `${= 表达式 }`；Hex 模式下数值变量自动转为十六进制
-- **发送任务与定时任务**：导入文件或粘贴多行后可逐行发送（可设间隔、循环与轮次）；每个连接可添加定时任务按固定间隔循环发送心跳，两者均可在任务面板查看进度、暂停/继续/停止
-- **结尾字符（LF / CRLF）**：发送区可选「无 / LF / CRLF」，对所有发出的消息生效，并同时作用于逐行发送任务与回复规则；压力测试配置中可独立设置「结尾字符」（继承 / 无 / LF / CRLF）
-- **周期发送功能**：支持定时周期性发送消息，用于压力测试或长时间稳定性测试
-- **压力测试功能**：内置 TCP/UDP 高并发压力测试引擎，实时展示 QPS（当前/峰值）、总发送/成功/失败、活跃连接（当前/峰值）、断连/重连、收发字节统计；p50/p95/p99/平均/最大延迟分位数**仅在 Ping-Pong（往返）模式下显示**（该模式发送后等待响应，可统计 RTT 延迟）；支持失败原因分类（连接失败/发送失败/接收超时/对端关闭/校验失败），帮助快速定位瓶颈；支持变量模板（`${seq}` 全局序号、`${worker_id}` 线程ID、`${counter}` 本地计数、`${timestamp}` 时间戳、`${uuid}` 随机UUID、`${random:min:max}` 随机整数）、配置自动保存复用和 CSV 报告导出
+## 快速开始
 
-### 现代化界面
-- **暗黑模式支持**：自动适应系统主题，提供舒适的夜间使用体验
-- **多标签页管理**：同时管理多个连接，方便切换和对比
-- **客户端消息查看**：在服务端模式下，可选择特定客户端查看其消息
-- **UDP 手动添加客户端**：在 UDP 服务端模式下，可手动添加客户端地址，便于主动向指定地址发送数据（UDP 无连接特性）
-- **键盘快捷键**：`Ctrl+Enter` 发送、`Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` 管理标签页、`Ctrl+F` 消息搜索、`Ctrl+N` 新建连接、`Ctrl+K` 聚焦消息输入框，任意焦点状态下均生效
+| 平台 | 推荐安装方式 |
+| ---- | ---- |
+| Windows | `winget install SunJary.NetAssistant`，或下载安装程序 |
+| macOS | 下载 DMG，打开后拖入 Applications |
+| Linux | 下载 deb 后执行 `sudo apt install ./netassistant-*.deb` |
 
-## 🎯 使用场景
+直接下载：[Windows 安装包](https://github.com/SunJary/NetAssistant/releases/latest/download/netassistant-windows-x86_64-setup.exe) · [macOS DMG](https://github.com/SunJary/NetAssistant/releases/latest/download/netassistant-macos-universal.dmg) · [Linux deb](https://github.com/SunJary/NetAssistant/releases/latest/download/netassistant-linux-x86_64.deb) · [全部版本](https://github.com/SunJary/NetAssistant/releases)
 
-- **开发者通信验证**：包括后端开发者对接硬件前模拟硬件发送数据，以及网络应用开发时测试客户端与服务端之间的通信逻辑和数据格式，验证服务端或应用的正确性和鲁棒性
-- **硬件设备测试**：涵盖硬件工程师测试常规硬件设备（如传感器、控制器等），以及嵌入式开发者验证资源受限嵌入式系统的网络协议栈实现、数据传输效率和内存占用情况，确保设备网络功能正常运行
-- **服务性能压测**：利用内置压力测试功能对自研服务端进行并发吞吐、延迟分布和稳定性评估，快速定位性能瓶颈
-
-## 📸 界面预览
+系统要求：Windows 10 1709+（不含 Windows Server 2016 及更早）、macOS 10.15+、Linux 需 GTK3（Ubuntu 22.04+）。
 
-### 新建连接
-![新建连接截图](assets/screenshots/zh/screenshot_new_client.png)
-
-### 客户端模式
-![客户端截图](assets/screenshots/zh/screenshot_client.png)
-
-### 服务端模式
-![服务端截图](assets/screenshots/zh/screenshot_server.png)
-
-### IPv6 支持
-![IPv6 截图](assets/screenshots/zh/screenshot_ipv6.png)
-
-### TCP 解码器
-![TCP 解码器截图](assets/screenshots/zh/screenshot_tcp_decoder.png)
-
-### 十六进制模式
-![十六进制模式截图](assets/screenshots/zh/screenshot_hex.png)
-
-### ASCII ↔ Hex 互转
-![ASCII 与 Hex 互转截图](assets/screenshots/zh/screenshot_text_hex_convert.png)
-
-### 收藏消息
-![收藏消息截图](assets/screenshots/zh/screenshot_favorite_message.png)
-
-### 消息搜索
-![消息搜索截图](assets/screenshots/zh/screenshot_search.png)
-
-### 回复规则
-![回复规则截图](assets/screenshots/zh/screenshot_reply_rule.png)
-
-### MQTT 新建连接
-![MQTT 新建连接截图](assets/screenshots/zh/screenshot_mqtt_new_client.png)
-
-### MQTT 客户端
-![MQTT 客户端截图](assets/screenshots/zh/screenshot_mqtt_client.png)
-
-### 工具箱 · 哈希
-![工具箱哈希截图](assets/screenshots/zh/screenshot_toolbox_hash.png)
-
-### 工具箱 · 时间
-![工具箱时间截图](assets/screenshots/zh/screenshot_toolbox_time.png)
-
-### 从文件导入内容（文件数据源）
-![文件数据源截图](assets/screenshots/zh/screenshot_file_source.png)
-
-### UDP 手动添加客户端
-![UDP 手动添加客户端截图](assets/screenshots/zh/screenshot_udp_add_client.png)
-
-### 配置压力测试（暗黑模式）
-![配置压力测试截图](assets/screenshots/zh/screenshot_udp_stress_dark.png)
-
-### 压力测试结果
-![压力测试结果截图](assets/screenshots/zh/screenshot_stress.png)
-
-### UDP 客户端暗黑模式
-![UDP 客户端暗黑模式截图](assets/screenshots/zh/screenshot_udp_client_dark.png)
-
-### UDP 服务端暗黑模式
-![UDP 服务端暗黑模式截图](assets/screenshots/zh/screenshot_udp_server_dark.png)
-
-### 折叠模式
-![折叠模式截图](assets/screenshots/zh/screenshot_collapsed.png)
-
-## 🚀 快速开始
-
-### 系统要求
-
-- **Windows**: Windows 10 1709（Build 16299）或更高版本，含 Windows 11；支持 Windows Server 2019 及以上，不支持 Windows Server 2016 及更早系统
-- **Linux**: 需要 GTK3 库（如 Ubuntu 22.04 及以上版本）
-- **macOS**: 10.15 或更高版本
-
-### 安装
-
-#### Windows
-**推荐方法：使用 winget 安装**
-- 优势：支持自动升级，安装和管理更便捷
-- 步骤：
-  1. 首先安装 winget（Windows 10 1809+ 或 Windows 11 内置，或参考 [Microsoft 官方文档](https://learn.microsoft.com/zh-cn/windows/package-manager/winget/) 了解安装方法）
-  2. 打开命令提示符或 PowerShell，运行以下命令：
-     ```bash
-     winget install SunJary.NetAssistant
-     ```
-  3. 后续升级只需运行：
-     ```bash
-     winget upgrade SunJary.NetAssistant
-     ```
-
-**备选方法：从 GitHub Release 下载**
-请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本（Windows 提供安装程序 `netassistant-windows-x86_64-setup.exe`，安装后自动创建快捷方式；或便携版 zip，解压后直接点击 `netassistant.exe` 运行）。
-
-#### Linux
-**推荐方法：安装 deb 包（Debian/Ubuntu 及衍生版）**
-- 步骤：
-  1. 请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载对应架构（x86_64 / ARM64）的 deb 包
-  2. 安装并自动解决依赖：
-     ```bash
-     sudo apt install ./netassistant-*.deb
-     ```
-
-**备选方法：从 GitHub Release 下载压缩包**
-- 步骤：
-  1. 请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本的 Linux 压缩包
-  2. 解压安装包：
-     ```bash
-     tar -xzf netassistant-linux-x64.tar.gz
-     ```
-  3. 运行可执行文件：
-     ```bash
-     ./netassistant
-     ```
-
-#### macOS
-**推荐方法：从 GitHub Release 下载**
-- 步骤：
-  1. 请访问 [GitHub Release 页面](https://github.com/sunjary/netassistant/releases) 下载最新版本的 macOS 压缩包
-  2. 解压安装包
-  3. 将 NetAssistant 拖放到 Applications 文件夹
-  4. 右键点击应用程序，选择 "打开" 运行（首次运行需要此操作）
-
-### 运行
-
-根据不同操作系统的安装方法，运行对应的可执行文件即可。
-
-## 💡 使用方法
-
-1. **创建连接**
-   - 点击左侧面板的 `[+新建]` 按钮
-   - 选择连接类型（客户端/服务端）
-   - 选择协议（TCP/UDP）
-   - 填写地址和端口
-   - 创建完成后，在连接详情页面可以配置 TCP 解码器类型
-
-2. **连接到服务器**
-   - 对于客户端连接，点击 `[连接]` 按钮
-   - 对于服务端连接，点击 `[启动]` 按钮
-
-3. **选择消息模式**
-   - 在底部输入框上方，选择消息发送模式：文本模式或十六进制模式
-   - 文本模式：直接输入字符串消息
-   - 十六进制模式：输入十六进制格式数据，如 "0A0B0C"
-   - 切换模式时输入框内容会按 UTF-8 自动互转（文本 ⇄ Hex），无需手工改写；也可在输入框内右键选择「转换为 Hex / 转换为文本」，结果在只读窗口中展示并可复制，不会改写输入框内容
-   - 输入框内右键还可剪切 / 复制 / 粘贴 / 全选，并对输入内容直接计算 XOR、累加和 Sum8、LRC、CRC16-Modbus、CRC16-CCITT-FALSE、CRC32 校验值
-
-4. **发送消息**
-   - 在底部输入框输入消息内容
-   - 点击 `[发送]` 按钮或按 Enter 键发送
-   - 可在发送区选择「结尾」（无 / LF / CRLF），发送时自动在消息末尾追加
-   - 支持变量：`${seq}`、`${timestamp}`、`${uuid}`、`${random:min:max}` 等通用变量，接收帧变量 `${rx.*}`，校验值 `${crc16modbus:off:len}` 等，以及 `${= 表达式 }`；Hex 模式下数值变量自动转为十六进制
-
-5. **周期发送**
-   - 在连接标签页中启用周期发送功能
-   - 设置发送间隔（毫秒）
-   - 点击 `[发送]` 按钮开始周期发送
-   - 取消勾选周期发送可停止发送任务
-
-6. **自动回复（回复规则）**
-   - 在连接标签页点击 `[管理规则]`，新建或编辑规则；每条规则由**条件**与**动作**组成
-   - 条件支持「全部满足 / 任一满足 / 取反」嵌套，以及包含字节、定长精确/掩码、前缀+长度区间、偏移字节/整数、帧尾、正则、来源地址（支持 CIDR）、校验值验算等多种谓词
-   - 动作为命中后发送的应答内容，可引用 `${rx.*}` 等接收帧变量，并可单独设置编码方式（原样 / 追加 LF / 追加 CRLF / 继承连接）
-   - 连接页的「自动回复」开关是该连接唯一总闸；规则自上而下求值、命中即停，支持启用/停用、复制、拖拽排序与触发次数统计
-   - 编辑弹窗内可「内联试跑」：填入测试报文即时查看是否命中、首个未满足的条件与实际渲染出的应答；旧版固定自动回复内容可一键迁移为等价规则
-
-7. **发送任务与定时任务**
-   - **逐行发送**：导入文件或粘贴多行内容后按行逐条发送，可设置每条间隔、循环发送与最大轮次
-   - **定时任务（心跳）**：每个连接可添加 1 个定时任务，按固定间隔循环发送单条消息（支持 `${...}` 变量），可设置随连接自动启动，间隔修改立即生效
-   - 两者均可在任务面板查看进度，并支持暂停 / 继续 / 停止 / 删除
-
-8. **消息管理**
-   - **复制消息**：点击消息项上的复制按钮，将内容复制到剪贴板
-   - **收藏消息**：点击消息项上的收藏按钮，可将消息加入收藏夹；可在弹窗中为收藏项填写备注，并通过关键字搜索快速定位
-   - **JSON 格式化**：
-     - 发送端：文本输入模式下，输入框旁有「美化」「压缩」按钮，可格式化待发送的 JSON 内容
-     - 接收端：顶部工具栏有「格式:原始/美化/压缩」按钮，切换所有消息的显示格式；非 JSON 内容会原样显示
-   - **导出消息记录**：在连接标签页中点击导出按钮，选择 TXT / JSON / CSV 格式并保存到本地文件
-   - **实时日志记录**：点击「日志记录」开关手动开启/关闭记录，开启后所有消息实时异步写入日志文件（每条消息自动flush落盘）；默认保存到 `文档/NetAssistant/logs/` 目录，点击旁边的铅笔按钮可自定义保存路径，日志文件名可点击直接打开所在目录，断开连接自动刷新关闭日志
-
-   - **消息搜索**：按 `Ctrl+F` 或点击工具栏的放大镜打开搜索浮层，输入关键字即可看到命中计数 `i/n`，用 Enter / Shift+Enter（或点击上/下按钮）环形跳转，命中行会高亮并滚动到视口，按 Esc 关闭
-   - **消息条数上限**：在工具栏「自动滚动」旁设置「保留最后 N 条」（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息以控制内存；关闭自动滚动时该值自动置 0 且不淘汰任何消息（大量收发下内存会持续增长，点击清空或重新设置条数上限即可释放）
-
-9. **编辑连接配置**
-   - 对于已保存的连接配置，右键点击连接选择编辑，或点击编辑按钮
-   - 可修改协议类型、地址、端口等配置，无需删除重建
-
-10. **UDP 手动添加客户端**
-   - 在 UDP 服务端模式下，点击 `[+添加客户端]` 按钮
-   - 输入目标客户端的 IP 和端口
-   - 添加完成后即可主动向该地址发送消息
-
-11. **UDP 设备发现场景（上位机/物联网调试）**
-    - 当需要发现局域网内的物联网/嵌入式设备时，向广播地址（如 `192.168.1.255`）发送 discovery 指令
-    - 所有设备的回复都会正常显示（不会被源地址过滤）
-    - 来自非目标地址的设备回复，源地址会用**浅红色高亮**标识，鼠标悬停显示「非预期地址的回复」提示，帮助你识别哪些设备做出了响应
-    - 既不丢失重要的设备响应，又能清晰区分广播回复与目标地址正常回复
-
-12. **压力测试**
-    - 通过标签页上的'压测'入口切换到压力测试页面
-    - 填写目标地址、端口、并发客户端数、发送速率、消息内容及变量模板（支持 `${seq}`、`${worker_id}`、`${counter}`、`${timestamp}`、`${uuid}`、`${random:min:max}`）
-    - 压测模式支持：
-      - **Ping-Pong（往返）模式**：发送后等待响应，会统计 RTT 延迟（p50/p95/p99/平均/最大），适合接口性能测试
-      - **吞吐模式**：只发送不等待响应，不统计延迟，适合最大吞吐量测试
-    - 连接模式支持：短连接（每次请求新建连接）、长连接
-    - 压测配置中可独立设置「结尾字符」（继承 / 无 / LF / CRLF），发送时在每包末尾追加，「继承」跟随消息面板的结尾设置
-    - 点击开始后，在压力测试面板实时查看 QPS（当前/峰值）、总发送/成功/失败、活跃连接（当前/峰值）、断连/重连、收发字节统计；有失败时会自动显示失败原因分类（连接失败/发送失败/接收超时/对端关闭/校验失败）
-    - 压测配置自动保存，下次打开自动回填
-    - 测试结束后可导出 CSV 报告，点击停止按钮可随时终止测试
-
-13. **管理连接**
-    - 使用标签页切换不同连接
-    - 点击标签页上的 `×` 关闭连接
-    - 右键点击连接可以删除或编辑保存的配置
-
-14. **客户端消息查看**
-    - 在服务端模式下，左侧面板会显示连接的客户端列表
-    - 点击单个客户端地址可以选中该客户端，右侧消息列表会只显示该客户端的消息
-    - 再次点击已选中的客户端可以取消选择，恢复显示所有消息
-    - 服务端回复给该客户端的消息也会包含在查看结果中
-
-15. **从文件导入内容（文件数据源）**
-    - 点击工具栏的「打开文件」按钮
-    - 选择文件（上限 1 MiB）与文件编码（UTF-8 / GBK / ANSI），在预览区确认内容
-    - 点击确定后，文件内容会作为一条完整报文填入发送框；十六进制模式下按原始字节导入
-
-16. **键盘快捷键**
-    - `Ctrl+Enter` 发送当前消息，`Ctrl+F` 打开消息搜索，`Esc` 关闭搜索浮层
-    - `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Ctrl+PageDown` / `Ctrl+PageUp` 循环切换标签页，`Ctrl+1..9` 直接跳转到第 N 个标签页，`Ctrl+W` 关闭当前标签页
-    - `Ctrl+N` 新建连接，`Ctrl+K` 聚焦消息输入框；macOS 上使用 `Cmd` 代替 `Ctrl`
-
-17. **MQTT 调试**
-    - 新建连接时选择 MQTT，填写 Broker 地址、端口（默认 1883）与 Client ID，可选用户名/密码与 KeepAlive；「更多设置」中可配置遗嘱消息（topic / payload / QoS / retain）与 Clean Session
-    - 连接页左侧「订阅」块点击 `＋` 添加 topic 与 QoS；右键已订阅项可「编辑订阅…」或「取消订阅」；断线后自动重连并恢复订阅
-    - 发送区填写发布 topic、选择 QoS 与 retain 后发送；topic 输入框右侧下拉可复用当前连接最近发送过的 topic（含 QoS / retain），历史按连接隔离并持久化
-    - 消息记录显示 topic 标签，双击即可复制原始 topic；自动回复的应答会回发到收到消息的 topic
-
-18. **工具箱**
-    - 点击标签栏右侧的扳手图标打开工具箱，再次点击返回连接标签页；工具箱为常驻标签页，不可关闭
-    - 左侧切换「转换 / 校验 / 哈希 / 时间 / JSON / 编码」，各组输入独立保留，输入即出结果，结果行可一键复制
-    - 哈希组支持文本摘要、密码哈希（bcrypt / Argon2id / PBKDF2-SHA256，随机盐）、文件摘要（可多选算法，单遍读取）与哈希对比（粘贴哈希后按长度自动识别算法并标记匹配）
-
-## 🎯 技术亮点
-
-### ⚡ 极速性能
-
-- **Rust 驱动**：使用 Rust 构建，实现最大性能和安全性
-  - 零成本抽象，编译时优化
-  - 内存安全保证，无需垃圾回收
-  - 现代化的并发模型
-
-- **Tokio 异步运行时**：高效的异步 I/O 操作
-  - 基于 epoll/kqueue 的高性能事件循环
-  - 非阻塞 I/O，最大化系统资源利用率
-  - 轻量级任务调度，支持百万级并发连接
-
-### 🎨 现代化界面
-
-- **GPUI 框架**：前沿的 GPU 加速 UI
-  - 基于 GPU 的渲染，充分利用硬件加速
-  - 硬件加速的文本渲染
-  - 流畅的 60fps 体验
-
-- **自适应主题**：自动适应系统主题，支持亮色和暗色模式
-  - 提供舒适的视觉体验
-  - 减少长时间使用的视觉疲劳
-
-- **响应式设计**：适应不同屏幕尺寸的自适应布局
-  - 灵活的窗口大小调整
-  - 自适应的消息显示
-  - 优化的空间利用
-
-### 🔧 核心功能
-
-- **实时消息监控**：即时消息显示和自动滚动
-  - 毫秒级消息响应
-  - 自动滚动到最新消息
-  - 消息时间戳精确到毫秒
-
-- **智能解码器**：多种解码方式，适应不同协议格式
-  - 支持原始数据、行分隔、长度前缀和 JSON 格式
-  - 可根据协议需求灵活切换
-
-- **压测引擎**：独立的压力测试引擎层
-  - 零 GPUI 依赖的纯逻辑设计，便于复用与测试
-  - 基于令牌桶的速率限制，精准控制发送频率
-
-- **连接管理**：支持多个同时连接
-  - 多标签页界面
-  - 独立的连接状态管理
-  - 便捷的连接切换
-
-## 🛠️ 技术栈
-
-### 核心框架
-- [GPUI](https://github.com/zed-industries/zed) - GPU 加速 UI 框架
-  - 高性能的 GPU 渲染
-  - 现代化的组件模型
-  - 响应式状态管理
-
-- [gpui-kit](https://crates.io/crates/gpui-kit) - 基于 GPUI 的现代 UI 组件库
-  - 丰富的 UI 组件
-  - 统一的设计语言
-  - 易于定制和扩展
-
-### 网络和异步
-- [Tokio](https://tokio.rs/) - 网络异步运行时
-  - 高性能异步 I/O
-  - 丰富的网络协议支持
-  - 成熟的生产级解决方案
-
-- [rumqttc](https://crates.io/crates/rumqttc) - MQTT 3.1.1 客户端
-  - QoS 0/1/2 握手与 KeepAlive
-  - 内建断线重连
-  - 纯 Rust、Tokio 原生
-
-## 📊 性能指标
-
-开发过程中使用内置压测功能对 NetAssistant 自身进行了高并发测试，借此发现并优化了多个性能瓶颈（消息批量更新、批量日志写入等），确保在高负载场景下依然保持流畅：
-
-- **启动时间**：< 100ms
-  - 快速启动，无需等待
-  - 即时响应用户操作
-
-- **消息吞吐量**
-  - 高并发消息处理，批量更新优化降低CPU占用
-  - 低延迟的消息传输
-
-- **内存占用**：< 20MB
-  - 轻量级资源占用
-  - 优化消息存储，高负载下内存稳定
-
-- **UI 响应**：60fps 渲染
-  - 流畅的用户体验
-  - 大量消息场景下无卡顿
-
-## 🏗️ 项目结构
-
-```
-netassistant/
-├── src/                       # 源代码目录
-│   ├── main.rs                # 应用入口：初始化日志、创建应用实例、启动主窗口
-│   ├── app.rs                 # 主应用逻辑：管理连接、处理网络事件、状态管理
-│   ├── message.rs             # 消息处理：定义消息结构、消息方向、收藏项等
-│   ├── export.rs              # 消息导出：支持 TXT/JSON/CSV 多种格式
-│   ├── assets.rs              # 资源加载：图标、字体等
-│   ├── custom_icons.rs        # 自定义图标定义
-│   ├── log_writer.rs          # 日志写入器
-│   ├── theme_detector.rs      # 主题检测
-│   ├── theme_event_handler.rs # 主题事件处理
-│   ├── theme_manager.rs       # 主题管理
-│   ├── update_checker.rs      # 应用更新检查
-│   ├── config/                # 配置管理：连接配置、应用统计、存储加载
-│   │   ├── connection.rs      # 连接配置和类型定义
-│   │   ├── storage.rs         # 配置持久化存储
-│   │   ├── app_stats.rs       # 应用统计数据
-│   │   └── mod.rs             # 配置模块导出
-│   ├── core/                  # 核心逻辑：与 UI 解耦的纯逻辑层
-│   │   ├── message_processor.rs # 消息处理器
-│   │   ├── crc.rs             # CRC 校验算法（CRC16-Modbus / CRC16-CCITT / CRC32）
-│   │   ├── checksum.rs        # 校验和算法（XOR / Sum8 / LRC）
-│   │   ├── toolbox.rs         # 选区工具注册表：转换与校验工具（右键菜单 / 工具箱）
-│   │   └── toolbox_extra.rs   # 工具箱扩展组纯逻辑：哈希 / 时间 / JSON / 编解码
-│   ├── reply/                 # 回复规则引擎：条件匹配与自动应答（零 GPUI 依赖）
-│   │   ├── model.rs           # 规则数据模型（ReplyRule / MatchNode / ReplyPayload）
-│   │   ├── frame.rs           # 接收帧快照与 `${rx.*}` / `${rx.json:}` 取值层
-│   │   ├── matcher.rs         # 纯函数条件匹配器与匹配轨迹
-│   │   ├── store.rs           # 规则运行期状态（按连接隔离、命中计数）
-│   │   ├── exec.rs            # 规则执行：帧处理与应答渲染
-│   │   ├── expr.rs            # `${= 表达式 }` 单表达式引擎
-│   │   └── mod.rs             # 回复规则模块导出
-│   ├── send_task/             # 发送任务体系：逐行发送与定时任务（零 GPUI 依赖）
-│   │   ├── model.rs           # 任务数据模型（逐行发送 / 定时心跳 / 周期发送）
-│   │   ├── parse.rs           # 多行内容行解析（纯逻辑 + 单测）
-│   │   ├── engine.rs          # 任务调度引擎（发送节拍直连网络写通道）
-│   │   └── mod.rs             # 发送任务模块导出
-│   ├── network/               # 网络通信：TCP/UDP/MQTT 协议、编解码、连接管理
-│   │   ├── connection/        # 连接管理：客户端和服务端连接
-│   │   │   └── manager.rs     # 连接管理器
-│   │   ├── protocol/          # 协议实现：TCP/UDP/MQTT 协议处理与解码器
-│   │   │   ├── tcp.rs         # TCP 协议
-│   │   │   ├── udp.rs         # UDP 协议
-│   │   │   ├── mqtt.rs        # MQTT 3.1.1 客户端（订阅 / 发布 / 重连重订阅）
-│   │   │   ├── frame.rs       # 共享收帧链路：规则引擎 / 计数 / 批量事件
-│   │   │   └── decoder.rs     # 解码器（原始/行/长度前缀/JSON）
-│   │   ├── bind.rs            # 客户端本地绑定地址解析
-│   │   ├── events.rs          # 网络事件定义
-│   │   └── interfaces.rs      # 网络接口抽象
-│   ├── stress/                # 压力测试模块：零 GPUI 依赖的引擎层
-│   │   ├── engine.rs          # 压测引擎：调度工作线程、聚合统计
-│   │   ├── client_worker.rs   # 客户端工作线程：长/短连接发送逻辑
-│   │   ├── config.rs          # 压测配置
-│   │   ├── port_range.rs      # 端口范围解析
-│   │   ├── rate_limiter.rs    # 令牌桶速率限制器
-│   │   ├── stats.rs           # 实时统计（QPS/延迟分位数）
-│   │   ├── report.rs          # CSV 报告生成
-│   │   ├── variables.rs       # 变量模板（seq/worker_id/counter 等）
-│   │   └── events.rs          # 压测事件定义
-│   ├── ui/                    # UI 组件：构建用户界面和处理用户交互
-│   │   ├── main_window.rs     # 主窗口组件
-│   │   ├── connection_panel.rs# 连接面板：显示和管理连接
-│   │   ├── connection_tab.rs  # 连接标签页：报文记录、MQTT 订阅/发布等
-│   │   ├── toolbox_panel.rs   # 工具箱标签页：分组导航与各工具块
-│   │   ├── stress_panel.rs    # 压力测试面板：实时展示压测指标
-│   │   ├── send_task_panel.rs # 发送任务面板：逐行发送/定时任务进度与控制
-│   │   ├── tab_container.rs   # 标签页容器
-│   │   ├── components/        # 通用 UI 组件
-│   │   │   ├── input_with_mode.rs # 带模式切换的输入框（文本/十六进制）
-│   │   │   └── hex_editor/        # HEX 编辑器（十六进制/文本双视图）
-│   │   └── dialog/            # 对话框
-│   │       ├── new_connection.rs   # 新建/编辑连接对话框
-│   │       ├── add_client.rs       # UDP 手动添加客户端对话框
-│   │       ├── decoder_selection.rs# 解码器选择对话框
-│   │       ├── reply_rules.rs      # 回复规则管理对话框
-│   │       ├── reply_rule_edit.rs  # 回复规则编辑对话框（含 JSON 条件与内联试跑）
-│   │       ├── mqtt_subscriptions.rs # MQTT 订阅新增/编辑对话框
-│   │       ├── timed_task.rs       # 定时任务（心跳）对话框
-│   │       ├── favorite_list.rs    # 收藏列表对话框
-│   │       ├── favorite_remark.rs  # 收藏备注对话框
-│   │       ├── port_limit_help.rs  # 端口限制帮助对话框
-│   │       ├── stress_config.rs    # 压力测试配置对话框
-│   │       ├── import_file.rs      # 文件数据源导入对话框（编码选择与预览）
-│   │       └── variable_picker.rs  # 压测变量选择对话框
-│   └── utils/                 # 工具函数：通用工具和辅助功能
-│       ├── hex.rs             # 十六进制数据处理
-│       ├── file_source.rs     # 文件读取、编码解码与文件大小格式化
-│       ├── message_vars.rs    # 通用消息变量引擎（`${...}` 解析与渲染）
-│       └── text_measurement.rs# 文本测量
-├── assets/                    # 资源文件：图标、字体和截图
-│   ├── icon/                  # 应用图标文件
-│   ├── icons/                 # SVG 矢量图标
-│   ├── fonts/                 # 内嵌字体（JetBrains Mono）
-│   └── screenshots/           # 应用截图（zh / en）
-├── examples/                  # 使用示例：UDP 客户端本地多地址绑定
-├── packaging/                 # 打包资源：Windows Inno Setup 安装包脚本与图标
-├── plans/                     # 设计与规划文档：功能方案与决策记录
-├── skills/                    # 开发辅助技能：gpui-event / gpui-scroll / release-changelog
-├── tests/                     # 集成测试：UI 布局与压测滚动布局
-├── locales/                   # 多语言资源：rust-i18n YAML（中文/English）
-├── docs/                      # 文档站点源码（VitePress）
-├── themes/                    # 主题配置文件
-├── .cargo/                    # Cargo 配置：Rust 构建工具配置
-├── .github/                   # GitHub 配置：CI/CD 工作流
-├── rust-i18n.yml              # rust-i18n 多语言加载配置
-├── package.json               # 文档站点（VitePress）构建配置
-├── Cargo.toml                 # 项目配置：依赖管理和项目元数据
-├── Cargo.lock                 # 依赖锁文件：固定依赖版本
-├── README.md                  # 项目文档：中文说明
-├── README-en.md               # 英文文档：英文说明
-└── build.rs                   # 构建脚本：自定义构建逻辑
-```
-
-## 🔮 未来计划
-
-- [x] MQTT 客户端（v1.4.0）
+五步上手：新建连接 → 连接或启动 → 选择文本/Hex → 发送消息 → 按需配置解码器与回复规则。详细步骤见 [TCP/UDP 调试教程](https://netassistant.trydo.top/guide/tcp-udp)。
+
+## 界面预览
+
+![服务端模式](assets/screenshots/zh/screenshot_server.png)
+
+![MQTT 客户端](assets/screenshots/zh/screenshot_mqtt_client.png)
+
+![压力测试结果](assets/screenshots/zh/screenshot_stress.png)
+
+<details>
+<summary>查看更多截图（17 张）</summary>
+
+![新建连接](assets/screenshots/zh/screenshot_new_client.png)
+
+![IPv6 支持](assets/screenshots/zh/screenshot_ipv6.png)
+
+![TCP 解码器](assets/screenshots/zh/screenshot_tcp_decoder.png)
+
+![十六进制模式](assets/screenshots/zh/screenshot_hex.png)
+
+![ASCII 与 Hex 互转](assets/screenshots/zh/screenshot_text_hex_convert.png)
+
+![收藏消息](assets/screenshots/zh/screenshot_favorite_message.png)
+
+![消息搜索](assets/screenshots/zh/screenshot_search.png)
+
+![回复规则](assets/screenshots/zh/screenshot_reply_rule.png)
+
+![MQTT 新建连接](assets/screenshots/zh/screenshot_mqtt_new_client.png)
+
+![工具箱 · 哈希](assets/screenshots/zh/screenshot_toolbox_hash.png)
+
+![工具箱 · 时间](assets/screenshots/zh/screenshot_toolbox_time.png)
+
+![文件数据源](assets/screenshots/zh/screenshot_file_source.png)
+
+![UDP 手动添加客户端](assets/screenshots/zh/screenshot_udp_add_client.png)
+
+![压测配置（暗黑模式）](assets/screenshots/zh/screenshot_udp_stress_dark.png)
+
+![UDP 客户端暗黑模式](assets/screenshots/zh/screenshot_udp_client_dark.png)
+
+![UDP 服务端暗黑模式](assets/screenshots/zh/screenshot_udp_server_dark.png)
+
+![折叠模式](assets/screenshots/zh/screenshot_collapsed.png)
+
+</details>
+
+## 典型场景
+
+- **TCP/UDP 联调**：模拟硬件或服务端，验证 Hex 报文、粘包解码与广播发现。→ [TCP 调试工具](https://netassistant.trydo.top/tcp-debug-tool)
+- **MQTT 联调**：连接 Broker，验证 QoS、TLS、遗嘱与订阅恢复。→ [MQTT 客户端](https://netassistant.trydo.top/mqtt-client)
+- **服务压测**：对自研服务做并发与延迟测试，导出 CSV 报告。→ [压力测试](https://netassistant.trydo.top/tcp-stress-test)
+
+## 常见问题
+
+**Q：和 NetAssist 有什么区别？**  
+A：NetAssistant 跨平台、开源免费，并内置 MQTT 与压测；逐项差异见 [网络调试工具对比](https://netassistant.trydo.top/comparison)。
+
+**Q：支持串口吗？**  
+A：不支持。NetAssistant 只做网络调试（TCP/UDP/MQTT），串口调试请使用串口助手。
+
+**Q：支持哪些操作系统？**  
+A：Windows 10 1709+、macOS 10.15+、Linux（需要 GTK3，如 Ubuntu 22.04+）。
+
+**Q：MQTT 支持到什么程度？**  
+A：支持 3.1.1/5.0、QoS 0/1/2、TLS 与双向认证、遗嘱、订阅管理与自动重连；不支持 MQTT over WebSocket、共享订阅、用户属性与 MQTT 压测。
+
+**Q：TCP 粘包怎么处理？**  
+A：内置原始数据、行分隔、长度前缀、JSON 四种解码器；原理与选型见 [TCP 粘包与拆包](https://netassistant.trydo.top/tcp-sticky-packet)。
+
+**Q：压测支持哪些协议？**  
+A：仅 TCP/UDP，支持 Ping-Pong 与吞吐模式，可导出 CSV；MQTT 暂不支持压测。
+
+**Q：数据会上传吗？**  
+A：不会。配置与日志都保存在本地，工具不使用账号体系，也没有云端同步。
+
+**Q：快捷键有哪些？**  
+A：`Ctrl+Enter` 发送、`Ctrl+F` 搜索、`Ctrl+N` 新建连接、`Ctrl+W` 关闭标签页、`Ctrl+1..9` 切换标签页；macOS 使用 `Cmd`。
+
+更多问题见 [FAQ](https://netassistant.trydo.top/faq)。
+
+<details>
+<summary>完整功能清单</summary>
+
+**连接与协议**
+
+- TCP/UDP 客户端与服务端，IPv4/IPv6 双栈，本地地址与端口绑定
+- MQTT 3.1.1/5.0：QoS 0/1/2、Clean Session、KeepAlive、遗嘱消息、会话过期、原因码
+- MQTT TLS：系统根证书 / 自定义 CA / 跳过校验，支持客户端证书与私钥双向认证
+- 多标签页、连接重命名、复制连接（MQTT 自动生成新 Client ID）
+
+**报文与消息**
+
+- 文本/Hex 双模式，切换时按 UTF-8 自动互转；不可打印字节以 `\xNN` 转义
+- HEX 编辑器支持十六进制与文本双视图
+- 原始、行分隔、长度前缀、JSON 四种 TCP 解码器
+- 发送与接收均支持 JSON 美化/压缩
+- 消息搜索、收藏与备注、双击复制源地址或 topic
+- 导出 TXT/JSON/CSV；实时日志写入文件，支持自定义路径
+- 消息条数上限（默认 10000，`0` 不限制），控制长时间调试的内存占用
+- 文件数据源：UTF-8 / GBK / ANSI，上限 1 MiB
+
+**自动化与压测**
+
+- 周期发送、逐行发送、定时任务（心跳），支持暂停/继续/停止
+- 回复规则：字节包含、掩码、前缀+长度、偏移、正则、来源 CIDR、校验值等条件，可嵌套
+- 变量模板：`${seq}`、`${worker_id}`、`${counter}`、`${timestamp}`、`${uuid}`、`${random:min:max}`，以及 `${rx.*}` 接收帧变量
+- 压测：Ping-Pong / 吞吐模式、短/长连接、QPS、活跃连接、收发字节、p50/p95/p99、失败分类、CSV 导出
+
+**界面与效率**
+
+- 亮色/暗色主题自动跟随系统
+- 中英文界面切换
+- 快捷键：发送、搜索、标签页切换、新建连接、聚焦输入框
+- 客户端消息过滤、UDP 手动添加客户端、折叠模式
+
+</details>
+
+<details>
+<summary>技术栈与性能</summary>
+
+- **语言与 UI**：Rust 2024、[GPUI](https://github.com/zed-industries/zed)、[gpui-kit](https://crates.io/crates/gpui-kit)
+- **网络与异步**：[Tokio](https://tokio.rs/)、[rumqttc](https://crates.io/crates/rumqttc)
+- **性能**：启动 < 100ms、内存占用 < 20MB、消息列表 60fps
+- **架构**：解码器、回复规则、发送任务与压测引擎均与 UI 解耦，便于复用和测试
+
+</details>
+
+<details>
+<summary>路线图</summary>
+
+- [x] MQTT 客户端与 MQTT 5.0 / TLS（v1.5.0）
 - [x] 内置工具箱（v1.4.0）
-- [x] 文件数据源（v1.2.0）
-- [x] 多语言支持（v1.1.0）
-- [x] 十六进制编辑器（v1.1.0）
-- [x] MQTT over TLS / MQTT 5.0（v1.5.0）
-- [ ] 支持 SSE 调试
-- [ ] 支持更多数据格式的编解码
-- [ ] 支持 WebSocket 协议
+- [x] 文件数据源、多语言、十六进制编辑器
+- [ ] SSE 调试
+- [ ] WebSocket 协议
+- [ ] 更多数据格式的编解码
 
-## ❓ 常见问题
+</details>
 
-**Q: 支持哪些操作系统？**  
-A: 支持 Windows 10 1709+/Windows 11（不含 Windows Server 2016 及更早系统）、Linux（需要 GTK3）和 macOS 10.15+。
+## 贡献与构建
 
-**Q: 可以同时管理多少个连接？**  
-A: 理论上没有限制，取决于系统资源。实际使用中同时管理 10-20 个连接完全没问题。
-
-**Q: UDP 模式下为什么有的消息地址是红色的？**  
-A: 红色地址表示这条消息来自「非预期地址」，这是专门为**上位机/物联网设备发现场景**设计的功能。当你向广播地址（如 `192.168.1.255`）发送发现指令时，局域网内的多个设备会从各自不同的 IP 回复响应。这些回复会正常显示，但源地址用红色高亮标识，既不丢失设备响应，又能帮你区分广播回复和正常回复。
-
-**Q: 自动回复能按条件匹配吗？旧版的固定自动回复还在吗？**  
-A: v1.3.0 起「固定自动回复」已升级为**回复规则**引擎：每条规则由「匹配条件 + 应答动作」组成，支持包含字节、掩码、前缀+长度区间、偏移取值、正则、来源地址（CIDR）、校验值验算等条件的任意嵌套；旧版固定自动回复内容可在规则管理中一键迁移为等价规则。
-
-**Q: 支持 MQTT 调试吗？**  
-A: 支持。v1.4.0 起内置 MQTT 客户端，v1.5.0 起可选 MQTT 3.1.1 与 5.0，并支持 TLS（系统根证书 / 自定义 CA / 跳过校验，可配双向认证）；支持 QoS 0/1/2、Clean Session、KeepAlive、遗嘱消息、运行时订阅管理与发布 topic 历史。MQTT over WebSocket 仍不支持，5.0 仅覆盖版本选择、会话过期、接收最大值与原因码等基础能力。
-
-**Q: 工具箱在哪里打开？**  
-A: 点击标签栏右侧的扳手图标即可打开工具箱；它作为常驻标签页存在，再次点击图标可返回连接标签页。
-
-**Q: 压力测试支持哪些协议？**  
-A: 支持 TCP 和 UDP 协议压测，可配置并发数、发送速率、变量模板等。
-
-**Q: 压测报告可以导出吗？**  
-A: 可以，测试结束后支持导出 CSV 格式的详细统计报告。
-
-**Q: UDP 服务端怎么主动发消息给客户端？**  
-A: UDP 是无连接协议，在 UDP 服务端模式下点击「+添加客户端」按钮，输入目标 IP:端口 后即可主动向该地址发送消息。
-
-**Q: 消息支持导出哪些格式？**  
-A: 支持 TXT（便于阅读）、JSON（结构化）、CSV（表格分析）三种格式。
-
-**Q: 日志怎么开启？保存在哪里？可以修改路径吗？**  
-A: 点击连接标签页中的「日志记录」开关即可手动开启/关闭日志记录。默认保存在 `文档/NetAssistant/logs/` 目录，点击旁边的铅笔编辑按钮可以自定义保存路径，日志文件名可点击直接打开所在目录。断开连接时日志会自动刷新关闭。
-
-**Q: TCP 解码器支持哪些类型？**  
-A: 支持原始数据、基于行的解码、长度前缀解码和 JSON 解码，有效解决 TCP 粘包问题。
-
-**Q: 支持暗黑模式吗？**  
-A: 支持，NetAssistant 自动跟随系统主题切换亮色/暗色模式。
-
-**Q: 已保存的连接配置可以修改吗？**  
-A: 可以，右键点击连接选择编辑，或点击编辑按钮即可修改地址、端口等配置，无需删除重建。
-
-**Q: 支持哪些快捷键？**  
-A: `Ctrl+Enter` 发送、`Ctrl+F` 消息搜索、`Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` 标签页管理、`Ctrl+N` 新建连接、`Ctrl+K` 聚焦消息输入框；macOS 上使用 `Cmd` 代替 `Ctrl`。
-
-**Q: 消息太多时可以控制内存占用吗？**  
-A: 可以。工具栏「自动滚动」旁可设置「保留最后 N 条」（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息；关闭自动滚动时不会淘汰任何消息，此时消息持续累积、内存随消息量增长，点击清空或重新设置条数上限即可释放。
-
-## 📦 从源代码编译（可选）
-
-如果您需要自定义编译或获取最新开发版本，可以从源代码编译：
+欢迎提交 Issue 或 Pull Request。从源码构建：
 
 ```bash
-git clone https://github.com/sunjary/netassistant.git
-cd netassistant
+git clone https://github.com/SunJary/NetAssistant.git
+cd NetAssistant
 cargo build --release
 ```
 
-编译完成后，可执行文件将位于 `target/release` 目录下。
+构建产物位于 `target/release`。文档站点使用 VitePress：`npm install && npm run docs:build`。
 
-## 🤝 贡献
+## 许可证
 
-欢迎贡献代码、报告问题或提出建议！
+本项目采用 Apache License 2.0，详见 [LICENSE](LICENSE)。
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-## 📝 许可证
-
-本项目采用 Apache License 2.0 许可证 - 详见 [LICENSE](LICENSE) 文件。
-
-## 📮 联系方式
+## 联系方式
 
 - 官网：[https://netassistant.trydo.top/](https://netassistant.trydo.top/)
-- 项目主页：[https://github.com/sunjary/netassistant](https://github.com/sunjary/netassistant)
-- 问题反馈：[https://github.com/sunjary/netassistant/issues](https://github.com/sunjary/netassistant/issues)
+- 项目主页：[https://github.com/SunJary/NetAssistant](https://github.com/SunJary/NetAssistant)
+- 问题反馈：[https://github.com/SunJary/NetAssistant/issues](https://github.com/SunJary/NetAssistant/issues)
 
-## 🙏 致谢
+## 致谢
 
-感谢以下开源项目的贡献：
-
-- [GPUI](https://github.com/zed-industries/zed)
-- [gpui-kit](https://crates.io/crates/gpui-kit)
-- [Tokio](https://tokio.rs/)
-- [Rust](https://www.rust-lang.org/)
+感谢 [GPUI](https://github.com/zed-industries/zed)、[gpui-kit](https://crates.io/crates/gpui-kit)、[Tokio](https://tokio.rs/)、[Rust](https://www.rust-lang.org/) 等开源项目。
 
 ---
 

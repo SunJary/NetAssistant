@@ -58,3 +58,10 @@ While the test is running, the stress panel shows in real time:
 ## Report Export
 
 After the test finishes, you can export a detailed statistics report in CSV format; click the stop button at any time to terminate a running test.
+
+## Related pages
+
+- [TCP/UDP stress testing: capabilities and modes](/en/tcp-stress-test)
+- [TCP/UDP debugging tutorial](/en/guide/tcp-udp)
+- [Getting started](/en/guide/)
+- [All features](/en/features)

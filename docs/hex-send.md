@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "功能特性", "item": "https://netassistant.trydo.top/features" },
-              { "@type": "ListItem", "position": 3, "name": "十六进制发送", "item": "https://netassistant.trydo.top/hex-send" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "十六进制发送和文本发送有什么区别？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "文本模式把输入内容按 UTF-8 编码成字节发送；Hex 模式把你输入的十六进制按字节解释后原样发送。比如输入 41，文本模式发的是字符 A，Hex 模式发的是字节 0x41。含 0x00 或不可打印字符的二进制帧必须用 Hex 模式。"
+                  "text": "文本按 UTF-8 编码发送输入内容；Hex 把你输入的十六进制按字节解释后原样发送。"
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "文本和 Hex 怎么互转？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "发送框在文本与十六进制模式间切换时会按 UTF-8 整体转换；消息气泡和工具箱也支持「转换为 Hex / 转换为文本」，结果可以复制，往返转换字节级一致。"
+                  "text": "切换模式时整体转换，消息右键菜单和工具箱也能单项转换，往返字节级一致。"
                 }
               },
               {
@@ -51,15 +43,23 @@ head:
                 "name": "不可打印字符怎么显示？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "转成文本时，不可打印字节以 \\xNN 形式转义，例如 0x00 显示为 \\x00，避免控制字符破坏显示或复制结果。"
+                  "text": "以 \\xNN 转义显示，例如 0x00 显示为 \\x00。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "能直接发送文件里的二进制内容吗？",
+                "name": "能发送文件内容吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以。文件数据源支持从本地文件读取内容填入发送框，可选 UTF-8 / GBK / ANSI 编码并预览，单文件上限 1 MiB。"
+                  "text": "可以。文件数据源支持 UTF-8 / GBK / ANSI，单文件上限 1 MiB。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持串口十六进制发送吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "不支持。Hex 收发用于 TCP/UDP/MQTT，NetAssistant 不提供串口功能。"
                 }
               }
             ]

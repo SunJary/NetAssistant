@@ -1,6 +1,6 @@
 ---
 title: Features - TCP/UDP Debugging & Stress Testing
-description: "NetAssistant features: TCP/UDP client & server, MQTT 3.1.1, IPv4/IPv6, four TCP decoders, built-in toolbox and stress testing on Windows, Linux and macOS."
+description: "NetAssistant features: TCP/UDP client & server, MQTT 3.1.1 / 5.0, IPv4/IPv6, four TCP decoders, built-in toolbox and TCP/UDP stress testing on Windows, Linux and macOS."
 ---
 
 # Features
@@ -18,6 +18,7 @@ By platform: [Windows network debugging tool](/en/windows-network-debug-tool) ·
 - **JSON formatting**: the send box offers "Prettify/Minify" buttons in text mode to format the outgoing payload; the receive area can switch between Raw/Prettified/Minified display formats globally, with non-JSON content shown as-is
 - **Chat-style message log**: intuitive display of packet exchanges for easier debugging and analysis
 - **Persistent configuration**: connection configs are saved automatically and restored on the next launch
+- **Connection names and copies**: new/edit dialogs accept an optional name; the connection list shows `name @ host:port [PROTOCOL]` and the tab title shows the name, with ellipsis plus a full-name tooltip; the context menu offers "Rename Connection" (clear it to show the address only) and "Duplicate Connection" (prefills the source config and saves a new connection, with a fresh Client ID for MQTT so two clients never kick each other off the same broker)
 - **File data source**: read a local file into the send box as a payload, with UTF-8 / GBK / ANSI encoding selection and content preview, human-readable file size, and a 1 MiB limit
 - **ASCII ↔ Hex conversion**: switching between text and hex mode converts the content as UTF-8; the context menu's "Convert to Hex / Convert to Text" shows the result in a window you can copy from; non-printable bytes are escaped as `\xNN`, round-tripping is byte-for-byte, and [hex send](/en/hex-send) covers the workflow
 
@@ -56,11 +57,11 @@ For the causes, four framing solutions and debugging steps, see [TCP sticky pack
 
 ## MQTT Debugging
 
-- **MQTT client**: choose MQTT 3.1.1 (default) or 5.0 as the protocol version, integrated into the client connection system — choose MQTT when creating a connection and fill in the broker address and port (default 1883), Client ID, optional username/password and KeepAlive; "More Settings" holds Clean Session and last-will settings (topic / payload / QoS / retain)
+- **MQTT client**: choose MQTT 5.0 (default for new connections) or 3.1.1 as the protocol version, integrated into the client connection system — choose MQTT when creating a connection and fill in the broker address and port (default 1883), Client ID, optional username/password and KeepAlive; "More Settings" holds Clean Session and last-will settings (topic / payload / QoS / retain)
 - **MQTT over TLS**: enable TLS encryption for both 3.1.1 and 5.0; certificate verification has three modes: system roots (default), custom CA (PEM file path, with a file picker) and verification skipped (insecure, for self-signed testing only, traffic is still encrypted); an optional client certificate and private key (PEM, provided as a pair) enable mutual TLS; ALPN is optional, comma-separated and omitted when empty; handshake failures report a readable cause and suggested fix
 - **MQTT 5.0**: connect properties include session expiry (seconds, omitted when empty, 0 expires on disconnect) and receive maximum (1-65535, omitted when empty); Clean Start reuses the Clean Session switch and is forced when the Client ID is empty; rejected CONNACK, failed SUBACK and broker-initiated DISCONNECT show the reason code and the broker reason string
-- **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and restored automatically after an automatic reconnect; the list fills the side panel and scrolls inside it, shows the full topic on hover and copies the topic on double-click
-- **Publishing**: set topic, QoS (0/1/2) and retain in the send area while the payload keeps using text / hex mode; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS and retain), persisted per connection with up to 20 entries
+- **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and only enabled entries are restored after an automatic reconnect; each subscription has its own switch that lights up only after the broker confirms it (SUBACK) and is auto-disabled with a reason on failure or a 10-second timeout (MQTT 5 tells "not authorized" apart), with the off state persisted; the list fills the side panel and scrolls inside it, shows the full topic on hover and copies the topic on double-click
+- **Publishing**: set topic, QoS (0/1/2) and retain in the send area while the payload keeps using text / hex mode; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS and retain), persisted per connection with up to 20 entries; publish failures (QoS 1/2 rejected by the broker under MQTT 5, or a local send error) raise a top-right notification with the target topic and reason code, deduplicated to one per 3 seconds while the log still records every entry; hover a QoS chip for its semantics (at most once / at least once / exactly once)
 - **Message display**: every message carries a topic pill (retain is marked), and double-clicking the pill copies the raw topic; the existing log, search, export, JSON formatting and reply rules all work as before
 - **Auto reply**: replies are published back to the topic the message arrived on; periodic send also uses the current publish topic
 - **Protocol constraints**: decoders and the suffix selector are hidden for MQTT, and stress testing, line-send tasks and timed tasks are not offered; MQTT over WebSocket is not supported, and advanced 5.0 features (user properties, Will Delay, subscription identifiers, shared subscriptions, etc.) are not provided

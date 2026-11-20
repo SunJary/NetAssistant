@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://netassistant.trydo.top/en/features" },
-              { "@type": "ListItem", "position": 3, "name": "Modbus TCP debugging", "item": "https://netassistant.trydo.top/en/modbus-tcp" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "Is NetAssistant a Modbus protocol client?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. It does not parse function codes, register addresses or the Modbus data model. It provides a TCP connection and hex send/receive; you build the frame bytes according to the specification and the tool sends them verbatim and shows the response."
+                  "text": "No. It provides TCP connectivity and hex send/receive; you construct function codes and data yourself."
                 }
               },
               {
@@ -43,23 +35,31 @@ head:
                 "name": "Does Modbus TCP need a CRC?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. Modbus TCP uses the MBAP header, which includes a length field, and TCP guarantees integrity. CRC16-Modbus belongs to Modbus RTU frames and can be computed in the toolbox for RTU payloads."
+                  "text": "No. MBAP includes a length field and TCP guarantees integrity; CRC16-Modbus is for RTU frames."
                 }
               },
               {
                 "@type": "Question",
-                "name": "How do I build a Modbus TCP request?",
+                "name": "How do I build a request?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "In hex mode enter the MBAP header and PDU: 2-byte transaction ID, 2-byte protocol ID (0000), 2-byte length, 1-byte unit ID, then the function code and data. For example, read holding registers: 00 01 00 00 00 06 01 03 00 00 00 0A."
+                  "text": "Concatenate transaction ID + 0000 + length + unit ID + function code + data, then send it in hex mode."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Can NetAssistant simulate a Modbus slave?",
+                "name": "Can it simulate a Modbus slave?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "At the byte level, yes. Listen on port 502 with a TCP server and use reply rules to return a canned hex response when the request bytes match. It has no register model or exception handling, so complex slave behavior still needs a real device or a dedicated simulator."
+                  "text": "At the byte level: listen on 502 with a TCP server and return canned hex through reply rules. Register models and exception codes need a real device or a dedicated simulator."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Why is the device not responding?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Check that the port is 502, the unit ID is correct, the length field matches the actual byte count, and whether the device expects RTU over TCP framing."
                 }
               }
             ]

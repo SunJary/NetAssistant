@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "功能特性", "item": "https://netassistant.trydo.top/features" },
-              { "@type": "ListItem", "position": 3, "name": "MQTT 客户端", "item": "https://netassistant.trydo.top/mqtt-client" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -51,7 +43,7 @@ head:
                 "name": "NetAssistant 能替代 MQTTX 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "如果你只需要 MQTT 的订阅、发布和轻量调试，NetAssistant 可以覆盖；如果需要 MQTT over WebSocket、脚本自动化、数据可视化或更完整的 5.0 特性，MQTTX 更合适。"
+                  "text": "在轻量调试场景可以替代：日常订阅、发布、TLS 联调，以及低内存环境、Windows 现场或需要和 TCP/UDP 一起调试时都很合适；如果你需要 MQTT over WebSocket、脚本自动化、数据可视化或更完整的 5.0 特性，MQTTX 仍是更合适的选择。"
                 }
               },
               {
@@ -68,11 +60,11 @@ head:
       }
 ---
 
-# 轻量级 MQTT 客户端：订阅、发布与调试
+# MQTT 客户端：轻量级订阅、发布与调试
 
 如果你只是偶尔连一下 Broker，验证设备有没有发消息、topic 对不对、QoS 有没有生效，专门装一个 Electron 客户端并不划算。NetAssistant 内置 **MQTT 客户端**（MQTT 3.1.1 / 5.0），和 TCP/UDP 调试在同一个应用里，Rust 原生构建，内存约 20MB。
 
-先说清楚边界：它适合基础 MQTT 调试，**不是 MQTTX 的完整替代品**。TLS 与 MQTT 5.0 已经支持（5.0 覆盖基础特性），MQTT over WebSocket 与脚本自动化仍不支持。
+**定位**：MQTTX 等专用客户端的轻量场景替代——日常订阅、发布、TLS 联调足够用，低内存环境、Windows 现场、需要和 TCP/UDP 混合调试时更顺手。它不追求功能全集替代：MQTT over WebSocket、脚本自动化与数据可视化暂不支持，MQTT 5.0 只覆盖基础特性，这些场景仍建议用 MQTTX。
 
 > [下载 NetAssistant](/download) · [和 MQTTX 的详细对比](/comparison-mqttx) · [全部功能](/features)
 
@@ -92,6 +84,8 @@ head:
 ### 连接配置
 
 新建连接选择 MQTT，填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive；协议版本可选 5.0（默认）与 3.1.1。「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）。
+
+连接名称可选：填写后连接列表显示「名称 @ 地址 [协议]」、标签页标题显示名称，详情页仍有独立的「地址:」行；留空则列表与标题只显示地址。右键连接可「重命名连接」或「复制连接」，复制会预填源配置并另存为新连接，MQTT 自动生成新的 Client ID，避免同 Broker 上两个连接互踢。
 
 ### MQTT over TLS
 
@@ -119,6 +113,8 @@ head:
 ### 发布消息
 
 发送区设置 topic、QoS（0/1/2）与 retain，payload 沿用文本/Hex 模式。topic 输入框右侧下拉可复用当前连接最近发送过的 topic，连同 QoS 与 retain 一起回填，每个连接最多保留 20 条。
+
+发布失败会在右上角弹出通知，文案带上目标 topic 与原因：QoS 1/2 由 broker 拒收时显示原因码（MQTT 5 可区分「没有权限」等具体原因，3.1.1 的 PUBACK 不带原因码，只能提示本地发送失败）；QoS 0 没有 broker 回执，仅在本地投递失败时提示。发送任务或周期发送高频发布同一 topic 时，相同提示 3 秒内只弹一次，消息日志仍逐条记录。QoS 芯片悬停可查看「至多一次 / 至少一次 / 仅一次」语义。
 
 ![MQTT 客户端界面](../assets/screenshots/zh/screenshot_mqtt_client.png)
 
@@ -177,7 +173,18 @@ head:
 
 ## 相关页面
 
+- [MQTT 调试教程：连接、订阅与发布](/guide/mqtt)
+- [MQTT 排错：连接失败与订阅收不到消息](/mqtt-troubleshooting)
+- [MQTT TLS 配置](/mqtt-tls)
+- [MQTT 5.0 客户端](/mqtt-5)
+- [MQTT 测试场景](/mqtt-testing)
 - [MQTTX 对比](/comparison-mqttx)
+- [MQTT Explorer 对比](/compare/mqtt-explorer)
+- [MQTT.fx 对比](/compare/mqtt-fx)
+- [MQTT 常见问题](/mqtt-faq)
+- 平台安装：[Windows 版](/mqtt-client-windows)、[macOS 版](/mqtt-client-mac)、[Linux 版](/mqtt-client-linux)
+- [MQTT.fx 对比](/compare/mqtt-fx)
+- [MQTT 常见问题](/mqtt-faq)
 - [TCP/UDP 压力测试](/tcp-stress-test)
 - [全部功能](/features)
 - [下载 NetAssistant](/download)

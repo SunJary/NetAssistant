@@ -1,6 +1,6 @@
 ---
 title: Mac Network Debugging Tool - TCP/UDP & MQTT
-description: "macOS TCP/UDP debugging tool for Apple Silicon and Intel: client and server modes, sticky-packet decoders, MQTT and stress testing. Free and open source."
+description: "macOS TCP/UDP debugging tool for Apple Silicon and Intel: client and server modes, sticky-packet decoders, MQTT and TCP/UDP stress testing. Free and open source."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "macOS 10.15+, Apple Silicon, Intel",
-            "description": "Native macOS network debugging tool for Apple Silicon and Intel with TCP/UDP client and server, sticky-packet decoders, MQTT and stress testing.",
+            "description": "Native macOS network debugging tool for Apple Silicon and Intel with TCP/UDP client and server, sticky-packet decoders, MQTT and TCP/UDP-only stress testing.",
             "url": "https://netassistant.trydo.top/en/mac-network-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -27,7 +27,7 @@ head:
                 "name": "Is there a Mac version of NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "NetAssist is Windows-only and has no macOS version. NetAssistant is a native macOS network debugging tool that supports Apple Silicon and Intel and can replace NetAssist for TCP/UDP debugging."
+                  "text": "NetAssist is Windows-only. NetAssistant is a native macOS network debugging tool that can replace it for TCP/UDP debugging."
                 }
               },
               {
@@ -35,7 +35,7 @@ head:
                 "name": "Does NetAssistant support Apple Silicon?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. The macOS build is a universal DMG that runs on both Apple Silicon and Intel Macs, with macOS 10.15 or later required."
+                  "text": "Yes. The universal DMG runs on Apple Silicon and Intel Macs with macOS 10.15 or later."
                 }
               },
               {
@@ -43,7 +43,7 @@ head:
                 "name": "How do I open an app that macOS cannot verify?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Right-click NetAssistant and choose Open, or allow it in System Settings > Privacy & Security. This is the normal prompt for an app that is not notarized and does not mean the app is damaged."
+                  "text": "Right-click NetAssistant and choose Open, or allow it in System Settings > Privacy & Security. This is normal for an app that is not notarized."
                 }
               },
               {
@@ -51,7 +51,15 @@ head:
                 "name": "How is NetAssistant different from Packet Sender?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Packet Sender covers more protocols, including SSL/DTLS, HTTP and CLI automation. NetAssistant focuses on TCP/UDP debugging with four receive-side sticky-packet decoders and built-in QPS and p50/p95/p99 stress testing."
+                  "text": "Packet Sender covers more protocols, including SSL/DTLS, HTTP and CLI automation. NetAssistant focuses on TCP/UDP debugging with sticky-packet decoders and stress testing. See the comparison or the NetAssist alternative guide."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support MQTT?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, MQTT 3.1.1 / 5.0 with TLS, subscriptions, QoS 0/1/2, retain and last-will messages. MQTT over WebSocket and advanced 5.0 features are not provided."
                 }
               }
             ]
@@ -64,7 +72,7 @@ head:
 
 Developers who move from Windows to Mac often run into the same problem: **NetAssist is Windows-only**, and there are not many Mac tools that combine a TCP/UDP client, server, sticky-packet handling and stress testing in one place.
 
-NetAssistant is a native macOS network debugging tool for Apple Silicon and Intel. It is free and open source, and brings TCP/UDP client and server, four TCP decoders, MQTT 3.1.1 debugging, hex send/receive and high-concurrency stress testing into one app.
+NetAssistant is a native macOS network debugging tool for Apple Silicon and Intel. It is free and open source, and brings TCP/UDP client and server, four TCP decoders, MQTT 3.1.1 / 5.0 debugging, hex send/receive and TCP/UDP-only high-concurrency stress testing into one app.
 
 > [Download for macOS](/en/download) · [All features](/en/features) · [Getting started](/en/guide/)
 
@@ -75,7 +83,7 @@ NetAssistant is a native macOS network debugging tool for Apple Silicon and Inte
 - **NetAssist has no Mac version**: continue with a familiar debugging workflow on macOS
 - **Native build**: Rust + GPUI, not an Electron wrapper, with fast startup and low memory usage
 - **Apple Silicon support**: a universal DMG runs on M1/M2/M3 and Intel Macs
-- **Complete feature set**: TCP/UDP client and server, decoders, MQTT, toolbox and stress testing
+- **Complete feature set**: TCP/UDP client and server, decoders, MQTT, toolbox and TCP/UDP stress testing
 - **Consistent experience**: dark mode follows the system, multi-tab connections and saved configurations
 
 ## Install on macOS
@@ -110,7 +118,7 @@ Test your own server without installing another tool: real-time QPS, p50/p95/p99
 
 ### MQTT debugging
 
-An MQTT 3.1.1 client with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply.
+An MQTT 3.1.1 / 5.0 client with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply.
 
 ![MQTT client](../../assets/screenshots/en/screenshot_mqtt_client.png)
 

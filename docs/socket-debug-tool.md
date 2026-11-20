@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "功能特性", "item": "https://netassistant.trydo.top/features" },
-              { "@type": "ListItem", "position": 3, "name": "Socket 调试工具", "item": "https://netassistant.trydo.top/socket-debug-tool" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "Socket 调试工具是做什么的？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "用来直接操作 TCP/UDP 的 Socket 端点：作为客户端连接远端端口，或作为服务端监听本地端口，收发原始字节并观察连接状态，不依赖业务应用就能验证端口和协议是否正常。"
+                  "text": "直接操作 TCP/UDP 端点，连接远端端口或监听本地端口，收发原始字节并观察连接状态。"
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "能调试串口或 Unix Domain Socket 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不能。NetAssistant 只支持 TCP/UDP/MQTT 网络连接，不提供串口、COM 口或 Unix Domain Socket 调试能力。"
+                  "text": "不能。只支持 TCP/UDP/MQTT 网络连接，不含串口与 Unix Socket。"
                 }
               },
               {
@@ -51,7 +43,7 @@ head:
                 "name": "监听端口失败怎么办？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "先确认端口没有被其他进程占用，再检查是否小于 1024 需要更高权限、是否绑定了不存在的网卡地址，以及防火墙或安全软件是否拦截。换一个高位端口通常能快速排除权限问题。"
+                  "text": "检查端口占用、权限、绑定地址和防火墙，换高位端口可快速排除权限问题。"
                 }
               },
               {
@@ -59,7 +51,7 @@ head:
                 "name": "能测试端口通不通吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以。新建 TCP 客户端连接目标地址与端口，连接成功说明三次握手完成、端口可达；连接被拒绝通常是端口未监听，超时则更可能是防火墙或路由问题。"
+                  "text": "可以。TCP 客户端连接成功即端口可达；被拒绝通常是未监听，超时多为防火墙或路由问题。"
                 }
               }
             ]

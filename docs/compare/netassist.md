@@ -20,14 +20,6 @@ head:
             "mainEntityOfPage": "https://netassistant.trydo.top/compare/netassist"
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "工具对比", "item": "https://netassistant.trydo.top/comparison" },
-              { "@type": "ListItem", "position": 3, "name": "NetAssist 替代", "item": "https://netassistant.trydo.top/compare/netassist" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "NetAssist 有 Mac 版吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "没有。网络调试助手 NetAssist 仅提供 Windows 版本。Mac 与 Linux 用户可以使用 NetAssistant，它提供 macOS 与 Linux 原生构建，支持 TCP/UDP 客户端与服务端。"
+                  "text": "没有。NetAssist 仅提供 Windows 版本。Mac 与 Linux 用户可以使用 NetAssistant，它提供 macOS 与 Linux 原生构建。"
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "NetAssistant 能完全替代 NetAssist 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "基础 TCP/UDP 收发、十六进制模式、自动回复和周期发送都能覆盖，并额外提供四种 TCP 粘包解码器、内置压力测试、消息搜索与导出、MQTT 3.1.1 调试。如果你只需要最基础的收发且习惯 NetAssist 界面，也可以继续使用 NetAssist。"
+                  "text": "基础 TCP/UDP 收发、十六进制模式、自动回复和周期发送都能覆盖，并额外提供四种粘包解码器、TCP/UDP 内置压测、消息搜索与导出、MQTT 3.1.1 / 5.0。如果你只需要最基础的收发，继续用 NetAssist 也可以。"
                 }
               },
               {
@@ -51,15 +43,39 @@ head:
                 "name": "Windows 上哪个网络调试助手更好用？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "取决于需求。只需要最简单的 TCP/UDP 收发，NetAssist 足够；需要粘包解码、QPS 与延迟分位数压测、消息管理、MQTT 或跨平台，NetAssistant 更合适。两者都支持 Windows。"
+                  "text": "取决于需求。只需要最简单的收发，NetAssist 足够；需要粘包解码、TCP/UDP QPS 与延迟分位数压测、消息管理、MQTT 或跨平台，NetAssistant 更合适。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 收费吗？",
+                "name": "收费吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
                   "text": "不收费。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "数据会上传到云端吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "NetAssistant 不依赖云端服务，收发数据在本机与目标端之间传输；源码开源，可自行审计。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持 IPv6 吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "支持。创建连接时地址可填 IPv4 或 IPv6，例如 ::1、fe80::xxxx。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持 MQTT 吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "NetAssistant 支持 MQTT 3.1.1 / 5.0 客户端与 TLS；NetAssist 不提供 MQTT 功能。MQTT over WebSocket 与 5.0 高级特性未提供。"
                 }
               }
             ]
@@ -79,7 +95,7 @@ head:
 ## 一句话结论
 
 - **只需要最基础的 TCP/UDP 收发**、习惯 NetAssist 的老界面：继续用 NetAssist 也没问题
-- **需要 TCP 粘包解码、内置压测、消息搜索与导出、MQTT**：NetAssistant 更合适
+- **需要 TCP 粘包解码、TCP/UDP 内置压测、消息搜索与导出、MQTT**：NetAssistant 更合适
 - **使用 macOS 或 Linux**：NetAssist 没有这两个平台的版本，直接用 NetAssistant
 - **想要开源可审计、免费使用**：NetAssistant 基于 Apache-2.0 开源
 
@@ -94,7 +110,7 @@ head:
 | TCP 粘包解码 | 原始 / 行分隔 / 长度前缀 / JSON | 有限 |
 | 内置高并发压测 | QPS + p50/p95/p99 | 无 |
 | IPv6 | 完整支持 | 部分支持 |
-| MQTT | MQTT 3.1.1 客户端 | 无 |
+| MQTT | MQTT 3.1.1 / 5.0 客户端 | 无 |
 | 消息搜索/收藏/导出 | 支持，TXT / JSON / CSV | 有限 |
 | 自动回复 / 周期发送 | 支持 | 支持 |
 | 界面 | GPUI 原生渲染，暗黑模式，多标签 | 传统界面 |
@@ -158,7 +174,7 @@ NetAssist 是闭源软件，遇到问题只能等更新。NetAssistant 基于 Ap
 
 - 只需要最基础的 TCP/UDP 收发和十六进制显示
 - 已经习惯它的界面和操作方式，不想迁移
-- 只在 Windows 上使用，且没有粘包解码、压测、MQTT 需求
+- 只在 Windows 上使用，且没有粘包解码、TCP/UDP 压测、MQTT 需求
 
 NetAssistant 不是要证明 NetAssist 不能用，而是补齐它在粘包处理、压测、消息管理和跨平台上的空白。
 
@@ -179,11 +195,11 @@ NetAssistant 不是要证明 NetAssist 不能用，而是补齐它在粘包处�
 
 ### NetAssistant 能完全替代 NetAssist 吗？
 
-基础 TCP/UDP 收发、十六进制模式、自动回复和周期发送都能覆盖，并额外提供四种粘包解码器、内置压测、消息搜索与导出、MQTT 3.1.1。如果你只需要最基础的收发，继续用 NetAssist 也可以。
+基础 TCP/UDP 收发、十六进制模式、自动回复和周期发送都能覆盖，并额外提供四种粘包解码器、TCP/UDP 内置压测、消息搜索与导出、MQTT 3.1.1 / 5.0。如果你只需要最基础的收发，继续用 NetAssist 也可以。
 
 ### Windows 上哪个网络调试助手更好用？
 
-取决于需求。只需要最简单的收发，NetAssist 足够；需要粘包解码、QPS 与延迟分位数压测、消息管理、MQTT 或跨平台，NetAssistant 更合适。
+取决于需求。只需要最简单的收发，NetAssist 足够；需要粘包解码、TCP/UDP QPS 与延迟分位数压测、消息管理、MQTT 或跨平台，NetAssistant 更合适。
 
 ### 收费吗？
 

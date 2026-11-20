@@ -1,6 +1,6 @@
 ---
-title: TCP 调试工具 - 收发、解码与粘包处理
-description: NetAssistant 的 TCP 调试工具：客户端与服务端双模式、IPv4/IPv6、四种解码器处理粘包，支持 Hex 收发、周期发送与自动回复，跨平台免费。
+title: TCP 调试工具 - 收发、解码与自动回复
+description: NetAssistant 的 TCP 调试工具：客户端与服务端双模式、IPv4/IPv6、四种解码器切分消息，支持 Hex 收发、周期发送与自动回复，跨平台免费。
 head:
   - - script
     - type: application/ld+json
@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "功能特性", "item": "https://netassistant.trydo.top/features" },
-              { "@type": "ListItem", "position": 3, "name": "TCP 调试工具", "item": "https://netassistant.trydo.top/tcp-debug-tool" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "TCP 调试工具主要解决什么问题？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "三件事：确认能否连上目标端口、把收到的字节流按协议正确切分成消息、快速发出一条应答验证链路。NetAssistant 分别用连接配置、四种解码器和回复规则覆盖这三点。"
+                  "text": "确认能否连上、把字节流正确切分成消息、快速验证应答链路，这三件事覆盖了大部分 TCP 联调场景。"
                 }
               },
               {
@@ -43,15 +35,15 @@ head:
                 "name": "为什么收到的数据粘在一起？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "TCP 是字节流协议，不保留消息边界。一次发送可能被拆成多段，多次发送也可能合并到达。需要在应用层定义边界，例如换行符、长度前缀或 JSON 对象，NetAssistant 提供对应的原始、行、长度前缀和 JSON 四种解码器。"
+                  "text": "TCP 是字节流，没有消息边界。需要在应用层用换行、长度前缀或 JSON 等规则切分，并选择对应解码器。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 能同时做 TCP 客户端和服务端吗？",
+                "name": "能同时做 TCP 客户端和服务端吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以。既可以作为客户端连接设备或服务，也可以监听本地端口接受连接，服务端模式下可同时管理多个已连接客户端。"
+                  "text": "可以。两种模式都支持，服务端模式下可同时管理多个客户端连接。"
                 }
               },
               {
@@ -59,7 +51,15 @@ head:
                 "name": "支持 IPv6 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。TCP 客户端与服务端均可使用 IPv4 或 IPv6 地址，也支持本地地址绑定。"
+                  "text": "支持。客户端与服务端均可使用 IPv4 或 IPv6 地址。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持串口或 Unix Socket 吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "不支持。NetAssistant 只处理 TCP/UDP/MQTT 网络连接，不包含串口调试功能。"
                 }
               }
             ]
@@ -95,16 +95,9 @@ head:
 
 ## 解决粘包：四种解码器
 
-TCP 不保证消息边界，解码器决定“什么时候算一条完整消息”。
+TCP 不保证消息边界，解码器决定“什么时候算一条完整消息”。NetAssistant 提供原始数据、行分隔、长度前缀与 JSON 四种解码器，分别对应自定义二进制、文本协议、TLV 与 JSON over TCP 场景。
 
-| 解码器 | 边界规则 | 适用协议 |
-| ---- | ---- | ---- |
-| 原始数据 | 收到多少显示多少 | 自定义二进制协议、只看原始字节 |
-| 基于行 | 按换行符切分 | 文本协议、AT 指令、日志流 |
-| 长度前缀 | 先读长度字段，再读对应字节数 | 二进制协议、TLV、私有帧格式 |
-| JSON | 按完整 JSON 对象切分 | JSON 行协议、RPC 调试 |
-
-选错解码器是“消息看起来粘在一起”的最常见原因。解码器只影响显示与切分，不改变实际发送的字节。详细原理与排查步骤见 [TCP 粘包与拆包](/tcp-sticky-packet)。
+选错解码器是“消息看起来粘在一起”的最常见原因。解码器只影响显示与切分，不改变实际发送的字节。四种方案的边界规则、优缺点与排查步骤见 [TCP 粘包与拆包](/tcp-sticky-packet)。
 
 ![TCP 解码器设置](../assets/screenshots/zh/screenshot_tcp_decoder.png)
 

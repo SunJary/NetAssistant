@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "功能特性", "item": "https://netassistant.trydo.top/features" },
-              { "@type": "ListItem", "position": 3, "name": "Modbus TCP 调试", "item": "https://netassistant.trydo.top/modbus-tcp" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,31 +27,39 @@ head:
                 "name": "NetAssistant 是 Modbus 协议客户端吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不是。NetAssistant 不解析功能码、寄存器地址或数据模型，它提供的是 TCP 连接与十六进制收发。你需要按 Modbus 规范自行构造报文字节，工具负责原样发送并显示响应。"
+                  "text": "不是。它只提供 TCP 连接与十六进制收发，功能码和数据模型需要你自己构造。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "Modbus TCP 需要 CRC 校验吗？",
+                "name": "Modbus TCP 需要 CRC 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不需要。Modbus TCP 使用 MBAP 报文头，其中包含长度字段，由 TCP 保证完整性，没有 CRC。CRC16-Modbus 用于 Modbus RTU 帧，可在工具箱中计算并附加到 RTU 报文末尾。"
+                  "text": "不需要。MBAP 含长度字段，完整性由 TCP 保证；CRC16-Modbus 属于 RTU 帧。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "怎么构造一条 Modbus TCP 请求？",
+                "name": "怎么构造一条请求？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "在 Hex 模式下依次输入 MBAP 与 PDU：事务标识符 2 字节、协议标识符 2 字节（固定 0000）、长度 2 字节、单元标识符 1 字节，再接功能码与数据。例如读取保持寄存器：00 01 00 00 00 06 01 03 00 00 00 0A。"
+                  "text": "按「事务号 + 0000 + 长度 + 单元号 + 功能码 + 数据」拼接，在 Hex 模式下发送即可。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "可以用 NetAssistant 模拟 Modbus 从站吗？",
+                "name": "能模拟 Modbus 从站吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以模拟到字节层。用 TCP 服务端监听 502 端口，配合回复规则，在收到匹配的请求字节后自动返回一条预设的响应 Hex。它不做寄存器模型和异常码处理，复杂从站行为仍需真实设备或专用模拟器。"
+                  "text": "可以到字节层：TCP 服务端监听 502，用回复规则返回预设 Hex。寄存器模型和异常码需要真实设备或专用模拟器。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "为什么设备没有响应？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "检查端口是否为 502、单元标识符是否正确、长度字段是否与实际字节数一致，以及设备是否只接受 RTU over TCP 封装。"
                 }
               }
             ]

@@ -1,6 +1,6 @@
 ---
 title: FAQ - Does NetAssistant Support macOS?
-description: "NetAssistant FAQ: macOS and Linux availability, the difference from NetAssist, winget install, Linux packages, TCP sticky packets and stress testing."
+description: "NetAssistant FAQ: macOS and Linux availability, the difference from NetAssist, winget install, Linux packages, TCP sticky packets and TCP/UDP stress testing."
 head:
   - - script
     - type: application/ld+json
@@ -81,7 +81,7 @@ They are **different pieces of software** with similar names:
 | Platforms | Windows / Linux / macOS (x64 + ARM64) | Windows only |
 | Open source | ✅ Apache-2.0 | ❌ Closed source |
 | TCP decoders (sticky packets) | Raw / line / length-prefix / JSON | Limited |
-| High-concurrency stress testing | ✅ QPS + p50/p95/p99 | ❌ |
+| TCP/UDP high-concurrency stress testing | ✅ QPS + p50/p95/p99 | ❌ |
 
 See the full [comparison table](/en/comparison).
 

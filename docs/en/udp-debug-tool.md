@@ -1,6 +1,6 @@
 ---
-title: UDP Debug Tool - Send, Receive & Broadcast
-description: UDP client and server, broadcast discovery, manual client entries, replies from multiple devices, hex payloads and periodic send. Windows, macOS, Linux.
+title: UDP Debug Tool - Send, Receive & Multiple Clients
+description: UDP client and server, manual client entries, replies from multiple devices, hex payloads, periodic send and reply rules. Windows, macOS, Linux.
 head:
   - - script
     - type: application/ld+json
@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://netassistant.trydo.top/en/features" },
-              { "@type": "ListItem", "position": 3, "name": "UDP debug tool", "item": "https://netassistant.trydo.top/en/udp-debug-tool" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,15 +27,15 @@ head:
                 "name": "How do I use the UDP debug tool?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Create a UDP client, enter the target address and port, and send. Alternatively create a UDP server and listen on a local port. UDP is connectionless, so no handshake is needed."
+                  "text": "Create a UDP client and send to a target, or create a UDP server and listen on a local port. No handshake is involved."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Why does a UDP send succeed but no reply arrives?",
+                "name": "Why does a send succeed but no reply arrive?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "UDP does not guarantee delivery. Common causes are no listener on the target port, a firewall drop, an unexpected payload format, or the reply going to a port you are not listening on. Listen locally with a UDP server to confirm packets arrive, then check the peer."
+                  "text": "UDP does not guarantee delivery. Check the target listener, firewall rules and payload format."
                 }
               },
               {
@@ -51,7 +43,7 @@ head:
                 "name": "How do I receive replies from multiple devices?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Send a discovery command to the broadcast address. NetAssistant does not filter replies by target address; unexpected sources are highlighted so you can see every device that responded."
+                  "text": "Broadcast the command; NetAssistant shows every reply and highlights unexpected sources."
                 }
               },
               {
@@ -59,7 +51,15 @@ head:
                 "name": "Does UDP suffer from sticky packets?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. UDP preserves datagram boundaries, so one send maps to one receive. Individual datagrams can still be lost, duplicated or reordered, and the application must handle that."
+                  "text": "No. Datagram boundaries are preserved, though packets can be lost, duplicated or reordered."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support broadcast and IPv6?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Broadcast sending is supported, and addresses can be IPv4 or IPv6."
                 }
               }
             ]

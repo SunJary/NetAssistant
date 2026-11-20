@@ -3,12 +3,12 @@ layout: home
 
 title: NetAssistant - TCP/UDP/MQTT Network Debugging Tool
 titleTemplate: ':title'
-description: "NetAssistant: Rust network debugging tool with TCP/UDP client and server, MQTT 3.1.1, four decoders, toolbox and stress testing for Windows, Linux & macOS."
+description: "NetAssistant: Rust network debugging tool with TCP/UDP client and server, MQTT 3.1.1 / 5.0, four decoders, toolbox and TCP/UDP stress testing for Windows, Linux & macOS."
 
 hero:
   name: NetAssistant
   text: High-Performance Cross-Platform Network Debugging Tool
-  tagline: Built with Rust · TCP/UDP/MQTT Client & Server · Multiple Decoders · Built-in Toolbox & Stress Testing · GPU-Accelerated UI
+  tagline: Built with Rust · TCP/UDP/MQTT Client & Server · Multiple Decoders · Built-in Toolbox & TCP/UDP Stress Testing · GPU-Accelerated UI
   actions:
     - theme: brand
       text: Download Now
@@ -23,7 +23,7 @@ hero:
 features:
   - icon: 🔌
     title: Multi-Protocol Support
-    details: Full support for TCP/UDP client and server modes plus an MQTT 3.1.1 client (QoS 0/1/2, subscription management, last-will messages), with IPv4/IPv6 dual stack for any network environment.
+    details: Full support for TCP/UDP client and server modes plus an MQTT 3.1.1 / 5.0 client (TLS, per-subscription switches, QoS 0/1/2, last-will messages), with IPv4/IPv6 dual stack for any network environment.
   - icon: 🧰
     title: Built-in Toolbox
     details: Six everyday groups — convert, checksum, hash, time, JSON and encoding — with instant results and one-click copy, no need to switch to external sites.
@@ -34,8 +34,8 @@ features:
     title: Chat-Style Message Log
     details: Intuitive display of packet exchanges, with favorites & remarks, keyword search, real-time logging and TXT/JSON/CSV export.
   - icon: 🚀
-    title: High-Concurrency Stress Testing
-    details: Built-in stress engine with real-time QPS, latency percentiles (p50/p95/p99), failure breakdown, variable templates and CSV report export.
+    title: TCP/UDP Stress Testing
+    details: Built-in TCP/UDP stress engine with real-time QPS, latency percentiles (p50/p95/p99), failure breakdown, variable templates and CSV report export; MQTT stress testing is not supported.
   - icon: 🤖
     title: Automated Testing
     details: Auto-reply to simulate the peer, periodic send for long-run stability tests, and smart UDP broadcast reply display for device discovery.
@@ -94,6 +94,17 @@ For more details, see [Features](/en/features); to get started, read the [Guide]
 - [Hex send: HEX payloads and text conversion](/en/hex-send)
 - [Modbus TCP debugging: frames and CRC16](/en/modbus-tcp)
 - [TCP sticky packets: causes, four solutions and debugging](/en/tcp-sticky-packet)
-- [MQTT client: a lightweight MQTT 3.1.1 debugging tool](/en/mqtt-client)
+- [MQTT debugging guide: find pages by task](/en/mqtt)
+- [MQTT client comparison: MQTTX, Explorer and MQTT.fx](/en/compare/)
+- [MQTT client: a lightweight MQTT 3.1.1 / 5.0 debugging tool](/en/mqtt-client)
+- [MQTTX alternative: lightweight MQTT client comparison](/en/comparison-mqttx)
+- [MQTT tutorial: connect, subscribe and publish](/en/guide/mqtt)
+- [MQTT troubleshooting: connections and missing messages](/en/mqtt-troubleshooting)
+- [MQTT TLS: certificate verification and mutual auth](/en/mqtt-tls)
+- [MQTT 5.0: session expiry and reason codes](/en/mqtt-5)
+- [MQTT Explorer alternative comparison](/en/compare/mqtt-explorer)
+- [MQTT.fx alternative comparison](/en/compare/mqtt-fx)
+- [MQTT FAQ](/en/mqtt-faq)
+- [Linux MQTT client installation](/en/mqtt-client-linux)
 - [TCP/UDP stress testing: QPS and p99 latency](/en/tcp-stress-test)
 - [UDP broadcast device discovery: LAN search and troubleshooting](/en/udp-broadcast-device-discovery)

@@ -1,22 +1,15 @@
 ---
-title: TCP/UDP 调试 - TCP 粘包处理与四种解码器
-description: TCP 粘包与拆包处理教程：原始/行分隔/长度前缀/JSON 四种解码器；十六进制模式、周期发送、自动回复、消息管理、IPv6 与 UDP 广播设备发现调试。
+title: TCP/UDP 调试教程 - 连接、收发与自动回复
+description: TCP/UDP 调试教程：创建连接、选择解码器、文本与十六进制收发、周期发送、自动回复、消息管理、IPv6 与 UDP 设备发现，含快捷键说明。
 ---
 
 # TCP/UDP 调试
 
+> [下载 NetAssistant](/download) · [TCP 调试工具](/tcp-debug-tool) · [全部功能](/features)
+
 ## TCP 解码器
 
-TCP 是字节流协议，存在粘包/拆包问题。NetAssistant 在连接详情页提供四种解码器，按你的协议格式选择：
-
-想系统了解粘包成因、四种方案和调试方法，见 [TCP 粘包与拆包](/tcp-sticky-packet)。
-
-| 解码器 | 适用场景 |
-| ------ | -------- |
-| 原始数据 | 不做任何处理，按收到的字节原样展示 |
-| 行分隔 | 以换行符为消息边界，适合文本协议（如 AT 指令、日志流） |
-| 长度前缀 | 按长度字段分包，适合二进制协议 |
-| JSON | 自动识别 JSON 报文，适合 JSON over TCP |
+TCP 是字节流协议，存在粘包/拆包问题。NetAssistant 在连接详情页提供原始数据、行分隔、长度前缀与 JSON 四种解码器，按协议格式选择即可；各方案的边界规则与取舍见 [TCP 粘包与拆包](/tcp-sticky-packet)。
 
 ![TCP 解码器截图](../../assets/screenshots/zh/screenshot_tcp_decoder.png)
 

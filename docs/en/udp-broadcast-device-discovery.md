@@ -20,14 +20,6 @@ head:
             "mainEntityOfPage": "https://netassistant.trydo.top/en/udp-broadcast-device-discovery"
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "TCP/UDP guide", "item": "https://netassistant.trydo.top/en/guide/tcp-udp" },
-              { "@type": "ListItem", "position": 3, "name": "UDP broadcast discovery", "item": "https://netassistant.trydo.top/en/udp-broadcast-device-discovery" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "Which UDP broadcast address should I use?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Use the subnet-directed broadcast address, for example 192.168.1.255 if your host is on 192.168.1.0/24, or the limited broadcast address 255.255.255.255. Broadcast does not cross routers by default."
+                  "text": "Use the subnet-directed broadcast address such as 192.168.1.255 for 192.168.1.0/24, or 255.255.255.255. Broadcast does not cross routers by default."
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "Why do I get no replies after sending a broadcast?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Common causes include a wrong broadcast address or port, a device that only listens on multicast, a local firewall, a different subnet, or a discovery payload that does not match the device format. Capture traffic first to confirm the broadcast was sent."
+                  "text": "Check the broadcast address and port, whether the device only listens on multicast, the local firewall, the subnet, and the discovery payload format. Confirm with a packet capture that the broadcast was sent."
                 }
               },
               {
@@ -51,7 +43,7 @@ head:
                 "name": "Should I use broadcast or multicast?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Broadcast is simpler but stays within one LAN and interrupts every host. Multicast uses less bandwidth and can cross subnets with IGMP support, making it better for large or complex networks."
+                  "text": "Broadcast is simpler but limited to one LAN; multicast saves bandwidth and can cross subnets, which suits larger or more complex networks."
                 }
               },
               {
@@ -59,7 +51,15 @@ head:
                 "name": "Does NetAssistant filter replies from unexpected addresses?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. Every reply is shown. Replies from unexpected source addresses are highlighted in light red with an “unexpected address reply” tooltip, so important responses are not lost."
+                  "text": "No. Every reply is shown, and unexpected sources are highlighted in light red with a tooltip."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I send to multiple devices at once?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Broadcast reaches every device in the same subnet. For targeted sends, manually add client addresses in UDP server mode."
                 }
               }
             ]

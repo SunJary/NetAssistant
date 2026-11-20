@@ -1,13 +1,13 @@
 ---
 title: MQTTX 替代品 - NetAssistant vs MQTTX 客户端对比
-description: "NetAssistant 与 MQTTX 对比：Rust 原生、内存约 20MB、MQTT 3.1.1 / 5.0 客户端并支持 TLS；MQTTX 功能更全（WebSocket、脚本、更完整的 5.0），本页列出两者的功能边界。"
+description: "NetAssistant 与 MQTTX 对比：Rust 原生、内存约 20MB、MQTT 3.1.1 / 5.0 并支持 TLS；低内存、Windows 现场和 TCP/UDP 混合调试可作轻量替代，WebSocket、脚本与完整 5.0 仍选 MQTTX。"
 ---
 
-# NetAssistant vs MQTTX：轻量级 MQTT 客户端对比
+# MQTTX 替代品：NetAssistant 与 MQTTX 轻量对比
 
 如果你用过 **MQTTX**——那个基于 Electron 的 MQTT 客户端——可能注意到它日常常驻内存通常在**几百 MB**（约 300~500MB，随连接数和消息量浮动）。NetAssistant 是 **Rust 原生构建**的网络调试工具，内存占用约 **20MB**。
 
-但先说清楚：**MQTTX 的 MQTT 功能比 NetAssistant 完善得多**。这个页面不是要证明 NetAssistant 能完全替代 MQTTX，而是如实对比两者差异，说明 NetAssistant 在 MQTT 模式下**到底支持什么、不支持什么**，帮你按需选择。
+MQTTX 的 MQTT 功能更全面，这一点不必回避。这个页面不追求「功能全集替代」的结论，而是如实对比两者差异，说明 NetAssistant 在哪些场景可以替代 MQTTX、哪些场景仍应继续用 MQTTX。
 
 想先看 MQTT 模式支持的具体能力与操作步骤，见 [MQTT 客户端](/mqtt-client)。
 
@@ -77,7 +77,7 @@ NetAssistant 还有几项 MQTTX 完全没有的能力，但它们**只在 TCP/UD
 - **数据可视化**：MQTTX 的折线图面板适合监控传感器数据流
 - **订阅管理体验**：MQTTX 的通配符订阅树更直观
 
-## NetAssistant 值得尝试的场景
+## 什么场景可以替代 MQTTX
 
 - **内存紧张的环境**：远程开发机跑着 VS Code、Docker、浏览器，只剩几百 MB 时，20MB 的 MQTT 客户端更从容
 - **MQTT 与 TCP/UDP 混在一起调试**：同一工具里既有 MQTT 客户端，也有 TCP/UDP 客户端与服务端，切换协议不用换软件
@@ -88,6 +88,15 @@ NetAssistant 还有几项 MQTTX 完全没有的能力，但它们**只在 TCP/UD
 
 MQTTX 是目前功能最完善的开源 MQTT 客户端。如果你需要 MQTT over WebSocket、完整的 5.0 特性、脚本自动化或数据可视化，它仍然是首选。TLS 双方都支持：NetAssistant 提供系统根证书 / 自定义 CA / 跳过校验三档校验与双向认证，常规加密连接不必为此换工具。
 
-NetAssistant 的 MQTT 能力是「够用」级别：3.1.1 / 5.0、TLS、订阅管理、QoS 0/1/2、retain、遗嘱、自动回复、周期发送都有，但 5.0 只覆盖基础特性，MQTT over WebSocket 不支持；压测、解码器、逐行/定时任务这些能力只在 TCP/UDP 下生效。如果你要的是**极轻量的 MQTT 调试**，或者需要**和 TCP/UDP 一起调**，可以试试；它不会完全替代 MQTTX，但在特定场景下更顺手。
+NetAssistant 的 MQTT 能力是「够用」级别：3.1.1 / 5.0、TLS、订阅管理、QoS 0/1/2、retain、遗嘱、自动回复、周期发送都有，但 5.0 只覆盖基础特性，MQTT over WebSocket 不支持；压测、解码器、逐行/定时任务这些能力只在 TCP/UDP 下生效。如果你要的是**极轻量的 MQTT 调试**，或者需要**和 TCP/UDP 一起调**，它就是 MQTTX 的轻量场景替代；如果要覆盖 WebSocket、脚本与完整 5.0，继续用 MQTTX。
 
 > 要不要试试看？[下载 NetAssistant](/download)
+
+## 相关页面
+
+- [MQTT 客户端对比总览](/compare/)
+- [MQTT Explorer 对比](/compare/mqtt-explorer)
+- [MQTT.fx 对比](/compare/mqtt-fx)
+- [MQTT 客户端功能与参数](/mqtt-client)
+- [MQTT 调试教程](/guide/mqtt)
+- [下载 NetAssistant](/download)

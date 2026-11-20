@@ -1,22 +1,15 @@
 ---
-title: TCP/UDP Debugging - Sticky Packets & Decoders
-description: "TCP sticky packet guide: raw, line-delimited, length-prefix and JSON decoders, plus hex mode, auto-reply, IPv6 and UDP broadcast device discovery."
+title: TCP/UDP Debugging Tutorial - Connect, Send & Auto-Reply
+description: "Step-by-step TCP/UDP debugging tutorial: decoders, text and hex send, periodic tasks, reply rules, message search, IPv6 and UDP device discovery."
 ---
 
 # TCP/UDP Debugging
 
+> [Download NetAssistant](/en/download) · [TCP debug tool](/en/tcp-debug-tool) · [All features](/en/features)
+
 ## TCP Decoders
 
-TCP is a byte-stream protocol and suffers from sticky/split packet issues. NetAssistant offers four decoders on the connection detail page — pick one based on your protocol format:
-
-For the underlying causes and framing options, see [TCP sticky packets](/en/tcp-sticky-packet).
-
-| Decoder | Use Case |
-| ------- | -------- |
-| Raw | No processing; bytes are displayed exactly as received |
-| Line-delimited | Newline as the message boundary, suitable for text protocols (e.g. AT commands, log streams) |
-| Length-prefix | Splits packets by a length field, suitable for binary protocols |
-| JSON | Automatically detects JSON messages, suitable for JSON over TCP |
+TCP is a byte-stream protocol and suffers from sticky/split packet issues. NetAssistant offers raw, line, length-prefix and JSON decoders on the connection detail page; pick one based on your protocol format. See [TCP sticky packets](/en/tcp-sticky-packet) for boundary rules, trade-offs and troubleshooting.
 
 ![TCP decoder screenshot](../../../assets/screenshots/en/screenshot_tcp_decoder.png)
 

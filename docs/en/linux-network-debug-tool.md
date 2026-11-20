@@ -1,6 +1,6 @@
 ---
 title: Linux Network Debugging Tool - TCP/UDP
-description: "Free, open-source Linux network debugging tool: deb, AppImage and tar.gz for x86_64 and ARM64, TCP/UDP client and server, decoders and stress testing."
+description: "Free, open-source Linux network debugging tool: deb, AppImage and tar.gz for x86_64 and ARM64, TCP/UDP client and server, decoders and TCP/UDP stress testing."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Linux x86_64, Linux ARM64",
-            "description": "Free, open-source Linux network debugging tool with deb, AppImage and tar.gz packages for x86_64 and ARM64, TCP/UDP client and server, decoders and stress testing.",
+            "description": "Free, open-source Linux network debugging tool with deb, AppImage and tar.gz packages for x86_64 and ARM64, TCP/UDP client and server, decoders and TCP/UDP stress testing.",
             "url": "https://netassistant.trydo.top/en/linux-network-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -27,7 +27,7 @@ head:
                 "name": "How do I install NetAssistant on Linux?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "On Debian or Ubuntu, download the deb package and run sudo apt install ./netassistant-linux-x86_64.deb. Other distributions can use the AppImage or tar.gz package."
+                  "text": "On Debian or Ubuntu, download the deb package and run sudo apt install ./netassistant-linux-x86_64.deb. Other distributions can use the AppImage or tar.gz package. See the download page."
                 }
               },
               {
@@ -40,10 +40,18 @@ head:
               },
               {
                 "@type": "Question",
+                "name": "What if libgtk-3.so.0 is missing?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Install GTK3 with sudo apt install libgtk-3-0. The bare binary and tar.gz packages require it."
+                }
+              },
+              {
+                "@type": "Question",
                 "name": "Does the Linux build support ARM64 and Raspberry Pi?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. aarch64 deb, AppImage and tar.gz packages are available for Raspberry Pi 5, ARM servers and similar devices."
+                  "text": "Yes. aarch64 deb, AppImage and tar.gz packages are available."
                 }
               },
               {
@@ -51,7 +59,7 @@ head:
                 "name": "Does NetAssistant have a CLI?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No, NetAssistant is a graphical application. For scripted tests you can continue to use nc, socat or iperf; NetAssistant is intended for GUI-based debugging, sticky-packet decoding and live metrics."
+                  "text": "No, it is a graphical application. For scripted tests, use nc, socat or iperf; NetAssistant is for GUI debugging, sticky-packet decoding and live metrics."
                 }
               }
             ]
@@ -64,7 +72,7 @@ head:
 
 Linux has plenty of network tools, but most of them are command-line utilities such as `nc`, `socat` and `tcpdump`: flexible, but without a clear view of the packet exchange, manual handling of TCP sticky packets and no built-in stress testing.
 
-NetAssistant is a graphical Linux network debugging tool, free and open source, available as **deb, AppImage and tar.gz** for x86_64 and ARM64 (including Raspberry Pi). TCP/UDP client and server, four sticky-packet decoders, MQTT 3.1.1 debugging and high-concurrency stress testing live in one app.
+NetAssistant is a graphical Linux network debugging tool, free and open source, available as **deb, AppImage and tar.gz** for x86_64 and ARM64 (including Raspberry Pi). TCP/UDP client and server, four sticky-packet decoders, MQTT 3.1.1 / 5.0 debugging and TCP/UDP-only high-concurrency stress testing live in one app.
 
 > [Download for Linux](/en/download) · [All features](/en/features) · [Getting started](/en/guide/)
 
@@ -140,7 +148,7 @@ Evaluate concurrency, latency distribution and stability: Ping-Pong and throughp
 
 ### MQTT debugging
 
-An MQTT 3.1.1 client with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply.
+An MQTT 3.1.1 / 5.0 client with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply.
 
 ### Built-in toolbox
 

@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "功能特性", "item": "https://netassistant.trydo.top/features" },
-              { "@type": "ListItem", "position": 3, "name": "TCP/UDP 压力测试", "item": "https://netassistant.trydo.top/tcp-stress-test" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "怎么对 TCP 服务端做压力测试？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "在 NetAssistant 中打开压测页，填写目标地址、端口、并发客户端数、发送速率和消息内容，选择 Ping-Pong 或吞吐模式以及短连接/长连接，点击开始即可查看 QPS、延迟分位数和失败原因。"
+                  "text": "打开压测页，填写目标地址、端口、并发数、发送速率和消息内容，选择模式与连接方式，点击开始即可。"
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "QPS 和 p99 延迟应该看哪个？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "两者一起看。QPS 反映吞吐能力，p99 反映尾部延迟；只看 QPS 可能忽略少数请求的高延迟，只看 p99 又不知道系统能承受多大吞吐。"
+                  "text": "两者一起看。QPS 反映吞吐能力，p99 反映尾部延迟；只看其中一个容易得出错误结论。"
                 }
               },
               {
@@ -51,7 +43,23 @@ head:
                 "name": "支持 UDP 压测吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。压测引擎同时支持 TCP 与 UDP，Ping-Pong 模式统计 RTT 与延迟分位数，吞吐模式用于测试最大发送能力。"
+                  "text": "支持。TCP 与 UDP 都可以使用 Ping-Pong 或吞吐模式。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持短连接吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "支持。短连接每次请求新建连接，长连接复用连接。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "能导出报告吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "可以，测试结束后导出 CSV，包含 QPS、延迟分位数与失败原因。"
                 }
               },
               {
@@ -59,7 +67,7 @@ head:
                 "name": "和 JMeter、wrk 有什么区别？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "JMeter 和 wrk 更偏向 HTTP 与脚本化压测，适合持续集成和大规模场景；NetAssistant 是图形化工具，直接对原始 TCP/UDP 协议做快速验证，适合联调阶段和临时压测，不替代完整的压测平台。"
+                  "text": "JMeter/wrk 更适合脚本化、分布式和持续集成；NetAssistant 适合图形化、原始 TCP/UDP 协议的快速验证。"
                 }
               }
             ]

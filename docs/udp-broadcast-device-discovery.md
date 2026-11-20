@@ -20,14 +20,6 @@ head:
             "mainEntityOfPage": "https://netassistant.trydo.top/udp-broadcast-device-discovery"
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "使用指南", "item": "https://netassistant.trydo.top/guide/tcp-udp" },
-              { "@type": "ListItem", "position": 3, "name": "UDP 广播设备发现", "item": "https://netassistant.trydo.top/udp-broadcast-device-discovery" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "UDP 广播地址应该填什么？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "常见做法是填子网定向广播地址，例如 192.168.1.255（假设本机是 192.168.1.x/24）；也可以使用受限广播 255.255.255.255。广播默认不跨路由器，跨网段设备发现应改用组播或定向广播配置。"
+                  "text": "常见做法是子网定向广播地址，例如 192.168.1.255（本机为 192.168.1.x/24）；也可以使用 255.255.255.255。广播默认不跨路由器。"
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "为什么发送广播后收不到设备回复？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "常见原因包括：广播地址或端口不对、设备使用组播而非广播、本机防火墙拦截、设备与电脑不在同一子网、设备需要特定 discovery 报文格式。建议先用 Wireshark 确认广播包是否发出，再检查设备文档。"
+                  "text": "可能是广播地址/端口不对、设备使用组播、防火墙拦截、不在同一子网，或 discovery 报文格式不符合设备要求。先用 Wireshark 确认广播包是否发出。"
                 }
               },
               {
@@ -51,15 +43,23 @@ head:
                 "name": "广播和组播应该选哪个？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "广播实现简单，但只适合同一局域网，且会打扰网内所有主机；组播更节省带宽、可跨网段（需要 IGMP/交换机支持），适合设备数量多或网络结构复杂的场景。"
+                  "text": "广播简单但只适合同一局域网；组播更节省带宽、可跨网段，适合设备多或网络复杂的场景。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 会过滤掉非目标地址的回复吗？",
+                "name": "NetAssistant 会过滤非目标地址的回复吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不会。UDP 广播发现时，所有设备回复都会显示；来自非目标地址的回复会用浅红色高亮，悬停提示“非预期地址的回复”，避免丢失重要响应。"
+                  "text": "不会。所有设备回复都会显示，非目标地址的来源会用浅红色高亮，悬停有提示。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "能同时向多个设备发送吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "广播会送达同一子网内的所有设备；如果需要定向发送，可以在 UDP 服务端模式手动添加客户端地址。"
                 }
               }
             ]

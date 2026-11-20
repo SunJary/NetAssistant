@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://netassistant.trydo.top/en/features" },
-              { "@type": "ListItem", "position": 3, "name": "MQTT client", "item": "https://netassistant.trydo.top/en/mqtt-client" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -51,7 +43,7 @@ head:
                 "name": "Can NetAssistant replace MQTTX?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "For basic MQTT subscribe, publish and lightweight debugging, yes. For MQTT over WebSocket, scripting, data visualization or fuller 5.0 features, MQTTX is the better fit."
+                  "text": "Yes for lightweight debugging: everyday subscribe, publish and TLS work, low-memory environments, Windows field machines, or debugging MQTT alongside TCP/UDP. For MQTT over WebSocket, scripting, data visualization or fuller 5.0 features, MQTTX remains the better fit."
                 }
               },
               {
@@ -68,11 +60,11 @@ head:
       }
 ---
 
-# Lightweight MQTT Client: Subscribe, Publish and Debug
+# MQTT Client: Lightweight Subscribe, Publish and Debug
 
 If you only need to connect to a broker occasionally to check whether a device is publishing, whether the topic is right or whether QoS is working, installing an Electron client is overkill. NetAssistant includes an **MQTT client** (MQTT 3.1.1 / 5.0) in the same app as its TCP/UDP tools, built with Rust and using about 20MB of memory.
 
-To be clear: it is built for basic MQTT debugging, **not a full MQTTX replacement**. TLS and MQTT 5.0 are supported (5.0 covers the basics); MQTT over WebSocket and scripting are still not supported.
+**Positioning**: a lightweight, scenario-based alternative to dedicated clients such as MQTTX — enough for everyday subscribing, publishing and TLS work, and handier in low-memory environments, on Windows field machines, or when MQTT has to be debugged alongside TCP/UDP. It does not aim to replace every MQTTX feature: MQTT over WebSocket, scripting and data visualization are not supported, and MQTT 5.0 covers the basics only, so MQTTX is still the better fit for those cases.
 
 > [Download NetAssistant](/en/download) · [Detailed MQTTX comparison](/en/comparison-mqttx) · [All features](/en/features)
 
@@ -91,7 +83,9 @@ To be clear: it is built for basic MQTT debugging, **not a full MQTTX replacemen
 
 ### Connection settings
 
-Create an MQTT connection with broker address and port (default 1883), client ID, username/password and keep-alive; the protocol version can be 3.1.1 (default) or 5.0. Additional settings cover clean session and last-will messages (topic / payload / QoS / retain).
+Create an MQTT connection with broker address and port (default 1883), client ID, username/password and keep-alive; the protocol version can be 5.0 (default) or 3.1.1. Additional settings cover clean session and last-will messages (topic / payload / QoS / retain).
+
+The connection name is optional: once set, the connection list and tab title show the name (the address still appears in the info panel and as `name @ host:port [PROTOCOL]` in the list), and an empty name falls back to the address. Right-click a connection to "Rename Connection" or "Duplicate Connection"; duplicating prefills the source config into a new connection and generates a fresh Client ID for MQTT so two clients never kick each other off the same broker.
 
 ### MQTT over TLS
 
@@ -105,7 +99,7 @@ Mutual TLS optionally takes a client certificate and private key (PEM, PKCS#8 / 
 
 ### MQTT 5.0 (optional)
 
-Use **Protocol Version** to switch between **3.1.1** (default) and **5.0**. With 5.0 selected, Additional settings expose two connect properties:
+Use **Protocol Version** to switch between **5.0** (default for new connections) and **3.1.1**. With 5.0 selected, Additional settings expose two connect properties:
 
 - **Session Expiry (seconds)**: leave empty to omit; 0 expires the session on disconnect, a positive value keeps it until then.
 - **Receive Maximum**: 1-65535, leave empty to omit; limits how many QoS 1/2 publishes may be in flight.
@@ -114,11 +108,13 @@ Under 5.0, a rejected CONNACK, a failed SUBACK and a broker-initiated DISCONNECT
 
 ### Subscription management
 
-Add, edit or remove subscriptions at runtime without reconnecting. Subscriptions are isolated per connection and restored automatically after reconnect. The list fills the sidebar and scrolls when needed; hover to see the full topic, double-click to copy it.
+Add, edit or remove subscriptions at runtime without reconnecting. Subscriptions are isolated per connection and only enabled entries are restored after an automatic reconnect. Every subscription has its own switch: it lights up only after the broker confirms it (SUBACK), and a failure or a 10-second timeout disables that entry with a reason (MQTT 5 can tell "not authorized" apart, while 3.1.1 can only report a rejection); the off state is persisted and survives restarts and reconnects. While offline, a clean-session connection can switch an entry off directly, whereas a persistent session (Clean Session off in 3.1.1, or Clean Start off with a positive session expiry in 5.0) still holds the subscription on the broker and asks you to connect before unsubscribing. The list fills the sidebar and scrolls when needed; hover to see the full topic, double-click to copy it.
 
 ### Publishing
 
 Set topic, QoS (0/1/2) and retain; payload supports text and hex modes. The topic dropdown reuses recent topics for the current connection, including QoS and retain, with up to 20 entries per connection.
+
+Publish failures raise a top-right notification that names the target topic and the reason: a QoS 1/2 publish rejected by the broker shows the reason code (MQTT 5 distinguishes cases such as "not authorized", while 3.1.1 PUBACK carries no reason code and can only report local send errors), and QoS 0 has no broker acknowledgement at all, so only local delivery failures are reported. When send tasks or periodic sending publish to the same topic at high frequency, identical notifications are shown once per 3 seconds while the message log still records every entry. Hover a QoS chip to see its semantics (at most once / at least once / exactly once).
 
 ![MQTT client interface](../../assets/screenshots/en/screenshot_mqtt_client.png)
 
@@ -169,7 +165,7 @@ It covers basic subscribe, publish and lightweight debugging. For MQTT over WebS
 
 ### Does it support QoS 2 and retain?
 
-Yes. Publishing supports QoS 0/1/2 and retain; subscriptions are managed at runtime and restored after reconnect.
+Yes. Publishing supports QoS 0/1/2 and retain; subscriptions are managed at runtime with an independent switch per entry, and only the enabled ones are restored after reconnect.
 
 ### Is it free?
 
@@ -177,7 +173,16 @@ Yes. NetAssistant is open source under Apache-2.0 and all features are available
 
 ## Related pages
 
+- [MQTT tutorial: connect, subscribe and publish](/en/guide/mqtt)
+- [MQTT troubleshooting](/en/mqtt-troubleshooting)
+- [MQTT TLS configuration](/en/mqtt-tls)
+- [MQTT 5.0 client](/en/mqtt-5)
+- [MQTT testing scenarios](/en/mqtt-testing)
 - [MQTTX comparison](/en/comparison-mqttx)
+- [MQTT Explorer comparison](/en/compare/mqtt-explorer)
+- [MQTT.fx comparison](/en/compare/mqtt-fx)
+- [MQTT FAQ](/en/mqtt-faq)
+- Platform installs: [Windows](/en/mqtt-client-windows), [macOS](/en/mqtt-client-mac), [Linux](/en/mqtt-client-linux)
 - [TCP/UDP stress testing](/en/tcp-stress-test)
 - [All features](/en/features)
 - [Download NetAssistant](/en/download)

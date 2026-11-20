@@ -1,6 +1,6 @@
 ---
-title: UDP 调试工具 - 收发测试、广播与多客户端
-description: NetAssistant 的 UDP 调试工具：UDP 客户端与服务端、广播发现、手动添加客户端与多设备回复展示，支持 Hex 收发、周期发送和回复规则，跨平台免费。
+title: UDP 调试工具 - 收发测试与多客户端
+description: NetAssistant 的 UDP 调试工具：UDP 客户端与服务端、手动添加客户端与多设备回复展示，支持 Hex 收发、周期发送和回复规则，跨平台免费。
 head:
   - - script
     - type: application/ld+json
@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "功能特性", "item": "https://netassistant.trydo.top/features" },
-              { "@type": "ListItem", "position": 3, "name": "UDP 调试工具", "item": "https://netassistant.trydo.top/udp-debug-tool" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,23 +27,23 @@ head:
                 "name": "UDP 调试工具怎么用？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "新建 UDP 客户端，填写目标地址与端口后直接发送；也可以新建 UDP 服务端，监听本地端口接收数据报。UDP 无连接，不需要先建链，填好地址就能收发。"
+                  "text": "新建 UDP 客户端填目标地址直接发送，或新建 UDP 服务端监听本地端口接收，无连接、无需握手。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "为什么 UDP 发送成功却收不到回复？",
+                "name": "为什么发送成功却收不到回复？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "UDP 不保证送达。常见原因有目标端口未监听、防火墙拦截、设备只接受特定格式的报文，或回复发到了本机未监听的端口。先用 UDP 服务端在本地监听确认能收到包，再排查对端。"
+                  "text": "UDP 不保证送达。检查目标端口是否监听、防火墙是否放行、报文格式是否符合设备要求。"
                 }
               },
               {
                 "@type": "Question",
-                "name": "如何接收多个设备的 UDP 回复？",
+                "name": "如何接收多个设备的回复？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "向广播地址发送发现指令后，所有设备都会回复。NetAssistant 不会按目标地址过滤回复，非预期来源会高亮显示，便于确认哪些设备在线。"
+                  "text": "向广播地址发送指令，NetAssistant 会显示所有回复并高亮非预期来源。"
                 }
               },
               {
@@ -59,7 +51,15 @@ head:
                 "name": "UDP 会粘包吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "UDP 保留数据报边界，一次发送对应一次接收，不会像 TCP 那样把多条消息合并。但单个数据报仍可能丢失、重复或乱序，应用层需要自行处理。"
+                  "text": "不会。UDP 保留数据报边界，但可能丢包、重复或乱序。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持广播和 IPv6 吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "支持广播发送；地址支持 IPv4 与 IPv6。"
                 }
               }
             ]

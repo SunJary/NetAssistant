@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://netassistant.trydo.top/en/features" },
-              { "@type": "ListItem", "position": 3, "name": "TCP debug tool", "item": "https://netassistant.trydo.top/en/tcp-debug-tool" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "What problems does a TCP debug tool solve?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Three things: checking whether a port is reachable, splitting the incoming byte stream into protocol messages, and sending a response quickly to validate the path. NetAssistant covers them with connection settings, four decoders and reply rules."
+                  "text": "Reachability, correct message framing and quick response validation—the core of most TCP integration work."
                 }
               },
               {
@@ -43,15 +35,15 @@ head:
                 "name": "Why does received data arrive glued together?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "TCP is a byte stream without message boundaries. One send can be split into several reads, and several sends can arrive together. The application must define boundaries such as a newline, a length prefix or a complete JSON object; NetAssistant provides raw, line, length-prefix and JSON decoders for these cases."
+                  "text": "TCP is a byte stream with no message boundaries. Define boundaries with newlines, length prefixes or JSON and select the matching decoder."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Can it act as both TCP client and server?",
+                "name": "Can it act as both client and server?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. Connect to a device or service as a client, or listen on a local port and accept connections as a server, with multiple clients managed in server mode."
+                  "text": "Yes, both modes are supported, and server mode can manage multiple client connections."
                 }
               },
               {
@@ -59,7 +51,15 @@ head:
                 "name": "Does it support IPv6?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. TCP client and server modes accept IPv4 or IPv6 addresses, and a local bind address can be configured."
+                  "text": "Yes, both client and server modes work with IPv4 and IPv6."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support serial ports or Unix sockets?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. NetAssistant handles TCP/UDP/MQTT network connections only and is not a serial port tool."
                 }
               }
             ]
@@ -95,16 +95,9 @@ Both IPv4 and IPv6 are supported. Server mode keeps multiple client connections,
 
 ## Fixing sticky packets: four decoders
 
-TCP does not preserve message boundaries. The decoder decides when a message is complete.
+TCP does not preserve message boundaries. The decoder decides when a message is complete. NetAssistant offers raw, line, length-prefix and JSON decoders for custom binary, text protocols, TLV and JSON over TCP.
 
-| Decoder | Boundary rule | Good for |
-| ---- | ---- | ---- |
-| Raw | Show whatever arrives | Custom binary protocols, raw inspection |
-| Line | Split on newline characters | Text protocols, AT commands, log streams |
-| Length prefix | Read a length field, then that many bytes | Binary protocols, TLV, custom frames |
-| JSON | Split on complete JSON objects | JSON line protocols, RPC debugging |
-
-Picking the wrong decoder is the most common reason messages look stuck together. Decoders only affect display and splitting; they do not change the bytes sent. See [TCP sticky packets](/en/tcp-sticky-packet) for causes and troubleshooting.
+Picking the wrong decoder is the most common reason messages look stuck together. Decoders only affect display and splitting; they do not change the bytes sent. See [TCP sticky packets](/en/tcp-sticky-packet) for boundary rules, trade-offs and troubleshooting.
 
 ![TCP decoder settings](../../assets/screenshots/en/screenshot_tcp_decoder.png)
 

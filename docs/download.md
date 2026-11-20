@@ -14,18 +14,11 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、MQTT 3.1.1、粘包解码、十六进制收发与压力测试。",
+            "description": "跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、MQTT 3.1.1 / 5.0、粘包解码、十六进制收发与 TCP/UDP 压力测试。",
             "url": "https://netassistant.trydo.top/download",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-          },
-          {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://netassistant.trydo.top/" },
-              { "@type": "ListItem", "position": 2, "name": "下载", "item": "https://netassistant.trydo.top/download" }
-            ]
           },
           {
             "@type": "FAQPage",
@@ -81,6 +74,8 @@ head:
 NetAssistant 支持 Windows、Linux 和 macOS，各平台均提供 x64 与 ARM64 版本。以下下载链接始终指向[最新版本](https://github.com/sunjary/netassistant/releases/latest)的文件，点击即直接下载；历史版本请见 [GitHub Releases](https://github.com/sunjary/netassistant/releases)。
 
 按平台查看详细安装说明：[Windows](/windows-network-debug-tool) · [macOS](/mac-network-debug-tool) · [Linux](/linux-network-debug-tool)。
+
+<DownloadHero />
 
 ## Windows
 

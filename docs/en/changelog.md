@@ -7,6 +7,19 @@ description: "NetAssistant changelog: TCP decoders, UDP broadcast device discove
 
 All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
+## Unreleased <Badge type="warning" text="Pending release" />
+
+- **Connection names, rename and duplicate**: new/edit dialogs accept an optional name; the connection list and tab title show the name (the list renders `name @ host:port [PROTOCOL]` with ellipsis plus a full-name tooltip); the context menu adds "Rename Connection" (clear it to show the address only) and "Duplicate Connection" (prefills the source config into a new connection, with a fresh Client ID for MQTT so two clients never kick each other off the same broker); the info panel now shows the username
+- **Per-subscription switch for MQTT**: every subscription can be toggled individually; it lights up only after the broker confirms it (SUBACK), and a failure or a 10-second timeout disables that entry with the topic in the message; the off state is persisted and only enabled entries are restored after reconnect; for a persistent session, an offline unsubscribe prompts you to connect first
+- **MQTT publish failure hints**: when a QoS 1/2 publish is rejected by the broker under MQTT 5, or a local send fails under any protocol version, a top-right notification names the target topic and reason code (MQTT 5 distinguishes cases such as "not authorized"); identical notifications are shown once per 3 seconds while the message log still records every entry
+- **New connections default to MQTT 5.0**: the protocol version now defaults to 5.0 for new connections, while existing configs keep their saved version
+- Hovering a QoS chip shows its semantics (at most once / at least once / exactly once), and connection list rows show the full label on hover
+
+Fixes and improvements:
+
+- Config writes are now atomic (temp file + `sync_all` + `rename`) and window geometry moved to its own file, so a crash can no longer leave a half-written config or let two in-memory snapshots overwrite each other
+- Subscription and publish failure notifications now include the topic and are deduplicated, so send tasks or ACL rejections no longer flood the notification area
+
 ## v1.5.0 <Badge type="tip" text="2026-11-15" />
 
 - **MQTT over TLS**: MQTT connections can now use TLS (available for both 3.1.1 and 5.0), configured in the MQTT section of the new / edit connection dialog

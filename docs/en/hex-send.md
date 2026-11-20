@@ -20,14 +20,6 @@ head:
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           },
           {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://netassistant.trydo.top/en/" },
-              { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://netassistant.trydo.top/en/features" },
-              { "@type": "ListItem", "position": 3, "name": "Hex send", "item": "https://netassistant.trydo.top/en/hex-send" }
-            ]
-          },
-          {
             "@type": "FAQPage",
             "mainEntity": [
               {
@@ -35,7 +27,7 @@ head:
                 "name": "What is the difference between text and hex send?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Text mode encodes your input as UTF-8 bytes. Hex mode interprets your input as hexadecimal bytes and sends them verbatim. Typing 41 sends the character A in text mode but the byte 0x41 in hex mode. Binary frames containing 0x00 or non-printable bytes need hex mode."
+                  "text": "Text encodes input as UTF-8; hex interprets it as hexadecimal bytes and sends them verbatim."
                 }
               },
               {
@@ -43,7 +35,7 @@ head:
                 "name": "How do I convert between text and hex?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Switching the send area between text and hex converts the whole payload as UTF-8. The message context menu and the toolbox also offer Convert to Hex / Convert to Text, and round-tripping is byte-for-byte."
+                  "text": "Switching modes converts the whole payload; the message menu and toolbox provide one-off conversions, byte-for-byte."
                 }
               },
               {
@@ -51,15 +43,23 @@ head:
                 "name": "How are non-printable bytes displayed?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "When converting to text, non-printable bytes are escaped as \\xNN, so 0x00 appears as \\x00 and control characters do not break the display or the copied result."
+                  "text": "They are escaped as \\xNN, for example 0x00 becomes \\x00."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Can I send binary content from a file?",
+                "name": "Can I send file content?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. The file source loads content from a local file into the send area with UTF-8 / GBK / ANSI decoding and a preview, up to 1 MiB per file."
+                  "text": "Yes. The file source supports UTF-8 / GBK / ANSI with a 1 MiB limit."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does it support hex send over serial?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Hex send/receive works over TCP/UDP/MQTT; NetAssistant has no serial support."
                 }
               }
             ]

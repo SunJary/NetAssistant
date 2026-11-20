@@ -22,7 +22,7 @@ head:
             "name": "NetAssistant 和网络调试助手（NetAssist）有什么区别？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "两者是不同的软件。NetAssist 是仅限 Windows 的闭源工具；NetAssistant 是基于 Rust 的开源（Apache-2.0）跨平台工具，支持 Windows/Linux/macOS 的 x64 与 ARM64，内置四种 TCP 解码器解决粘包问题，并提供高并发压力测试（QPS 与 p50/p95/p99 延迟）。详细对比见同类工具对比页面。"
+              "text": "两者是不同的软件。NetAssist 是仅限 Windows 的闭源工具；NetAssistant 是基于 Rust 的开源（Apache-2.0）跨平台工具，支持 Windows/Linux/macOS 的 x64 与 ARM64，内置四种 TCP 解码器解决粘包问题，并提供高并发压力测试（QPS 与 p50/p95/p99 延迟）。详细对比见网络调试工具对比页面。"
             }
           },
           {
@@ -70,7 +70,7 @@ head:
 - **NetAssistant**（本页介绍的这款）：开源跨平台工具，**Windows、Linux、macOS 全部支持**，x64 与 ARM64 均有原生构建，Mac 上可以直接用 → [前往下载](/download)
 - **NetAssist**（野人家园的老牌工具）：仅提供 Windows 版本，没有 macOS 与 Linux 版
 
-所以，如果你想在 Mac 或 Linux 上做 TCP/UDP 调试，直接用 **NetAssistant** 即可，操作方式与常用调试助手一致，上手见[快速上手](/guide/)。更详细的差异对比见[同类工具对比](/comparison)。
+所以，如果你想在 Mac 或 Linux 上做 TCP/UDP 调试，直接用 **NetAssistant** 即可，操作方式与常用调试助手一致，上手见[快速上手](/guide/)。更详细的差异对比见[网络调试工具对比](/comparison)。
 
 ## NetAssistant 和网络调试助手（NetAssist）有什么区别？
 
@@ -81,9 +81,9 @@ head:
 | 平台 | Windows / Linux / macOS（x64 + ARM64） | 仅 Windows |
 | 开源 | ✅ Apache-2.0 | ❌ 闭源 |
 | TCP 解码器（粘包处理） | 原始 / 行 / 长度前缀 / JSON | 有限 |
-| 高并发压测 | ✅ QPS + p50/p95/p99 | ❌ |
+| TCP/UDP 高并发压测 | ✅ QPS + p50/p95/p99 | ❌ |
 
-完整的对比表见[同类工具对比](/comparison)。
+完整的对比表见[网络调试工具对比](/comparison)。
 
 ## 如何用 winget 安装 NetAssistant？
 

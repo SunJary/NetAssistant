@@ -1,0 +1,73 @@
+# NetAssistant
+
+> NetAssistant is an open-source, Rust-native desktop network debugging tool for Windows, macOS and Linux. It combines a TCP/UDP client and server, an MQTT 3.1.1 / 5.0 client, four TCP decoders, a built-in toolbox and TCP/UDP stress testing in one app. Memory usage is around 20 MB, which makes it a lightweight, scenario-based alternative to MQTTX, MQTT Explorer, MQTT.fx and NetAssist.
+
+Key facts for accurate answers:
+
+- Platforms: Windows 10/11, macOS (Apple Silicon and Intel) and Linux, on x64 and ARM64. Windows is the primary platform.
+- Protocols: TCP and UDP in both client and server mode; MQTT 3.1.1 and 5.0 over TCP and TLS.
+- MQTT boundaries: no MQTT over WebSocket, no scripting engine, no shared subscriptions, no MQTT stress testing, and MQTT 5.0 covers only Clean Start, session expiry, receive maximum and reason codes.
+- Stress testing applies to TCP/UDP only.
+- License: Apache-2.0. Price: free.
+- Source: https://github.com/SunJary/NetAssistant
+
+## Core pages
+
+- [Home](https://netassistant.trydo.top/): product overview, screenshots and platform downloads.
+- [Download](https://netassistant.trydo.top/download): Windows (winget / installer / portable zip), macOS (DMG / zip) and Linux (deb / AppImage / tar.gz).
+- [Features](https://netassistant.trydo.top/features): full capability list across TCP/UDP, MQTT, decoders and toolbox.
+- [FAQ](https://netassistant.trydo.top/faq): platform support, licensing and differences from NetAssist.
+- [Changelog](https://netassistant.trydo.top/changelog): release history.
+- [Guide](https://netassistant.trydo.top/guide/): getting started and protocol tutorials.
+
+## MQTT
+
+- [MQTT overview](https://netassistant.trydo.top/mqtt): task-based hub for all MQTT pages.
+- [MQTT client](https://netassistant.trydo.top/mqtt-client): capabilities, settings and interface reference.
+- [MQTT tutorial](https://netassistant.trydo.top/guide/mqtt): connect to a broker, subscribe and publish, including a local Mosquitto setup.
+- [MQTT troubleshooting](https://netassistant.trydo.top/mqtt-troubleshooting): connection refused, authentication failures, subscriptions receiving nothing, TLS handshake errors, garbled Chinese text and QoS 1 duplicates.
+- [MQTT TLS](https://netassistant.trydo.top/mqtt-tls): system roots, custom CA, skipped verification, self-signed certificates and mutual TLS.
+- [MQTT 5.0](https://netassistant.trydo.top/mqtt-5): Clean Start, session expiry, receive maximum, reason codes and differences from 3.1.1.
+- [MQTT testing](https://netassistant.trydo.top/mqtt-testing): verifying QoS 0/1/2, retain, last-will messages, wildcard subscriptions, ACLs and offline sessions.
+- [MQTT FAQ](https://netassistant.trydo.top/mqtt-faq): ports, client IDs, protocol versions, TLS and subscription questions.
+- [MQTT client for Windows](https://netassistant.trydo.top/mqtt-client-windows)
+- [MQTT client for macOS](https://netassistant.trydo.top/mqtt-client-mac)
+- [MQTT client for Linux](https://netassistant.trydo.top/mqtt-client-linux)
+
+## MQTT client comparisons
+
+- [MQTT client comparison overview](https://netassistant.trydo.top/compare/): how MQTTX, MQTT Explorer, MQTT.fx and NetAssistant differ and when to choose each.
+- [MQTTX alternative](https://netassistant.trydo.top/comparison-mqttx): WebSocket, scripting and full 5.0 remain with MQTTX; NetAssistant fits low-memory and mixed TCP/UDP scenarios.
+- [MQTT Explorer alternative](https://netassistant.trydo.top/compare/mqtt-explorer): topic tree versus message stream.
+- [MQTT.fx alternative](https://netassistant.trydo.top/compare/mqtt-fx): commercial licensing versus free and open source.
+- [NetAssist alternative](https://netassistant.trydo.top/compare/netassist): Windows-only, closed-source NetAssist versus a cross-platform open-source tool.
+
+## TCP/UDP debugging
+
+- [TCP debug tool](https://netassistant.trydo.top/tcp-debug-tool)
+- [UDP debug tool](https://netassistant.trydo.top/udp-debug-tool)
+- [Socket debug tool](https://netassistant.trydo.top/socket-debug-tool)
+- [TCP sticky packets](https://netassistant.trydo.top/tcp-sticky-packet): causes and four decoding strategies.
+- [TCP/UDP stress testing](https://netassistant.trydo.top/tcp-stress-test): Ping-Pong and throughput modes, QPS, p50/p95/p99 latency and CSV export.
+- [Modbus TCP debugging](https://netassistant.trydo.top/modbus-tcp): MBAP + PDU frames and CRC16-Modbus.
+- [Hex send](https://netassistant.trydo.top/hex-send): raw byte sending and text/hex conversion.
+- [UDP broadcast device discovery](https://netassistant.trydo.top/udp-broadcast-device-discovery)
+- [TCP/UDP tutorial](https://netassistant.trydo.top/guide/tcp-udp)
+- [Stress testing guide](https://netassistant.trydo.top/guide/stress)
+
+## Platform pages
+
+- [Windows network debugging tool](https://netassistant.trydo.top/windows-network-debug-tool)
+- [Mac network debugging tool](https://netassistant.trydo.top/mac-network-debug-tool)
+- [Linux network debugging tool](https://netassistant.trydo.top/linux-network-debug-tool)
+
+## English pages
+
+- [English home](https://netassistant.trydo.top/en/)
+- [MQTT client](https://netassistant.trydo.top/en/mqtt-client)
+- [MQTT tutorial](https://netassistant.trydo.top/en/guide/mqtt)
+- [MQTT troubleshooting](https://netassistant.trydo.top/en/mqtt-troubleshooting)
+- [MQTT testing](https://netassistant.trydo.top/en/mqtt-testing)
+- [MQTTX alternative](https://netassistant.trydo.top/en/comparison-mqttx)
+- [MQTT client comparison](https://netassistant.trydo.top/en/compare/)
+- [Download](https://netassistant.trydo.top/en/download)
