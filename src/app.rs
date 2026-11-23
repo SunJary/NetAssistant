@@ -10,6 +10,9 @@ use crate::config::connection::{
     Qos, TlsSettings, TlsVerifyMode, TrailerKind, WillSettings, generate_mqtt_client_id,
 };
 use crate::config::storage::{ConfigStorage, MqttTopicHistoryEntry};
+use crate::core::random::{
+    self, CharsetOptions, RandomError, RandomKind, RandomParams, RandomResult,
+};
 use crate::core::toolbox::ToolCategory;
 use crate::core::toolbox_extra::{
     FILE_HASH_ALGOS, file_digest_set, file_hash_algo_by_hex_len, now_local_string,
@@ -386,6 +389,17 @@ pub struct NetAssistantApp {
     pub toolbox_base64_input: Entity<EditorState>,
     // 编码组「URL」输入框
     pub toolbox_url_input: Entity<EditorState>,
+    // 随机组：类型选择、长度 / 数量输入、大写开关、字符集点选
+    pub toolbox_random_kind: RandomKind,
+    pub toolbox_random_length_input: Entity<InputState>,
+    pub toolbox_random_count_input: Entity<InputState>,
+    pub toolbox_random_uppercase: bool,
+    pub toolbox_random_charset: CharsetOptions,
+    // 随机组生成快照：Some=最近一次生成结果（重绘不变），错误与结果互斥
+    pub toolbox_random_result: Option<RandomResult>,
+    pub toolbox_random_error: Option<RandomError>,
+    // 生成序号：连续点击时只接受最后一次结果
+    pub toolbox_random_gen_seq: u64,
     // 工具箱输入变化订阅：内容变化即重绘以刷新输出区
     pub toolbox_input_subscriptions: Vec<Subscription>,
 }
@@ -517,6 +531,17 @@ impl NetAssistantApp {
                 .line_number(false)
                 .folding(false)
                 .placeholder(t!("toolbox.url_placeholder"))
+        });
+        // 随机组：长度 / 数量（单行数字输入，默认 UUID 的固定长度与 10 条）
+        let toolbox_random_length_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx);
+            state.set_value(RandomKind::Uuid.default_length().to_string(), window, cx);
+            state
+        });
+        let toolbox_random_count_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx);
+            state.set_value("10", window, cx);
+            state
         });
 
         // 创建连接事件通道 - 使用smol channel与GPUI兼容
@@ -678,6 +703,14 @@ impl NetAssistantApp {
             toolbox_json_pretty: true,
             toolbox_base64_input,
             toolbox_url_input,
+            toolbox_random_kind: RandomKind::Uuid,
+            toolbox_random_length_input,
+            toolbox_random_count_input,
+            toolbox_random_uppercase: false,
+            toolbox_random_charset: CharsetOptions::password(),
+            toolbox_random_result: None,
+            toolbox_random_error: None,
+            toolbox_random_gen_seq: 0,
             toolbox_input_subscriptions: Vec::new(),
         };
 
@@ -710,6 +743,23 @@ impl NetAssistantApp {
                 &input,
                 move |_app, _input, event, cx| {
                     if matches!(event, InputEvent::Change) {
+                        cx.notify();
+                    }
+                },
+            ));
+        }
+
+        // 随机组长度 / 数量变化：清空旧结果，避免复制到过期参数的结果
+        for input in [
+            app.toolbox_random_length_input.clone(),
+            app.toolbox_random_count_input.clone(),
+        ] {
+            app.toolbox_input_subscriptions.push(cx.subscribe(
+                &input,
+                move |app, _input, event, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        app.toolbox_random_result = None;
+                        app.toolbox_random_error = None;
                         cx.notify();
                     }
                 },
@@ -3399,6 +3449,131 @@ impl NetAssistantApp {
             self.spawn_file_hash_compute(cx);
         }
         cx.notify();
+    }
+
+    /// 切换随机类型：重置该类型默认长度并清空旧结果（定长类型长度输入随之禁用）
+    pub fn set_random_kind(
+        &mut self,
+        kind: RandomKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.toolbox_random_kind == kind {
+            return;
+        }
+        self.toolbox_random_kind = kind;
+        let length = kind.default_length().to_string();
+        self.toolbox_random_length_input
+            .update(cx, |input, cx| input.set_value(length, window, cx));
+        self.toolbox_random_result = None;
+        self.toolbox_random_error = None;
+        cx.notify();
+    }
+
+    /// 十六进制大写开关（仅 Hex 类型可见）
+    pub fn toggle_random_uppercase(&mut self, cx: &mut Context<Self>) {
+        self.toolbox_random_uppercase = !self.toolbox_random_uppercase;
+        self.toolbox_random_result = None;
+        self.toolbox_random_error = None;
+        cx.notify();
+    }
+
+    /// 点选字符类别（数字 / 小写 / 大写 / 符号）
+    pub fn toggle_random_charset_class(&mut self, class: &'static str, cx: &mut Context<Self>) {
+        let charset = &mut self.toolbox_random_charset;
+        match class {
+            "digits" => charset.digits = !charset.digits,
+            "lower" => charset.lower = !charset.lower,
+            "upper" => charset.upper = !charset.upper,
+            "symbols" => charset.symbols = !charset.symbols,
+            _ => {}
+        }
+        self.toolbox_random_result = None;
+        self.toolbox_random_error = None;
+        cx.notify();
+    }
+
+    /// 是否排除易混淆字符
+    pub fn set_random_exclude_ambiguous(&mut self, exclude: bool, cx: &mut Context<Self>) {
+        self.toolbox_random_charset.exclude_ambiguous = exclude;
+        self.toolbox_random_result = None;
+        self.toolbox_random_error = None;
+        cx.notify();
+    }
+
+    /// 应用字符集预设（随机密码 / 字母数字）
+    pub fn set_random_charset(&mut self, charset: CharsetOptions, cx: &mut Context<Self>) {
+        self.toolbox_random_charset = charset;
+        self.toolbox_random_result = None;
+        self.toolbox_random_error = None;
+        cx.notify();
+    }
+
+    /// 生成随机数据：参数校验 → 后台线程生成 → 序号守卫回写快照。
+    ///
+    /// 结果只在点击「生成」时刷新（重绘不变），保证展示值 = 复制值；
+    /// 国密密钥批量生成可能耗时，故统一走后台执行器。
+    pub fn generate_random(&mut self, cx: &mut Context<Self>) {
+        let length = self
+            .toolbox_random_length_input
+            .read(cx)
+            .value()
+            .to_string()
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
+        let count = self
+            .toolbox_random_count_input
+            .read(cx)
+            .value()
+            .to_string()
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
+
+        let params = RandomParams {
+            kind: self.toolbox_random_kind,
+            length,
+            count,
+            uppercase: self.toolbox_random_uppercase,
+            charset: self.toolbox_random_charset,
+        };
+
+        if let Err(error) = params.validate() {
+            self.toolbox_random_result = None;
+            self.toolbox_random_error = Some(error);
+            cx.notify();
+            return;
+        }
+
+        self.toolbox_random_gen_seq = self.toolbox_random_gen_seq.wrapping_add(1);
+        let seq = self.toolbox_random_gen_seq;
+        cx.notify();
+
+        cx.spawn(async move |this, async_cx| {
+            let result = async_cx
+                .background_executor()
+                .spawn(async move { random::generate(&params) })
+                .await;
+            let _ = this.update(async_cx, |app, cx| {
+                // 连续点击时只接受最后一次生成的结果
+                if app.toolbox_random_gen_seq != seq {
+                    return;
+                }
+                match result {
+                    Ok(result) => {
+                        app.toolbox_random_result = Some(result);
+                        app.toolbox_random_error = None;
+                    }
+                    Err(error) => {
+                        app.toolbox_random_result = None;
+                        app.toolbox_random_error = Some(error);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// 对比值中 hex 字符数命中某算法 digest 长度且该算法未勾选 →

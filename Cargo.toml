@@ -28,6 +28,9 @@ argon2 = "0.6"
 bcrypt = "0.19"
 pbkdf2 = "0.13"
 getrandom = "0.4"
+# 工具箱「随机」组：SM2 密钥对生成（国密椭圆曲线，纯 Rust 实现）
+# 只启用曲线运算 + 系统熵源，不引入 DSA/PKE/PEM，避免多余依赖
+sm2 = { version = "0.14", default-features = false, features = ["arithmetic", "getrandom", "std"] }
 regex = "1.10"
 log = "0.4"
 simple_logger = "5.0"

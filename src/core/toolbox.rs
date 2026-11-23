@@ -20,6 +20,9 @@ pub enum ToolCategory {
     Json,
     /// Base64 / URL 编解码（计算逻辑见 `core/toolbox_extra.rs`）
     Encoding,
+    /// 随机数据生成：UUID / Hex / 数字 / 自定义字符集 / 国密密钥
+    /// （计算逻辑见 `core/random.rs`，不参与选区工具注册表）
+    Random,
 }
 
 /// 一个选区工具（静态描述，无运行时状态）。

@@ -1,4 +1,5 @@
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::Disableable as _;
 use gpui_kit::component::Icon;
 use gpui_kit::component::IconName;
 use gpui_kit::component::Sizable as _;
@@ -14,6 +15,7 @@ use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::{FileHashJob, NetAssistantApp};
+use crate::core::random::{CharsetOptions, RandomError, RandomKind, RandomRow, RowLabel};
 use crate::core::toolbox::{
     SelectionTool, ToolCategory, compute_tool, resolve_tools, selection_tools,
 };
@@ -215,6 +217,11 @@ impl<'a> ToolboxPanel<'a> {
                 "toolbox.category_encoding",
                 "toolbox-nav-encoding",
             ),
+            (
+                ToolCategory::Random,
+                "toolbox.category_random",
+                "toolbox-nav-random",
+            ),
         ] {
             let is_active = self.app.toolbox_active_group == category;
             nav = nav.child(
@@ -303,6 +310,9 @@ impl<'a> ToolboxPanel<'a> {
                 workspace = workspace
                     .child(self.render_base64_block(cx))
                     .child(self.render_url_block(cx));
+            }
+            ToolCategory::Random => {
+                workspace = workspace.child(self.render_random_block(cx));
             }
         }
         workspace
@@ -1280,6 +1290,675 @@ impl<'a> ToolboxPanel<'a> {
             None,
             cx,
         )
+    }
+
+    /// 随机组工具块：类型 chips + 参数行 + 字符集 + 生成动作 + 结果快照。
+    ///
+    /// 结果只在点击「生成」时产生（快照），渲染读缓存；参数变化清空旧结果。
+    fn render_random_block(&self, cx: &Context<NetAssistantApp>) -> Div {
+        let theme = cx.theme().clone();
+        let kind = self.app.toolbox_random_kind;
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_3()
+            .rounded_lg()
+            .border_1()
+            .border_color(theme.border)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(theme.foreground)
+                            .child(t!("toolbox.random_title").to_string()),
+                    )
+                    .child(
+                        div()
+                            .px_1p5()
+                            .py_0p5()
+                            .rounded_sm()
+                            .text_xs()
+                            .font_medium()
+                            .text_color(theme.primary)
+                            .border_1()
+                            .border_color(theme.border)
+                            .child(t!("toolbox.random_mode").to_string()),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(t!("toolbox.random_secure").to_string()),
+                    ),
+            )
+            .child(self.render_random_kind_chips(cx))
+            .child(self.render_random_params(cx))
+            .when(kind.uses_charset(), |block| {
+                block.child(self.render_random_charset(cx))
+            })
+            .child(self.render_random_actions(cx))
+            .child(self.render_random_result(cx))
+    }
+
+    /// 类型 chips（互斥高亮，点击切换并重置长度）
+    fn render_random_kind_chips(&self, cx: &Context<NetAssistantApp>) -> Div {
+        let theme = cx.theme().clone();
+        let mut row = div().flex().flex_wrap().gap_2();
+
+        for kind in [
+            RandomKind::Uuid,
+            RandomKind::UuidSimple,
+            RandomKind::Hex,
+            RandomKind::Decimal,
+            RandomKind::Custom,
+            RandomKind::Sm2,
+            RandomKind::Sm4,
+        ] {
+            let active = self.app.toolbox_random_kind == kind;
+            row = row.child(
+                div()
+                    .id(Self::random_kind_id(kind))
+                    .px_2()
+                    .py_1()
+                    .rounded_full()
+                    .cursor_pointer()
+                    .text_xs()
+                    .font_medium()
+                    .border_1()
+                    .when(active, |chip| {
+                        chip.bg(theme.primary.opacity(0.1))
+                            .border_color(theme.primary)
+                            .text_color(theme.primary)
+                    })
+                    .when(!active, |chip| {
+                        chip.border_color(theme.border)
+                            .text_color(theme.foreground)
+                            .hover(|style| style.bg(theme.border))
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |app, _event: &MouseDownEvent, window, cx| {
+                            app.set_random_kind(kind, window, cx);
+                        }),
+                    )
+                    .child(Self::random_kind_label(kind)),
+            );
+        }
+        row
+    }
+
+    /// 参数行：长度（定长禁用）/ 数量 / 大写（仅 Hex）/ 范围提示
+    fn render_random_params(&self, cx: &Context<NetAssistantApp>) -> Div {
+        let theme = cx.theme().clone();
+        let kind = self.app.toolbox_random_kind;
+        let fixed = kind.is_fixed_length();
+
+        let mut row = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_3()
+            .px_2()
+            .py_2()
+            .rounded_md()
+            .bg(theme.secondary)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(t!("toolbox.random_length").to_string()),
+                    )
+                    .child(
+                        div()
+                            .w(px(84.0))
+                            .h(px(30.0))
+                            .bg(theme.background)
+                            .rounded_md()
+                            .border_1()
+                            .border_color(theme.border)
+                            .child(
+                                Input::new(&self.app.toolbox_random_length_input)
+                                    .disabled(fixed)
+                                    .w_full()
+                                    .h_full()
+                                    .px_2()
+                                    .font_family("JetBrains Mono")
+                                    .bg(theme.background)
+                                    .rounded_md()
+                                    .border_0(),
+                            ),
+                    )
+                    .when(fixed, |field| {
+                        field.child(
+                            div()
+                                .px_1p5()
+                                .py_0p5()
+                                .rounded_full()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .border_1()
+                                .border_color(theme.border)
+                                .child(t!("toolbox.random_fixed_length").to_string()),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(t!("toolbox.random_count").to_string()),
+                    )
+                    .child(
+                        div()
+                            .w(px(84.0))
+                            .h(px(30.0))
+                            .bg(theme.background)
+                            .rounded_md()
+                            .border_1()
+                            .border_color(theme.border)
+                            .child(
+                                Input::new(&self.app.toolbox_random_count_input)
+                                    .w_full()
+                                    .h_full()
+                                    .px_2()
+                                    .font_family("JetBrains Mono")
+                                    .bg(theme.background)
+                                    .rounded_md()
+                                    .border_0(),
+                            ),
+                    ),
+            );
+
+        if kind == RandomKind::Hex {
+            let on = self.app.toolbox_random_uppercase;
+            row = row.child(
+                div()
+                    .id("random-upper-toggle")
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .cursor_pointer()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|app, _event: &MouseDownEvent, _window, cx| {
+                            app.toggle_random_uppercase(cx);
+                        }),
+                    )
+                    .child(t!("toolbox.random_uppercase").to_string())
+                    .child(
+                        div()
+                            .relative()
+                            .w(px(28.0))
+                            .h(px(16.0))
+                            .rounded_full()
+                            .bg(if on { theme.primary } else { theme.border })
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top(px(2.0))
+                                    .left(px(if on { 14.0 } else { 2.0 }))
+                                    .w(px(12.0))
+                                    .h(px(12.0))
+                                    .rounded_full()
+                                    .bg(theme.primary_foreground),
+                            ),
+                    ),
+            );
+        }
+
+        if !fixed {
+            row = row.child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(t!("toolbox.random_range_hint").to_string()),
+            );
+        }
+        row
+    }
+
+    /// 自定义字符集面板：类别点选 + 预设 + 排除易混淆
+    fn render_random_charset(&self, cx: &Context<NetAssistantApp>) -> Div {
+        let theme = cx.theme().clone();
+        let charset = self.app.toolbox_random_charset;
+
+        let mut panel = div()
+            .flex()
+            .flex_col()
+            .gap_1p5()
+            .px_2()
+            .py_2()
+            .rounded_md()
+            .bg(theme.secondary)
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_medium()
+                            .text_color(theme.muted_foreground)
+                            .child(t!("toolbox.random_charset").to_string()),
+                    )
+                    .child(Self::random_preset_chip(
+                        "random-preset-password",
+                        t!("toolbox.random_preset_password").to_string(),
+                        CharsetOptions::password(),
+                        &theme,
+                        cx,
+                    ))
+                    .child(Self::random_preset_chip(
+                        "random-preset-alnum",
+                        t!("toolbox.random_preset_alnum").to_string(),
+                        CharsetOptions::alnum(),
+                        &theme,
+                        cx,
+                    )),
+            );
+
+        let mut chips = div().flex().flex_wrap().gap_1p5();
+        for (class, label_key, active) in [
+            ("digits", "toolbox.charset_digits", charset.digits),
+            ("lower", "toolbox.charset_lower", charset.lower),
+            ("upper", "toolbox.charset_upper", charset.upper),
+            ("symbols", "toolbox.charset_symbols", charset.symbols),
+        ] {
+            chips = chips.child(
+                div()
+                    .id(Self::random_class_id(class))
+                    .px_1p5()
+                    .py_0p5()
+                    .rounded_full()
+                    .border_1()
+                    .cursor_pointer()
+                    .text_xs()
+                    .when(active, |chip| {
+                        chip.bg(theme.primary.opacity(0.1))
+                            .border_color(theme.primary)
+                            .text_color(theme.primary)
+                    })
+                    .when(!active, |chip| {
+                        chip.border_color(theme.border)
+                            .text_color(theme.muted_foreground)
+                            .hover(|style| style.border_color(theme.primary))
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |app, _event: &MouseDownEvent, _window, cx| {
+                            app.toggle_random_charset_class(class, cx);
+                        }),
+                    )
+                    .child(t!(label_key).to_string()),
+            );
+        }
+        panel = panel.child(chips);
+
+        panel = panel.child(
+            div()
+                .id("random-exclude-ambiguous")
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .cursor_pointer()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|app, _event: &MouseDownEvent, _window, cx| {
+                        let next = !app.toolbox_random_charset.exclude_ambiguous;
+                        app.set_random_exclude_ambiguous(next, cx);
+                    }),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .w(px(14.0))
+                        .h(px(14.0))
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(if charset.exclude_ambiguous {
+                            theme.primary
+                        } else {
+                            theme.border
+                        })
+                        .bg(if charset.exclude_ambiguous {
+                            theme.primary
+                        } else {
+                            theme.background
+                        })
+                        .when(charset.exclude_ambiguous, |box_| {
+                            box_.child(Icon::new(IconName::Check).size_3())
+                        }),
+                )
+                .child(t!("toolbox.charset_exclude_ambiguous").to_string()),
+        );
+
+        panel.child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(t!("toolbox.random_password_note").to_string()),
+        )
+    }
+
+    /// 生成 / 清空 + 状态提示
+    fn render_random_actions(&self, cx: &Context<NetAssistantApp>) -> Div {
+        let theme = cx.theme().clone();
+        let charset_empty = self.app.toolbox_random_kind.uses_charset()
+            && !self.app.toolbox_random_charset.any_selected();
+
+        let entity = cx.entity().clone();
+        let generate = Button::new("random-generate")
+            .primary()
+            .label(t!("toolbox.random_generate").to_string());
+        let generate = if charset_empty {
+            generate.disabled(true)
+        } else {
+            generate.on_click(move |_, _window, cx| {
+                entity.update(cx, |app, cx| app.generate_random(cx));
+            })
+        };
+
+        let clear_entity = cx.entity().clone();
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(generate)
+            .child(
+                Button::new("random-clear")
+                    .ghost()
+                    .label(t!("toolbox.random_clear").to_string())
+                    .on_click(move |_, _window, cx| {
+                        clear_entity.update(cx, |app, cx| {
+                            app.toolbox_random_result = None;
+                            app.toolbox_random_error = None;
+                            cx.notify();
+                        });
+                    }),
+            )
+            .child(div().flex_1())
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(if charset_empty {
+                        theme.danger
+                    } else {
+                        theme.muted_foreground
+                    })
+                    .child(if charset_empty {
+                        t!("toolbox.random_empty_charset").to_string()
+                    } else {
+                        t!("toolbox.random_hint").to_string()
+                    }),
+            )
+    }
+
+    /// 结果区：标题 + 全部复制 + 输出行（滚动）+ 类型脚注
+    fn render_random_result(&self, cx: &Context<NetAssistantApp>) -> Div {
+        let theme = cx.theme().clone();
+        let kind = self.app.toolbox_random_kind;
+        let result = self.app.toolbox_random_result.as_ref();
+        let error = self.app.toolbox_random_error;
+
+        let mut header = div().flex().items_center().gap_2().child(
+            div()
+                .text_xs()
+                .font_semibold()
+                .text_color(theme.muted_foreground)
+                .child(t!("toolbox.random_result").to_string()),
+        );
+        if let Some(result) = result {
+            header = header.child(div().text_xs().text_color(theme.muted_foreground).child(
+                format!("{} {}", result.rows.len(), t!("toolbox.random_count_unit")),
+            ));
+        }
+        header = header.child(div().flex_1());
+        if let Some(result) = result {
+            let flat = result.flat.clone();
+            header = header.child(
+                Button::new("random-copy-all")
+                    .xsmall()
+                    .label(t!("toolbox.random_copy_all").to_string())
+                    .on_click(move |_, _window, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(flat.clone()));
+                    }),
+            );
+        }
+
+        let mut area = div().flex().flex_col().gap_2().child(header);
+
+        if let Some(error) = error {
+            return area.child(
+                div()
+                    .px_2()
+                    .py_3()
+                    .rounded_md()
+                    .bg(theme.secondary)
+                    .text_sm()
+                    .text_color(theme.danger)
+                    .child(Self::random_error_text(error)),
+            );
+        }
+
+        let Some(result) = result else {
+            return area.child(
+                div()
+                    .px_2()
+                    .py_4()
+                    .rounded_md()
+                    .bg(theme.secondary)
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+                    .child(t!("toolbox.random_empty").to_string()),
+            );
+        };
+
+        let show_index = result.count > 1;
+        let mut list = div()
+            .id("random-output-list")
+            .flex()
+            .flex_col()
+            .max_h(px(360.0))
+            .overflow_y_scrollbar()
+            .rounded_md()
+            .border_1()
+            .border_color(theme.border)
+            .bg(theme.secondary);
+        for (idx, row) in result.rows.iter().enumerate() {
+            list = list.child(Self::render_random_row(idx, show_index, row, &theme));
+        }
+        area = area.child(list);
+
+        if let Some(note_key) = Self::random_note_key(kind) {
+            area = area.child(
+                div()
+                    .px_1()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(t!(note_key).to_string()),
+            );
+        }
+        area
+    }
+
+    /// 单条随机结果行：可选序号 + 可选标签 + 等宽值 + 复制
+    fn render_random_row(
+        idx: usize,
+        show_index: bool,
+        row: &RandomRow,
+        theme: &Theme,
+    ) -> impl IntoElement {
+        let label = match row.label {
+            RowLabel::None => None,
+            RowLabel::PrivateKey => Some(t!("toolbox.random_sm2_private").to_string()),
+            RowLabel::PublicKey => Some(t!("toolbox.random_sm2_public").to_string()),
+            RowLabel::Key => Some(t!("toolbox.random_sm4_key").to_string()),
+            RowLabel::Iv => Some(t!("toolbox.random_sm4_iv").to_string()),
+        };
+
+        div()
+            .id(ElementId::named_usize("random-row", idx))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1()
+            .min_w_0()
+            .max_w_full()
+            .overflow_hidden()
+            .when(idx > 0, |line| line.border_t_1().border_color(theme.border))
+            .hover(|style| style.bg(theme.border))
+            .when(show_index, |line| {
+                line.child(
+                    div()
+                        .w(px(36.0))
+                        .flex_shrink_0()
+                        .text_xs()
+                        .font_family("JetBrains Mono")
+                        .text_color(theme.muted_foreground)
+                        .child(format!("#{}", row.group + 1)),
+                )
+            })
+            .when_some(label, |line, label| {
+                line.child(
+                    div()
+                        .w(px(72.0))
+                        .flex_shrink_0()
+                        .text_xs()
+                        .font_medium()
+                        .text_color(theme.muted_foreground)
+                        .child(label),
+                )
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_sm()
+                    .font_family("JetBrains Mono")
+                    .text_color(theme.foreground)
+                    .child(row.value.clone()),
+            )
+            .child(
+                div().flex_shrink_0().child(
+                    Clipboard::new(ElementId::named_usize("random-copy", idx))
+                        .value(row.value.clone())
+                        .tooltip(t!("input_mode.copy").to_string()),
+                ),
+            )
+    }
+
+    /// 字符集预设 chip
+    fn random_preset_chip(
+        id: &'static str,
+        label: String,
+        charset: CharsetOptions,
+        theme: &Theme,
+        cx: &Context<NetAssistantApp>,
+    ) -> impl IntoElement {
+        div()
+            .id(id)
+            .px_1p5()
+            .py_0p5()
+            .rounded_full()
+            .border_1()
+            .border_color(theme.border)
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .cursor_pointer()
+            .hover(|style| style.border_color(theme.primary).text_color(theme.primary))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |app, _event: &MouseDownEvent, _window, cx| {
+                    app.set_random_charset(charset, cx);
+                }),
+            )
+            .child(label)
+    }
+
+    /// 类型 → 静态元素 id
+    fn random_kind_id(kind: RandomKind) -> &'static str {
+        match kind {
+            RandomKind::Uuid => "random-kind-uuid",
+            RandomKind::UuidSimple => "random-kind-uuid-simple",
+            RandomKind::Hex => "random-kind-hex",
+            RandomKind::Decimal => "random-kind-decimal",
+            RandomKind::Custom => "random-kind-custom",
+            RandomKind::Sm2 => "random-kind-sm2",
+            RandomKind::Sm4 => "random-kind-sm4",
+        }
+    }
+
+    /// 类型 → 本地化标签
+    fn random_kind_label(kind: RandomKind) -> String {
+        let key = match kind {
+            RandomKind::Uuid => "toolbox.random_kind_uuid",
+            RandomKind::UuidSimple => "toolbox.random_kind_uuid_simple",
+            RandomKind::Hex => "toolbox.random_kind_hex",
+            RandomKind::Decimal => "toolbox.random_kind_decimal",
+            RandomKind::Custom => "toolbox.random_kind_custom",
+            RandomKind::Sm2 => "toolbox.random_kind_sm2",
+            RandomKind::Sm4 => "toolbox.random_kind_sm4",
+        };
+        t!(key).to_string()
+    }
+
+    /// 字符类别 → 静态元素 id
+    fn random_class_id(class: &'static str) -> &'static str {
+        match class {
+            "digits" => "random-class-digits",
+            "lower" => "random-class-lower",
+            "upper" => "random-class-upper",
+            _ => "random-class-symbols",
+        }
+    }
+
+    /// 类型 → 结果区脚注 i18n key
+    fn random_note_key(kind: RandomKind) -> Option<&'static str> {
+        match kind {
+            RandomKind::Custom => Some("toolbox.random_password_note"),
+            RandomKind::Sm2 => Some("toolbox.random_sm2_note"),
+            RandomKind::Sm4 => Some("toolbox.random_sm4_note"),
+            _ => None,
+        }
+    }
+
+    /// 生成错误 → 本地化文案
+    fn random_error_text(error: RandomError) -> String {
+        let key = match error {
+            RandomError::EmptyCharset => "toolbox.random_empty_charset",
+            RandomError::InvalidLength => "toolbox.random_invalid_length",
+            RandomError::InvalidCount => "toolbox.random_invalid_count",
+            RandomError::CryptoFailure => "toolbox.random_crypto_failed",
+        };
+        t!(key).to_string()
     }
 
     /// 编辑器容器右上角的清空叉号（有内容时由调用方渲染）。

@@ -213,6 +213,132 @@ toolbox:
   mode_file:
     zh-CN: 文件
     en: File
+  category_random:
+    zh-CN: 随机
+    en: Random
+  random_title:
+    zh-CN: 随机生成
+    en: Random Generator
+  random_mode:
+    zh-CN: 随机
+    en: Random
+  random_secure:
+    zh-CN: 本机离线生成
+    en: Generated locally
+  random_kind_uuid:
+    zh-CN: UUID v4
+    en: UUID v4
+  random_kind_uuid_simple:
+    zh-CN: UUID（无横线）
+    en: UUID (no dashes)
+  random_kind_hex:
+    zh-CN: 十六进制
+    en: Hexadecimal
+  random_kind_decimal:
+    zh-CN: 十进制
+    en: Decimal
+  random_kind_custom:
+    zh-CN: 自定义字符集
+    en: Custom charset
+  random_kind_sm2:
+    zh-CN: SM2 密钥对
+    en: SM2 key pair
+  random_kind_sm4:
+    zh-CN: SM4 密钥
+    en: SM4 key
+  random_length:
+    zh-CN: 长度
+    en: Length
+  random_count:
+    zh-CN: 数量
+    en: Count
+  random_uppercase:
+    zh-CN: 大写
+    en: Uppercase
+  random_charset:
+    zh-CN: 字符集
+    en: Charset
+  charset_digits:
+    zh-CN: 数字 0-9
+    en: Digits 0-9
+  charset_lower:
+    zh-CN: 小写 a-z
+    en: Lowercase a-z
+  charset_upper:
+    zh-CN: 大写 A-Z
+    en: Uppercase A-Z
+  charset_symbols:
+    zh-CN: "符号 !@#$…"
+    en: "Symbols !@#$…"
+  charset_exclude_ambiguous:
+    zh-CN: "排除易混淆（0 O o 1 l I | ` ' \"）"
+    en: "Exclude ambiguous (0 O o 1 l I | ` ' \")"
+  random_preset_password:
+    zh-CN: 随机密码
+    en: Random password
+  random_preset_alnum:
+    zh-CN: 字母数字
+    en: Letters + digits
+  random_generate:
+    zh-CN: 生成
+    en: Generate
+  random_clear:
+    zh-CN: 清空
+    en: Clear
+  random_result:
+    zh-CN: 结果
+    en: Result
+  random_count_unit:
+    zh-CN: 条
+    en: items
+  random_copy_all:
+    zh-CN: 全部复制
+    en: Copy all
+  random_empty:
+    zh-CN: 点击「生成」后显示结果
+    en: Click Generate to see results
+  random_hint:
+    zh-CN: 结果以快照保留，仅点击「生成」时刷新
+    en: Results are snapshotted and refresh only on Generate
+  random_range_hint:
+    zh-CN: 长度 1–1024 · 数量 1–100
+    en: Length 1–1024 · Count 1–100
+  random_fixed_length:
+    zh-CN: 固定
+    en: Fixed
+  random_invalid_length:
+    zh-CN: 长度需在 1–1024 之间
+    en: Length must be between 1 and 1024
+  random_invalid_count:
+    zh-CN: 数量需在 1–100 之间
+    en: Count must be between 1 and 100
+  random_empty_charset:
+    zh-CN: 至少选择一种字符
+    en: Select at least one character class
+  random_crypto_failed:
+    zh-CN: 系统随机源不可用
+    en: System random source unavailable
+  random_sm2_private:
+    zh-CN: 私钥
+    en: Private key
+  random_sm2_public:
+    zh-CN: 公钥
+    en: Public key
+  random_sm4_key:
+    zh-CN: 密钥
+    en: Key
+  random_sm4_iv:
+    zh-CN: IV
+    en: IV
+  random_sm2_note:
+    zh-CN: 公钥为 SEC1 未压缩格式（04 开头），私钥请妥善保管
+    en: Public key is SEC1 uncompressed (starts with 04); keep the private key safe
+  random_sm4_note:
+    zh-CN: 密钥与 IV 均为 16 字节（32 位 hex）
+    en: Key and IV are 16 bytes each (32 hex chars)
+  random_password_note:
+    zh-CN: 已选字符类别各至少出现 1 次（长度足够时）
+    en: Each selected class appears at least once when length allows
 
 input_mode:
   json_pretty:
