@@ -37,7 +37,7 @@
 - **自动化**：周期发送、逐行发送、定时任务、条件回复规则，以及 `${seq}`、`${timestamp}`、`${uuid}` 等变量模板。
 - **压力测试**：TCP/UDP Ping-Pong 与吞吐模式、短/长连接、QPS、p50/p95/p99、失败分类、CSV 报告。
 - **MQTT 客户端**：3.1.1/5.0、QoS 0/1/2、TLS 与双向认证、遗嘱消息、订阅恢复、断线自动重连。
-- **内置工具箱**：转换、校验（XOR/Sum8/LRC/CRC16/CRC32）、哈希、时间戳、JSON、Base64/URL 编解码。
+- **内置工具箱**：转换、校验（XOR/Sum8/LRC/CRC16/CRC32）、哈希、时间戳、JSON、Base64/URL 编解码、随机生成（UUID / Hex / 自定义字符集 / SM2、SM4 密钥）。
 
 完整说明见 [功能特性](https://netassistant.trydo.top/features)。
 

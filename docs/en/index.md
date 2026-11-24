@@ -26,7 +26,7 @@ features:
     details: Full support for TCP/UDP client and server modes plus an MQTT 3.1.1 / 5.0 client (TLS, per-subscription switches, QoS 0/1/2, last-will messages), with IPv4/IPv6 dual stack for any network environment.
   - icon: 🧰
     title: Built-in Toolbox
-    details: Six everyday groups — convert, checksum, hash, time, JSON and encoding — with instant results and one-click copy, no need to switch to external sites.
+    details: Seven everyday groups — convert, checksum, hash, time, JSON, encoding and random — with instant results and one-click copy, no need to switch to external sites.
   - icon: 📦
     title: Smart Decoders
     details: Four TCP decoders — raw data, line-delimited, length-prefix and JSON — effectively solving sticky packet issues; send and receive in hex mode.

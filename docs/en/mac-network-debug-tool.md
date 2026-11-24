@@ -124,7 +124,7 @@ An MQTT 3.1.1 / 5.0 client with subscription management, QoS 0/1/2, retain, last
 
 ### Built-in toolbox
 
-Convert, checksum, hash, time, JSON and encoding tools in a permanent tab, so you do not have to switch between the browser and editor while debugging.
+Convert, checksum, hash, time, JSON, encoding and random tools in a permanent tab, so you do not have to switch between the browser and editor while debugging.
 
 ## NetAssistant vs other Mac tools
 

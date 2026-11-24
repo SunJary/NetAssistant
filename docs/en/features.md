@@ -12,7 +12,7 @@ By platform: [Windows network debugging tool](/en/windows-network-debug-tool) ·
 ## Core Features
 
 - **Multi-protocol support**: full support for TCP/UDP client and server modes, plus an MQTT 3.1.1 / 5.0 client; see the [TCP debug tool](/en/tcp-debug-tool), [UDP debug tool](/en/udp-debug-tool) and [Socket debug tool](/en/socket-debug-tool)
-- **Built-in toolbox**: open it from the wrench icon at the right of the tab bar; switch between Convert / Checksum / Hash / Time / JSON / Encoding groups, results appear as you type and every row has a copy button
+- **Built-in toolbox**: open it from the wrench icon at the right of the tab bar; switch between Convert / Checksum / Hash / Time / JSON / Encoding / Random groups, results appear as you type and every row has a copy button
 - **IPv4/IPv6 dual stack**: supports both IPv4 and IPv6, adapting to any network environment
 - **Multiple TCP decoders**: raw data, line-delimited, length-prefix and JSON decoders for different protocol formats, effectively solving TCP sticky packet issues
 - **JSON formatting**: the send box offers "Prettify/Minify" buttons in text mode to format the outgoing payload; the receive area can switch between Raw/Prettified/Minified display formats globally, with non-JSON content shown as-is
@@ -82,6 +82,7 @@ Click the wrench icon at the right of the tab bar to open the toolbox. It is a p
 - **Time**: timestamp → date (local / UTC, auto-detecting seconds and milliseconds), date → timestamp (seconds / milliseconds, with weekday and relative time), ISO 8601 support and "Fill now"
 - **JSON**: beautify / minify with a JSON5 fallback (unquoted keys, single quotes, trailing commas, comments) when strict JSON parsing fails
 - **Encoding**: Base64 encode / decode and URL encode / decode
+- **Random**: UUID v4 (with or without dashes), hex strings of any length (uppercase optional), decimal digits, custom-charset passwords (pick digits / lowercase / uppercase / symbols, exclude ambiguous characters, Random password / Letters + digits presets), plus SM2 key pairs and SM4 key + IV; generate 1-100 values, copy rows individually or all at once, and results are snapshotted until you click Generate
 
 ![Toolbox hash screenshot](../../assets/screenshots/en/screenshot_toolbox_hash.png)
 

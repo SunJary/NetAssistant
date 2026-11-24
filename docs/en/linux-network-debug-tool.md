@@ -152,7 +152,7 @@ An MQTT 3.1.1 / 5.0 client with subscription management, QoS 0/1/2, retain, last
 
 ### Built-in toolbox
 
-Convert, checksum, hash, time, JSON and encoding tools in a permanent tab, including hex/text conversion, CRC16/CRC32, MD5/SHA, timestamp conversion and Base64/URL encoding.
+Convert, checksum, hash, time, JSON, encoding and random tools in a permanent tab, including hex/text conversion, CRC16/CRC32, MD5/SHA, timestamp conversion, Base64/URL encoding and UUID / SM2 / SM4 key generation.
 
 ## NetAssistant vs command-line tools
 

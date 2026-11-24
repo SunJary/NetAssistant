@@ -142,7 +142,7 @@ Create an MQTT connection with broker address, client ID, credentials, keep-aliv
 
 ### Built-in toolbox
 
-Convert, checksum, hash, time, JSON and encoding tools live in a permanent tab: hex/text conversion, CRC16/CRC32, MD5/SHA, timestamp conversion and Base64/URL encoding.
+Convert, checksum, hash, time, JSON, encoding and random tools live in a permanent tab: hex/text conversion, CRC16/CRC32, MD5/SHA, timestamp conversion, Base64/URL encoding and UUID / SM2 / SM4 key generation.
 
 ## NetAssistant vs NetAssist
 

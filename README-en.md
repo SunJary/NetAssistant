@@ -37,7 +37,7 @@
 - **Automation**: periodic send, line-by-line send, timed tasks, conditional reply rules, and variables such as `${seq}`, `${timestamp}` and `${uuid}`.
 - **Stress testing**: TCP/UDP Ping-Pong and throughput modes, short/long connections, QPS, p50/p95/p99, failure breakdown and CSV reports.
 - **MQTT client**: 3.1.1/5.0, QoS 0/1/2, TLS and mutual TLS, last-will messages, subscription restore and automatic reconnect.
-- **Built-in toolbox**: conversion, checksums (XOR/Sum8/LRC/CRC16/CRC32), hashes, timestamps, JSON and Base64/URL encoding.
+- **Built-in toolbox**: conversion, checksums (XOR/Sum8/LRC/CRC16/CRC32), hashes, timestamps, JSON, Base64/URL encoding and random generation (UUID / hex / custom charset / SM2, SM4 keys).
 
 See [Features](https://netassistant.trydo.top/en/features) for the full list.
 

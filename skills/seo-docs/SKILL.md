@@ -25,22 +25,26 @@ description: "为 NetAssistant 官网（docs/ + VitePress）撰写与优化 SEO 
 
 1. **确认分支与站点范围**：完整站点（MQTT 集群、`/compare/*`）在 `dev` 分支，`main` 只合入了一部分。先 `git ls docs` 看当前分支的实际文件，**不要按本文假设页面已存在**。
 2. 读 [config.mts](file:///d:/code/NetAssistant/docs/.vitepress/config.mts)：`pageNames`、`nav`、`sidebar`、`llms.txt` 以当前分支实际内容为准。
-3. 读 `src/` 与同集群现有页面：功能、默认值、限制不编造；拿不准就标注「未验证」。
+3. **现取能力清单**：读 `docs/features.md` 与 `docs/en/features.md`，再回 `src/` 与 `locales/panels.yml` 核对默认值、上限与实际文案。本文**不保存**功能明细，不要凭记忆或旧页面写能力。
+4. **对齐提交与文档**：文档通常滞后于提交。用 `git log --oneline -30`（或 `git log <上次文档更新/tag>..HEAD`）扫一遍最近提交，找出**代码里已有、但 `docs/features.md` 与最新 changelog 还没写**的用户可见能力，写页面时补进去。提交消息只当线索（可能只写 `fix`/`refactor`），结论以 diff 与 `src/` 为准。
+5. 读同集群现有页面：功能、默认值、限制不编造；拿不准就标注「未验证」。
 
 ## 产品定位与硬边界
 
 **一句话定位**：Rust 原生、约 20MB 内存、TCP/UDP + MQTT 一体的桌面调试工具，是 NetAssist、MQTTX、MQTT Explorer、MQTT.fx 的**轻量场景替代**，不是功能全集替代。
 
-| 事实 | 写法 |
-| ---- | ---- |
-| 平台 | Windows 10/11、macOS（Apple Silicon / Intel）、Linux（x64 / ARM64）；Windows 是主平台 |
-| 协议 | TCP、UDP 客户端与服务端；MQTT 3.1.1 / 5.0（TCP 与 TLS） |
-| TCP 解码器 | 原始数据、基于行、长度前缀、JSON |
-| 压测 | 仅 TCP/UDP；Ping-Pong 与吞吐模式、短/长连接、QPS、p50/p95/p99、CSV 导出 |
-| 工具箱 | 转换 / 校验（XOR、Sum8、LRC、CRC16-Modbus、CRC16-CCITT-FALSE、CRC32）/ 哈希 / 时间 / JSON / 编码 |
-| 授权 | Apache-2.0，免费开源，无账号、无云上传 |
+**功能清单不在本文维护副本**：协议、解码器、压测、工具箱分组等随版本变化，写页面时按右列重新读取当前分支，本文只保留定位与授权这类不易变的事实。
 
-相关页面至少出现一次以下边界，不虚构：
+| 事实 | 每次写页面前重新读取 |
+| ---- | ---- |
+| 平台 | `.github/workflows/release.yml` 的实际构建矩阵 + `docs/features.md` |
+| 协议 / 解码器 / 压测 / 工具箱 | `docs/features.md`（中英对照）；细节回 `src/`，如 `src/core/toolbox.rs`、`src/core/random.rs` |
+| 默认值与上限 | `src/app.rs`、`src/core/*.rs` 中的常量与实际逻辑，不要抄旧页面 |
+| 授权 | Apache-2.0，免费开源，无账号、无云上传（`Cargo.toml` / `LICENSE`） |
+
+新增能力的入口是 `docs/changelog.md` 最新条目**和最近提交**（`git log`，changelog 未覆盖时以提交为准），再到 `src/` 与 `locales/panels.yml` 核实。
+
+相关页面至少出现一次以下边界，不虚构；**这些边界同样会随版本变化，写前先用 `docs/features.md` 与最新 changelog 复核，已不成立的条目直接删掉，不要保留旧结论**：
 
 - 不做串口、Unix Domain Socket、HTTP/WebSocket 客户端
 - MQTT over WebSocket 不支持；无脚本引擎；无 topic 树与数据可视化
@@ -176,7 +180,7 @@ description: 主关键词 + 差异点 + 行动词（中文 70–110 字，英文
 
 ## 事实一致性清单
 
-写 TCP/UDP 相关内容时对照：
+写 TCP/UDP 相关内容时对照（**具体数值同样以 `src/` 为准，写前复核，过期就改这一条而不是照抄旧页**）：
 
 - 解码器名称统一为「原始数据 / 基于行 / 长度前缀 / JSON」
 - 文本 ⇄ Hex 按 UTF-8 双向转换，不可打印字节用 `\xNN` 转义；文件导入上限 1 MiB，编码 UTF-8 / GBK / ANSI

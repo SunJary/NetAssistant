@@ -68,7 +68,7 @@ NetAssistant has a few capabilities MQTTX does not have at all, but they **only 
 - **Built-in high-concurrency stress testing**: TCP/UDP client load testing with QPS and p50/p95/p99 latency
 - **Four TCP decoders**: raw / line / length-prefix / JSON, solving sticky-packet framing
 - **Line-by-line send tasks and scheduled tasks**: batch sending and heartbeat scheduling
-- **Built-in toolbox**: convert / checksum / hash / time / JSON / encode (the toolbox is a separate tab and is still usable alongside an MQTT connection)
+- **Built-in toolbox**: convert / checksum / hash / time / JSON / encode / random (the toolbox is a separate tab and is still usable alongside an MQTT connection)
 
 ## Giving MQTTX Its Due
 
