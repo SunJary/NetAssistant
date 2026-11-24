@@ -4,11 +4,11 @@ import { useData, withBase } from 'vitepress'
 
 const { page, lang } = useData()
 
-const isEn = computed(() => lang.value.startsWith('en'))
-const downloadHref = computed(() => withBase(isEn.value ? '/en/download' : '/download'))
+const isZh = computed(() => lang.value.startsWith('zh'))
+const downloadHref = computed(() => withBase(isZh.value ? '/zh/download' : '/download'))
 const hidden = computed(() => {
   const path = page.value.relativePath || ''
-  return page.value.isHome || path === 'download.md' || path === 'en/download.md'
+  return page.value.isHome || path === 'download.md' || path === 'zh/download.md'
 })
 </script>
 
@@ -16,18 +16,18 @@ const hidden = computed(() => {
   <aside v-if="!hidden" class="download-cta">
     <div>
       <p class="download-cta__title">
-        {{ isEn ? 'Try it in your next debugging session' : '在下一次调试中试试 NetAssistant' }}
+        {{ isZh ? '在下一次调试中试试 NetAssistant' : 'Try it in your next debugging session' }}
       </p>
       <p class="download-cta__desc">
         {{
-          isEn
-            ? 'Free and open source, about 20 MB. Windows, macOS and Linux, no signup required.'
-            : '免费开源，约 20MB。支持 Windows、macOS 与 Linux，无需注册。'
+          isZh
+            ? '免费开源，约 20MB。支持 Windows、macOS 与 Linux，无需注册。'
+            : 'Free and open source, about 20 MB. Windows, macOS and Linux, no signup required.'
         }}
       </p>
     </div>
     <a class="download-cta__button" :href="downloadHref">
-      {{ isEn ? 'Download' : '立即下载' }}
+      {{ isZh ? '立即下载' : 'Download' }}
     </a>
   </aside>
 </template>

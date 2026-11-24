@@ -6,1096 +6,2886 @@ qos_semantics:
   at_most_once:
     zh-CN: 至多一次
     en: At most once
+    ja: "最大 1 回"
+    de: "Höchstens einmal"
+    ru: "Не более одного раза"
+    pt-BR: "No máximo uma vez"
+    es: "Como máximo una vez"
   at_least_once:
     zh-CN: 至少一次
     en: At least once
+    ja: "少なくとも 1 回"
+    de: "Mindestens einmal"
+    ru: "Не менее одного раза"
+    pt-BR: "Pelo menos uma vez"
+    es: "Al menos una vez"
   exactly_once:
     zh-CN: 仅一次
     en: Exactly once
+    ja: "ちょうど 1 回"
+    de: "Genau einmal"
+    ru: "Ровно один раз"
+    pt-BR: "Exatamente uma vez"
+    es: "Exactamente una vez"
 
 connection_panel:
   client:
     zh-CN: 客户端连接
     en: Client Connections
+    ja: "クライアント接続"
+    de: "Client-Verbindungen"
+    ru: "Клиентские подключения"
+    pt-BR: "Conexões de cliente"
+    es: "Conexiones de cliente"
   server:
     zh-CN: 服务端连接
     en: Server Connections
+    ja: "サーバー接続"
+    de: "Server-Verbindungen"
+    ru: "Серверные подключения"
+    pt-BR: "Conexões de servidor"
+    es: "Conexiones de servidor"
 
 tab_container:
   no_connection:
     zh-CN: 请先创建连接
     en: Create a connection first
+    ja: "先に接続を作成してください"
+    de: "Bitte zuerst eine Verbindung erstellen"
+    ru: "Сначала создайте подключение"
+    pt-BR: "Crie uma conexão primeiro"
+    es: "Cree primero una conexión"
 
 toolbox:
   title:
     zh-CN: 工具箱
     en: Toolbox
+    ja: "ツールボックス"
+    de: "Werkzeuge"
+    ru: "Инструменты"
+    pt-BR: "Caixa de ferramentas"
+    es: "Caja de herramientas"
   checksum_title:
     zh-CN: 校验计算
     en: Checksum
+    ja: "チェックサム計算"
+    de: "Prüfsumme"
+    ru: "Контрольная сумма"
+    pt-BR: "Checksum"
+    es: "Suma de verificación"
   result:
     zh-CN: 结果
     en: Result
+    ja: "結果"
+    de: "Ergebnis"
+    ru: "Результат"
+    pt-BR: "Resultado"
+    es: "Resultado"
   convert_text_placeholder:
     zh-CN: 输入文本，自动转换为 Hex
     en: Type text to convert to hex
+    ja: "テキストを入力すると Hex に自動変換"
+    de: "Text eingeben, automatisch in Hex umwandeln"
+    ru: "Введите текст для преобразования в Hex"
+    pt-BR: "Digite o texto para converter em hex"
+    es: "Escriba texto para convertirlo a hexadecimal"
   convert_hex_placeholder:
     zh-CN: 输入 Hex，自动转换为文本
     en: Type hex to convert to text
+    ja: "Hex を入力するとテキストに自動変換"
+    de: "Hex eingeben, automatisch in Text umwandeln"
+    ru: "Введите Hex для преобразования в текст"
+    pt-BR: "Digite o hex para converter em texto"
+    es: "Escriba hexadecimal para convertirlo a texto"
   checksum_placeholder:
     zh-CN: 输入 Hex 字节序列，即时计算各校验值
     en: Type hex bytes to compute checksums
+    ja: "Hex バイト列を入力すると各チェックサムを即時計算"
+    de: "Hex-Bytefolge eingeben, Prüfsummen sofort berechnen"
+    ru: "Введите последовательность Hex-байт для расчёта контрольных сумм"
+    pt-BR: "Digite bytes em hex para calcular os checksums"
+    es: "Escriba una secuencia de bytes hexadecimal para calcular las sumas de verificación"
   output_empty:
     zh-CN: 输入内容后即时显示结果
     en: Results appear here as you type
+    ja: "入力すると結果が即時表示されます"
+    de: "Ergebnisse erscheinen beim Tippen"
+    ru: "Результат появится по мере ввода"
+    pt-BR: "Os resultados aparecem aqui enquanto você digita"
+    es: "Los resultados aparecen aquí al escribir"
   category_convert:
     zh-CN: 转换
     en: Convert
+    ja: "変換"
+    de: "Umwandeln"
+    ru: "Преобразование"
+    pt-BR: "Converter"
+    es: "Convertir"
   category_checksum:
     zh-CN: 校验
     en: Checksum
+    ja: "チェックサム"
+    de: "Prüfsumme"
+    ru: "Контрольные суммы"
+    pt-BR: "Checksum"
+    es: "Verificación"
   category_hash:
     zh-CN: 哈希
     en: Hash
+    ja: "ハッシュ"
+    de: "Hash"
+    ru: "Хеш"
+    pt-BR: "Hash"
+    es: "Hash"
   hash_title:
     zh-CN: 哈希
     en: Hash
+    ja: "ハッシュ"
+    de: "Hash"
+    ru: "Хеш"
+    pt-BR: "Hash"
+    es: "Hash"
   hash_placeholder:
     zh-CN: 输入文本，即时计算 MD5 / SHA 摘要与密码哈希
     en: Type text to compute MD5 / SHA digests and password hashes
+    ja: "テキストを入力すると MD5 / SHA ダイジェストとパスワードハッシュを即時計算"
+    de: "Text eingeben, MD5-/SHA-Digests und Passwort-Hashes sofort berechnen"
+    ru: "Введите текст для расчёта дайджестов MD5 / SHA и хешей паролей"
+    pt-BR: "Digite o texto para calcular resumos MD5 / SHA e hashes de senha"
+    es: "Escriba texto para calcular al instante los resúmenes MD5 / SHA y los hashes de contraseña"
   hash_compare_placeholder:
     zh-CN: 对比哈希值，粘贴后自动比对…
     en: Paste a hash to compare…
+    ja: "ハッシュ値を貼り付けると自動照合…"
+    de: "Hash zum Vergleichen einfügen…"
+    ru: "Вставьте хеш для сравнения…"
+    pt-BR: "Cole um hash para comparar…"
+    es: "Pegue un hash para compararlo…"
   hash_match_badge:
     zh-CN: 匹配
     en: Match
+    ja: "一致"
+    de: "Treffer"
+    ru: "Совпадает"
+    pt-BR: "Coincide"
+    es: "Coincide"
   hash_file_button:
     zh-CN: 文件
     en: File
+    ja: "ファイル"
+    de: "Datei"
+    ru: "Файл"
+    pt-BR: "Arquivo"
+    es: "Archivo"
   hash_file_pending:
     zh-CN: 计算中…
     en: Computing…
+    ja: "計算中…"
+    de: "Berechnung…"
+    ru: "Вычисление…"
+    pt-BR: "Calculando…"
+    es: "Calculando…"
   hash_file_failed:
     zh-CN: 读取失败
     en: Failed to read file
+    ja: "読み込み失敗"
+    de: "Lesen fehlgeschlagen"
+    ru: "Не удалось прочитать"
+    pt-BR: "Falha ao ler o arquivo"
+    es: "No se pudo leer"
   hash_file_algos:
     zh-CN: 算法
     en: Algorithms
+    ja: "アルゴリズム"
+    de: "Algorithmen"
+    ru: "Алгоритмы"
+    pt-BR: "Algoritmos"
+    es: "Algoritmos"
   passhash_group:
     zh-CN: 密码哈希（随机盐，输入变化时重新生成）
     en: Password hashes (random salt, regenerates on input)
+    ja: "パスワードハッシュ（ランダムソルト、入力変更時に再生成）"
+    de: "Passwort-Hashes (Zufalls-Salt, bei Eingabe neu erzeugt)"
+    ru: "Хеши паролей (случайная соль, пересчёт при изменении ввода)"
+    pt-BR: "Hashes de senha (salt aleatório, regenerado quando a entrada muda)"
+    es: "Hashes de contraseña (sal aleatoria, se regeneran al cambiar la entrada)"
   passhash_failed:
     zh-CN: 生成失败
     en: Failed to generate
+    ja: "生成失敗"
+    de: "Erzeugung fehlgeschlagen"
+    ru: "Не удалось создать"
+    pt-BR: "Falha ao gerar"
+    es: "Error al generar"
   category_time:
     zh-CN: 时间
     en: Time
+    ja: "時刻"
+    de: "Zeit"
+    ru: "Время"
+    pt-BR: "Tempo"
+    es: "Tiempo"
   category_json:
     zh-CN: JSON
     en: JSON
+    ja: "JSON"
+    de: "JSON"
+    ru: "JSON"
+    pt-BR: "JSON"
+    es: "JSON"
   category_encoding:
     zh-CN: 编码
     en: Encoding
+    ja: "エンコード"
+    de: "Kodierung"
+    ru: "Кодирование"
+    pt-BR: "Codificação"
+    es: "Codificación"
   time_ts_to_date:
     zh-CN: 时间戳 → 日期
     en: Timestamp → Date
+    ja: "タイムスタンプ → 日付"
+    de: "Zeitstempel → Datum"
+    ru: "Метка времени → дата"
+    pt-BR: "Timestamp → Data"
+    es: "Marca de tiempo → Fecha"
   time_date_to_ts:
     zh-CN: 日期 → 时间戳
     en: Date → Timestamp
+    ja: "日付 → タイムスタンプ"
+    de: "Datum → Zeitstempel"
+    ru: "Дата → метка времени"
+    pt-BR: "Data → Timestamp"
+    es: "Fecha → Marca de tiempo"
   time_fill_now:
     zh-CN: 填入当前
     en: Fill now
+    ja: "現在時刻を反映"
+    de: "Jetzt einsetzen"
+    ru: "Заполнить текущим"
+    pt-BR: "Preencher agora"
+    es: "Usar ahora"
   time_ts_placeholder:
     zh-CN: 秒或毫秒时间戳，如 1791714600
     en: Epoch seconds or milliseconds, e.g. 1791714600
+    ja: "秒またはミリ秒のタイムスタンプ、例 1791714600"
+    de: "Zeitstempel in Sekunden oder Millisekunden, z. B. 1791714600"
+    ru: "Метка времени в секундах или миллисекундах, например 1791714600"
+    pt-BR: "Timestamp em segundos ou milissegundos, ex. 1791714600"
+    es: "Marca de tiempo en segundos o milisegundos, p. ej. 1791714600"
   time_date_placeholder:
     zh-CN: 日期，如 2026-10-11 18:30:00 或 ISO 8601
     en: Date, e.g. 2026-10-11 18:30:00 or ISO 8601
+    ja: "日付、例 2026-10-11 18:30:00 または ISO 8601"
+    de: "Datum, z. B. 2026-10-11 18:30:00 oder ISO 8601"
+    ru: "Дата, например 2026-10-11 18:30:00 или ISO 8601"
+    pt-BR: "Data, ex. 2026-10-11 18:30:00 ou ISO 8601"
+    es: "Fecha, p. ej. 2026-10-11 18:30:00 o ISO 8601"
   time_local:
     zh-CN: 本地时间
     en: Local time
+    ja: "ローカル時刻"
+    de: "Lokale Zeit"
+    ru: "Местное время"
+    pt-BR: "Hora local"
+    es: "Hora local"
   time_utc:
     zh-CN: UTC 时间
     en: UTC time
+    ja: "UTC 時刻"
+    de: "UTC-Zeit"
+    ru: "Время UTC"
+    pt-BR: "Hora UTC"
+    es: "Hora UTC"
   time_ts_sec:
     zh-CN: 秒级
     en: Seconds
+    ja: "秒単位"
+    de: "Sekunden"
+    ru: "Секунды"
+    pt-BR: "Segundos"
+    es: "Segundos"
   time_ts_ms:
     zh-CN: 毫秒级
     en: Milliseconds
+    ja: "ミリ秒単位"
+    de: "Millisekunden"
+    ru: "Миллисекунды"
+    pt-BR: "Milissegundos"
+    es: "Milisegundos"
   weekday_mon:
     zh-CN: 星期一
     en: Monday
+    ja: "月曜日"
+    de: "Montag"
+    ru: "Понедельник"
+    pt-BR: "segunda-feira"
+    es: "Lunes"
   weekday_tue:
     zh-CN: 星期二
     en: Tuesday
+    ja: "火曜日"
+    de: "Dienstag"
+    ru: "Вторник"
+    pt-BR: "terça-feira"
+    es: "Martes"
   weekday_wed:
     zh-CN: 星期三
     en: Wednesday
+    ja: "水曜日"
+    de: "Mittwoch"
+    ru: "Среда"
+    pt-BR: "quarta-feira"
+    es: "Miércoles"
   weekday_thu:
     zh-CN: 星期四
     en: Thursday
+    ja: "木曜日"
+    de: "Donnerstag"
+    ru: "Четверг"
+    pt-BR: "quinta-feira"
+    es: "Jueves"
   weekday_fri:
     zh-CN: 星期五
     en: Friday
+    ja: "金曜日"
+    de: "Freitag"
+    ru: "Пятница"
+    pt-BR: "sexta-feira"
+    es: "Viernes"
   weekday_sat:
     zh-CN: 星期六
     en: Saturday
+    ja: "土曜日"
+    de: "Samstag"
+    ru: "Суббота"
+    pt-BR: "sábado"
+    es: "Sábado"
   weekday_sun:
     zh-CN: 星期日
     en: Sunday
+    ja: "日曜日"
+    de: "Sonntag"
+    ru: "Воскресенье"
+    pt-BR: "domingo"
+    es: "Domingo"
   time_rel_now:
     zh-CN: 刚刚
     en: just now
+    ja: "たった今"
+    de: "gerade eben"
+    ru: "только что"
+    pt-BR: "agora mesmo"
+    es: "ahora mismo"
   time_rel_min_ago:
     zh-CN: "%{n} 分钟前"
     en: "%{n} minutes ago"
+    ja: "%{n} 分前"
+    de: "vor %{n} Minuten"
+    ru: "%{n} мин назад"
+    pt-BR: "%{n} minutos atrás"
+    es: "hace %{n} minutos"
   time_rel_min_later:
     zh-CN: "%{n} 分钟后"
     en: "in %{n} minutes"
+    ja: "%{n} 分後"
+    de: "in %{n} Minuten"
+    ru: "через %{n} мин"
+    pt-BR: "em %{n} minutos"
+    es: "dentro de %{n} minutos"
   time_rel_hour_ago:
     zh-CN: "%{n} 小时前"
     en: "%{n} hours ago"
+    ja: "%{n} 時間前"
+    de: "vor %{n} Stunden"
+    ru: "%{n} ч назад"
+    pt-BR: "%{n} horas atrás"
+    es: "hace %{n} horas"
   time_rel_hour_later:
     zh-CN: "%{n} 小时后"
     en: "in %{n} hours"
+    ja: "%{n} 時間後"
+    de: "in %{n} Stunden"
+    ru: "через %{n} ч"
+    pt-BR: "em %{n} horas"
+    es: "dentro de %{n} horas"
   time_rel_day_ago:
     zh-CN: "%{n} 天前"
     en: "%{n} days ago"
+    ja: "%{n} 日前"
+    de: "vor %{n} Tagen"
+    ru: "%{n} дн. назад"
+    pt-BR: "%{n} dias atrás"
+    es: "hace %{n} días"
   time_rel_day_later:
     zh-CN: "%{n} 天后"
     en: "in %{n} days"
+    ja: "%{n} 日後"
+    de: "in %{n} Tagen"
+    ru: "через %{n} дн."
+    pt-BR: "em %{n} dias"
+    es: "dentro de %{n} días"
   time_invalid:
     zh-CN: 无法识别的时间格式
     en: Unrecognized time format
+    ja: "認識できない時刻の形式です"
+    de: "Zeitformat nicht erkannt"
+    ru: "Не удалось распознать формат времени"
+    pt-BR: "Formato de data/hora não reconhecido"
+    es: "Formato de hora no reconocido"
   json_title:
     zh-CN: JSON 格式化
     en: JSON Formatter
+    ja: "JSON 整形"
+    de: "JSON-Formatierung"
+    ru: "Форматирование JSON"
+    pt-BR: "Formatador JSON"
+    es: "Formateador JSON"
   json_input:
     zh-CN: 输入
     en: Input
+    ja: "入力"
+    de: "Eingabe"
+    ru: "Ввод"
+    pt-BR: "Entrada"
+    es: "Entrada"
   json_invalid:
     zh-CN: 无效的 JSON 输入
     en: Invalid JSON input
+    ja: "無効な JSON 入力です"
+    de: "Ungültige JSON-Eingabe"
+    ru: "Недопустимый JSON"
+    pt-BR: "Entrada JSON inválida"
+    es: "Entrada JSON no válida"
   json_placeholder:
     zh-CN: 输入 JSON，即时美化与压缩
     en: Type JSON to pretty-print or minify
+    ja: "JSON を入力すると即時整形・圧縮"
+    de: "JSON eingeben, sofort formatieren oder minimieren"
+    ru: "Введите JSON для форматирования или минификации"
+    pt-BR: "Digite JSON para formatar ou minificar"
+    es: "Escriba JSON para formatearlo o minimizarlo al instante"
   b64_title:
     zh-CN: Base64 编解码
     en: Base64 Codec
+    ja: "Base64 エンコード/デコード"
+    de: "Base64-Codierung"
+    ru: "Кодек Base64"
+    pt-BR: "Codec Base64"
+    es: "Códec Base64"
   b64_invalid:
     zh-CN: 无效的 Base64 输入
     en: Invalid Base64 input
+    ja: "無効な Base64 入力です"
+    de: "Ungültige Base64-Eingabe"
+    ru: "Недопустимый ввод Base64"
+    pt-BR: "Entrada Base64 inválida"
+    es: "Entrada Base64 no válida"
   b64_placeholder:
     zh-CN: 输入文本或 Base64，同时给出编解码结果
     en: Type text or Base64, both directions shown
+    ja: "テキストまたは Base64 を入力すると、エンコードとデコードの両方の結果を表示"
+    de: "Text oder Base64 eingeben, beide Richtungen werden angezeigt"
+    ru: "Введите текст или Base64 — оба направления сразу"
+    pt-BR: "Digite texto ou Base64; as duas direções são exibidas"
+    es: "Escriba texto o Base64; se muestran ambas direcciones"
   url_title:
     zh-CN: URL 编解码
     en: URL Codec
+    ja: "URL エンコード/デコード"
+    de: "URL-Codierung"
+    ru: "Кодек URL"
+    pt-BR: "Codec URL"
+    es: "Códec URL"
   url_invalid:
     zh-CN: 无效的 URL 编码输入
     en: Invalid URL-encoded input
+    ja: "無効な URL エンコード入力です"
+    de: "Ungültige URL-codierte Eingabe"
+    ru: "Недопустимый ввод URL-кодирования"
+    pt-BR: "Entrada codificada em URL inválida"
+    es: "Entrada codificada en URL no válida"
   url_placeholder:
     zh-CN: 输入文本或 URL 编码，同时给出编解码结果
     en: Type text or URL-encoded string, both directions shown
+    ja: "テキストまたは URL エンコード文字列を入力すると、エンコードとデコードの両方の結果を表示"
+    de: "Text oder URL-Codierung eingeben, beide Richtungen werden angezeigt"
+    ru: "Введите текст или URL-кодированную строку — оба направления сразу"
+    pt-BR: "Digite texto ou string codificada em URL; as duas direções são exibidas"
+    es: "Escriba texto o una cadena codificada en URL; se muestran ambas direcciones"
   enc_encode:
     zh-CN: 编码
     en: Encode
+    ja: "エンコード"
+    de: "Codieren"
+    ru: "Кодировать"
+    pt-BR: "Codificar"
+    es: "Codificar"
   enc_decode:
     zh-CN: 解码
     en: Decode
+    ja: "デコード"
+    de: "Decodieren"
+    ru: "Декодировать"
+    pt-BR: "Decodificar"
+    es: "Decodificar"
   mode_text:
     zh-CN: 文本
     en: Text
+    ja: "テキスト"
+    de: "Text"
+    ru: "Текст"
+    pt-BR: "Texto"
+    es: "Texto"
   mode_hex:
     zh-CN: Hex
     en: Hex
+    ja: "Hex"
+    de: "Hex"
+    ru: "Hex"
+    pt-BR: "Hex"
+    es: "Hex"
   mode_file:
     zh-CN: 文件
     en: File
+    ja: "ファイル"
+    de: "Datei"
+    ru: "Файл"
+    pt-BR: "Arquivo"
+    es: "Archivo"
   category_random:
     zh-CN: 随机
     en: Random
+    ja: "ランダム"
+    de: "Zufall"
+    ru: "Случайные"
+    pt-BR: "Aleatório"
+    es: "Aleatorio"
   random_title:
     zh-CN: 随机生成
     en: Random Generator
+    ja: "ランダム生成"
+    de: "Zufallsgenerator"
+    ru: "Генератор случайных значений"
+    pt-BR: "Gerador aleatório"
+    es: "Generador aleatorio"
   random_mode:
     zh-CN: 随机
     en: Random
+    ja: "ランダム"
+    de: "Zufall"
+    ru: "Случайно"
+    pt-BR: "Aleatório"
+    es: "Aleatorio"
   random_secure:
     zh-CN: 本机离线生成
     en: Generated locally
+    ja: "ローカルでオフライン生成"
+    de: "Lokal erzeugt"
+    ru: "Генерируется локально"
+    pt-BR: "Gerado localmente"
+    es: "Generado localmente"
   random_kind_uuid:
     zh-CN: UUID v4
     en: UUID v4
+    ja: "UUID v4"
+    de: "UUID v4"
+    ru: "UUID v4"
+    pt-BR: "UUID v4"
+    es: "UUID v4"
   random_kind_uuid_simple:
     zh-CN: UUID（无横线）
     en: UUID (no dashes)
+    ja: "UUID（ハイフンなし）"
+    de: "UUID (ohne Bindestriche)"
+    ru: "UUID (без дефисов)"
+    pt-BR: "UUID (sem hífens)"
+    es: "UUID (sin guiones)"
   random_kind_hex:
     zh-CN: 十六进制
     en: Hexadecimal
+    ja: "16進数"
+    de: "Hexadezimal"
+    ru: "Шестнадцатеричный"
+    pt-BR: "Hexadecimal"
+    es: "Hexadecimal"
   random_kind_decimal:
     zh-CN: 十进制
     en: Decimal
+    ja: "10進数"
+    de: "Dezimal"
+    ru: "Десятичный"
+    pt-BR: "Decimal"
+    es: "Decimal"
   random_kind_custom:
     zh-CN: 自定义字符集
     en: Custom charset
+    ja: "カスタム文字セット"
+    de: "Benutzerdefinierter Zeichensatz"
+    ru: "Свой набор символов"
+    pt-BR: "Conjunto de caracteres personalizado"
+    es: "Conjunto de caracteres personalizado"
   random_kind_sm2:
     zh-CN: SM2 密钥对
     en: SM2 key pair
+    ja: "SM2 鍵ペア"
+    de: "SM2-Schlüsselpaar"
+    ru: "Пара ключей SM2"
+    pt-BR: "Par de chaves SM2"
+    es: "Par de claves SM2"
   random_kind_sm4:
     zh-CN: SM4 密钥
     en: SM4 key
+    ja: "SM4 鍵"
+    de: "SM4-Schlüssel"
+    ru: "Ключ SM4"
+    pt-BR: "Chave SM4"
+    es: "Clave SM4"
   random_length:
     zh-CN: 长度
     en: Length
+    ja: "長さ"
+    de: "Länge"
+    ru: "Длина"
+    pt-BR: "Comprimento"
+    es: "Longitud"
   random_count:
     zh-CN: 数量
     en: Count
+    ja: "件数"
+    de: "Anzahl"
+    ru: "Количество"
+    pt-BR: "Quantidade"
+    es: "Cantidad"
   random_uppercase:
     zh-CN: 大写
     en: Uppercase
+    ja: "大文字"
+    de: "Großbuchstaben"
+    ru: "Верхний регистр"
+    pt-BR: "Maiúsculas"
+    es: "Mayúsculas"
   random_charset:
     zh-CN: 字符集
     en: Charset
+    ja: "文字セット"
+    de: "Zeichensatz"
+    ru: "Набор символов"
+    pt-BR: "Conjunto de caracteres"
+    es: "Conjunto de caracteres"
   charset_digits:
     zh-CN: 数字 0-9
     en: Digits 0-9
+    ja: "数字 0-9"
+    de: "Ziffern 0-9"
+    ru: "Цифры 0-9"
+    pt-BR: "Dígitos 0-9"
+    es: "Dígitos 0-9"
   charset_lower:
     zh-CN: 小写 a-z
     en: Lowercase a-z
+    ja: "小文字 a-z"
+    de: "Kleinbuchstaben a-z"
+    ru: "Строчные a-z"
+    pt-BR: "Minúsculas a-z"
+    es: "Minúsculas a-z"
   charset_upper:
     zh-CN: 大写 A-Z
     en: Uppercase A-Z
+    ja: "大文字 A-Z"
+    de: "Großbuchstaben A-Z"
+    ru: "Прописные A-Z"
+    pt-BR: "Maiúsculas A-Z"
+    es: "Mayúsculas A-Z"
   charset_symbols:
     zh-CN: "符号 !@#$…"
     en: "Symbols !@#$…"
+    ja: "記号 !@#$…"
+    de: "Symbole !@#$…"
+    ru: "Символы !@#$…"
+    pt-BR: "Símbolos !@#$…"
+    es: "Símbolos !@#$…"
   charset_exclude_ambiguous:
     zh-CN: "排除易混淆（0 O o 1 l I | ` ' \"）"
     en: "Exclude ambiguous (0 O o 1 l I | ` ' \")"
+    ja: "紛らわしい文字を除外（0 O o 1 l I | ` ' \"）"
+    de: "Verwechselbare ausschließen (0 O o 1 l I | ` ' \")"
+    ru: "Исключить похожие (0 O o 1 l I | ` ' \")"
+    pt-BR: "Excluir ambíguos (0 O o 1 l I | ` ' \")"
+    es: "Excluir caracteres ambiguos (0 O o 1 l I | ` ' \")"
   random_preset_password:
     zh-CN: 随机密码
     en: Random password
+    ja: "ランダムパスワード"
+    de: "Zufälliges Passwort"
+    ru: "Случайный пароль"
+    pt-BR: "Senha aleatória"
+    es: "Contraseña aleatoria"
   random_preset_alnum:
     zh-CN: 字母数字
     en: Letters + digits
+    ja: "英数字"
+    de: "Buchstaben + Ziffern"
+    ru: "Буквы + цифры"
+    pt-BR: "Letras + dígitos"
+    es: "Letras + dígitos"
   random_generate:
     zh-CN: 生成
     en: Generate
+    ja: "生成"
+    de: "Erzeugen"
+    ru: "Создать"
+    pt-BR: "Gerar"
+    es: "Generar"
   random_clear:
     zh-CN: 清空
     en: Clear
+    ja: "クリア"
+    de: "Leeren"
+    ru: "Очистить"
+    pt-BR: "Limpar"
+    es: "Limpiar"
   random_result:
     zh-CN: 结果
     en: Result
+    ja: "結果"
+    de: "Ergebnis"
+    ru: "Результат"
+    pt-BR: "Resultado"
+    es: "Resultado"
   random_count_unit:
     zh-CN: 条
     en: items
+    ja: "件"
+    de: "Einträge"
+    ru: "шт."
+    pt-BR: "itens"
+    es: "elementos"
   random_copy_all:
     zh-CN: 全部复制
     en: Copy all
+    ja: "すべてコピー"
+    de: "Alle kopieren"
+    ru: "Копировать все"
+    pt-BR: "Copiar tudo"
+    es: "Copiar todo"
   random_empty:
     zh-CN: 点击「生成」后显示结果
     en: Click Generate to see results
+    ja: "「生成」をクリックすると結果を表示"
+    de: "Nach „Erzeugen“ werden Ergebnisse angezeigt"
+    ru: "Нажмите «Создать», чтобы увидеть результат"
+    pt-BR: "Clique em Gerar para ver os resultados"
+    es: "Haga clic en «Generar» para ver los resultados"
   random_hint:
     zh-CN: 结果以快照保留，仅点击「生成」时刷新
     en: Results are snapshotted and refresh only on Generate
+    ja: "結果はスナップショットとして保持され、「生成」をクリックしたときのみ更新されます"
+    de: "Ergebnisse bleiben als Momentaufnahme erhalten und werden nur bei „Erzeugen“ aktualisiert"
+    ru: "Результат фиксируется и обновляется только по кнопке «Создать»"
+    pt-BR: "Os resultados ficam congelados e só mudam ao clicar em Gerar"
+    es: "Los resultados se guardan como instantánea y solo se actualizan al pulsar «Generar»"
   random_range_hint:
     zh-CN: 长度 1–1024 · 数量 1–100
     en: Length 1–1024 · Count 1–100
+    ja: "長さ 1–1024 · 件数 1–100"
+    de: "Länge 1–1024 · Anzahl 1–100"
+    ru: "Длина 1–1024 · Количество 1–100"
+    pt-BR: "Comprimento 1–1024 · Quantidade 1–100"
+    es: "Longitud 1–1024 · Cantidad 1–100"
   random_fixed_length:
     zh-CN: 固定
     en: Fixed
+    ja: "固定"
+    de: "Fest"
+    ru: "Фиксированная"
+    pt-BR: "Fixo"
+    es: "Fija"
   random_invalid_length:
     zh-CN: 长度需在 1–1024 之间
     en: Length must be between 1 and 1024
+    ja: "長さは 1–1024 の範囲で指定してください"
+    de: "Länge muss zwischen 1 und 1024 liegen"
+    ru: "Длина должна быть от 1 до 1024"
+    pt-BR: "O comprimento deve estar entre 1 e 1024"
+    es: "La longitud debe estar entre 1 y 1024"
   random_invalid_count:
     zh-CN: 数量需在 1–100 之间
     en: Count must be between 1 and 100
+    ja: "件数は 1–100 の範囲で指定してください"
+    de: "Anzahl muss zwischen 1 und 100 liegen"
+    ru: "Количество должно быть от 1 до 100"
+    pt-BR: "A quantidade deve estar entre 1 e 100"
+    es: "La cantidad debe estar entre 1 y 100"
   random_empty_charset:
     zh-CN: 至少选择一种字符
     en: Select at least one character class
+    ja: "文字種を 1 つ以上選択してください"
+    de: "Mindestens eine Zeichenklasse auswählen"
+    ru: "Выберите хотя бы один набор символов"
+    pt-BR: "Selecione pelo menos uma classe de caracteres"
+    es: "Seleccione al menos un tipo de carácter"
   random_crypto_failed:
     zh-CN: 系统随机源不可用
     en: System random source unavailable
+    ja: "システムの乱数源を利用できません"
+    de: "Systemzufallsquelle nicht verfügbar"
+    ru: "Системный источник случайных чисел недоступен"
+    pt-BR: "Fonte aleatória do sistema indisponível"
+    es: "Origen aleatorio del sistema no disponible"
   random_sm2_private:
     zh-CN: 私钥
     en: Private key
+    ja: "秘密鍵"
+    de: "Privater Schlüssel"
+    ru: "Закрытый ключ"
+    pt-BR: "Chave privada"
+    es: "Clave privada"
   random_sm2_public:
     zh-CN: 公钥
     en: Public key
+    ja: "公開鍵"
+    de: "Öffentlicher Schlüssel"
+    ru: "Открытый ключ"
+    pt-BR: "Chave pública"
+    es: "Clave pública"
   random_sm4_key:
     zh-CN: 密钥
     en: Key
+    ja: "鍵"
+    de: "Schlüssel"
+    ru: "Ключ"
+    pt-BR: "Chave"
+    es: "Clave"
   random_sm4_iv:
     zh-CN: IV
     en: IV
+    ja: "IV"
+    de: "IV"
+    ru: "IV"
+    pt-BR: "IV"
+    es: "IV"
   random_sm2_note:
     zh-CN: 公钥为 SEC1 未压缩格式（04 开头），私钥请妥善保管
     en: Public key is SEC1 uncompressed (starts with 04); keep the private key safe
+    ja: "公開鍵は SEC1 非圧縮形式（04 で始まる）です。秘密鍵は安全に保管してください"
+    de: "Der öffentliche Schlüssel liegt im unkomprimierten SEC1-Format vor (beginnt mit 04); bewahren Sie den privaten Schlüssel sicher auf"
+    ru: "Открытый ключ в несжатом формате SEC1 (начинается с 04); храните закрытый ключ в надёжном месте"
+    pt-BR: "A chave pública é SEC1 não comprimida (começa com 04); guarde a chave privada com segurança"
+    es: "La clave pública está en formato SEC1 sin comprimir (empieza por 04); guarde la clave privada en un lugar seguro"
   random_sm4_note:
     zh-CN: 密钥与 IV 均为 16 字节（32 位 hex）
     en: Key and IV are 16 bytes each (32 hex chars)
+    ja: "鍵と IV はいずれも 16 バイト（32 桁の hex）です"
+    de: "Schlüssel und IV sind je 16 Byte (32 Hex-Zeichen)"
+    ru: "Ключ и IV — по 16 байт (32 hex-символа)"
+    pt-BR: "Chave e IV têm 16 bytes cada (32 caracteres hex)"
+    es: "La clave y el IV tienen 16 bytes cada uno (32 caracteres hex)"
   random_password_note:
     zh-CN: 已选字符类别各至少出现 1 次（长度足够时）
     en: Each selected class appears at least once when length allows
+    ja: "選択した文字種がそれぞれ 1 回以上含まれます（長さが足りる場合）"
+    de: "Jede gewählte Zeichenklasse kommt mindestens einmal vor (bei ausreichender Länge)"
+    ru: "Каждый выбранный набор встречается хотя бы раз (если хватает длины)"
+    pt-BR: "Cada classe selecionada aparece pelo menos uma vez quando o comprimento permite"
+    es: "Cada tipo de carácter seleccionado aparece al menos una vez (si la longitud lo permite)"
 
 input_mode:
   json_pretty:
     zh-CN: JSON 美化
     en: Pretty JSON
+    ja: "JSON 整形"
+    de: "JSON formatieren"
+    ru: "Форматировать JSON"
+    pt-BR: "Formatar JSON"
+    es: "Formatear JSON"
   json_minify:
     zh-CN: JSON 压缩
     en: Minify JSON
+    ja: "JSON 圧縮"
+    de: "JSON minimieren"
+    ru: "Сжать JSON"
+    pt-BR: "Minificar JSON"
+    es: "Minificar JSON"
   hex_invalid:
     zh-CN: 十六进制输入格式错误，包含非法字符或长度为奇数
     en: "Invalid hex input: contains illegal characters or has an odd length"
+    ja: "16進数の形式エラー：不正な文字を含むか、長さが奇数です"
+    de: "Ungültige Hex-Eingabe: enthält unzulässige Zeichen oder hat eine ungerade Länge"
+    ru: "Неверный формат шестнадцатеричного ввода: недопустимые символы или нечётная длина"
+    pt-BR: "Entrada hex inválida: contém caracteres ilegais ou tem comprimento ímpar"
+    es: "Formato hexadecimal no válido: contiene caracteres ilegales o una longitud impar"
   to_hex:
     zh-CN: 转换为 Hex
     en: Convert to Hex
+    ja: "Hex に変換"
+    de: "In Hex umwandeln"
+    ru: "В Hex"
+    pt-BR: "Converter em Hex"
+    es: "Convertir a Hex"
   to_text:
     zh-CN: 转换为文本
     en: Convert to Text
+    ja: "テキストに変換"
+    de: "In Text umwandeln"
+    ru: "В текст"
+    pt-BR: "Converter em texto"
+    es: "Convertir a texto"
   checksum:
     zh-CN: 校验
     en: Checksum
+    ja: "チェックサム"
+    de: "Prüfsumme"
+    ru: "Контрольная сумма"
+    pt-BR: "Checksum"
+    es: "Verificación"
   checksum_xor:
     zh-CN: 异或 XOR
     en: XOR
+    ja: "XOR"
+    de: "XOR"
+    ru: "XOR (исключающее ИЛИ)"
+    pt-BR: "XOR"
+    es: "XOR"
   checksum_sum8:
     zh-CN: 累加和 Sum8
     en: Sum8
+    ja: "加算和 Sum8"
+    de: "Sum8"
+    ru: "Сумма Sum8"
+    pt-BR: "Sum8"
+    es: "Suma acumulada Sum8"
   checksum_lrc:
     zh-CN: LRC
     en: LRC
+    ja: "LRC"
+    de: "LRC"
+    ru: "LRC"
+    pt-BR: "LRC"
+    es: "LRC"
   checksum_crc16_modbus:
     zh-CN: CRC16-Modbus
     en: CRC16-Modbus
+    ja: "CRC16-Modbus"
+    de: "CRC16-Modbus"
+    ru: "CRC16-Modbus"
+    pt-BR: "CRC16-Modbus"
+    es: "CRC16-Modbus"
   checksum_crc16_ccitt:
     zh-CN: CRC16-CCITT-FALSE
     en: CRC16-CCITT-FALSE
+    ja: "CRC16-CCITT-FALSE"
+    de: "CRC16-CCITT-FALSE"
+    ru: "CRC16-CCITT-FALSE"
+    pt-BR: "CRC16-CCITT-FALSE"
+    es: "CRC16-CCITT-FALSE"
   checksum_crc32:
     zh-CN: CRC32
     en: CRC32
+    ja: "CRC32"
+    de: "CRC32"
+    ru: "CRC32"
+    pt-BR: "CRC32"
+    es: "CRC32"
   checksum_var:
     zh-CN: 含变量占位符，校验值运行时才有效
     en: Contains variables; only meaningful at send time
+    ja: "変数プレースホルダーを含むため、チェックサムは送信時にのみ有効です"
+    de: "Enthält Variablen; Prüfsumme erst beim Senden gültig"
+    ru: "Содержит переменные; контрольная сумма действительна только при отправке"
+    pt-BR: "Contém variáveis; o checksum só vale no momento do envio"
+    es: "Contiene variables; el valor solo es válido al enviar"
   checksum_empty:
     zh-CN: 无内容可校验
     en: Nothing to verify
+    ja: "チェックサム対象の内容がありません"
+    de: "Nichts zu prüfen"
+    ru: "Нечего проверять"
+    pt-BR: "Nada para verificar"
+    es: "Nada que verificar"
   cut:
     zh-CN: 剪切
     en: Cut
+    ja: "切り取り"
+    de: "Ausschneiden"
+    ru: "Вырезать"
+    pt-BR: "Recortar"
+    es: "Cortar"
   copy:
     zh-CN: 复制
     en: Copy
+    ja: "コピー"
+    de: "Kopieren"
+    ru: "Копировать"
+    pt-BR: "Copiar"
+    es: "Copiar"
   paste:
     zh-CN: 粘贴
     en: Paste
+    ja: "貼り付け"
+    de: "Einfügen"
+    ru: "Вставить"
+    pt-BR: "Colar"
+    es: "Pegar"
   select_all:
     zh-CN: 全选
     en: Select All
+    ja: "すべて選択"
+    de: "Alles auswählen"
+    ru: "Выделить все"
+    pt-BR: "Selecionar tudo"
+    es: "Seleccionar todo"
   clear:
     zh-CN: 清空
     en: Clear
+    ja: "クリア"
+    de: "Leeren"
+    ru: "Очистить"
+    pt-BR: "Limpar"
+    es: "Limpiar"
   close:
     zh-CN: 关闭
     en: Close
+    ja: "閉じる"
+    de: "Schließen"
+    ru: "Закрыть"
+    pt-BR: "Fechar"
+    es: "Cerrar"
 
 hex_editor:
   bytes:
     zh-CN: "%{n} 字节"
     en: "%{n} bytes"
+    ja: "%{n} バイト"
+    de: "%{n} Byte"
+    ru: "%{n} байт"
+    pt-BR: "%{n} bytes"
+    es: "%{n} bytes"
   bytes_with_vars:
     zh-CN: "%{n} 字节 · %{vars} 个变量"
     en: "%{n} bytes · %{vars} vars"
+    ja: "%{n} バイト · %{vars} 個の変数"
+    de: "%{n} Byte · %{vars} Variablen"
+    ru: "%{n} байт · переменных: %{vars}"
+    pt-BR: "%{n} bytes · %{vars} variáveis"
+    es: "%{n} bytes · %{vars} variables"
   expand:
     zh-CN: 展开编辑
     en: Expand Editor
+    ja: "エディタを開く"
+    de: "Editor öffnen"
+    ru: "Открыть редактор"
+    pt-BR: "Abrir editor"
+    es: "Abrir editor"
   format:
     zh-CN: 格式化
     en: Format
+    ja: "整形"
+    de: "Formatieren"
+    ru: "Форматировать"
+    pt-BR: "Formatar"
+    es: "Formatear"
   clear:
     zh-CN: 清空
     en: Clear
+    ja: "クリア"
+    de: "Leeren"
+    ru: "Очистить"
+    pt-BR: "Limpar"
+    es: "Limpiar"
   import:
     zh-CN: 导入文件
     en: Import File
+    ja: "ファイルを読み込む"
+    de: "Datei importieren"
+    ru: "Импорт из файла"
+    pt-BR: "Importar arquivo"
+    es: "Importar archivo"
   copy_all:
     zh-CN: 复制全部
     en: Copy All
+    ja: "すべてコピー"
+    de: "Alles kopieren"
+    ru: "Копировать все"
+    pt-BR: "Copiar tudo"
+    es: "Copiar todo"
   expand_title:
     zh-CN: 十六进制编辑器
     en: Hex Editor
+    ja: "16進数エディタ"
+    de: "Hex-Editor"
+    ru: "Редактор Hex"
+    pt-BR: "Editor hexadecimal"
+    es: "Editor hexadecimal"
   confirm:
     zh-CN: 确定
     en: OK
+    ja: "OK"
+    de: "OK"
+    ru: "ОК"
+    pt-BR: "OK"
+    es: "Aceptar"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   empty_hint:
     zh-CN: 输入十六进制字节，或点击「展开编辑」
     en: "Type hex bytes, or click Expand Editor"
+    ja: "16進数のバイト列を入力するか、「エディタを開く」をクリックしてください"
+    de: "Hex-Bytes eingeben oder „Editor öffnen“ klicken"
+    ru: "Введите hex-байты или нажмите «Открыть редактор»"
+    pt-BR: "Digite bytes em hex ou clique em Abrir editor"
+    es: "Escriba bytes hexadecimales o haga clic en «Abrir editor»"
   overflow:
     zh-CN: 仅显示前 %{rows} 行，点击「展开编辑」查看全部
     en: "Showing first %{rows} rows only — click Expand Editor for all"
+    ja: "先頭 %{rows} 行のみ表示しています。すべて表示するには「エディタを開く」をクリックしてください"
+    de: "Nur die ersten %{rows} Zeilen werden angezeigt – für alle „Editor öffnen“ klicken"
+    ru: "Показаны только первые %{rows} строк — нажмите «Открыть редактор», чтобы увидеть все"
+    pt-BR: "Mostrando apenas as %{rows} primeiras linhas — clique em Abrir editor para ver tudo"
+    es: "Solo se muestran las primeras %{rows} filas; haga clic en «Abrir editor» para verlo todo"
   truncated:
     zh-CN: 内容超过 %{n} 字节，仅只读显示前 %{n} 字节；如需修改请切换文本模式
     en: "Content exceeds %{n} bytes — showing first %{n} bytes read-only. Switch to text mode to edit."
+    ja: "内容が %{n} バイトを超えるため、先頭 %{n} バイトのみ読み取り専用で表示します。編集するにはテキストモードに切り替えてください"
+    de: "Inhalt überschreitet %{n} Byte – die ersten %{n} Byte werden schreibgeschützt angezeigt. Zum Bearbeiten in den Textmodus wechseln."
+    ru: "Содержимое превышает %{n} байт — показаны первые %{n} байт только для чтения. Для изменения переключитесь в текстовый режим."
+    pt-BR: "O conteúdo excede %{n} bytes — mostrando os %{n} primeiros bytes somente leitura. Mude para o modo texto para editar."
+    es: "El contenido supera %{n} bytes; se muestran solo los primeros %{n} bytes en modo de solo lectura. Cambie al modo texto para editarlo."
   status_offset:
     zh-CN: 偏移 %{offset}
     en: "Offset %{offset}"
+    ja: "オフセット %{offset}"
+    de: "Offset %{offset}"
+    ru: "Смещение %{offset}"
+    pt-BR: "Deslocamento %{offset}"
+    es: "Desplazamiento %{offset}"
   status_selected:
     zh-CN: 已选 %{n} 字节
     en: "%{n} selected"
+    ja: "%{n} バイト選択中"
+    de: "%{n} Byte ausgewählt"
+    ru: "Выбрано %{n} байт"
+    pt-BR: "%{n} selecionados"
+    es: "%{n} seleccionados"
   ovr:
     zh-CN: 覆盖
     en: OVR
+    ja: "OVR"
+    de: "OVR"
+    ru: "OVR"
+    pt-BR: "OVR"
+    es: "OVR"
   ins:
     zh-CN: 插入
     en: INS
+    ja: "INS"
+    de: "INS"
+    ru: "INS"
+    pt-BR: "INS"
+    es: "INS"
   variable_tooltip:
     zh-CN: "变量 %{var}，发送时替换为实际值"
     en: "Variable %{var}; replaced with the actual value when sending"
+    ja: "変数 %{var}。送信時に実際の値に置き換えられます"
+    de: "Variable %{var}, wird beim Senden durch den tatsächlichen Wert ersetzt"
+    ru: "Переменная %{var}; при отправке заменяется фактическим значением"
+    pt-BR: "Variável %{var}; substituída pelo valor real no envio"
+    es: "Variable %{var}; se sustituye por el valor real al enviar"
 
 import_file:
   title:
     zh-CN: 从文件打开
     en: Open from File
+    ja: "ファイルから開く"
+    de: "Aus Datei öffnen"
+    ru: "Открыть из файла"
+    pt-BR: "Abrir de arquivo"
+    es: "Abrir desde archivo"
   browse:
     zh-CN: 选择文件…
     en: Choose File…
+    ja: "ファイルを選択…"
+    de: "Datei wählen…"
+    ru: "Выбрать файл…"
+    pt-BR: "Escolher arquivo…"
+    es: "Elegir archivo…"
   reading:
     zh-CN: 读取中…
     en: Reading…
+    ja: "読み込み中…"
+    de: "Wird gelesen…"
+    ru: "Чтение…"
+    pt-BR: "Lendo…"
+    es: "Leyendo…"
   no_file:
     zh-CN: 未选择文件
     en: No file selected
+    ja: "ファイルが選択されていません"
+    de: "Keine Datei ausgewählt"
+    ru: "Файл не выбран"
+    pt-BR: "Nenhum arquivo selecionado"
+    es: "Ningún archivo seleccionado"
   encoding:
     zh-CN: 文件编码
     en: File Encoding
+    ja: "ファイルの文字コード"
+    de: "Dateicodierung"
+    ru: "Кодировка файла"
+    pt-BR: "Codificação do arquivo"
+    es: "Codificación del archivo"
   enc_utf8:
     zh-CN: UTF-8
     en: UTF-8
+    ja: "UTF-8"
+    de: "UTF-8"
+    ru: "UTF-8"
+    pt-BR: "UTF-8"
+    es: "UTF-8"
   enc_gbk:
     zh-CN: GBK
     en: GBK
+    ja: "GBK"
+    de: "GBK"
+    ru: "GBK"
+    pt-BR: "GBK"
+    es: "GBK"
   enc_ansi:
     zh-CN: ANSI
     en: ANSI
+    ja: "ANSI"
+    de: "ANSI"
+    ru: "ANSI"
+    pt-BR: "ANSI"
+    es: "ANSI"
   size:
     zh-CN: 文件大小 %{size}
     en: "Size %{size}"
+    ja: "ファイルサイズ %{size}"
+    de: "Dateigröße %{size}"
+    ru: "Размер %{size}"
+    pt-BR: "Tamanho %{size}"
+    es: "Tamaño %{size}"
   empty:
     zh-CN: 文件为空，没有可导入的内容
     en: The file is empty; nothing to import
+    ja: "ファイルが空のため、読み込む内容がありません"
+    de: "Die Datei ist leer, es gibt nichts zu importieren"
+    ru: "Файл пуст, импортировать нечего"
+    pt-BR: "O arquivo está vazio; nada para importar"
+    es: "El archivo está vacío; no hay nada que importar"
   too_large:
     zh-CN: 文件 %{size} 超过上限 %{limit}，已拒绝导入
     en: "File %{size} exceeds the %{limit} limit; import refused"
+    ja: "ファイル %{size} が上限 %{limit} を超えているため、読み込みを中止しました"
+    de: "Datei %{size} überschreitet das Limit von %{limit}; Import abgelehnt"
+    ru: "Файл %{size} превышает лимит %{limit}; импорт отклонён"
+    pt-BR: "O arquivo %{size} excede o limite de %{limit}; importação recusada"
+    es: "El archivo %{size} supera el límite de %{limit}; se canceló la importación"
   invalid_utf8:
     zh-CN: 不是有效的 UTF-8 文本，请改用 GBK/ANSI，或切到 Hex 模式
     en: "Not valid UTF-8 text; choose GBK/ANSI, or switch to Hex mode"
+    ja: "有効な UTF-8 テキストではありません。GBK/ANSI を選択するか、Hex モードに切り替えてください"
+    de: "Kein gültiger UTF-8-Text; wählen Sie GBK/ANSI oder wechseln Sie in den Hex-Modus"
+    ru: "Это не корректный текст UTF-8; выберите GBK/ANSI или переключитесь в режим Hex"
+    pt-BR: "Não é texto UTF-8 válido; escolha GBK/ANSI ou mude para o modo Hex"
+    es: "No es texto UTF-8 válido; elija GBK/ANSI o cambie al modo Hex"
   unsupported_cp:
     zh-CN: 无法识别当前系统代码页（%{cp}），请改用其它编码
     en: "Unsupported system code page (%{cp}); choose another encoding"
+    ja: "現在のシステムコードページ（%{cp}）を認識できません。別のエンコードを選択してください"
+    de: "Systemcodepage nicht erkannt (%{cp}); wählen Sie eine andere Codierung"
+    ru: "Не удалось определить кодовую страницу системы (%{cp}); выберите другую кодировку"
+    pt-BR: "Página de código do sistema não reconhecida (%{cp}); escolha outra codificação"
+    es: "Página de códigos del sistema no reconocida (%{cp}); elija otra codificación"
   read_failed:
     zh-CN: "文件读取失败：%{msg}"
     en: "Failed to read the file: %{msg}"
+    ja: "ファイルの読み込みに失敗しました: %{msg}"
+    de: "Datei konnte nicht gelesen werden: %{msg}"
+    ru: "Не удалось прочитать файл: %{msg}"
+    pt-BR: "Falha ao ler o arquivo: %{msg}"
+    es: "No se pudo leer el archivo: %{msg}"
   lossy:
     zh-CN: 部分字节无法解码，已用替换字符
     en: Some bytes could not be decoded and were replaced
+    ja: "一部のバイトをデコードできず、置換文字を使用しました"
+    de: "Einige Bytes konnten nicht decodiert werden und wurden ersetzt"
+    ru: "Часть байтов не удалось декодировать, они заменены символами замены"
+    pt-BR: "Alguns bytes não puderam ser decodificados e foram substituídos"
+    es: "Algunos bytes no se pudieron decodificar y se sustituyeron"
   hex_raw_hint:
     zh-CN: Hex 模式：按原始字节导入，不涉及编码
     en: "Hex mode: imported as raw bytes, no encoding involved"
+    ja: "Hex モード：生のバイトとして読み込み、エンコードは関係しません"
+    de: "Hex-Modus: Import als Rohbytes, ohne Codierung"
+    ru: "Режим Hex: импорт как есть, без учёта кодировки"
+    pt-BR: "Modo Hex: importado como bytes brutos, sem codificação"
+    es: "Modo Hex: se importa como bytes sin procesar, sin codificación"
   hex_overflow_hint:
     zh-CN: 内容超过 %{n} 字节，已切换为文本编辑；发送内容保持完整
     en: "Content exceeds %{n} bytes; switched to text editing. Sent content stays complete"
+    ja: "内容が %{n} バイトを超えたため、テキスト編集に切り替えました。送信内容は完全に保持されます"
+    de: "Inhalt überschreitet %{n} Byte; auf Textbearbeitung umgestellt. Der Versandinhalt bleibt vollständig"
+    ru: "Содержимое превышает %{n} байт, выполнен переход к текстовому редактированию; отправляемые данные остаются полными"
+    pt-BR: "O conteúdo excede %{n} bytes; mudou para edição de texto. O conteúdo enviado permanece completo"
+    es: "El contenido supera %{n} bytes; se cambió a edición de texto. El contenido enviado se mantiene completo"
   preview:
     zh-CN: 预览
     en: Preview
+    ja: "プレビュー"
+    de: "Vorschau"
+    ru: "Предпросмотр"
+    pt-BR: "Prévia"
+    es: "Vista previa"
   send_mode:
     zh-CN: 发送方式
     en: Send Mode
+    ja: "送信方法"
+    de: "Sendemodus"
+    ru: "Способ отправки"
+    pt-BR: "Modo de envio"
+    es: "Modo de envío"
   mode_whole:
     zh-CN: 整个文件发送
     en: Send Whole File
+    ja: "ファイル全体を送信"
+    de: "Ganze Datei senden"
+    ru: "Отправить файл целиком"
+    pt-BR: "Enviar arquivo inteiro"
+    es: "Enviar archivo completo"
   mode_by_lines:
     zh-CN: 逐行发送
     en: Send Line by Line
+    ja: "1 行ずつ送信"
+    de: "Zeilenweise senden"
+    ru: "Отправлять построчно"
+    pt-BR: "Enviar linha a linha"
+    es: "Enviar línea por línea"
   line_interval:
     zh-CN: 每条间隔
     en: Interval
+    ja: "送信間隔"
+    de: "Intervall"
+    ru: "Интервал"
+    pt-BR: "Intervalo"
+    es: "Intervalo"
   loop_send:
     zh-CN: 循环发送
     en: Loop
+    ja: "繰り返し送信"
+    de: "Wiederholen"
+    ru: "Повторять отправку"
+    pt-BR: "Repetir"
+    es: "Envío en bucle"
   max_rounds:
     zh-CN: 最多轮次（留空=无限）
     en: Max rounds (empty = unlimited)
+    ja: "最大ラウンド数（空欄=無制限）"
+    de: "Max. Durchläufe (leer = unbegrenzt)"
+    ru: "Максимум циклов (пусто = без ограничений)"
+    pt-BR: "Máximo de rodadas (vazio = ilimitado)"
+    es: "Rondas máximas (vacío = ilimitadas)"
   lines_summary:
     zh-CN: 共 %{n} 行可发送（已跳过 %{skipped} 个空行）
     en: "%{n} lines to send (%{skipped} blank lines skipped)"
+    ja: "送信可能な行は %{n} 行（空行 %{skipped} 個をスキップ）"
+    de: "%{n} Zeilen zum Senden (%{skipped} Leerzeilen übersprungen)"
+    ru: "Строк к отправке: %{n} (пропущено пустых: %{skipped})"
+    pt-BR: "%{n} linhas para enviar (%{skipped} linhas em branco ignoradas)"
+    es: "%{n} líneas para enviar (%{skipped} líneas vacías omitidas)"
   invalid_lines_title:
     zh-CN: 以下行不是合法的 Hex，无法逐行发送：
     en: "These lines are not valid Hex and cannot be sent line by line:"
+    ja: "次の行は有効な Hex ではないため、1 行ずつ送信できません:"
+    de: "Diese Zeilen sind kein gültiges Hex und können nicht zeilenweise gesendet werden:"
+    ru: "Следующие строки не являются корректным Hex и не могут быть отправлены построчно:"
+    pt-BR: "Estas linhas não são Hex válido e não podem ser enviadas linha a linha:"
+    es: "Estas líneas no son Hex válido y no se pueden enviar línea por línea:"
   err_empty:
     zh-CN: 没有可发送的非空行
     en: No non-empty lines to send
+    ja: "送信可能な空でない行がありません"
+    de: "Keine nicht leeren Zeilen zum Senden"
+    ru: "Нет непустых строк для отправки"
+    pt-BR: "Nenhuma linha não vazia para enviar"
+    es: "No hay líneas no vacías para enviar"
   err_too_many:
     zh-CN: 行数超过上限 %{max}
     en: "Too many lines (max %{max})"
+    ja: "行数が上限 %{max} を超えています"
+    de: "Zu viele Zeilen (max. %{max})"
+    ru: "Слишком много строк (максимум %{max})"
+    pt-BR: "Linhas demais (máximo %{max})"
+    es: "Demasiadas líneas (máximo %{max})"
   err_invalid_hex:
     zh-CN: 存在非法的 Hex 行，无法逐行发送
     en: Some lines are not valid Hex; cannot send line by line
+    ja: "不正な Hex 行があるため、1 行ずつ送信できません"
+    de: "Einige Zeilen sind kein gültiges Hex; zeilenweises Senden nicht möglich"
+    ru: "Есть некорректные строки Hex; отправка построчно невозможна"
+    pt-BR: "Algumas linhas não são Hex válido; não é possível enviar linha a linha"
+    es: "Hay líneas que no son Hex válido; no se puede enviar línea por línea"
   trailer_hint:
     zh-CN: 结尾追加：%{label}（在发送区设置）
     en: "Trailing: %{label} (set in the send area)"
+    ja: "末尾に追加: %{label}（送信エリアで設定）"
+    de: "Abschluss: %{label} (im Sendebereich festlegen)"
+    ru: "В конце: %{label} (настраивается в области отправки)"
+    pt-BR: "Sufixo: %{label} (defina na área de envio)"
+    es: "Sufijo: %{label} (se define en el área de envío)"
   create_task:
     zh-CN: 创建任务
     en: Create Task
+    ja: "タスクを作成"
+    de: "Aufgabe erstellen"
+    ru: "Создать задачу"
+    pt-BR: "Criar tarefa"
+    es: "Crear tarea"
   create_and_start:
     zh-CN: 创建并立即开始
     en: Create & Start
+    ja: "作成してすぐ開始"
+    de: "Erstellen und starten"
+    ru: "Создать и запустить"
+    pt-BR: "Criar e iniciar"
+    es: "Crear e iniciar"
   confirm:
     zh-CN: 确定
     en: OK
+    ja: "OK"
+    de: "OK"
+    ru: "ОК"
+    pt-BR: "OK"
+    es: "Aceptar"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
 
 connection_tab:
   message_input_placeholder:
     zh-CN: 输入消息内容...
     en: Enter message content...
+    ja: "メッセージ内容を入力…"
+    de: "Nachrichteninhalt eingeben…"
+    ru: "Введите сообщение…"
+    pt-BR: "Digite o conteúdo da mensagem…"
+    es: "Escriba el contenido del mensaje…"
   tab_debug:
     zh-CN: 调试
     en: Debug
+    ja: "デバッグ"
+    de: "Debug"
+    ru: "Отладка"
+    pt-BR: "Depuração"
+    es: "Depuración"
   tab_stress:
     zh-CN: 压测
     en: Stress Test
+    ja: "負荷テスト"
+    de: "Lasttest"
+    ru: "Нагрузочный тест"
+    pt-BR: "Teste de carga"
+    es: "Prueba de carga"
   disconnect:
     zh-CN: 断开
     en: Disconnect
+    ja: "切断"
+    de: "Trennen"
+    ru: "Отключить"
+    pt-BR: "Desconectar"
+    es: "Desconectar"
   stop:
     zh-CN: 停止
     en: Stop
+    ja: "停止"
+    de: "Stoppen"
+    ru: "Остановить"
+    pt-BR: "Parar"
+    es: "Detener"
   connect:
     zh-CN: 连接
     en: Connect
+    ja: "接続"
+    de: "Verbinden"
+    ru: "Подключить"
+    pt-BR: "Conectar"
+    es: "Conectar"
   start:
     zh-CN: 启动
     en: Start
+    ja: "開始"
+    de: "Starten"
+    ru: "Запустить"
+    pt-BR: "Iniciar"
+    es: "Iniciar"
   protocol_label:
     zh-CN: "协议:"
     en: "Protocol:"
+    ja: "プロトコル:"
+    de: "Protokoll:"
+    ru: "Протокол:"
+    pt-BR: "Protocolo:"
+    es: "Protocolo:"
   address_label:
     zh-CN: "地址:"
     en: "Address:"
+    ja: "アドレス:"
+    de: "Adresse:"
+    ru: "Адрес:"
+    pt-BR: "Endereço:"
+    es: "Dirección:"
   local_address_label:
     zh-CN: "本地地址:"
     en: "Local:"
+    ja: "ローカルアドレス:"
+    de: "Lokal:"
+    ru: "Локальный адрес:"
+    pt-BR: "Local:"
+    es: "Local:"
   status_label:
     zh-CN: "状态:"
     en: "Status:"
+    ja: "ステータス:"
+    de: "Status:"
+    ru: "Статус:"
+    pt-BR: "Status:"
+    es: "Estado:"
   username_label:
     zh-CN: "用户名:"
     en: "Username:"
+    ja: "ユーザー名:"
+    de: "Benutzername:"
+    ru: "Имя пользователя:"
+    pt-BR: "Usuário:"
+    es: "Usuario:"
   decoder_label:
     zh-CN: "解码器:"
     en: "Decoder:"
+    ja: "デコーダー:"
+    de: "Decoder:"
+    ru: "Декодер:"
+    pt-BR: "Decodificador:"
+    es: "Decodificador:"
   mqtt_subscriptions_restored:
     zh-CN: "已重新发起 %{count} 个订阅"
     en: "Re-subscribed to %{count} subscription(s)"
+    ja: "%{count} 件の購読を再登録しました"
+    de: "%{count} Abonnement(s) erneut abonniert"
+    ru: "Восстановлено подписок: %{count}"
+    pt-BR: "Reassinadas %{count} assinatura(s)"
+    es: "Se renovaron %{count} suscripciones"
   mqtt_subscriptions_title:
     zh-CN: 订阅
     en: Subscriptions
+    ja: "購読"
+    de: "Abonnements"
+    ru: "Подписки"
+    pt-BR: "Assinaturas"
+    es: "Suscripciones"
   mqtt_new_subscription:
     zh-CN: 新增订阅
     en: New Subscription
+    ja: "購読を追加"
+    de: "Neues Abonnement"
+    ru: "Новая подписка"
+    pt-BR: "Nova assinatura"
+    es: "Nueva suscripción"
   mqtt_no_subscriptions:
     zh-CN: 暂无订阅
     en: No subscriptions yet
+    ja: "購読はまだありません"
+    de: "Noch keine Abonnements"
+    ru: "Подписок пока нет"
+    pt-BR: "Nenhuma assinatura ainda"
+    es: "Aún no hay suscripciones"
   mqtt_topic_copied:
     zh-CN: 已复制主题到剪贴板
     en: Topic copied to clipboard
+    ja: "トピックをクリップボードにコピーしました"
+    de: "Topic in die Zwischenablage kopiert"
+    ru: "Тема скопирована в буфер обмена"
+    pt-BR: "Tópico copiado para a área de transferência"
+    es: "Tema copiado al portapapeles"
   source_copied:
     zh-CN: 已复制来源地址到剪贴板
     en: Source address copied to clipboard
+    ja: "送信元アドレスをクリップボードにコピーしました"
+    de: "Quelladresse in die Zwischenablage kopiert"
+    ru: "Исходный адрес скопирован в буфер обмена"
+    pt-BR: "Endereço de origem copiado para a área de transferência"
+    es: "Dirección de origen copiada al portapapeles"
   mqtt_subscribe_failed:
     zh-CN: 订阅失败（连接未就绪）
     en: Failed to subscribe (not connected)
+    ja: "購読に失敗しました（接続が未確立）"
+    de: "Abonnieren fehlgeschlagen (nicht verbunden)"
+    ru: "Не удалось подписаться (нет подключения)"
+    pt-BR: "Falha ao assinar (sem conexão)"
+    es: "No se pudo suscribir (conexión no lista)"
   mqtt_unsubscribe_persistent_offline:
     zh-CN: "持久会话下 broker 仍保留订阅「%{topic}」，请连接后再取消"
     en: "The broker keeps \"%{topic}\" in the persistent session; connect first to unsubscribe"
+    ja: "永続セッションでは broker が購読「%{topic}」を保持します。接続してから解除してください"
+    de: "Der Broker behält „%{topic}“ in der persistenten Sitzung; zum Abbestellen zuerst verbinden"
+    ru: "В постоянном сеансе broker сохраняет подписку «%{topic}»; подключитесь, чтобы её отменить"
+    pt-BR: "O broker mantém \"%{topic}\" na sessão persistente; conecte-se antes de cancelar"
+    es: "Con la sesión persistente, el broker aún conserva «%{topic}»; conéctese antes de cancelar la suscripción"
   mqtt_unsubscribe_failed:
     zh-CN: 取消订阅失败（连接未就绪）
     en: Failed to unsubscribe (not connected)
+    ja: "購読の解除に失敗しました（接続が未確立）"
+    de: "Abbestellen fehlgeschlagen (nicht verbunden)"
+    ru: "Не удалось отписаться (нет подключения)"
+    pt-BR: "Falha ao cancelar a assinatura (sem conexão)"
+    es: "No se pudo cancelar la suscripción (conexión no lista)"
   mqtt_topic_empty:
     zh-CN: 请输入订阅主题
     en: Enter a subscribe topic
+    ja: "購読トピックを入力してください"
+    de: "Bitte Abonnement-Topic eingeben"
+    ru: "Введите тему подписки"
+    pt-BR: "Digite um tópico para assinar"
+    es: "Introduzca un tema de suscripción"
   mqtt_sub_topic_placeholder:
-    zh-CN: 订阅主题，支持 + / # 通配符
-    en: Topic to subscribe, supports + and #
+    zh-CN: "订阅主题，支持 + / # 通配符"
+    en: "Topic to subscribe, supports + and #"
+    ja: "購読トピック。+ / # のワイルドカードに対応"
+    de: "Zu abonnierendes Topic, unterstützt + / # Platzhalter"
+    ru: "Тема подписки, поддерживаются подстановочные знаки + и #"
+    pt-BR: "Tópico para assinar; aceita curingas + e #"
+    es: "Tema al que suscribirse; admite los comodines + y #"
   mqtt_publish_topic_placeholder:
     zh-CN: 发布主题
     en: Publish topic
+    ja: "発行トピック"
+    de: "Topic zum Veröffentlichen"
+    ru: "Тема публикации"
+    pt-BR: "Tópico de publicação"
+    es: "Tema de publicación"
   mqtt_publish_topic_empty:
     zh-CN: 请输入发布主题
     en: Enter a publish topic
+    ja: "発行トピックを入力してください"
+    de: "Bitte Topic zum Veröffentlichen eingeben"
+    ru: "Введите тему публикации"
+    pt-BR: "Digite um tópico de publicação"
+    es: "Introduzca un tema de publicación"
   mqtt_publish_topic_invalid:
-    zh-CN: 发布主题不能包含通配符 + 或 #
-    en: Publish topic cannot contain + or #
+    zh-CN: "发布主题不能包含通配符 + 或 #"
+    en: "Publish topic cannot contain + or #"
+    ja: "発行トピックにワイルドカード + や # は使用できません"
+    de: "Das Topic zum Veröffentlichen darf keine Platzhalter + oder # enthalten"
+    ru: "Тема публикации не может содержать подстановочные знаки + и #"
+    pt-BR: "O tópico de publicação não pode conter + ou #"
+    es: "El tema de publicación no puede contener + ni #"
   mqtt_qos_0:
     zh-CN: QoS 0
     en: QoS 0
+    ja: "QoS 0"
+    de: "QoS 0"
+    ru: "QoS 0"
+    pt-BR: "QoS 0"
+    es: "QoS 0"
   mqtt_qos_1:
     zh-CN: QoS 1
     en: QoS 1
+    ja: "QoS 1"
+    de: "QoS 1"
+    ru: "QoS 1"
+    pt-BR: "QoS 1"
+    es: "QoS 1"
   mqtt_qos_2:
     zh-CN: QoS 2
     en: QoS 2
+    ja: "QoS 2"
+    de: "QoS 2"
+    ru: "QoS 2"
+    pt-BR: "QoS 2"
+    es: "QoS 2"
   mqtt_retain_mark:
     zh-CN: retain
     en: retain
+    ja: "retain"
+    de: "retain"
+    ru: "retain"
+    pt-BR: "retain"
+    es: "retain"
   mqtt_publish_retain_label:
     zh-CN: 保留
     en: Retain
+    ja: "retain"
+    de: "Retain"
+    ru: "Retain"
+    pt-BR: "Retain"
+    es: "Retain"
   edit:
     zh-CN: 编辑
     en: Edit
+    ja: "編集"
+    de: "Bearbeiten"
+    ru: "Изменить"
+    pt-BR: "Editar"
+    es: "Editar"
   sent_stat:
     zh-CN: "发送: %{count}"
     en: "Sent: %{count}"
+    ja: "送信: %{count}"
+    de: "Gesendet: %{count}"
+    ru: "Отправлено: %{count}"
+    pt-BR: "Enviado: %{count}"
+    es: "Enviados: %{count}"
   received_stat:
     zh-CN: "接收: %{count}"
     en: "Received: %{count}"
+    ja: "受信: %{count}"
+    de: "Empfangen: %{count}"
+    ru: "Получено: %{count}"
+    pt-BR: "Recebido: %{count}"
+    es: "Recibidos: %{count}"
   total_stat:
     zh-CN: "总计: %{count}"
     en: "Total: %{count}"
+    ja: "合計: %{count}"
+    de: "Gesamt: %{count}"
+    ru: "Всего: %{count}"
+    pt-BR: "Total: %{count}"
+    es: "Total: %{count}"
   log_record:
     zh-CN: 日志记录
     en: Logging
+    ja: "ログ記録"
+    de: "Protokollierung"
+    ru: "Журналирование"
+    pt-BR: "Registro de log"
+    es: "Registro"
   message_mode_label:
     zh-CN: "消息模式:"
     en: "Message Mode:"
+    ja: "メッセージモード:"
+    de: "Nachrichtenmodus:"
+    ru: "Режим сообщений:"
+    pt-BR: "Modo da mensagem:"
+    es: "Modo de mensaje:"
   mode_text:
     zh-CN: 文本
     en: Text
+    ja: "テキスト"
+    de: "Text"
+    ru: "Текст"
+    pt-BR: "Texto"
+    es: "Texto"
   mode_hex:
     zh-CN: 十六进制
     en: Hex
+    ja: "16進数"
+    de: "Hexadezimal"
+    ru: "Шестнадцатеричный"
+    pt-BR: "Hexadecimal"
+    es: "Hexadecimal"
   auto_reply:
     zh-CN: 自动回复
     en: Auto Reply
+    ja: "自動応答"
+    de: "Automatische Antwort"
+    ru: "Автоответ"
+    pt-BR: "Resposta automática"
+    es: "Respuesta automática"
   client_connections:
     zh-CN: 客户端连接
     en: Client Connections
+    ja: "クライアント接続"
+    de: "Client-Verbindungen"
+    ru: "Клиентские подключения"
+    pt-BR: "Conexões de cliente"
+    es: "Conexiones de cliente"
   add_client_tooltip:
     zh-CN: 添加客户端
     en: Add Client
+    ja: "クライアントを追加"
+    de: "Client hinzufügen"
+    ru: "Добавить клиента"
+    pt-BR: "Adicionar cliente"
+    es: "Añadir cliente"
   no_client_connections:
     zh-CN: 暂无客户端连接
     en: No client connections
+    ja: "クライアント接続はありません"
+    de: "Keine Client-Verbindungen"
+    ru: "Клиентских подключений нет"
+    pt-BR: "Nenhuma conexão de cliente"
+    es: "No hay conexiones de cliente"
   message_record:
     zh-CN: 消息记录
     en: Messages
+    ja: "メッセージ履歴"
+    de: "Nachrichten"
+    ru: "Сообщения"
+    pt-BR: "Mensagens"
+    es: "Mensajes"
   auto_scroll:
     zh-CN: 自动滚动
     en: Auto Scroll
+    ja: "自動スクロール"
+    de: "Automatisch scrollen"
+    ru: "Автопрокрутка"
+    pt-BR: "Rolagem automática"
+    es: "Desplazamiento automático"
   keep_last:
     zh-CN: 保留最后
     en: Keep last
+    ja: "最新を保持"
+    de: "Letzte behalten"
+    ru: "Хранить последние"
+    pt-BR: "Manter últimas"
+    es: "Conservar últimos"
   keep_last_unit:
     zh-CN: 条
     en: messages
+    ja: "件"
+    de: "Nachrichten"
+    ru: "сообщ."
+    pt-BR: "mensagens"
+    es: "mensajes"
   keep_last_tooltip:
     zh-CN: 限制消息记录最多保留 N 条，超出后自动淘汰最早的消息，防止内存占用过多；0 表示不限制
     en: Keep at most N messages; older ones are dropped to limit memory usage. 0 means unlimited
+    ja: "メッセージ履歴を最大 N 件まで保持し、超えた分は古い順に破棄してメモリ使用量を抑えます。0 は無制限"
+    de: "Maximal N Nachrichten behalten; ältere werden verworfen, um den Speicherbedarf zu begrenzen. 0 = unbegrenzt"
+    ru: "Хранить не более N сообщений; устаревшие удаляются для экономии памяти. 0 — без ограничений"
+    pt-BR: "Mantém no máximo N mensagens; as mais antigas são descartadas para limitar a memória. 0 significa ilimitado"
+    es: "Conserva como máximo N mensajes; los más antiguos se descartan para limitar el uso de memoria. 0 significa sin límite"
   keep_last_disabled_tooltip:
     zh-CN: 关闭自动滚动时不淘汰消息，因此固定为 0
     en: Auto scroll is off, so no messages are dropped (fixed at 0)
+    ja: "自動スクロールがオフのときはメッセージを破棄しないため、0 に固定されます"
+    de: "Automatisches Scrollen ist aus, daher werden keine Nachrichten verworfen (fest auf 0)"
+    ru: "Автопрокрутка выключена, поэтому сообщения не удаляются (зафиксировано 0)"
+    pt-BR: "A rolagem automática está desligada, então nenhuma mensagem é descartada (fixo em 0)"
+    es: "El desplazamiento automático está desactivado, por lo que no se descartan mensajes (fijado en 0)"
   search_tooltip:
     zh-CN: 搜索消息 (Ctrl+F)
     en: Search messages (Ctrl+F)
+    ja: "メッセージを検索 (Ctrl+F)"
+    de: "Nachrichten durchsuchen (Strg+F)"
+    ru: "Поиск сообщений (Ctrl+F)"
+    pt-BR: "Pesquisar mensagens (Ctrl+F)"
+    es: "Buscar mensajes (Ctrl+F)"
   search_placeholder:
     zh-CN: 搜索消息内容...
     en: Search messages...
+    ja: "メッセージを検索…"
+    de: "Nachrichteninhalt durchsuchen…"
+    ru: "Поиск по сообщениям…"
+    pt-BR: "Pesquisar mensagens…"
+    es: "Buscar en los mensajes…"
   search_prev:
     zh-CN: 上一个 (Shift+Enter)
     en: Previous (Shift+Enter)
+    ja: "前へ (Shift+Enter)"
+    de: "Zurück (Umschalt+Enter)"
+    ru: "Предыдущее (Shift+Enter)"
+    pt-BR: "Anterior (Shift+Enter)"
+    es: "Anterior (Mayús+Intro)"
   search_next:
     zh-CN: 下一个 (Enter)
     en: Next (Enter)
+    ja: "次へ (Enter)"
+    de: "Weiter (Enter)"
+    ru: "Следующее (Enter)"
+    pt-BR: "Próxima (Enter)"
+    es: "Siguiente (Intro)"
   search_close:
     zh-CN: 关闭搜索 (Esc)
     en: Close search (Esc)
+    ja: "検索を閉じる (Esc)"
+    de: "Suche schließen (Esc)"
+    ru: "Закрыть поиск (Esc)"
+    pt-BR: "Fechar pesquisa (Esc)"
+    es: "Cerrar búsqueda (Esc)"
   display_format:
     zh-CN: "格式:%{label}"
     en: "Format: %{label}"
+    ja: "形式:%{label}"
+    de: "Format: %{label}"
+    ru: "Формат: %{label}"
+    pt-BR: "Formato: %{label}"
+    es: "Formato: %{label}"
   format_toggle_tooltip:
     zh-CN: 切换消息显示格式（原始/美化/压缩）
     en: Toggle message display format (raw/pretty/minified)
+    ja: "メッセージ表示形式を切り替え（元のまま/整形/圧縮）"
+    de: "Anzeigeformat der Nachrichten umschalten (roh/formatiert/minimiert)"
+    ru: "Переключение формата отображения сообщений (исходный/форматированный/сжатый)"
+    pt-BR: "Alternar formato de exibição (bruto/formatado/minificado)"
+    es: "Cambiar el formato de visualización de los mensajes (sin procesar/formateado/minificado)"
   export:
     zh-CN: 导出
     en: Export
+    ja: "エクスポート"
+    de: "Exportieren"
+    ru: "Экспорт"
+    pt-BR: "Exportar"
+    es: "Exportar"
   clear:
     zh-CN: 清空
     en: Clear
+    ja: "クリア"
+    de: "Leeren"
+    ru: "Очистить"
+    pt-BR: "Limpar"
+    es: "Limpiar"
   no_messages:
     zh-CN: 暂无消息记录
     en: No messages
+    ja: "メッセージ履歴はありません"
+    de: "Keine Nachrichten"
+    ru: "Сообщений пока нет"
+    pt-BR: "Nenhuma mensagem"
+    es: "No hay mensajes"
   sent_label:
     zh-CN: 发送
     en: Sent
+    ja: "送信"
+    de: "Gesendet"
+    ru: "Отправлено"
+    pt-BR: "Enviado"
+    es: "Enviado"
   received_label:
     zh-CN: 接收
     en: Received
+    ja: "受信"
+    de: "Empfangen"
+    ru: "Получено"
+    pt-BR: "Recebido"
+    es: "Recibido"
   unexpected_reply_tooltip:
     zh-CN: 非预期地址的回复
     en: Reply from an unexpected address
+    ja: "想定外のアドレスからの応答"
+    de: "Antwort von einer unerwarteten Adresse"
+    ru: "Ответ с неожиданного адреса"
+    pt-BR: "Resposta de um endereço inesperado"
+    es: "Respuesta de una dirección inesperada"
   send_to:
     zh-CN: "发送给：%{addr}"
     en: "Send to: %{addr}"
+    ja: "送信先：%{addr}"
+    de: "Senden an: %{addr}"
+    ru: "Кому: %{addr}"
+    pt-BR: "Enviar para: %{addr}"
+    es: "Enviar a: %{addr}"
   send_to_all:
     zh-CN: 发送给：全部客户端
     en: "Send to: All Clients"
+    ja: "送信先：すべてのクライアント"
+    de: "Senden an: alle Clients"
+    ru: "Кому: всем клиентам"
+    pt-BR: "Enviar para: todos os clientes"
+    es: "Enviar a: todos los clientes"
   auto_clear:
     zh-CN: 自动清空
     en: Auto Clear
+    ja: "自動クリア"
+    de: "Automatisch leeren"
+    ru: "Автоочистка"
+    pt-BR: "Limpar automaticamente"
+    es: "Limpieza automática"
   periodic_send:
     zh-CN: 周期发送
     en: Timed Send
+    ja: "周期送信"
+    de: "Zyklisches Senden"
+    ru: "Периодическая отправка"
+    pt-BR: "Envio periódico"
+    es: "Envío periódico"
   error_no_client_connections:
     zh-CN: 无客户端连接
     en: No client connections
+    ja: "クライアント接続がありません"
+    de: "Keine Client-Verbindungen"
+    ru: "Нет клиентских подключений"
+    pt-BR: "Nenhuma conexão de cliente"
+    es: "No hay conexiones de cliente"
   send:
     zh-CN: 发送
     en: Send
+    ja: "送信"
+    de: "Senden"
+    ru: "Отправить"
+    pt-BR: "Enviar"
+    es: "Enviar"
   send_shortcut_tooltip:
     zh-CN: "发送 (Ctrl+Enter)"
     en: "Send (Ctrl+Enter)"
+    ja: "送信 (Ctrl+Enter)"
+    de: "Senden (Strg+Enter)"
+    ru: "Отправить (Ctrl+Enter)"
+    pt-BR: "Enviar (Ctrl+Enter)"
+    es: "Enviar (Ctrl+Intro)"
   open_file:
     zh-CN: 打开文件
     en: Open File
+    ja: "ファイルを開く"
+    de: "Datei öffnen"
+    ru: "Открыть файл"
+    pt-BR: "Abrir arquivo"
+    es: "Abrir archivo"
   open_file_tooltip:
     zh-CN: 从文件读取内容并填入发送框
     en: Read a file and fill its content into the send box
+    ja: "ファイルを読み込み、内容を送信欄に入力します"
+    de: "Datei einlesen und Inhalt in das Sendefeld übernehmen"
+    ru: "Прочитать файл и вставить содержимое в поле отправки"
+    pt-BR: "Ler um arquivo e preencher seu conteúdo na caixa de envio"
+    es: "Leer un archivo y volcar su contenido en el cuadro de envío"
   insert_variable:
     zh-CN: 插入变量
     en: Insert Variable
+    ja: "変数を挿入"
+    de: "Variable einfügen"
+    ru: "Вставить переменную"
+    pt-BR: "Inserir variável"
+    es: "Insertar variable"
   insert_variable_tooltip:
     zh-CN: 插入时间、UUID、随机数等变量，发送时替换为实际值
     en: Insert time, UUID, random and other variables; replaced with actual values when sending
+    ja: "時刻、UUID、乱数などの変数を挿入し、送信時に実際の値に置き換えます"
+    de: "Variablen für Zeit, UUID, Zufallswerte usw. einfügen; werden beim Senden durch tatsächliche Werte ersetzt"
+    ru: "Вставить переменные времени, UUID, случайных чисел и др.; при отправке заменяются фактическими значениями"
+    pt-BR: "Inserir variáveis de hora, UUID, aleatórias e outras; substituídas pelos valores reais no envio"
+    es: "Inserte variables como hora, UUID o números aleatorios; se sustituyen por valores reales al enviar"
   trailer_label:
     zh-CN: 结尾
     en: Suffix
+    ja: "末尾"
+    de: "Abschluss"
+    ru: "Окончание"
+    pt-BR: "Sufixo"
+    es: "Sufijo"
   trailer_none:
     zh-CN: 无
     en: None
+    ja: "なし"
+    de: "Keiner"
+    ru: "Нет"
+    pt-BR: "Nenhum"
+    es: "Ninguno"
   trailer_tooltip:
     zh-CN: 发送时在每条消息末尾追加结尾字符（无 / LF / CRLF），点击切换；立即生效，同时对逐行发送任务与自动回复生效
     en: Append a trailing character (None / LF / CRLF) to every outgoing message; click to cycle. Takes effect immediately, also applies to line-send tasks and auto reply
+    ja: "送信時に各メッセージの末尾へ終端文字（なし / LF / CRLF）を追加します。クリックで切り替え。即時反映され、1 行ずつ送信するタスクと自動応答にも適用されます"
+    de: "Beim Senden wird jedem Nachrichtenende ein Abschlusszeichen angehängt (Keiner / LF / CRLF); Klicken zum Umschalten. Wirkt sofort, auch für zeilenweise Sendeaufgaben und automatische Antworten"
+    ru: "Добавлять в конец каждого сообщения символ окончания (Нет / LF / CRLF); нажмите для переключения. Действует сразу, в том числе для задач построчной отправки и автоответа"
+    pt-BR: "Acrescenta um caractere final (Nenhum / LF / CRLF) a cada mensagem enviada; clique para alternar. Vale na hora e também para tarefas de envio linha a linha e resposta automática"
+    es: "Añade un carácter final (Ninguno / LF / CRLF) a cada mensaje saliente; haga clic para cambiar. Surte efecto de inmediato y también se aplica a las tareas de envío línea por línea y a la respuesta automática"
   reply_rules:
     zh-CN: 回复规则
     en: Reply Rules
+    ja: "応答ルール"
+    de: "Antwortregeln"
+    ru: "Правила ответа"
+    pt-BR: "Regras de resposta"
+    es: "Reglas de respuesta"
   reply_rules_enabled:
     zh-CN: 已启用 %{n}
     en: "%{n} enabled"
+    ja: "%{n} 件有効"
+    de: "%{n} aktiviert"
+    ru: "Включено: %{n}"
+    pt-BR: "%{n} ativadas"
+    es: "%{n} activadas"
   reply_rules_off:
     zh-CN: 未启用
     en: Disabled
+    ja: "無効"
+    de: "Nicht aktiviert"
+    ru: "Не включено"
+    pt-BR: "Desativadas"
+    es: "Desactivadas"
   auto_reply_active:
     zh-CN: 已启用 · %{n} 条规则
     en: "%{n} rules active"
+    ja: "有効 · %{n} 件のルール"
+    de: "%{n} Regeln aktiv"
+    ru: "Включено · правил: %{n}"
+    pt-BR: "%{n} regras ativas"
+    es: "%{n} reglas activas"
   manage_reply_rules:
     zh-CN: 管理规则
     en: Manage Rules
+    ja: "ルールを管理"
+    de: "Regeln verwalten"
+    ru: "Управление правилами"
+    pt-BR: "Gerenciar regras"
+    es: "Gestionar reglas"
   manage_reply_rules_tooltip:
     zh-CN: 打开自动回复规则管理：按报文条件匹配并自动应答
     en: "Open auto reply rules: match incoming frames and respond automatically"
+    ja: "自動応答ルール管理を開く：受信フレームの条件に一致すると自動応答します"
+    de: "Regeln für automatische Antworten öffnen: eingehende Frames abgleichen und automatisch antworten"
+    ru: "Открыть управление правилами автоответа: автоматический ответ по условиям сообщений"
+    pt-BR: "Abrir as regras de resposta automática: corresponder quadros recebidos e responder automaticamente"
+    es: "Abrir la gestión de reglas de respuesta automática: responde de forma automática según las condiciones de los mensajes recibidos"
 
 send_task:
   reason_not_connected:
     zh-CN: 未连接
     en: Not connected
+    ja: "未接続"
+    de: "Nicht verbunden"
+    ru: "Нет подключения"
+    pt-BR: "Sem conexão"
+    es: "Sin conexión"
   reason_disconnected:
     zh-CN: 连接已断开
     en: Connection lost
+    ja: "接続が切断されました"
+    de: "Verbindung getrennt"
+    ru: "Подключение разорвано"
+    pt-BR: "Conexão perdida"
+    es: "Conexión perdida"
   reason_mqtt_topic_empty:
     zh-CN: 发布主题为空，已暂停
     en: Publish topic is empty; paused
+    ja: "発行トピックが空のため一時停止しました"
+    de: "Topic zum Veröffentlichen ist leer; pausiert"
+    ru: "Тема публикации пуста; отправка приостановлена"
+    pt-BR: "O tópico de publicação está vazio; pausado"
+    es: "El tema de publicación está vacío; en pausa"
   title:
     zh-CN: 发送任务
     en: Send Tasks
+    ja: "送信タスク"
+    de: "Sendeaufgaben"
+    ru: "Задачи отправки"
+    pt-BR: "Tarefas de envio"
+    es: "Tareas de envío"
   tooltip:
     zh-CN: 查看逐行发送任务
     en: View line-send tasks
+    ja: "1 行ずつ送信するタスクを表示"
+    de: "Zeilenweise Sendeaufgaben anzeigen"
+    ru: "Просмотр задач построчной отправки"
+    pt-BR: "Ver tarefas de envio linha a linha"
+    es: "Ver las tareas de envío línea por línea"
   empty:
     zh-CN: 暂无发送任务
     en: No send tasks
+    ja: "送信タスクはありません"
+    de: "Keine Sendeaufgaben"
+    ru: "Задач отправки нет"
+    pt-BR: "Nenhuma tarefa de envio"
+    es: "No hay tareas de envío"
   status_idle:
     zh-CN: 待开始
     en: Idle
+    ja: "待機中"
+    de: "Bereit"
+    ru: "Ожидание"
+    pt-BR: "Ociosa"
+    es: "En espera"
   status_running:
     zh-CN: 运行中
     en: Running
+    ja: "実行中"
+    de: "Läuft"
+    ru: "Выполняется"
+    pt-BR: "Em execução"
+    es: "En ejecución"
   status_paused:
     zh-CN: 已暂停
     en: Paused
+    ja: "一時停止中"
+    de: "Pausiert"
+    ru: "Приостановлено"
+    pt-BR: "Pausada"
+    es: "En pausa"
   status_finished:
     zh-CN: 已完成
     en: Finished
+    ja: "完了"
+    de: "Abgeschlossen"
+    ru: "Завершено"
+    pt-BR: "Concluída"
+    es: "Finalizada"
   status_stopped:
     zh-CN: 已停止
     en: Stopped
+    ja: "停止済み"
+    de: "Gestoppt"
+    ru: "Остановлено"
+    pt-BR: "Parada"
+    es: "Detenida"
   status_failed:
     zh-CN: 失败
     en: Failed
+    ja: "失敗"
+    de: "Fehlgeschlagen"
+    ru: "Ошибка"
+    pt-BR: "Falhou"
+    es: "Fallida"
   round:
     zh-CN: 第 %{n} 轮
     en: "Round %{n}"
+    ja: "第 %{n} ラウンド"
+    de: "Runde %{n}"
+    ru: "Цикл %{n}"
+    pt-BR: "Rodada %{n}"
+    es: "Ronda %{n}"
   round_infinite:
     zh-CN: 无限循环
     en: Infinite loop
+    ja: "無限ループ"
+    de: "Endlosschleife"
+    ru: "Бесконечный цикл"
+    pt-BR: "Loop infinito"
+    es: "Bucle infinito"
   interval:
     zh-CN: 间隔 %{ms} ms
     en: "Interval %{ms} ms"
+    ja: "間隔 %{ms} ms"
+    de: "Intervall %{ms} ms"
+    ru: "Интервал %{ms} мс"
+    pt-BR: "Intervalo %{ms} ms"
+    es: "Intervalo %{ms} ms"
   items:
     zh-CN: 共 %{n} 条
     en: "%{n} items"
+    ja: "全 %{n} 件"
+    de: "%{n} Einträge"
+    ru: "Всего: %{n}"
+    pt-BR: "%{n} itens"
+    es: "%{n} elementos"
   lines_preview_title:
     zh-CN: 行清单（前 %{n} 条）
     en: "Lines (first %{n})"
+    ja: "行一覧（先頭 %{n} 件）"
+    de: "Zeilen (erste %{n})"
+    ru: "Строки (первые %{n})"
+    pt-BR: "Linhas (primeiras %{n})"
+    es: "Líneas (primeras %{n})"
   pause:
     zh-CN: 暂停
     en: Pause
+    ja: "一時停止"
+    de: "Pausieren"
+    ru: "Пауза"
+    pt-BR: "Pausar"
+    es: "Pausar"
   resume:
     zh-CN: 继续
     en: Resume
+    ja: "再開"
+    de: "Fortsetzen"
+    ru: "Продолжить"
+    pt-BR: "Continuar"
+    es: "Reanudar"
   stop:
     zh-CN: 停止
     en: Stop
+    ja: "停止"
+    de: "Stoppen"
+    ru: "Остановить"
+    pt-BR: "Parar"
+    es: "Detener"
   delete:
     zh-CN: 删除
     en: Delete
+    ja: "削除"
+    de: "Löschen"
+    ru: "Удалить"
+    pt-BR: "Excluir"
+    es: "Eliminar"
   expand_lines:
     zh-CN: 展开行清单
     en: Show lines
+    ja: "行一覧を展開"
+    de: "Zeilen anzeigen"
+    ru: "Показать строки"
+    pt-BR: "Mostrar linhas"
+    es: "Mostrar líneas"
   collapse_lines:
     zh-CN: 收起行清单
     en: Hide lines
+    ja: "行一覧を折りたたむ"
+    de: "Zeilen ausblenden"
+    ru: "Скрыть строки"
+    pt-BR: "Ocultar linhas"
+    es: "Ocultar líneas"
   periodic_name:
     zh-CN: 周期发送
     en: Periodic send
+    ja: "周期送信"
+    de: "Zyklisches Senden"
+    ru: "Периодическая отправка"
+    pt-BR: "Envio periódico"
+    es: "Envío periódico"
   timed_name:
     zh-CN: 定时任务
     en: Timed task
+    ja: "定時タスク"
+    de: "Zeitaufgabe"
+    ru: "Задача по расписанию"
+    pt-BR: "Tarefa agendada"
+    es: "Tarea programada"
   add_timed:
     zh-CN: 添加到定时任务
     en: Add timed task
+    ja: "定時タスクに追加"
+    de: "Zur Zeitaufgabe hinzufügen"
+    ru: "Добавить задачу по расписанию"
+    pt-BR: "Adicionar tarefa agendada"
+    es: "Añadir tarea programada"
   add_timed_exists:
     zh-CN: 每个连接仅支持 1 个定时任务
     en: Only one timed task per connection
+    ja: "定時タスクは接続ごとに 1 つまでです"
+    de: "Nur eine Zeitaufgabe pro Verbindung"
+    ru: "Для каждого подключения — только одна задача по расписанию"
+    pt-BR: "Apenas uma tarefa agendada por conexão"
+    es: "Solo se permite una tarea programada por conexión"
   auto_start:
     zh-CN: 自动启动
     en: Auto-start
+    ja: "自動開始"
+    de: "Automatisch starten"
+    ru: "Автозапуск"
+    pt-BR: "Início automático"
+    es: "Inicio automático"
   timed_round:
     zh-CN: 第 %{n} 次
     en: "Sent %{n}×"
+    ja: "%{n} 回目"
+    de: "%{n}× gesendet"
+    ru: "Отправка №%{n}"
+    pt-BR: "Enviada %{n}×"
+    es: "Envío n.º %{n}"
   edit:
     zh-CN: 编辑
     en: Edit
+    ja: "編集"
+    de: "Bearbeiten"
+    ru: "Изменить"
+    pt-BR: "Editar"
+    es: "Editar"
 
 timed_task:
   add_title:
     zh-CN: 添加到定时任务
     en: Add timed task
+    ja: "定時タスクに追加"
+    de: "Zur Zeitaufgabe hinzufügen"
+    ru: "Добавить задачу по расписанию"
+    pt-BR: "Adicionar tarefa agendada"
+    es: "Añadir tarea programada"
   edit_title:
     zh-CN: 编辑定时任务
     en: Edit timed task
+    ja: "定時タスクを編集"
+    de: "Zeitaufgabe bearbeiten"
+    ru: "Изменить задачу по расписанию"
+    pt-BR: "Editar tarefa agendada"
+    es: "Editar tarea programada"
   message:
     zh-CN: 消息内容
     en: Message
+    ja: "メッセージ内容"
+    de: "Nachrichteninhalt"
+    ru: "Сообщение"
+    pt-BR: "Mensagem"
+    es: "Mensaje"
   message_placeholder:
     zh-CN: "要定时发送的内容（支持 ${...} 变量）"
     en: "Content to send on a schedule (supports ${...} variables)"
+    ja: "定時送信する内容（${...} などの変数に対応）"
+    de: "Inhalt für zeitgesteuertes Senden (unterstützt ${...}-Variablen)"
+    ru: "Содержимое для отправки по расписанию (поддерживаются переменные ${...})"
+    pt-BR: "Conteúdo a enviar no horário agendado (aceita variáveis ${...})"
+    es: "Contenido que se enviará según la programación (admite variables ${...})"
   mode:
     zh-CN: 消息格式
     en: Format
+    ja: "メッセージ形式"
+    de: "Nachrichtenformat"
+    ru: "Формат сообщения"
+    pt-BR: "Formato"
+    es: "Formato"
   mode_text:
     zh-CN: 文本
     en: Text
+    ja: "テキスト"
+    de: "Text"
+    ru: "Текст"
+    pt-BR: "Texto"
+    es: "Texto"
   mode_hex:
     zh-CN: HEX
     en: HEX
+    ja: "HEX"
+    de: "HEX"
+    ru: "HEX"
+    pt-BR: "HEX"
+    es: "HEX"
   interval:
     zh-CN: 发送间隔
     en: Interval
+    ja: "送信間隔"
+    de: "Sendeintervall"
+    ru: "Интервал отправки"
+    pt-BR: "Intervalo de envio"
+    es: "Intervalo de envío"
   save:
     zh-CN: 保存
     en: Save
+    ja: "保存"
+    de: "Speichern"
+    ru: "Сохранить"
+    pt-BR: "Salvar"
+    es: "Guardar"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
 
 mqtt_net:
   reconnected:
     zh-CN: MQTT 已重连
     en: MQTT reconnected
+    ja: "MQTT が再接続しました"
+    de: "MQTT erneut verbunden"
+    ru: "MQTT переподключён"
+    pt-BR: "MQTT reconectado"
+    es: "MQTT reconectado"
   reconnecting:
     zh-CN: MQTT 连接断开，自动重连中
     en: MQTT disconnected, reconnecting
+    ja: "MQTT 接続が切断され、自動再接続中です"
+    de: "MQTT-Verbindung getrennt, automatischer Neuaufbau"
+    ru: "MQTT отключён, выполняется переподключение"
+    pt-BR: "MQTT desconectado, reconectando"
+    es: "MQTT desconectado; reconectando automáticamente"
   broker_disconnected:
     zh-CN: Broker 主动断开连接
     en: Broker closed the connection
+    ja: "Broker が接続を切断しました"
+    de: "Broker hat die Verbindung getrennt"
+    ru: "Broker разорвал подключение"
+    pt-BR: "O broker fechou a conexão"
+    es: "El broker cerró la conexión"
   suback_rejected:
     zh-CN: Broker 拒绝了部分订阅
     en: Broker rejected some subscriptions
+    ja: "Broker が一部の購読を拒否しました"
+    de: "Broker hat einige Abonnements abgelehnt"
+    ru: "Broker отклонил часть подписок"
+    pt-BR: "O broker rejeitou algumas assinaturas"
+    es: "El broker rechazó algunas suscripciones"
   suback_timeout:
     zh-CN: "主题「%{topic}」等待订阅确认超时"
     en: "Timed out waiting for the subscription confirmation of \"%{topic}\""
+    ja: "トピック「%{topic}」の購読確認がタイムアウトしました"
+    de: "Zeitüberschreitung beim Warten auf die Abonnement-Bestätigung für „%{topic}“"
+    ru: "Истекло время ожидания подтверждения подписки на «%{topic}»"
+    pt-BR: "Tempo esgotado aguardando a confirmação da assinatura de \"%{topic}\""
+    es: "Se agotó el tiempo de espera de la confirmación de suscripción de «%{topic}»"
   suback_code_mismatch:
     zh-CN: "主题「%{topic}」的订阅确认数量异常"
     en: "Unexpected acknowledgement count for \"%{topic}\""
+    ja: "トピック「%{topic}」の購読確認数が不正です"
+    de: "Unerwartete Anzahl Bestätigungen für „%{topic}“"
+    ru: "Неожиданное число подтверждений для «%{topic}»"
+    pt-BR: "Contagem de confirmações inesperada para \"%{topic}\""
+    es: "Número de confirmaciones de suscripción inesperado para «%{topic}»"
   suback_reason_topic:
     zh-CN: "主题「%{topic}」：%{reason}"
     en: "\"%{topic}\": %{reason}"
+    ja: "トピック「%{topic}」：%{reason}"
+    de: "„%{topic}“: %{reason}"
+    ru: "«%{topic}»: %{reason}"
+    pt-BR: "\"%{topic}\": %{reason}"
+    es: "«%{topic}»: %{reason}"
   suback_rejected_topic:
     zh-CN: "主题「%{topic}」的订阅被 broker 拒绝"
     en: "The broker rejected the subscription to \"%{topic}\""
+    ja: "トピック「%{topic}」の購読が broker に拒否されました"
+    de: "Der Broker hat das Abonnement von „%{topic}“ abgelehnt"
+    ru: "Broker отклонил подписку на «%{topic}»"
+    pt-BR: "O broker rejeitou a assinatura de \"%{topic}\""
+    es: "El broker rechazó la suscripción a «%{topic}»"
   suback_not_authorized_topic:
     zh-CN: "主题「%{topic}」没有权限"
     en: "No permission for topic \"%{topic}\""
+    ja: "トピック「%{topic}」への権限がありません"
+    de: "Keine Berechtigung für Topic „%{topic}“"
+    ru: "Нет прав на тему «%{topic}»"
+    pt-BR: "Sem permissão para o tópico \"%{topic}\""
+    es: "Sin permiso para el tema «%{topic}»"
   suback_rejected_reason:
     zh-CN: "Broker 拒绝了订阅: %{reason}"
     en: "Broker rejected the subscription: %{reason}"
+    ja: "Broker が購読を拒否しました: %{reason}"
+    de: "Broker hat das Abonnement abgelehnt: %{reason}"
+    ru: "Broker отклонил подписку: %{reason}"
+    pt-BR: "O broker rejeitou a assinatura: %{reason}"
+    es: "El broker rechazó la suscripción: %{reason}"
   suback_reason_with_server:
     zh-CN: "%{reason}（broker 说明: %{detail}）"
     en: "%{reason} (broker: %{detail})"
+    ja: "%{reason}（broker からの説明: %{detail}）"
+    de: "%{reason} (Broker: %{detail})"
+    ru: "%{reason} (broker: %{detail})"
+    pt-BR: "%{reason} (broker: %{detail})"
+    es: "%{reason} (broker: %{detail})"
   suback_reason_success:
     zh-CN: 订阅成功
     en: Subscription accepted
+    ja: "購読に成功しました"
+    de: "Abonnement angenommen"
+    ru: "Подписка оформлена"
+    pt-BR: "Assinatura aceita"
+    es: "Suscripción aceptada"
   suback_reason_failure:
     zh-CN: 订阅失败（未指明原因）
     en: Subscription failed (unspecified)
+    ja: "購読に失敗しました（原因不明）"
+    de: "Abonnement fehlgeschlagen (Ursache nicht angegeben)"
+    ru: "Не удалось подписаться (причина не указана)"
+    pt-BR: "Falha na assinatura (motivo não informado)"
+    es: "Suscripción fallida (sin motivo especificado)"
   suback_reason_unspecified:
     zh-CN: 未指明错误
     en: Unspecified error
+    ja: "原因が特定されていません"
+    de: "Nicht angegebener Fehler"
+    ru: "Причина не указана"
+    pt-BR: "Erro não especificado"
+    es: "Error no especificado"
   suback_reason_implementation_specific:
     zh-CN: 实现特定错误
     en: Implementation specific error
+    ja: "実装固有のエラー"
+    de: "Implementierungsspezifischer Fehler"
+    ru: "Ошибка, зависящая от реализации"
+    pt-BR: "Erro específico da implementação"
+    es: "Error específico de la implementación"
   suback_reason_not_authorized:
     zh-CN: 未授权
     en: Not authorized
+    ja: "未認可"
+    de: "Nicht autorisiert"
+    ru: "Нет авторизации"
+    pt-BR: "Não autorizado"
+    es: "No autorizado"
   suback_reason_topic_filter_invalid:
     zh-CN: 主题过滤器非法
     en: Topic filter invalid
+    ja: "トピックフィルターが不正です"
+    de: "Topic-Filter ungültig"
+    ru: "Недопустимый фильтр темы"
+    pt-BR: "Filtro de tópico inválido"
+    es: "Filtro de tema no válido"
   suback_reason_pkid_in_use:
     zh-CN: 报文标识符已被占用
     en: Packet identifier in use
+    ja: "パケット識別子が使用中です"
+    de: "Paketkennung wird bereits verwendet"
+    ru: "Идентификатор пакета уже используется"
+    pt-BR: "Identificador de pacote em uso"
+    es: "Identificador de paquete en uso"
   suback_reason_quota_exceeded:
     zh-CN: 配额超限
     en: Quota exceeded
+    ja: "クォータを超過しました"
+    de: "Kontingent überschritten"
+    ru: "Превышена квота"
+    pt-BR: "Cota excedida"
+    es: "Cuota superada"
   suback_reason_shared_not_supported:
     zh-CN: 不支持共享订阅
     en: Shared subscriptions not supported
+    ja: "共有購読には対応していません"
+    de: "Geteilte Abonnements nicht unterstützt"
+    ru: "Общие подписки не поддерживаются"
+    pt-BR: "Assinaturas compartilhadas não suportadas"
+    es: "Suscripciones compartidas no admitidas"
   suback_reason_sub_id_not_supported:
     zh-CN: 不支持订阅标识符
     en: Subscription identifiers not supported
+    ja: "購読識別子には対応していません"
+    de: "Abonnement-Kennungen nicht unterstützt"
+    ru: "Идентификаторы подписки не поддерживаются"
+    pt-BR: "Identificadores de assinatura não suportados"
+    es: "Identificadores de suscripción no admitidos"
   suback_reason_wildcard_not_supported:
     zh-CN: 不支持通配符订阅
     en: Wildcard subscriptions not supported
+    ja: "ワイルドカード購読には対応していません"
+    de: "Platzhalter-Abonnements nicht unterstützt"
+    ru: "Подписки с подстановочными знаками не поддерживаются"
+    pt-BR: "Assinaturas com curinga não suportadas"
+    es: "Suscripciones con comodines no admitidas"
   server_disconnect:
     zh-CN: "Broker 主动断开连接（%{code}）"
     en: "Broker closed the connection (%{code})"
+    ja: "Broker が接続を切断しました（%{code}）"
+    de: "Broker hat die Verbindung getrennt (%{code})"
+    ru: "Broker разорвал подключение (%{code})"
+    pt-BR: "O broker fechou a conexão (%{code})"
+    es: "El broker cerró la conexión (%{code})"
   server_disconnect_reason:
     zh-CN: "Broker 主动断开连接（%{code}: %{reason}）"
     en: "Broker closed the connection (%{code}: %{reason})"
+    ja: "Broker が接続を切断しました（%{code}: %{reason}）"
+    de: "Broker hat die Verbindung getrennt (%{code}: %{reason})"
+    ru: "Broker разорвал подключение (%{code}: %{reason})"
+    pt-BR: "O broker fechou a conexão (%{code}: %{reason})"
+    es: "El broker cerró la conexión (%{code}: %{reason})"
   connack_refused:
     zh-CN: "Broker 拒绝连接（%{code}）"
     en: "Broker refused the connection (%{code})"
+    ja: "Broker が接続を拒否しました（%{code}）"
+    de: "Broker hat die Verbindung abgelehnt (%{code})"
+    ru: "Broker отклонил подключение (%{code})"
+    pt-BR: "O broker recusou a conexão (%{code})"
+    es: "El broker rechazó la conexión (%{code})"
   publish_rejected:
     zh-CN: "发布被 Broker 拒绝（%{code}）"
     en: "Publish rejected by broker (%{code})"
+    ja: "発行が broker に拒否されました（%{code}）"
+    de: "Veröffentlichen vom Broker abgelehnt (%{code})"
+    ru: "Broker отклонил публикацию (%{code})"
+    pt-BR: "Publicação rejeitada pelo broker (%{code})"
+    es: "Publicación rechazada por el broker (%{code})"
   publish_rejected_reason:
     zh-CN: "发布被 Broker 拒绝（%{code}: %{reason}）"
     en: "Publish rejected by broker (%{code}: %{reason})"
+    ja: "発行が broker に拒否されました（%{code}: %{reason}）"
+    de: "Veröffentlichen vom Broker abgelehnt (%{code}: %{reason})"
+    ru: "Broker отклонил публикацию (%{code}: %{reason})"
+    pt-BR: "Publicação rejeitada pelo broker (%{code}: %{reason})"
+    es: "Publicación rechazada por el broker (%{code}: %{reason})"
   publish_not_authorized_topic:
     zh-CN: "主题「%{topic}」没有权限"
     en: "No permission to publish to \"%{topic}\""
+    ja: "トピック「%{topic}」への発行権限がありません"
+    de: "Keine Berechtigung zum Veröffentlichen auf „%{topic}“"
+    ru: "Нет прав на публикацию в «%{topic}»"
+    pt-BR: "Sem permissão para publicar em \"%{topic}\""
+    es: "Sin permiso para publicar en «%{topic}»"
   publish_rejected_topic:
     zh-CN: "发布到「%{topic}」被拒绝（%{code}）"
     en: "Publish to \"%{topic}\" was rejected (%{code})"
+    ja: "「%{topic}」への発行が拒否されました（%{code}）"
+    de: "Veröffentlichen auf „%{topic}“ abgelehnt (%{code})"
+    ru: "Публикация в «%{topic}» отклонена (%{code})"
+    pt-BR: "A publicação em \"%{topic}\" foi rejeitada (%{code})"
+    es: "Se rechazó la publicación en «%{topic}» (%{code})"
   publish_rejected_topic_reason:
     zh-CN: "发布到「%{topic}」被拒绝（%{code}: %{reason}）"
     en: "Publish to \"%{topic}\" was rejected (%{code}: %{reason})"
+    ja: "「%{topic}」への発行が拒否されました（%{code}: %{reason}）"
+    de: "Veröffentlichen auf „%{topic}“ abgelehnt (%{code}: %{reason})"
+    ru: "Публикация в «%{topic}» отклонена (%{code}: %{reason})"
+    pt-BR: "A publicação em \"%{topic}\" foi rejeitada (%{code}: %{reason})"
+    es: "Se rechazó la publicación en «%{topic}» (%{code}: %{reason})"
   publish_failed_local:
     zh-CN: "向「%{topic}」发送失败: %{reason}"
     en: "Failed to send to \"%{topic}\": %{reason}"
+    ja: "「%{topic}」への送信に失敗しました: %{reason}"
+    de: "Senden an „%{topic}“ fehlgeschlagen: %{reason}"
+    ru: "Не удалось отправить в «%{topic}»: %{reason}"
+    pt-BR: "Falha ao enviar para \"%{topic}\": %{reason}"
+    es: "No se pudo enviar a «%{topic}»: %{reason}"
   connect_failed:
     zh-CN: "MQTT 连接失败: %{reason}"
     en: "MQTT connect failed: %{reason}"
+    ja: "MQTT 接続に失敗しました: %{reason}"
+    de: "MQTT-Verbindung fehlgeschlagen: %{reason}"
+    ru: "Не удалось подключиться по MQTT: %{reason}"
+    pt-BR: "Falha na conexão MQTT: %{reason}"
+    es: "Error de conexión MQTT: %{reason}"
   subscribe_failed:
     zh-CN: "订阅失败: %{topic}"
     en: "Subscribe failed: %{topic}"
+    ja: "購読に失敗しました: %{topic}"
+    de: "Abonnieren fehlgeschlagen: %{topic}"
+    ru: "Не удалось подписаться: %{topic}"
+    pt-BR: "Falha ao assinar: %{topic}"
+    es: "Error al suscribirse: %{topic}"
   unsubscribe_failed:
     zh-CN: "取消订阅失败: %{topic}"
     en: "Unsubscribe failed: %{topic}"
+    ja: "購読の解除に失敗しました: %{topic}"
+    de: "Abbestellen fehlgeschlagen: %{topic}"
+    ru: "Не удалось отписаться: %{topic}"
+    pt-BR: "Falha ao cancelar a assinatura: %{topic}"
+    es: "Error al cancelar la suscripción: %{topic}"
   missing_topic_meta:
     zh-CN: MQTT 发布缺少主题，消息已忽略
     en: MQTT publish is missing a topic; message dropped
+    ja: "MQTT 発行にトピックがないため、メッセージを破棄しました"
+    de: "Bei der MQTT-Veröffentlichung fehlt das Topic; Nachricht verworfen"
+    ru: "В публикации MQTT нет темы; сообщение отброшено"
+    pt-BR: "A publicação MQTT não tem tópico; mensagem descartada"
+    es: "La publicación MQTT no tiene tema; mensaje descartado"
   tls_config_failed:
     zh-CN: "TLS 配置无效: %{reason}"
     en: "Invalid TLS configuration: %{reason}"
+    ja: "TLS 設定が無効です: %{reason}"
+    de: "Ungültige TLS-Konfiguration: %{reason}"
+    ru: "Недопустимая конфигурация TLS: %{reason}"
+    pt-BR: "Configuração TLS inválida: %{reason}"
+    es: "Configuración TLS no válida: %{reason}"
   tls_build_failed:
     zh-CN: "TLS 配置构建失败: %{reason}"
     en: "Failed to build TLS configuration: %{reason}"
+    ja: "TLS 設定の構築に失敗しました: %{reason}"
+    de: "TLS-Konfiguration konnte nicht erstellt werden: %{reason}"
+    ru: "Не удалось построить конфигурацию TLS: %{reason}"
+    pt-BR: "Falha ao montar a configuração TLS: %{reason}"
+    es: "No se pudo crear la configuración TLS: %{reason}"
   tls_file_read_failed:
     zh-CN: "证书文件读取失败: %{path}（%{reason}）"
     en: "Failed to read certificate file: %{path} (%{reason})"
+    ja: "証明書ファイルの読み込みに失敗しました: %{path}（%{reason}）"
+    de: "Zertifikatsdatei konnte nicht gelesen werden: %{path} (%{reason})"
+    ru: "Не удалось прочитать файл сертификата: %{path} (%{reason})"
+    pt-BR: "Falha ao ler o arquivo de certificado: %{path} (%{reason})"
+    es: "No se pudo leer el archivo de certificado: %{path} (%{reason})"
   tls_root_certs_unavailable:
     zh-CN: 无法加载系统根证书，请改用自定义 CA 或检查系统证书存储
     en: System root certificates are unavailable; use a custom CA or check the system trust store
+    ja: "システムのルート証明書を読み込めません。カスタム CA を使用するか、システムの証明書ストアを確認してください"
+    de: "Systemstammzertifikate nicht verfügbar; verwenden Sie eine eigene CA oder prüfen Sie den Systemzertifikatsspeicher"
+    ru: "Системные корневые сертификаты недоступны; используйте собственный CA или проверьте хранилище сертификатов системы"
+    pt-BR: "Os certificados raiz do sistema não estão disponíveis; use uma CA personalizada ou verifique o repositório de confiança do sistema"
+    es: "Los certificados raíz del sistema no están disponibles; use una CA personalizada o revise el almacén de certificados del sistema"
   tls_ca_required:
     zh-CN: 自定义 CA 模式必须填写 CA 证书路径
     en: A CA certificate path is required in Custom CA mode
+    ja: "カスタム CA モードでは CA 証明書のパスが必須です"
+    de: "Im Modus „Benutzerdefinierte CA“ ist ein Pfad zum CA-Zertifikat erforderlich"
+    ru: "В режиме собственного CA необходимо указать путь к сертификату CA"
+    pt-BR: "O modo CA personalizada exige o caminho do certificado CA"
+    es: "En el modo CA personalizada debe indicarse la ruta del certificado de CA"
   tls_ca_parse_failed:
     zh-CN: "CA 证书解析失败: %{path}（%{reason}）"
     en: "Failed to parse CA certificate: %{path} (%{reason})"
+    ja: "CA 証明書の解析に失敗しました: %{path}（%{reason}）"
+    de: "CA-Zertifikat konnte nicht geparst werden: %{path} (%{reason})"
+    ru: "Не удалось разобрать сертификат CA: %{path} (%{reason})"
+    pt-BR: "Falha ao analisar o certificado CA: %{path} (%{reason})"
+    es: "No se pudo analizar el certificado de CA: %{path} (%{reason})"
   tls_ca_empty:
     zh-CN: "CA 证书文件不包含有效证书: %{path}"
     en: "CA certificate file contains no valid certificate: %{path}"
+    ja: "CA 証明書ファイルに有効な証明書が含まれていません: %{path}"
+    de: "Die CA-Zertifikatsdatei enthält kein gültiges Zertifikat: %{path}"
+    ru: "Файл сертификата CA не содержит действительного сертификата: %{path}"
+    pt-BR: "O arquivo de certificado CA não contém certificado válido: %{path}"
+    es: "El archivo de certificado de CA no contiene ningún certificado válido: %{path}"
   tls_cert_parse_failed:
     zh-CN: "客户端证书解析失败: %{path}（%{reason}）"
     en: "Failed to parse client certificate: %{path} (%{reason})"
+    ja: "クライアント証明書の解析に失敗しました: %{path}（%{reason}）"
+    de: "Clientzertifikat konnte nicht geparst werden: %{path} (%{reason})"
+    ru: "Не удалось разобрать клиентский сертификат: %{path} (%{reason})"
+    pt-BR: "Falha ao analisar o certificado do cliente: %{path} (%{reason})"
+    es: "No se pudo analizar el certificado de cliente: %{path} (%{reason})"
   tls_cert_empty:
     zh-CN: "客户端证书文件不包含有效证书: %{path}"
     en: "Client certificate file contains no valid certificate: %{path}"
+    ja: "クライアント証明書ファイルに有効な証明書が含まれていません: %{path}"
+    de: "Die Clientzertifikatsdatei enthält kein gültiges Zertifikat: %{path}"
+    ru: "Файл клиентского сертификата не содержит действительного сертификата: %{path}"
+    pt-BR: "O arquivo de certificado do cliente não contém certificado válido: %{path}"
+    es: "El archivo de certificado de cliente no contiene ningún certificado válido: %{path}"
   tls_key_parse_failed:
     zh-CN: "客户端私钥解析失败: %{path}（%{reason}）"
     en: "Failed to parse client key: %{path} (%{reason})"
+    ja: "クライアント秘密鍵の解析に失敗しました: %{path}（%{reason}）"
+    de: "Privater Clientschlüssel konnte nicht geparst werden: %{path} (%{reason})"
+    ru: "Не удалось разобрать закрытый ключ клиента: %{path} (%{reason})"
+    pt-BR: "Falha ao analisar a chave do cliente: %{path} (%{reason})"
+    es: "No se pudo analizar la clave privada del cliente: %{path} (%{reason})"
   tls_key_empty:
     zh-CN: "客户端私钥文件不包含有效私钥: %{path}"
     en: "Client key file contains no valid private key: %{path}"
+    ja: "クライアント秘密鍵ファイルに有効な秘密鍵が含まれていません: %{path}"
+    de: "Die Datei mit dem privaten Clientschlüssel enthält keinen gültigen Schlüssel: %{path}"
+    ru: "Файл закрытого ключа клиента не содержит действительного ключа: %{path}"
+    pt-BR: "O arquivo de chave do cliente não contém chave privada válida: %{path}"
+    es: "El archivo de clave del cliente no contiene ninguna clave privada válida: %{path}"
   tls_client_auth_incomplete:
     zh-CN: 客户端证书与私钥必须成对填写
     en: Client certificate and key must be provided together
+    ja: "クライアント証明書と秘密鍵は両方指定してください"
+    de: "Clientzertifikat und Schlüssel müssen zusammen angegeben werden"
+    ru: "Клиентский сертификат и ключ нужно указывать вместе"
+    pt-BR: "Certificado do cliente e chave devem ser informados juntos"
+    es: "El certificado de cliente y la clave privada deben indicarse juntos"
   tls_error_hostname:
     zh-CN: "TLS 证书与地址不匹配：地址会作为证书校验的主机名，请填写域名而非 IP"
     en: "TLS certificate does not match the address: the address is used as the certificate hostname; use a domain name instead of an IP"
+    ja: "TLS 証明書がアドレスと一致しません：アドレスは証明書検証のホスト名として使われるため、IP ではなくドメイン名を入力してください"
+    de: "Das TLS-Zertifikat passt nicht zur Adresse: Die Adresse dient als Hostname für die Zertifikatsprüfung; geben Sie einen Domainnamen statt einer IP an"
+    ru: "Сертификат TLS не соответствует адресу: адрес используется как имя хоста при проверке сертификата — укажите доменное имя, а не IP"
+    pt-BR: "O certificado TLS não corresponde ao endereço: o endereço é usado como hostname do certificado; use um domínio em vez de IP"
+    es: "El certificado TLS no coincide con la dirección: la dirección se usa como nombre de host al validar el certificado; introduzca un dominio en lugar de una IP"
   tls_error_unknown_issuer:
     zh-CN: "TLS 证书链不受信：请改用「自定义 CA」导入 broker 的 CA 证书，或临时勾选「跳过校验」"
     en: "Untrusted TLS certificate chain: import the broker CA via Custom CA, or temporarily enable Skip Verification"
+    ja: "TLS 証明書チェーンが信頼されていません：「カスタム CA」で broker の CA 証明書を読み込むか、一時的に「検証をスキップ」を有効にしてください"
+    de: "TLS-Zertifikatskette nicht vertrauenswürdig: Importieren Sie die CA des Brokers über „Benutzerdefinierte CA“ oder aktivieren Sie vorübergehend „Prüfung überspringen“"
+    ru: "Цепочка сертификатов TLS не является доверенной: импортируйте CA broker через «Собственный CA» или временно включите «Пропускать проверку»"
+    pt-BR: "Cadeia de certificados TLS não confiável: importe a CA do broker em \"CA personalizada\" ou ative temporariamente \"Pular verificação\""
+    es: "Cadena de certificados TLS no confiable: importe la CA del broker con «CA personalizada» o active temporalmente «Omitir verificación»"
   tls_error_generic:
     zh-CN: "TLS 握手失败: %{reason}"
     en: "TLS handshake failed: %{reason}"
+    ja: "TLS ハンドシェイクに失敗しました: %{reason}"
+    de: "TLS-Handshake fehlgeschlagen: %{reason}"
+    ru: "Сбой рукопожатия TLS: %{reason}"
+    pt-BR: "Falha no handshake TLS: %{reason}"
+    es: "Error en el protocolo de enlace TLS: %{reason}"
 
 mqtt_history:
   tooltip:
     zh-CN: 最近发送过的主题
     en: Recently sent topics
+    ja: "最近送信したトピック"
+    de: "Zuletzt gesendete Topics"
+    ru: "Недавно отправленные темы"
+    pt-BR: "Tópicos enviados recentemente"
+    es: "Temas enviados recientemente"
   empty:
     zh-CN: 暂无历史记录
     en: No history yet
+    ja: "履歴はまだありません"
+    de: "Noch kein Verlauf"
+    ru: "История пуста"
+    pt-BR: "Nenhum histórico ainda"
+    es: "Aún no hay historial"
   clear:
     zh-CN: 清空历史
     en: Clear History
+    ja: "履歴をクリア"
+    de: "Verlauf leeren"
+    ru: "Очистить историю"
+    pt-BR: "Limpar histórico"
+    es: "Borrar historial"

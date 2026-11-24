@@ -1,6 +1,6 @@
 ---
-title: 网络调试工具对比 - TCP/UDP 调试助手怎么选
-description: NetAssistant 与 Packet Sender、SocketTool、Wireshark 等 TCP/UDP 调试工具对比：跨平台、开源免费、内置压测与粘包解码；NetAssist 差异见专页。
+title: Network Debugging Tool Comparison - TCP/UDP Tools
+description: "NetAssistant vs SocketTool, Packet Sender and Wireshark: cross-platform, open source, built-in framing decoders and stress testing. NetAssist details are on its own page."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "开源跨平台网络调试工具，与 Packet Sender、SocketTool、Wireshark 对比，支持 TCP/UDP 粘包解码与内置压测。",
+            "description": "An open-source cross-platform network debugging tool compared with SocketTool, Packet Sender and Wireshark, with TCP/UDP framing decoders and built-in stress testing.",
             "url": "https://netassistant.trydo.top/comparison",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,34 +24,34 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "NetAssistant 和网络调试助手（NetAssist）有什么区别？",
+                "name": "What is the difference between NetAssistant and NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "NetAssist 仅限 Windows 且闭源；NetAssistant 免费开源、跨 Windows/Linux/macOS，内置四种 TCP 粘包解码器和基于 QPS、p50/p95/p99 的压力测试。详细迁移步骤见 NetAssist 替代指南。"
+                  "text": "NetAssist is Windows-only and closed source. NetAssistant is free, open source and runs on Windows, Linux and macOS, with four TCP framing decoders and built-in stress testing with QPS and p50/p95/p99 latency. See the NetAssist migration guide for details."
                 }
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 能替代 Packet Sender 吗？",
+                "name": "Can NetAssistant replace Packet Sender?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "看场景。Packet Sender 有 SSL/DTLS、HTTP 客户端和 CLI 自动化；如果你需要 TCP 粘包自动解码、按客户端查看消息或内置压测，NetAssistant 更合适。两者可以并存。"
+                  "text": "It depends. Packet Sender offers SSL/DTLS, an HTTP client and CLI automation. If you need automatic TCP framing, per-client message views or built-in stress testing, NetAssistant is a better fit. The two can coexist."
                 }
               },
               {
                 "@type": "Question",
-                "name": "为什么不直接用 Wireshark？",
+                "name": "Why not just use Wireshark?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Wireshark 是抓包分析工具，不做收发交互调试。NetAssistant 可以作为 TCP/UDP 客户端或服务端与对端做协议交互，两者互补：联调用 NetAssistant，抓包分析用 Wireshark。"
+                  "text": "Wireshark is a capture and analysis tool, not an interactive send/receive debugger. NetAssistant acts as a TCP/UDP client or server to validate protocol exchanges with a peer. They complement each other: use NetAssistant for integration and Wireshark for packet analysis."
                 }
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 是免费的吗？",
+                "name": "Is NetAssistant free?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购或订阅。"
+                  "text": "Yes. NetAssistant is open source under the Apache-2.0 license with all features free to use, no in-app purchases or subscriptions."
                 }
               }
             ]
@@ -60,79 +60,79 @@ head:
       }
 ---
 
-# 网络调试工具对比
+# Network Debugging Tool Comparison
 
-NetAssistant 是开源的跨平台网络调试助手。很多开发者用过**网络调试助手（NetAssist）**、**SocketTool**、**Packet Sender** 或 **Wireshark**，下面从实际使用场景出发做一个客观对比，方便你判断是否值得切换。如果你正在找 NetAssist 的替代品，逐项对比和迁移步骤见 [NetAssist 替代指南](/compare/netassist)。
+NetAssistant is an open-source cross-platform network debugging tool. Many developers have used **NetAssist (网络调试助手)**, **SocketTool**, **Packet Sender** or **Wireshark** before. Below is an honest, scenario-based comparison to help you decide whether to switch. If you are looking for a NetAssist alternative, see the [NetAssist comparison and migration guide](/compare/netassist).
 
-## 开发背景
+## The Story Behind It
 
-这个工具的起点其实很朴素：作者在开发中需要做 TCP/UDP 联调，但一直没找到完全合适的工具——有的只支持 TCP、有的只支持 UDP，遇到粘包问题基本只能自己对着字节流手数长度。与其将就，不如自己写一个，于是就有了 NetAssistant。
+The starting point was actually quite simple: while developing, the author needed TCP/UDP integration testing but could not find a tool that fit — some only supported TCP, some only UDP, and when sticky packets showed up, there was no choice but to count bytes against the raw stream by hand. Rather than settle, the author built one, and that is how NetAssistant came to be.
 
-坦白说，开发完成后才发现市面上已经有**不少做得不错的产品**（比如 Packet Sender、网络调试助手等），各有各的成熟之处。所以这个页面不是要贬低任何工具，而是如实列出差异，方便大家按需选择。NetAssistant 能提供的，只是一些恰好切中作者自身需求、希望也能帮到你的能力：跨平台、开源、以及开箱即用的粘包解码方案。
+To be honest, after finishing the tool, the author discovered that there are already **quite a few well-made products** out there (Packet Sender, NetAssist, and so on), each mature in its own way. So this page is not meant to put any tool down — it simply lists the differences so you can choose what fits your needs. What NetAssistant offers is a few capabilities that happened to hit the author's own pain points and may help you too: cross-platform, open source, and a ready-to-use TCP sticky-packet decoding solution.
 
-## 对比总览
+## Overview
 
-| 维度 | NetAssistant | 网络调试助手 (NetAssist) | SocketTool | Packet Sender | Wireshark |
-| ---- | ---- | ---- | ---- | ---- | ---- |
-| 开源 | ✅ Apache-2.0 | ❌ 闭源 | ❌ 闭源 | ✅ 开源 | ✅ GPL |
-| 跨平台 | ✅ Win / Linux / macOS（x64 + ARM64） | ❌ 仅 Windows | ❌ 仅 Windows | ✅ Win / Mac / Linux | ✅ Win / Mac / Linux |
-| TCP 客户端/服务端 | ✅ | ✅ | ✅ | ✅ | ❌（抓包为主） |
-| UDP 客户端/服务端 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| IPv6 | ✅ | ⚠️ 部分 | ⚠️ 部分 | ✅ | ✅ |
-| TCP 解码器（解决粘包） | ✅ 原始/行/长度前缀/JSON | ⚠️ 有限 | ❌ | ❌ | 部分（流重组） |
-| 十六进制收发 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 内置高并发压测 | ✅ QPS + 延迟分位数 | ❌ | ❌ | ⚠️ 基础 | ❌ |
-| 自动回复 / 周期发送 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| 消息导出 | ✅ TXT / JSON / CSV | ⚠️ 有限 | ⚠️ 有限 | ✅ | ✅ PCAP |
-| SSL/DTLS 加密与 HTTP 客户端 | ❌ | ❌ | ❌ | ✅ | ⚠️（抓包解密） |
-| 命令行 CLI / 脚本自动化 | ❌ | ❌ | ❌ | ✅ | ✅（tshark） |
+| Dimension | NetAssistant | NetAssist | SocketTool | Packet Sender | Wireshark |
+| --------- | ---- | ---- | ---- | ---- | ---- |
+| Open source | ✅ Apache-2.0 | ❌ | ❌ | ✅ | ✅ GPL |
+| Cross-platform | ✅ Win / Linux / macOS (x64 + ARM64) | ❌ Windows only | ❌ Windows only | ✅ Win / Mac / Linux | ✅ Win / Mac / Linux |
+| TCP client/server | ✅ | ✅ | ✅ | ✅ | ❌ (capture only) |
+| UDP client/server | ✅ | ✅ | ✅ | ✅ | ❌ |
+| IPv6 | ✅ | ⚠️ Partial | ⚠️ Partial | ✅ | ✅ |
+| TCP decoders (sticky packets) | ✅ Raw/Line/Length-prefix/JSON | ⚠️ Limited | ❌ | ❌ | Partial (stream reassembly) |
+| Hex send/receive | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Built-in high-concurrency stress test | ✅ QPS + latency percentiles | ❌ | ❌ | ⚠️ Basic | ❌ |
+| Auto-reply / periodic send | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Message export | ✅ TXT / JSON / CSV | ⚠️ Limited | ⚠️ Limited | ✅ | ✅ PCAP |
+| SSL/DTLS encryption & HTTP client | ❌ | ❌ | ❌ | ✅ | ⚠️ (capture/decrypt) |
+| CLI / scripting automation | ❌ | ❌ | ❌ | ✅ | ✅ (tshark) |
 
-## 为什么需要替代？
+## Why Look for an Alternative?
 
-**网络调试助手（NetAssist）** 是最常用的 TCP/UDP 调试工具，但它仅支持 Windows，且维护停滞、对 IPv6 和长连接调试支持有限。如果你在 **Linux 或 macOS** 上做嵌入式、物联网或服务端开发，往往找不到趁手的替代品——这正是 NetAssistant 要解决的问题。
+**NetAssist (网络调试助手)** is the most commonly used TCP/UDP debugging tool, but it is Windows-only, rarely updated, and has limited IPv6 and long-session debugging support. If you develop embedded, IoT or server-side software on **Linux or macOS**, it is hard to find a proper replacement — that is exactly the gap NetAssistant fills.
 
-**Packet Sender** 跨平台且开源，功能非常丰富（SSL/DTLS、HTTP 客户端、CLI 自动化等，详见上表）。它的边界也很明确：HEX/ASCII 混合记法（`\XX` 转义、HEX 空格分隔）只是**发送输入框的书写方式**，并非接收侧的自动拆包解码——收到的 TCP 字节流按原样记录，无法像 NetAssistant 那样按行、按长度前缀或按 JSON 自动分帧，因此不提供"TCP 解码器"；服务端模式的细致调试能力也有限（按客户端查看消息、手动添加 UDP 客户端地址等）。
+**Packet Sender** is cross-platform and open source, with a rich feature set (SSL/DTLS, HTTP client, CLI automation, etc. — see the table above). Its boundaries are clear though: the mixed HEX/ASCII notation (`\XX` escapes, space-delimited hex) is just a **writing convention for the send input box**, not a receive-side framing decoder — the received TCP byte stream is logged as-is, with no way to split frames by line, length prefix or JSON as NetAssistant does, so it offers no "TCP decoder". Its server-mode debugging is also limited (per-client message views, manually adding UDP client addresses, etc.).
 
-**Wireshark** 是抓包分析神器，但它不做收发交互调试：无法方便地作为 TCP/UDP 客户端或服务端与对端做协议交互、回复验证。
+**Wireshark** is excellent for packet capture and analysis, but it does not do interactive send/receive debugging: you cannot easily act as a TCP/UDP client or server to validate protocol exchanges with a peer.
 
-## 哪些场景最适合 NetAssistant
+## Where NetAssistant Fits Best
 
-- **硬件/嵌入式联调**：上位机通过 UDP 广播发现设备，NetAssistant 能展示所有设备回复并高亮非预期来源地址
-- **TCP 粘包调试**：四种解码器按协议格式自动分包，不用自己数长度
-- **服务端并发验证**：内置压测引擎直接打 QPS、p50/p95/p99 延迟，不用另装压测工具
-- **多平台切换**：Windows、Linux、macOS 同一套操作习惯，配置自动保存；x64 与 ARM64 均有原生构建
+- **Hardware / embedded bring-up**: send a UDP broadcast discovery command and see replies from all devices, with unexpected source addresses highlighted
+- **TCP sticky packet debugging**: four decoders split frames by your protocol format automatically
+- **Server concurrency validation**: the built-in stress engine reports QPS and p50/p95/p99 latency without extra tooling
+- **Multi-platform workflow**: the same habits on Windows, Linux and macOS, with configs saved automatically; native builds for both x64 and ARM64
 
-## 如何迁移
+## How to Migrate
 
-NetAssistant 可以自由添加 TCP/UDP 客户端和服务端连接，操作方式与常用调试助手一致：输入 IP:端口 → 连接 → 发送消息。首次使用参考[快速上手](/guide/)，5 分钟内即可跑通第一条报文。
+NetAssistant supports arbitrary TCP/UDP client and server connections with the familiar workflow: enter IP:port → connect → send. See [Getting Started](/guide/) to run your first packet within minutes.
 
-## 常见问题
+## FAQ
 
-### NetAssistant 和网络调试助手（NetAssist）有什么区别？
+### What is the difference between NetAssistant and NetAssist?
 
-NetAssist 仅限 Windows 且闭源；NetAssistant 免费开源、跨 Windows/Linux/macOS，内置四种 TCP 粘包解码器和基于 QPS、p50/p95/p99 的压力测试。详细迁移步骤见 [NetAssist 替代指南](/compare/netassist)。
+NetAssist is Windows-only and closed source. NetAssistant is free, open source and runs on Windows, Linux and macOS, with four TCP framing decoders and built-in stress testing with QPS and p50/p95/p99 latency. See the [NetAssist migration guide](/compare/netassist) for details.
 
-### NetAssistant 能替代 Packet Sender 吗？
+### Can NetAssistant replace Packet Sender?
 
-看场景。Packet Sender 有 SSL/DTLS、HTTP 客户端和 CLI 自动化；如果你需要 TCP 粘包自动解码、按客户端查看消息或内置压测，NetAssistant 更合适。两者可以并存。
+It depends. Packet Sender offers SSL/DTLS, an HTTP client and CLI automation. If you need automatic TCP framing, per-client message views or built-in stress testing, NetAssistant is a better fit. The two can coexist.
 
-### 为什么不直接用 Wireshark？
+### Why not just use Wireshark?
 
-Wireshark 是抓包分析工具，不做收发交互调试。NetAssistant 可以作为 TCP/UDP 客户端或服务端与对端做协议交互，两者互补：联调用 NetAssistant，抓包分析用 Wireshark。
+Wireshark is a capture and analysis tool, not an interactive send/receive debugger. NetAssistant acts as a TCP/UDP client or server to validate protocol exchanges with a peer. They complement each other: use NetAssistant for integration and Wireshark for packet analysis.
 
-### NetAssistant 是免费的吗？
+### Is NetAssistant free?
 
-是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购或订阅。
+Yes. NetAssistant is open source under the Apache-2.0 license with all features free to use, no in-app purchases or subscriptions.
 
-> 如果你正在寻找**网络调试助手的 Linux/Mac 替代品**或**开源 TCP/UDP 调试工具**，可以下载 NetAssistant 试试：[下载](/download)。
+> Looking for a **Linux/macOS alternative to NetAssist** or an **open-source TCP/UDP debugging tool**? Give NetAssistant a try: [Download](/download).
 
-## 相关页面
+## Related pages
 
-- [NetAssist 替代指南：逐项对比与迁移](/compare/netassist)
-- [TCP 调试工具](/tcp-debug-tool)
-- [UDP 调试工具](/udp-debug-tool)
-- [Socket 调试工具](/socket-debug-tool)
-- [TCP 粘包与拆包](/tcp-sticky-packet)
-- [TCP/UDP 压力测试](/tcp-stress-test)
-- [MQTT 客户端对比](/compare/)
-- [全部功能](/features)
+- [NetAssist alternative: comparison and migration](/compare/netassist)
+- [TCP debug tool](/tcp-debug-tool)
+- [UDP debug tool](/udp-debug-tool)
+- [Socket debug tool](/socket-debug-tool)
+- [TCP sticky packets](/tcp-sticky-packet)
+- [TCP/UDP stress testing](/tcp-stress-test)
+- [MQTT client comparison](/compare/)
+- [All features](/features)

@@ -1,67 +1,67 @@
 ---
-title: 压力测试 - 高并发 QPS 与延迟分位数
-description: NetAssistant 内置 TCP/UDP 高并发压力测试教程：Ping-Pong 与吞吐模式、变量模板、实时 QPS 与延迟分位数（p50/p95/p99）、CSV 报告导出。
+title: Stress Testing - QPS & Latency Percentiles
+description: "NetAssistant TCP/UDP stress testing guide: Ping-Pong and throughput modes, variable templates, live QPS, p50/p95/p99 latency and CSV report export."
 ---
 
-# 压力测试
+# Stress Testing
 
-NetAssistant 内置 TCP/UDP 高并发压力测试引擎，用于对服务端进行并发吞吐、延迟分布和稳定性评估。压测引擎为零 GPUI 依赖的独立逻辑层，基于令牌桶精确控制发送速率。
+NetAssistant ships with a built-in TCP/UDP high-concurrency stress test engine for evaluating a server's concurrent throughput, latency distribution and stability. The engine is a standalone logic layer with zero GPUI dependency, and uses a token bucket for precise send-rate control.
 
-想先了解压测能力全貌、与 JMeter/wrk 的差异和选型建议，见 [TCP/UDP 压测工具](/tcp-stress-test)。
+For the overall capability, how it differs from JMeter/wrk and when to use it, see [TCP/UDP stress testing](/tcp-stress-test).
 
-## 配置压测
+## Configuring a Test
 
-1. 通过标签页上的「压测」入口切换到压力测试页面
-2. 填写目标地址、端口、并发客户端数、发送速率、消息内容
-3. 消息内容支持变量模板（见下文）
-4. 可按需设置「结尾字符」（继承 / 无 / LF / CRLF），发送时在每包末尾追加；「继承」跟随消息面板的结尾设置
-5. 选择压测模式与连接模式
-6. 点击开始；压测配置自动保存，下次打开自动回填
+1. Switch to the stress testing page via the "Stress" entry on the tab bar
+2. Fill in the target address, port, number of concurrent clients, send rate and message content
+3. Message content supports variable templates (see below)
+4. Optionally set the "Trailer" (Inherit / None / LF / CRLF), appended to each packet on send; "Inherit" follows the message panel's suffix setting
+5. Choose the test mode and connection mode
+6. Click start; the stress test config is saved automatically and restored the next time you open it
 
-![配置压力测试（暗黑模式）](../../assets/screenshots/zh/screenshot_udp_stress_dark.png)
+![Configuring a stress test (dark mode)](../../assets/screenshots/en/screenshot_udp_stress_dark.png)
 
-## 压测模式
+## Test Modes
 
-| 模式 | 说明 | 适用场景 |
-| ---- | ---- | -------- |
-| Ping-Pong（往返） | 发送后等待响应，统计 RTT 延迟（p50/p95/p99/平均/最大） | 接口性能测试 |
-| 吞吐模式 | 只发送不等待响应，不统计延迟 | 最大吞吐量测试 |
+| Mode | Description | Use Case |
+| ---- | ----------- | -------- |
+| Ping-Pong (round-trip) | Wait for a response after each send and collect RTT latency (p50/p95/p99/avg/max) | API performance testing |
+| Throughput | Send only, no waiting for responses, no latency stats | Maximum throughput testing |
 
-连接模式支持**短连接**（每次请求新建连接）与**长连接**。
+Connection modes: **short connection** (a new connection per request) and **long connection**.
 
-## 变量模板
+## Variable Templates
 
-消息内容支持以下变量模板，每次发送时动态替换：
+Message content supports the following variable templates, replaced dynamically on each send:
 
-| 模板 | 含义 |
-| ---- | ---- |
-| `${seq}` | 全局序号 |
-| `${worker_id}` | 线程 ID |
-| `${counter}` | 本地计数 |
-| `${timestamp}` | 时间戳 |
-| `${uuid}` | 随机 UUID |
-| `${random:min:max}` | 随机整数 |
+| Template | Meaning |
+| -------- | ------- |
+| `${seq}` | Global sequence number |
+| `${worker_id}` | Worker thread ID |
+| `${counter}` | Local counter |
+| `${timestamp}` | Timestamp |
+| `${uuid}` | Random UUID |
+| `${random:min:max}` | Random integer |
 
-## 实时指标
+## Real-Time Metrics
 
-压测运行中，压力测试面板实时展示：
+While the test is running, the stress panel shows in real time:
 
-- **QPS**：当前值与峰值
-- **发送统计**：总发送 / 成功 / 失败
-- **连接统计**：活跃连接（当前/峰值）、断连/重连
-- **流量统计**：收发字节
-- **延迟分位数**：p50 / p95 / p99 / 平均 / 最大（仅 Ping-Pong 模式）
-- **失败原因分类**：连接失败 / 发送失败 / 接收超时 / 对端关闭 / 校验失败，帮助快速定位瓶颈
+- **QPS**: current value and peak
+- **Send stats**: total sent / succeeded / failed
+- **Connection stats**: active connections (current/peak), disconnects/reconnects
+- **Traffic stats**: bytes sent and received
+- **Latency percentiles**: p50 / p95 / p99 / avg / max (Ping-Pong mode only)
+- **Failure breakdown**: connection failure / send failure / receive timeout / closed by peer / verification failure, to help locate bottlenecks quickly
 
-![压力测试结果](../../assets/screenshots/zh/screenshot_stress.png)
+![Stress test results](../../assets/screenshots/en/screenshot_stress.png)
 
-## 报告导出
+## Report Export
 
-测试结束后可导出 CSV 格式的详细统计报告；测试过程中点击停止按钮可随时终止。
+After the test finishes, you can export a detailed statistics report in CSV format; click the stop button at any time to terminate a running test.
 
-## 相关页面
+## Related pages
 
-- [TCP/UDP 压力测试：能力、模式与选型](/tcp-stress-test)
-- [TCP/UDP 调试教程](/guide/tcp-udp)
-- [快速上手](/guide/)
-- [全部功能](/features)
+- [TCP/UDP stress testing: capabilities and modes](/tcp-stress-test)
+- [TCP/UDP debugging tutorial](/guide/tcp-udp)
+- [Getting started](/guide/)
+- [All features](/features)

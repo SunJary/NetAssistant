@@ -1,6 +1,6 @@
 ---
-title: NetAssist 替代品 - 网络调试助手对比与迁移
-description: NetAssist 只支持 Windows、闭源，TCP 粘包和压测需要额外工具。本文对比 NetAssistant 与网络调试助手的平台、粘包解码与压测，Windows 与 Mac 均可免费使用。
+title: NetAssist Alternative - Network Debugging Tool
+description: "Compare NetAssistant with NetAssist: platforms, TCP sticky-packet decoders, stress testing, message management and migration. Free and open source."
 head:
   - - script
     - type: application/ld+json
@@ -10,9 +10,9 @@ head:
         "@graph": [
           {
             "@type": "Article",
-            "headline": "NetAssist 替代品：NetAssistant 与网络调试助手对比",
-            "description": "对比 NetAssistant 与网络调试助手（NetAssist）的平台支持、TCP 粘包解码、压力测试、消息管理与迁移方式。",
-            "inLanguage": "zh-CN",
+            "headline": "NetAssist Alternative: NetAssistant vs NetAssist",
+            "description": "A practical comparison of NetAssistant and NetAssist covering platforms, TCP sticky-packet decoding, stress testing, message management and migration.",
+            "inLanguage": "en",
             "datePublished": "2026-11-11",
             "dateModified": "2026-11-11",
             "author": { "@type": "Organization", "name": "NetAssistant" },
@@ -24,58 +24,58 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "NetAssist 有 Mac 版吗？",
+                "name": "Is there a Mac version of NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "没有。NetAssist 仅提供 Windows 版本。Mac 与 Linux 用户可以使用 NetAssistant，它提供 macOS 与 Linux 原生构建。"
+                  "text": "No. NetAssist is Windows-only. NetAssistant offers native macOS and Linux builds."
                 }
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 能完全替代 NetAssist 吗？",
+                "name": "Can NetAssistant fully replace NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "基础 TCP/UDP 收发、十六进制模式、自动回复和周期发送都能覆盖，并额外提供四种粘包解码器、TCP/UDP 内置压测、消息搜索与导出、MQTT 3.1.1 / 5.0。如果你只需要最基础的收发，继续用 NetAssist 也可以。"
+                  "text": "It covers basic TCP/UDP send/receive, hex mode, auto-reply and periodic sending, and adds four sticky-packet decoders, built-in TCP/UDP stress testing, message export and MQTT 3.1.1 / 5.0."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Windows 上哪个网络调试助手更好用？",
+                "name": "Which is better on Windows?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "取决于需求。只需要最简单的收发，NetAssist 足够；需要粘包解码、TCP/UDP QPS 与延迟分位数压测、消息管理、MQTT 或跨平台，NetAssistant 更合适。"
+                  "text": "NetAssist is enough for basic send/receive. NetAssistant is better for sticky-packet decoding, TCP/UDP QPS and latency-percentile stress testing, message management, MQTT or cross-platform work."
                 }
               },
               {
                 "@type": "Question",
-                "name": "收费吗？",
+                "name": "Is NetAssistant free?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不收费。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用。"
+                  "text": "Yes. It is open source under Apache-2.0 and all features are free."
                 }
               },
               {
                 "@type": "Question",
-                "name": "数据会上传到云端吗？",
+                "name": "Is data uploaded to the cloud?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "NetAssistant 不依赖云端服务，收发数据在本机与目标端之间传输；源码开源，可自行审计。"
+                  "text": "NetAssistant does not depend on a cloud service; traffic goes between your machine and the target endpoint, and the source code is open for audit."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持 IPv6 吗？",
+                "name": "Does it support IPv6?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。创建连接时地址可填 IPv4 或 IPv6，例如 ::1、fe80::xxxx。"
+                  "text": "Yes. IPv4 and IPv6 addresses such as ::1 or fe80::xxxx are supported in both client and server modes."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持 MQTT 吗？",
+                "name": "Does it support MQTT?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "NetAssistant 支持 MQTT 3.1.1 / 5.0 客户端与 TLS；NetAssist 不提供 MQTT 功能。MQTT over WebSocket 与 5.0 高级特性未提供。"
+                  "text": "NetAssistant includes an MQTT 3.1.1 / 5.0 client with TLS; NetAssist does not provide MQTT. MQTT over WebSocket and advanced 5.0 features are not provided."
                 }
               }
             ]
@@ -84,143 +84,143 @@ head:
       }
 ---
 
-# NetAssist 替代品：NetAssistant 与网络调试助手对比
+# NetAssist Alternative: NetAssistant vs NetAssist
 
-如果你正在用**网络调试助手（NetAssist）**，可能遇到过这几个问题：只有 Windows 版、闭源、TCP 粘包处理能力有限、压测要另装工具。NetAssistant 是一个免费开源的替代选择，但并不是所有场景都必须换。
+If you use **NetAssist (网络调试助手)**, you may have run into its limits: Windows only, closed source, limited TCP sticky-packet handling, and no built-in stress testing. NetAssistant is a free, open-source alternative, but replacing NetAssist is not always necessary.
 
-这篇页面把两者放在一起，按实际使用场景逐项对比，方便你判断是否值得迁移。
+This page compares both tools by real usage scenarios so you can decide whether migration is worth it.
 
-> [下载 Windows 版](/windows-network-debug-tool) · [下载 macOS 版](/mac-network-debug-tool) · [查看全部功能](/features)
+> [Download for Windows](/windows-network-debug-tool) · [Download for macOS](/mac-network-debug-tool) · [All features](/features)
 
-## 一句话结论
+## Bottom line
 
-- **只需要最基础的 TCP/UDP 收发**、习惯 NetAssist 的老界面：继续用 NetAssist 也没问题
-- **需要 TCP 粘包解码、TCP/UDP 内置压测、消息搜索与导出、MQTT**：NetAssistant 更合适
-- **使用 macOS 或 Linux**：NetAssist 没有这两个平台的版本，直接用 NetAssistant
-- **想要开源可审计、免费使用**：NetAssistant 基于 Apache-2.0 开源
+- **Only need basic TCP/UDP send and receive** and prefer the classic UI: NetAssist is still fine
+- **Need sticky-packet decoding, built-in TCP/UDP stress testing, message search/export or MQTT**: NetAssistant is the better fit
+- **Using macOS or Linux**: NetAssist is not available, so use NetAssistant
+- **Want open source and free access**: NetAssistant is Apache-2.0 licensed
 
-## 核心差异
+## Key differences
 
-| 维度 | NetAssistant | 网络调试助手（NetAssist） |
+| Dimension | NetAssistant | NetAssist |
 | ---- | ---- | ---- |
-| 平台 | Windows / macOS / Linux（x64 + ARM64） | 仅 Windows |
-| 开源 | Apache-2.0 | 闭源 |
-| TCP 客户端/服务端 | 支持 | 支持 |
-| UDP 客户端/服务端 | 支持 | 支持 |
-| TCP 粘包解码 | 原始 / 行分隔 / 长度前缀 / JSON | 有限 |
-| 内置高并发压测 | QPS + p50/p95/p99 | 无 |
-| IPv6 | 完整支持 | 部分支持 |
-| MQTT | MQTT 3.1.1 / 5.0 客户端 | 无 |
-| 消息搜索/收藏/导出 | 支持，TXT / JSON / CSV | 有限 |
-| 自动回复 / 周期发送 | 支持 | 支持 |
-| 界面 | GPUI 原生渲染，暗黑模式，多标签 | 传统界面 |
+| Platforms | Windows / macOS / Linux (x64 + ARM64) | Windows only |
+| Open source | Apache-2.0 | Closed source |
+| TCP client/server | Yes | Yes |
+| UDP client/server | Yes | Yes |
+| TCP sticky-packet decoders | Raw / line / length-prefix / JSON | Limited |
+| Built-in stress testing | QPS + p50/p95/p99 | No |
+| IPv6 | Full support | Partial |
+| MQTT | MQTT 3.1.1 / 5.0 client | No |
+| Message search/favorites/export | TXT / JSON / CSV | Limited |
+| Auto-reply / periodic send | Yes | Yes |
+| UI | Native GPUI rendering, dark mode, tabs | Traditional |
 
-## 逐项对比
+## Detailed comparison
 
-### 平台与安装
+### Platforms and installation
 
-NetAssist 只有 Windows 版本。NetAssistant 提供 Windows、macOS、Linux 三个平台的原生构建，Windows 上可以用一条 winget 命令安装：
+NetAssist is Windows-only. NetAssistant ships native builds for Windows, macOS and Linux. On Windows, install it with one command:
 
 ```bash
 winget install SunJary.NetAssistant
 ```
 
-Windows 用户可以直接看[Windows 网络调试助手](/windows-network-debug-tool)，Mac 与 Linux 用户分别看 [macOS 版](/mac-network-debug-tool) 和 [Linux 版](/linux-network-debug-tool)。
+See the [Windows guide](/windows-network-debug-tool), [macOS guide](/mac-network-debug-tool) or [Linux guide](/linux-network-debug-tool) for platform-specific steps.
 
-### TCP 粘包处理
+### TCP sticky-packet handling
 
-这是两者最大的差异。NetAssist 对 TCP 粘包/拆包的处理能力有限，遇到变长二进制协议通常只能把接收内容当作原始字节查看。
+This is the biggest difference. NetAssist has limited support for TCP sticky and split packets, so variable-length binary protocols usually end up as a raw byte view.
 
-NetAssistant 在接收侧提供四种解码器：
+NetAssistant provides four receive-side decoders:
 
-| 解码器 | 适用场景 |
-| ------ | -------- |
-| 原始数据 | 不做处理，按收到顺序原样展示 |
-| 行分隔 | 以换行符为边界，适合 AT 指令、日志等文本协议 |
-| 长度前缀 | 按长度字段分帧，适合二进制协议 |
-| JSON | 按完整 JSON 对象分帧，适合 JSON over TCP |
+| Decoder | Best for |
+| ---- | ---- |
+| Raw | Show incoming bytes as-is |
+| Line-delimited | Newline-framed text such as AT commands or logs |
+| Length-prefix | Binary protocols with a length field |
+| JSON | Complete JSON objects over TCP |
 
-![NetAssistant TCP 解码器设置](../../assets/screenshots/zh/screenshot_tcp_decoder.png)
+![NetAssistant TCP decoder settings](../../assets/screenshots/en/screenshot_tcp_decoder.png)
 
-想系统了解粘包的成因和方案，见 [TCP 粘包与拆包](/tcp-sticky-packet)。
+For the underlying causes and solutions, see [TCP sticky packets](/tcp-sticky-packet).
 
-### 压力测试
+### Stress testing
 
-NetAssist 不提供内置压测。NetAssistant 内置 TCP/UDP 压测引擎，支持 Ping-Pong 与吞吐模式，实时展示 QPS、p50/p95/p99 延迟、失败原因分类，并可导出 CSV 报告。
+NetAssist has no built-in load testing. NetAssistant includes a TCP/UDP stress engine with Ping-Pong and throughput modes, live QPS, p50/p95/p99 latency, failure breakdown and CSV export.
 
-![NetAssistant 压力测试结果](../../assets/screenshots/zh/screenshot_stress.png)
+![NetAssistant stress test results](../../assets/screenshots/en/screenshot_stress.png)
 
-### 消息管理与导出
+### Message management and export
 
-NetAssistant 的报文以聊天式记录展示，支持关键字搜索、收藏与备注、实时日志、TXT/JSON/CSV 导出。长时间联调时，比在原始文本框里滚动查找更方便。
+NetAssistant presents traffic as a chat-style log with search, favorites, notes and TXT/JSON/CSV export. That is much easier to work with during long debugging sessions than scrolling a raw text box.
 
-![NetAssistant 客户端消息界面](../../assets/screenshots/zh/screenshot_client.png)
+![NetAssistant client message view](../../assets/screenshots/en/screenshot_client.png)
 
-### MQTT 与多协议
+### MQTT and protocol coverage
 
-NetAssist 专注于 TCP/UDP。NetAssistant 在同一个工具里增加了 MQTT 客户端，协议版本可选 3.1.1 与 5.0，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复，并支持 TLS（含三档证书校验与双向认证）；MQTT over WebSocket 与 5.0 高级特性未提供。
+NetAssist focuses on TCP/UDP. NetAssistant adds an MQTT client (3.1.1 or 5.0 per connection) with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply, plus TLS with three verification modes and mutual TLS. MQTT over WebSocket and advanced 5.0 features are not provided.
 
-### 自动化能力
+### Automation
 
-两者都支持自动回复和周期发送。NetAssistant 的回复规则条件更细：可按键、JSON 字段、正则、来源地址、校验值等组合匹配，并支持内联试跑。
+Both support auto-reply and periodic sending. NetAssistant adds finer reply conditions: key, JSON field, regex, source address and checksum combinations, with inline testing.
 
-### 开源与可维护性
+### Open source and maintainability
 
-NetAssist 是闭源软件，遇到问题只能等更新。NetAssistant 基于 Apache-2.0 开源，源码托管在 GitHub，可以自行编译、提交 issue 或参与贡献。
+NetAssist is closed source, so fixes depend on the vendor. NetAssistant is Apache-2.0 open source on GitHub; you can build it yourself, file issues or contribute.
 
-## 什么时候继续用 NetAssist
+## When NetAssist is still the right choice
 
-公平地说，NetAssist 仍然适合这些场景：
+To be fair, NetAssist remains a good option if:
 
-- 只需要最基础的 TCP/UDP 收发和十六进制显示
-- 已经习惯它的界面和操作方式，不想迁移
-- 只在 Windows 上使用，且没有粘包解码、TCP/UDP 压测、MQTT 需求
+- You only need basic TCP/UDP send/receive and hex display
+- You are comfortable with its UI and do not want to migrate
+- You only work on Windows and do not need decoders, load testing or MQTT
 
-NetAssistant 不是要证明 NetAssist 不能用，而是补齐它在粘包处理、压测、消息管理和跨平台上的空白。
+NetAssistant is not trying to prove NetAssist is unusable. It fills the gaps in sticky-packet handling, stress testing, message management and cross-platform support.
 
-## 从 NetAssist 迁移到 NetAssistant
+## Migrating from NetAssist
 
-1. **安装**：Windows 执行 `winget install SunJary.NetAssistant`，或从[下载页](/download)获取安装包
-2. **新建连接**：协议、角色（客户端/服务端）、远端地址和端口与 NetAssist 保持一致
-3. **选择解码器**：文本协议选「行分隔」，二进制协议选「长度前缀」，JSON 协议选「JSON」
-4. **保存配置**：连接配置会自动保存，下次启动直接使用
+1. **Install**: run `winget install SunJary.NetAssistant` on Windows, or get an installer from the [download page](/download)
+2. **Create the connection**: keep the same protocol, role (client/server), remote address and port
+3. **Choose a decoder**: line-delimited for text protocols, length-prefix for binary protocols, JSON for JSON over TCP
+4. **Save**: connection settings are persisted automatically
 
-目前不支持直接导入 NetAssist 的配置文件，需要重新创建连接；一般几分钟可以完成。
+Direct import of NetAssist configuration files is not supported; connections need to be recreated, which usually takes a few minutes.
 
-## 常见问题
+## FAQ
 
-### NetAssist 有 Mac 版吗？
+### Is there a Mac version of NetAssist?
 
-没有。NetAssist 仅提供 Windows 版本。Mac 与 Linux 用户可以使用 NetAssistant，它提供 macOS 与 Linux 原生构建。
+No. NetAssist is Windows-only. NetAssistant offers native macOS and Linux builds.
 
-### NetAssistant 能完全替代 NetAssist 吗？
+### Can NetAssistant fully replace NetAssist?
 
-基础 TCP/UDP 收发、十六进制模式、自动回复和周期发送都能覆盖，并额外提供四种粘包解码器、TCP/UDP 内置压测、消息搜索与导出、MQTT 3.1.1 / 5.0。如果你只需要最基础的收发，继续用 NetAssist 也可以。
+It covers basic TCP/UDP send/receive, hex mode, auto-reply and periodic sending, and adds four sticky-packet decoders, built-in TCP/UDP stress testing, message export and MQTT 3.1.1 / 5.0.
 
-### Windows 上哪个网络调试助手更好用？
+### Which is better on Windows?
 
-取决于需求。只需要最简单的收发，NetAssist 足够；需要粘包解码、TCP/UDP QPS 与延迟分位数压测、消息管理、MQTT 或跨平台，NetAssistant 更合适。
+NetAssist is enough for basic send/receive. NetAssistant is better for sticky-packet decoding, TCP/UDP QPS and latency-percentile stress testing, message management, MQTT or cross-platform work.
 
-### 收费吗？
+### Is NetAssistant free?
 
-不收费。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用。
+Yes. It is open source under Apache-2.0 and all features are free.
 
-### 数据会上传到云端吗？
+### Is data uploaded to the cloud?
 
-NetAssistant 不依赖云端服务，收发数据在本机与目标端之间传输；源码开源，可自行审计。
+NetAssistant does not depend on a cloud service; traffic goes between your machine and the target endpoint, and the source code is open for audit.
 
-### 支持 IPv6 吗？
+### Does it support IPv6?
 
-支持。创建连接时地址可填 IPv4 或 IPv6，例如 `::1`、`fe80::xxxx`。
+Yes. IPv4 and IPv6 addresses such as `::1` or `fe80::xxxx` are supported in both client and server modes.
 
-### 支持 MQTT 吗？
+### Does it support MQTT?
 
-NetAssistant 支持 MQTT 3.1.1 / 5.0 客户端与 TLS；NetAssist 不提供 MQTT 功能。MQTT over WebSocket 与 5.0 高级特性未提供。
+NetAssistant includes an MQTT 3.1.1 / 5.0 client with TLS; NetAssist does not provide MQTT. MQTT over WebSocket and advanced 5.0 features are not provided.
 
-## 相关页面
+## Related pages
 
-- [Windows 网络调试助手](/windows-network-debug-tool)
-- [macOS 网络调试助手](/mac-network-debug-tool)
-- [Linux 网络调试助手](/linux-network-debug-tool)
-- [TCP 粘包与拆包](/tcp-sticky-packet)
-- [全部工具对比](/comparison)
+- [Windows network debugging tool](/windows-network-debug-tool)
+- [Mac network debugging tool](/mac-network-debug-tool)
+- [Linux network debugging tool](/linux-network-debug-tool)
+- [TCP sticky packets](/tcp-sticky-packet)
+- [All tool comparisons](/comparison)

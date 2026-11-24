@@ -1,6 +1,6 @@
 ---
-title: UDP 广播设备发现 - 局域网调试工具
-description: 用 UDP 广播发现局域网设备：向 192.168.1.255 发送 discovery 指令，接收所有设备回复并高亮非预期地址；支持 UDP 客户端/服务端与手动添加客户端。
+title: UDP Broadcast Device Discovery Guide
+description: "Discover LAN devices over UDP broadcast: send a discovery payload, receive every reply and highlight unexpected source addresses, plus troubleshooting."
 head:
   - - script
     - type: application/ld+json
@@ -10,9 +10,9 @@ head:
         "@graph": [
           {
             "@type": "Article",
-            "headline": "UDP 广播设备发现：局域网设备调试方法",
-            "description": "介绍 UDP 广播设备发现的原理、广播地址选择、调试步骤与常见问题，并说明如何用 NetAssistant 接收和区分所有设备回复。",
-            "inLanguage": "zh-CN",
+            "headline": "UDP Broadcast Device Discovery: LAN Debugging Guide",
+            "description": "How UDP broadcast device discovery works, which broadcast address to use, how to debug it and how NetAssistant keeps every reply visible.",
+            "inLanguage": "en",
             "datePublished": "2026-11-11",
             "dateModified": "2026-11-11",
             "author": { "@type": "Organization", "name": "NetAssistant" },
@@ -24,42 +24,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "UDP 广播地址应该填什么？",
+                "name": "Which UDP broadcast address should I use?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "常见做法是子网定向广播地址，例如 192.168.1.255（本机为 192.168.1.x/24）；也可以使用 255.255.255.255。广播默认不跨路由器。"
+                  "text": "Use the subnet-directed broadcast address such as 192.168.1.255 for 192.168.1.0/24, or 255.255.255.255. Broadcast does not cross routers by default."
                 }
               },
               {
                 "@type": "Question",
-                "name": "为什么发送广播后收不到设备回复？",
+                "name": "Why do I get no replies after sending a broadcast?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可能是广播地址/端口不对、设备使用组播、防火墙拦截、不在同一子网，或 discovery 报文格式不符合设备要求。先用 Wireshark 确认广播包是否发出。"
+                  "text": "Check the broadcast address and port, whether the device only listens on multicast, the local firewall, the subnet, and the discovery payload format. Confirm with a packet capture that the broadcast was sent."
                 }
               },
               {
                 "@type": "Question",
-                "name": "广播和组播应该选哪个？",
+                "name": "Should I use broadcast or multicast?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "广播简单但只适合同一局域网；组播更节省带宽、可跨网段，适合设备多或网络复杂的场景。"
+                  "text": "Broadcast is simpler but limited to one LAN; multicast saves bandwidth and can cross subnets, which suits larger or more complex networks."
                 }
               },
               {
                 "@type": "Question",
-                "name": "NetAssistant 会过滤非目标地址的回复吗？",
+                "name": "Does NetAssistant filter replies from unexpected addresses?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不会。所有设备回复都会显示，非目标地址的来源会用浅红色高亮，悬停有提示。"
+                  "text": "No. Every reply is shown, and unexpected sources are highlighted in light red with a tooltip."
                 }
               },
               {
                 "@type": "Question",
-                "name": "能同时向多个设备发送吗？",
+                "name": "Can I send to multiple devices at once?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "广播会送达同一子网内的所有设备；如果需要定向发送，可以在 UDP 服务端模式手动添加客户端地址。"
+                  "text": "Broadcast reaches every device in the same subnet. For targeted sends, manually add client addresses in UDP server mode."
                 }
               }
             ]
@@ -68,108 +68,108 @@ head:
       }
 ---
 
-# UDP 广播设备发现：局域网设备调试方法
+# UDP Broadcast Device Discovery: LAN Debugging Guide
 
-做上位机、物联网或嵌入式开发时，经常需要先找到局域网里有哪些设备：设备可能没有屏幕，IP 是 DHCP 分配的，也不一定支持 mDNS。**UDP 广播设备发现**是最常见的做法：向广播地址发一条 discovery 指令，所有设备把 IP、端口和能力信息回给你。
+When building HMIs, IoT products or embedded devices, you often need to find what is on the LAN first. Devices may have no screen, get their IP via DHCP and may not support mDNS. **UDP broadcast discovery** is the common solution: send a discovery payload to the broadcast address, and every device replies with its IP, port and capabilities.
 
-难点不在“发广播”，而在“收全回复”。很多调试工具会按目标地址过滤，只显示你填的那个 IP 的回复，其他设备响应就被丢掉了。NetAssistant 的做法是：全部显示，并把非预期来源标出来。
+Sending the broadcast is easy. Receiving every reply is the hard part. Many debugging tools filter responses by the target address, so replies from other devices disappear. NetAssistant shows all of them and marks the unexpected sources.
 
-> [下载 NetAssistant](/download) · [TCP/UDP 调试指南](/guide/tcp-udp) · [全部功能](/features)
+> [Download NetAssistant](/download) · [TCP/UDP guide](/guide/tcp-udp) · [All features](/features)
 
-![UDP 手动添加客户端](../assets/screenshots/zh/screenshot_udp_add_client.png)
+![Manually add a UDP client](../assets/screenshots/en/screenshot_udp_add_client.png)
 
-## 什么是 UDP 广播设备发现
+## How UDP broadcast discovery works
 
-UDP 是无连接协议，广播是把数据报发给同一子网内的所有主机。设备发现通常分三步：
+UDP is connectionless. A broadcast sends a datagram to every host in the same subnet. Discovery usually has three steps:
 
-1. 上位机向广播地址和约定端口发送 discovery 报文
-2. 设备收到后，把自己的 IP、端口、设备 ID 等信息回复给上位机
-3. 上位机汇总回复，得到设备列表
+1. The host sends a discovery payload to the broadcast address and agreed port
+2. Devices reply with their IP, port, device ID and capabilities
+3. The host collects the replies into a device list
 
-常见广播地址：
+Common broadcast addresses:
 
-| 地址 | 含义 | 说明 |
+| Address | Meaning | Notes |
 | ---- | ---- | ---- |
-| `255.255.255.255` | 受限广播 | 只在本机所在网段内传播，最常用 |
-| `192.168.1.255` | 子网定向广播 | 假设本机是 `192.168.1.x/24`，按实际网段替换 |
-| `224.0.0.1` 等 | 组播地址 | 不是广播；需要设备加入对应组播组 |
+| `255.255.255.255` | Limited broadcast | Stays within the local subnet; most common |
+| `192.168.1.255` | Subnet-directed broadcast | Use your actual subnet, e.g. `192.168.1.x/24` |
+| `224.0.0.1` etc. | Multicast address | Not broadcast; devices must join the group |
 
-广播默认**不跨路由器**。如果设备在另一个网段，需要配置定向广播、使用组播，或改为单播探测。
+Broadcast does **not cross routers** by default. If devices are on another subnet, configure directed broadcast, use multicast, or fall back to unicast probing.
 
-## 用 NetAssistant 做设备发现
+## Device discovery with NetAssistant
 
-### 1. 新建 UDP 客户端
+### 1. Create a UDP client
 
-新建连接，协议选择 UDP，角色选择客户端。远端地址填广播地址（如 `192.168.1.255`），端口填设备约定的发现端口。
+Create a connection, choose UDP and the client role. Set the remote address to the broadcast address (for example `192.168.1.255`) and the port used by the device discovery protocol.
 
-### 2. 发送 discovery 报文
+### 2. Send the discovery payload
 
-在发送区填入设备要求的 discovery 内容，文本或十六进制都可以。点击发送后，等待设备回复。
+Enter the payload expected by the device, in text or hex mode, and send it. Then wait for replies.
 
-### 3. 查看所有设备回复
+### 3. See every device reply
 
-NetAssistant 不会按目标地址过滤回复：所有设备的响应都会显示在接收区。来自非目标地址的回复会用**浅红色高亮**标识，鼠标悬停显示“非预期地址的回复”提示。
+NetAssistant does not filter replies by target address: every device response appears in the receive view. Replies from unexpected source addresses are highlighted in **light red**, with an “unexpected address reply” tooltip on hover.
 
-![UDP 广播回复](../assets/screenshots/zh/screenshot_udp_client_dark.png)
+![UDP broadcast replies](../assets/screenshots/en/screenshot_udp_client_dark.png)
 
-这样既不会丢掉其他设备的响应，也能一眼区分“我填的目标地址”和“广播带来的其他设备”。
+That way you neither lose other devices' responses nor confuse them with the target address you entered.
 
-### 4. 复制设备地址
+### 4. Copy device addresses
 
-双击消息来源地址即可复制 `ip:port`，方便把设备信息贴到配置或工单里。
+Double-click a message source to copy `ip:port`, which makes it easy to paste device details into configuration or a ticket.
 
-### 5. UDP 服务端模式手动添加客户端
+### 5. Manually add clients in UDP server mode
 
-UDP 是无连接协议，服务端无法天然感知客户端。在 UDP 服务端模式下，可以点击 `[+添加客户端]`，输入目标 IP 和端口，主动向指定设备发送消息。
+UDP is connectionless, so a UDP server cannot detect clients automatically. In server mode, click `[+ Add client]`, enter the target IP and port, and send to that device proactively.
 
-## 收不到回复怎么排查
+## Troubleshooting missing replies
 
-- **广播地址不对**：确认本机网段，例如 `192.168.1.0/24` 对应 `192.168.1.255`
-- **端口不对**：发现端口不一定是设备业务端口，查设备文档
-- **设备用组播**：如果设备只监听组播组，广播收不到回复
-- **防火墙拦截**：检查本机防火墙是否允许该 UDP 端口
-- **不在同一子网**：广播默认不跨路由器，确认设备和电脑在同一网段
-- **报文格式不对**：有些设备要求固定 magic、长度或校验，先抓包对比
-- **绑定地址不对**：多网卡电脑要确认广播从正确网卡发出
+- **Wrong broadcast address**: confirm your subnet; `192.168.1.0/24` usually means `192.168.1.255`
+- **Wrong port**: the discovery port may differ from the service port; check the device docs
+- **Device uses multicast**: a broadcast will not reach a multicast-only listener
+- **Firewall**: allow the UDP port on the host
+- **Different subnet**: broadcast does not cross routers
+- **Wrong payload format**: some devices require a magic value, length or checksum
+- **Wrong interface**: on multi-NIC hosts, make sure the broadcast leaves the correct interface
 
-## 广播和组播怎么选
+## Broadcast vs multicast
 
-| 维度 | UDP 广播 | UDP 组播 |
+| Dimension | UDP broadcast | UDP multicast |
 | ---- | ---- | ---- |
-| 实现复杂度 | 低 | 中，需要加入组播组 |
-| 传播范围 | 同一子网 | 可跨网段（需 IGMP/交换机支持） |
-| 带宽影响 | 网内所有主机都会收到 | 只有组成员处理 |
-| 适用规模 | 小规模、简单网络 | 设备多、网络复杂 |
-| 典型场景 | 局域网设备发现、DHCP | 视频流、设备集群、服务发现 |
+| Complexity | Low | Medium; devices must join a group |
+| Scope | One subnet | Can cross subnets with IGMP support |
+| Bandwidth impact | Every host on the LAN receives it | Only group members process it |
+| Scale | Small, simple networks | Many devices or complex networks |
+| Typical use | LAN discovery, DHCP | Streaming, device clusters, service discovery |
 
-设备数量少、网络简单时，广播足够；设备多或需要跨网段时，优先考虑组播。
+For a small, simple LAN, broadcast is enough. For many devices or routed networks, prefer multicast.
 
-## 常见问题
+## FAQ
 
-### UDP 广播地址应该填什么？
+### Which UDP broadcast address should I use?
 
-常见做法是子网定向广播地址，例如 `192.168.1.255`（本机为 `192.168.1.x/24`）；也可以使用 `255.255.255.255`。广播默认不跨路由器。
+Use the subnet-directed broadcast address such as `192.168.1.255` for `192.168.1.0/24`, or `255.255.255.255`. Broadcast does not cross routers by default.
 
-### 为什么发送广播后收不到设备回复？
+### Why do I get no replies after sending a broadcast?
 
-可能是广播地址/端口不对、设备使用组播、防火墙拦截、不在同一子网，或 discovery 报文格式不符合设备要求。先用 Wireshark 确认广播包是否发出。
+Check the broadcast address and port, whether the device only listens on multicast, the local firewall, the subnet, and the discovery payload format. Confirm with a packet capture that the broadcast was sent.
 
-### 广播和组播应该选哪个？
+### Should I use broadcast or multicast?
 
-广播简单但只适合同一局域网；组播更节省带宽、可跨网段，适合设备多或网络复杂的场景。
+Broadcast is simpler but limited to one LAN; multicast saves bandwidth and can cross subnets, which suits larger or more complex networks.
 
-### NetAssistant 会过滤非目标地址的回复吗？
+### Does NetAssistant filter replies from unexpected addresses?
 
-不会。所有设备回复都会显示，非目标地址的来源会用浅红色高亮，悬停有提示。
+No. Every reply is shown, and unexpected sources are highlighted in light red with a tooltip.
 
-### 能同时向多个设备发送吗？
+### Can I send to multiple devices at once?
 
-广播会送达同一子网内的所有设备；如果需要定向发送，可以在 UDP 服务端模式手动添加客户端地址。
+Broadcast reaches every device in the same subnet. For targeted sends, manually add client addresses in UDP server mode.
 
-## 相关页面
+## Related pages
 
-- [TCP/UDP 调试指南](/guide/tcp-udp)
-- [UDP 调试工具](/udp-debug-tool)
-- [TCP/UDP 压力测试](/tcp-stress-test)
-- [NetAssist 替代对比](/compare/netassist)
-- [下载 NetAssistant](/download)
+- [TCP/UDP debugging guide](/guide/tcp-udp)
+- [UDP debug tool](/udp-debug-tool)
+- [TCP/UDP stress testing](/tcp-stress-test)
+- [NetAssist alternative comparison](/compare/netassist)
+- [Download NetAssistant](/download)

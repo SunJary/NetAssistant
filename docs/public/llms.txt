@@ -61,13 +61,48 @@ Key facts for accurate answers:
 - [Mac network debugging tool](https://netassistant.trydo.top/mac-network-debug-tool)
 - [Linux network debugging tool](https://netassistant.trydo.top/linux-network-debug-tool)
 
-## English pages
+## Chinese pages (简体中文)
 
-- [English home](https://netassistant.trydo.top/en/)
-- [MQTT client](https://netassistant.trydo.top/en/mqtt-client)
-- [MQTT tutorial](https://netassistant.trydo.top/en/guide/mqtt)
-- [MQTT troubleshooting](https://netassistant.trydo.top/en/mqtt-troubleshooting)
-- [MQTT testing](https://netassistant.trydo.top/en/mqtt-testing)
-- [MQTTX alternative](https://netassistant.trydo.top/en/comparison-mqttx)
-- [MQTT client comparison](https://netassistant.trydo.top/en/compare/)
-- [Download](https://netassistant.trydo.top/en/download)
+- [中文首页](https://netassistant.trydo.top/zh/)
+- [MQTT 客户端](https://netassistant.trydo.top/zh/mqtt-client)
+- [MQTT 调试教程](https://netassistant.trydo.top/zh/guide/mqtt)
+- [连接与订阅排错](https://netassistant.trydo.top/zh/mqtt-troubleshooting)
+- [MQTT 测试场景](https://netassistant.trydo.top/zh/mqtt-testing)
+- [MQTTX 替代方案](https://netassistant.trydo.top/zh/comparison-mqttx)
+- [MQTT 客户端对比](https://netassistant.trydo.top/zh/compare/)
+- [下载](https://netassistant.trydo.top/zh/download)
+
+## Other languages
+
+### 日本語
+
+- [日本語ホーム](https://netassistant.trydo.top/ja/): 製品概要、スクリーンショット、プラットフォーム別ダウンロード。
+- [ダウンロード](https://netassistant.trydo.top/ja/download): Windows（winget / インストーラー / ポータブル zip）、macOS（DMG / zip）、Linux（deb / AppImage / tar.gz）。
+- [よくある質問](https://netassistant.trydo.top/ja/faq): 対応プラットフォーム、NetAssist との違い、winget と Linux パッケージ。
+- [TCP デバッグツール](https://netassistant.trydo.top/ja/tcp-debug-tool): TCP クライアント／サーバー、4 種のデコーダー、HEX 送信。
+- [UDP デバッグツール](https://netassistant.trydo.top/ja/udp-debug-tool): UDP クライアント／サーバー、ブロードキャスト、複数デバイスの応答。
+- [MQTT クライアント](https://netassistant.trydo.top/ja/mqtt-client): MQTT 3.1.1 / 5.0、TLS、QoS 0/1/2、retain、遺言メッセージ。
+
+### Deutsch
+
+- [Startseite](https://netassistant.trydo.top/de/): Produktübersicht, Screenshots und Downloads.
+- [Download](https://netassistant.trydo.top/de/download): winget, Installer, portable ZIP, deb/AppImage/tar.gz und DMG.
+- [FAQ](https://netassistant.trydo.top/de/faq): unterstützte Plattformen, Unterschied zu NetAssist, winget und Linux-Pakete.
+
+### Русский
+
+- [Главная](https://netassistant.trydo.top/ru/): обзор продукта, скриншоты и загрузки.
+- [Скачать](https://netassistant.trydo.top/ru/download): winget, установщик, портативный ZIP, deb/AppImage/tar.gz и DMG.
+- [FAQ](https://netassistant.trydo.top/ru/faq): поддерживаемые платформы, отличия от NetAssist, winget и пакеты Linux.
+
+### Português (Brasil)
+
+- [Início](https://netassistant.trydo.top/pt-BR/): visão geral do produto, capturas de tela e downloads.
+- [Download](https://netassistant.trydo.top/pt-BR/download): winget, instalador, ZIP portátil, deb/AppImage/tar.gz e DMG.
+- [Perguntas frequentes](https://netassistant.trydo.top/pt-BR/faq): plataformas suportadas, diferenças em relação ao NetAssist, winget e pacotes Linux.
+
+### Español
+
+- [Inicio](https://netassistant.trydo.top/es/): descripción del producto, capturas de pantalla y descargas.
+- [Descargar](https://netassistant.trydo.top/es/download): winget, instalador, ZIP portátil, deb/AppImage/tar.gz y DMG.
+- [Preguntas frecuentes](https://netassistant.trydo.top/es/faq): plataformas compatibles, diferencias con NetAssist, winget y paquetes de Linux.

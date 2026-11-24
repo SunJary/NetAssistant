@@ -1,6 +1,6 @@
 ---
-title: MQTT 常见问题 - 客户端选择、端口、TLS 与订阅
-description: MQTT 常见问题汇总：客户端怎么选、默认端口、Client ID、3.1.1 与 5.0、TLS、WebSocket、订阅收不到消息、retain、QoS 重复、遗嘱与压测支持情况。
+title: MQTT FAQ - Client, Ports, TLS and Subscription Answers
+description: "MQTT client FAQ: choosing a client, the MQTT default port (1883 or 8883), client IDs, TLS, retain, QoS, and why you get no messages after subscribing."
 head:
   - - script
     - type: application/ld+json
@@ -11,173 +11,173 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "MQTT 客户端哪个好？",
+            "name": "Which MQTT client is best?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "需要 WebSocket、脚本与完整 5.0 选 MQTTX；需要 topic 树浏览与 retained 清理选 MQTT Explorer；已购商业授权选 MQTT.fx；需要免费、轻量并把 TCP/UDP 与 MQTT 放在一起调试，选 NetAssistant。"
+              "text": "Choose MQTTX when you need WebSocket, scripting and full 5.0 features; MQTT Explorer when you need topic tree browsing and retained message cleanup; MQTT.fx when you already hold a commercial license; NetAssistant when you want a free, lightweight client that keeps TCP/UDP and MQTT debugging in one app."
             }
           },
           {
             "@type": "Question",
-            "name": "MQTT 默认端口是多少？",
+            "name": "What is the MQTT default port?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "明文 MQTT 默认 1883，TLS 默认 8883，WebSocket 常见 8083/8084。NetAssistant 只支持 TCP 直连，不支持 WebSocket。"
+              "text": "Plain MQTT uses 1883 by default and TLS uses 8883; WebSocket commonly uses 8083/8084. NetAssistant only connects over TCP, so WebSocket is not supported."
             }
           },
           {
             "@type": "Question",
-            "name": "Client ID 可以重复吗？",
+            "name": "Can a client ID be reused?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "同一 Broker 上必须唯一。重复时后连接的客户端会把前一个踢下线；NetAssistant 复制连接时会自动生成新 Client ID。"
+              "text": "A client ID must be unique on the same broker. When it is reused, the newer connection kicks the previous client offline; duplicating a connection in NetAssistant generates a new client ID automatically."
             }
           },
           {
             "@type": "Question",
-            "name": "MQTT 3.1.1 和 5.0 怎么选？",
+            "name": "MQTT 3.1.1 or 5.0?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "老设备、老 Broker 或只做基础收发时用 3.1.1；需要会话过期、接收最大值或更具体的失败原因码时用 5.0。NetAssistant 默认 5.0。"
+              "text": "Use 3.1.1 for older devices, older brokers or basic publish and subscribe; use 5.0 when you need session expiry, receive maximum or more specific failure reason codes. NetAssistant defaults to 5.0."
             }
           },
           {
             "@type": "Question",
-            "name": "MQTT 怎么配置 TLS？",
+            "name": "How do I configure TLS for MQTT?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "端口填 8883 并打开 TLS；公共 CA 用系统根证书，私有 CA 用自定义 CA，自签证书联调可临时跳过校验。需要双向认证时再填客户端证书与私钥。"
+              "text": "Set the port to 8883 and enable TLS; use system roots for a public CA, a custom CA for a private one, and skipped verification only for temporary self-signed testing. Add a client certificate and private key when mutual TLS is required."
             }
           },
           {
             "@type": "Question",
-            "name": "订阅成功但收不到消息怎么办？",
+            "name": "Why do I get no messages after subscribing?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "检查订阅开关、topic 是否匹配过滤器、retain、QoS、发布端 ACL 与会话设置，最后用 mosquitto_sub 或另一个客户端交叉验证。"
+              "text": "Check the subscription switch, whether the topic matches the filter, retain, QoS, the publish-side ACL and session settings, then cross-check with mosquitto_sub or another client."
             }
           },
           {
             "@type": "Question",
-            "name": "retain 消息怎么清除？",
+            "name": "How do I clear a retained message?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "向同一 topic 发布空 payload 并勾选 retain，Broker 会删除保留消息。"
+              "text": "Publish an empty payload to the same topic with retain enabled and the broker deletes the retained message."
             }
           },
           {
             "@type": "Question",
-            "name": "QoS 1 为什么会重复？",
+            "name": "Why are QoS 1 messages duplicated?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "QoS 1 是至少一次语义，重传或重连可能重复，需要应用层去重；QoS 2 才保证仅一次。"
+              "text": "QoS 1 is at-least-once, so retransmission or reconnects can deliver duplicates and the application must deduplicate; only QoS 2 guarantees exactly once."
             }
           },
           {
             "@type": "Question",
-            "name": "遗嘱消息什么时候触发？",
+            "name": "When is the last-will message sent?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "只在异常断开时由 Broker 发布，例如断网或 KeepAlive 超时；主动断开不会触发。"
+              "text": "Only on an abnormal disconnect such as a network drop or a keep-alive timeout, when the broker publishes it; an intentional disconnect does not trigger it."
             }
           },
           {
             "@type": "Question",
-            "name": "MQTT 支持压测吗？",
+            "name": "Does NetAssistant support MQTT stress testing?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "NetAssistant 暂不支持 MQTT 压测，压测引擎仅用于 TCP/UDP；MQTT 压测请使用 MQTTX Bench 或 emqtt_bench。"
+              "text": "MQTT stress testing is not supported yet; the stress-testing engine only covers TCP/UDP. Use MQTTX Bench or emqtt_bench for MQTT load tests."
             }
           }
         ]
       }
 ---
 
-# MQTT 常见问题：客户端选择、连接与订阅
+# MQTT FAQ: Client Choice, Connections and Subscriptions
 
-这里汇总选型、连接、TLS 与订阅发布中最常遇到的问题，每条给出结论和进一步阅读的入口。具体操作步骤在对应专题页展开，本页不重复长教程。
+This page collects the questions that come up most often when choosing a client, connecting, and subscribing or publishing, with a short answer and a pointer to the page that covers it in depth. Step-by-step instructions live on the topic pages; this page does not repeat long tutorials.
 
-## 客户端怎么选
+## Choosing a client
 
-### MQTT 客户端是什么？
+### What is an MQTT client?
 
-MQTT 客户端是连接 Broker、订阅 topic、发布和查看报文的工具。设备联调时用它验证上报与下发，平台开发时用它复现问题。
+An MQTT client is a tool that connects to a broker, subscribes to topics, publishes messages and shows the traffic. Use it to verify device reporting and platform commands during device integration, or to reproduce an issue during platform development.
 
-### MQTT 客户端哪个好？
+### Which MQTT client is best?
 
-| 需求 | 推荐 |
+| Requirement | Recommendation |
 | ---- | ---- |
-| WebSocket、脚本、完整 5.0 | MQTTX |
-| topic 树浏览、retained 清理、数值曲线 | MQTT Explorer |
-| 已购商业授权、完整 5.0 工具链 | MQTT.fx |
-| 免费开源、轻量、TCP/UDP 与 MQTT 一体 | NetAssistant |
+| WebSocket, scripting, full 5.0 | MQTTX |
+| Topic tree browsing, retained cleanup, numeric charts | MQTT Explorer |
+| A commercial license already purchased, full 5.0 toolchain | MQTT.fx |
+| Free and open source, lightweight, TCP/UDP and MQTT in one app | NetAssistant |
 
-没有一款工具覆盖所有场景。日常只收发报文，轻量客户端更省资源；需要浏览整个 Broker 结构时，topic 树更直观。
+No single tool covers every scenario. For everyday publish and subscribe, a lightweight client saves resources; when you need to browse the whole broker structure, a topic tree is more direct.
 
-### NetAssistant 免费吗？
+### Is NetAssistant free?
 
-免费且开源，基于 Apache-2.0，没有试用期与许可证管理。
+Yes, free and open source under Apache-2.0, with no trial period and no license management.
 
-### 支持哪些平台？
+### Which platforms are supported?
 
-Windows 10/11、Ubuntu 22.04 及以上、macOS 10.15 及以上，覆盖 x64 与 ARM64。
+Windows 10/11, Ubuntu 22.04 and later, and macOS 10.15 and later, covering both x64 and ARM64.
 
-## 连接问题
+## Connection questions
 
-### MQTT 默认端口是多少？
+### What is the MQTT default port?
 
-明文 1883，TLS 8883，WebSocket 常见 8083/8084。NetAssistant 只支持 TCP 直连，`ws://` 与 `wss://` 地址无法连接。
+Plain MQTT uses 1883, TLS uses 8883 and WebSocket commonly uses 8083/8084. NetAssistant only supports direct TCP connections, so `ws://` and `wss://` addresses cannot connect.
 
-### Client ID 可以重复吗？
+### Can a client ID be reused?
 
-同一 Broker 上必须唯一。重复时后连接的会把前一个踢下线；复制连接会自动生成新 ID。
+No: a client ID must be unique on the same broker. When it is reused, the newer connection kicks the previous client offline; duplicating a connection generates a new ID automatically.
 
-### MQTT 3.1.1 和 5.0 怎么选？
+### MQTT 3.1.1 or 5.0?
 
-老设备、老 Broker 或只做基础收发用 3.1.1；需要会话过期、接收最大值与具体原因码用 5.0。NetAssistant 默认 5.0。
+Use 3.1.1 for older devices, older brokers or basic publish and subscribe; use 5.0 when you need session expiry, receive maximum and more specific reason codes. NetAssistant defaults to 5.0.
 
-### MQTT 怎么配置 TLS？
+### How do I configure TLS for MQTT?
 
-端口填 8883 并打开 TLS，按证书来源选择系统根证书、自定义 CA 或跳过校验；需要双向认证时补客户端证书与私钥。详见 [MQTT TLS 配置](/mqtt-tls)。
+Set the port to 8883 and enable TLS, then choose system roots, a custom CA or skipped verification depending on where the certificate comes from; add a client certificate and private key when mutual TLS is required. See [MQTT TLS configuration](/mqtt-tls).
 
-### 连接被拒绝怎么办？
+### What if the connection is refused?
 
-先确认端口连通、地址与 TLS 开关匹配、Client ID 唯一、账号有权限，再按 CONNACK 返回码或 5.0 原因码定位。详见 [MQTT 排错](/mqtt-troubleshooting#连接被拒绝或一直连不上)。
+First confirm the port is reachable, the address and TLS switch match, the client ID is unique and the account has permission, then use the CONNACK return code or the 5.0 reason code to pinpoint the cause. See [MQTT troubleshooting](/mqtt-troubleshooting#connection-refused-or-never-connects).
 
-## 订阅与发布
+## Subscribing and publishing
 
-### 订阅成功但收不到消息怎么办？
+### Why do I get no messages after subscribing?
 
-依次检查订阅开关、topic 是否匹配过滤器、retain、QoS、发布端 ACL 与会话设置，最后用 `mosquitto_sub` 交叉验证。
+An MQTT subscribe can succeed and still deliver nothing. Check in order: the subscription switch, whether the publish topic matches the filter, retain, QoS, the publish-side ACL and session settings, then cross-check with `mosquitto_sub` or another client.
 
-### retain 消息怎么清除？
+### How do I clear a retained message?
 
-向同一 topic 发布空 payload 并勾选 retain，Broker 会删除保留消息。
+Publish an empty payload to the same topic with retain enabled; the broker then deletes the retained message.
 
-### QoS 1 为什么会重复？
+### Why are QoS 1 messages duplicated?
 
-QoS 1 是至少一次语义，重传或重连可能重复；需要应用层去重，QoS 2 才保证仅一次。
+QoS 1 is at-least-once, so retransmission or reconnects can deliver duplicates and the application has to deduplicate; only QoS 2 guarantees exactly once.
 
-### 遗嘱消息什么时候触发？
+### When is the last-will message sent?
 
-只在异常断开时触发，例如断网、进程被杀或 KeepAlive 超时；主动断开不会触发。
+Only on an abnormal disconnect, for example a network drop, a killed process or a keep-alive timeout; an intentional disconnect does not trigger it.
 
-### 离线消息怎么收？
+### How do I receive offline messages?
 
-使用固定 Client ID 并保持持久会话：3.1.1 关闭 Clean Session，5.0 关闭 Clean Start 且会话过期大于 0，Broker 才会保留离线消息。
+Use a fixed client ID and keep a persistent session: turn Clean Session off for 3.1.1, or turn Clean Start off with a session expiry greater than 0 for 5.0, and the broker keeps the offline messages.
 
-### MQTT 支持压测吗？
+### Does NetAssistant support MQTT stress testing?
 
-暂不支持。NetAssistant 的压测引擎只用于 TCP/UDP；MQTT 压测请用 MQTTX Bench 或 emqtt_bench。
+Not yet. NetAssistant's stress-testing engine only covers TCP/UDP; use MQTTX Bench or `emqtt_bench` for MQTT load tests.
 
-## 下一步
+## Next steps
 
-- 从零连接 Broker：[MQTT 调试教程](/guide/mqtt)
-- 完整能力与参数：[MQTT 客户端](/mqtt-client)
-- TLS 与双向认证：[MQTT TLS](/mqtt-tls)
-- 5.0 会话与原因码：[MQTT 5.0](/mqtt-5)
-- 测试场景：[QoS、retain 与遗嘱验证](/mqtt-testing)
-- 平台安装：[Windows 版](/mqtt-client-windows)、[macOS 版](/mqtt-client-mac)、[Linux 版](/mqtt-client-linux)
-- 与 MQTT.fx 的差异：[MQTT.fx 对比](/compare/mqtt-fx)
-- 全部选型对比：[MQTT 客户端对比总览](/compare/)
-- [下载 NetAssistant](/download)
+- Connect to a broker from scratch: [MQTT tutorial](/guide/mqtt)
+- Full capabilities and settings: [MQTT client](/mqtt-client)
+- TLS and mutual authentication: [MQTT TLS](/mqtt-tls)
+- 5.0 sessions and reason codes: [MQTT 5.0](/mqtt-5)
+- Test scenarios: [QoS, retain and last-will checks](/mqtt-testing)
+- Platform installs: [Windows](/mqtt-client-windows), [macOS](/mqtt-client-mac), [Linux](/mqtt-client-linux)
+- Differences from MQTT.fx: [MQTT.fx comparison](/compare/mqtt-fx)
+- All choices: [MQTT client comparison overview](/compare/)
+- [Download NetAssistant](/download)

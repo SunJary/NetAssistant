@@ -1,6 +1,6 @@
 ---
-title: MQTT 客户端 Linux - deb / AppImage 安装与调试
-description: 在 Linux 上安装 NetAssistant MQTT 客户端：deb、AppImage、tar.gz 三种方式，支持 Ubuntu 22.04+、x86_64 与 ARM64；含 Vulkan 依赖、TLS 配置与首次连接步骤。
+title: MQTT Client for Linux - deb and AppImage Install
+description: Install the NetAssistant MQTT client for Linux with a deb, AppImage or tar.gz package on Ubuntu 22.04+ x86_64 or ARM64, with Vulkan and TLS notes.
 head:
   - - script
     - type: application/ld+json
@@ -11,91 +11,91 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "Linux 上怎么安装 MQTT 客户端？",
+            "name": "How do I install an MQTT client on Linux?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Debian/Ubuntu 推荐下载 deb 包并用 sudo apt install ./netassistant-linux-x86_64.deb 安装；其他发行版可用 AppImage 或 tar.gz，赋予执行权限后直接运行。"
+              "text": "On Debian/Ubuntu, download the deb package and install it with sudo apt install ./netassistant-linux-x86_64.deb; on other distributions use the AppImage or tar.gz, add execute permission and run it."
             }
           },
           {
             "@type": "Question",
-            "name": "启动提示 Vulkan 相关错误怎么办？",
+            "name": "What should I do if startup reports a Vulkan error?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "NetAssistant 需要 Vulkan 兼容 GPU 与驱动。Ubuntu 可安装 mesa-vulkan-drivers，并在虚拟机或远程环境中确认已启用 3D 加速；没有 Vulkan 的环境无法启动图形界面。"
+              "text": "NetAssistant needs a Vulkan-compatible GPU and driver. On Ubuntu you can install mesa-vulkan-drivers, and in a virtual machine or remote environment make sure 3D acceleration is enabled; an environment without Vulkan cannot start the graphical interface."
             }
           },
           {
             "@type": "Question",
-            "name": "支持树莓派等 ARM64 设备吗？",
+            "name": "Does it support ARM64 devices such as Raspberry Pi?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "提供 linux-aarch64 的 deb、AppImage 与 tar.gz。该架构为自动构建产物，未经真机完整测试，建议先在目标设备上验证再用于生产。"
+              "text": "Yes, linux-aarch64 deb, AppImage and tar.gz builds are provided. These are automatic build artifacts that have not been fully tested on real hardware, so verify them on the target device before using them in production."
             }
           },
           {
             "@type": "Question",
-            "name": "AppImage 无法运行怎么办？",
+            "name": "What if the AppImage will not run?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "先执行 chmod +x 添加执行权限；若仍失败，检查是否缺少 FUSE，或改用 tar.gz 版本运行解压后的可执行文件。"
+              "text": "First run chmod +x to add execute permission; if it still fails, check whether FUSE is missing, or switch to the tar.gz build and run the extracted executable."
             }
           },
           {
             "@type": "Question",
-            "name": "Linux 版支持 MQTT over WebSocket 吗？",
+            "name": "Does the Linux version support MQTT over WebSocket?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "不支持。Linux 版与其他平台一致，只通过 TCP 直连 Broker；WebSocket 接入请使用 MQTTX 等客户端。"
+              "text": "No. Like the other platforms, the Linux version connects to the broker over TCP only; use a client such as MQTTX for WebSocket access."
             }
           }
         ]
       }
 ---
 
-# MQTT 客户端 Linux：安装、连接与调试
+# MQTT Client for Linux: Install, Connect and Debug
 
-Linux 上的 MQTT 调试工具要么是命令行，要么是基于 Electron 的图形客户端。NetAssistant 是 Rust + GPUI 构建的原生应用，提供 deb、AppImage、tar.gz 三种安装方式，把 MQTT 3.1.1 / 5.0 与 TCP/UDP 调试放在同一个界面里。
+An MQTT debugging tool on Linux is usually either a command-line utility or an Electron-based graphical client. NetAssistant is a native app built with Rust and GPUI, ships as a deb, AppImage or tar.gz, and keeps MQTT 3.1.1 / 5.0 and TCP/UDP debugging in the same window.
 
-## 为什么在 Linux 上选它
+## Why choose it on Linux
 
-- **原生应用**：不是 Electron 套壳，启动快、内存约 20MB
-- **安装方式齐全**：deb 自动处理依赖，AppImage 免安装，tar.gz 适合精简环境
-- **x86_64 与 ARM64**：覆盖常见服务器、开发机与树莓派 5
-- **协议齐全**：TCP/UDP 客户端与服务端 + MQTT 3.1.1 / 5.0
-- **TLS 完整**：系统根证书、自定义 CA、跳过校验，支持双向认证
+- **Native app**: not an Electron wrapper, so it starts fast and uses about 20MB of memory
+- **Every install format**: the deb resolves dependencies automatically, the AppImage needs no installation, and the tar.gz suits minimal environments
+- **x86_64 and ARM64**: covers common servers, developer machines and Raspberry Pi 5
+- **Complete protocol set**: TCP/UDP client and server plus MQTT 3.1.1 / 5.0
+- **Full TLS**: system roots, custom CA and skipped verification, with mutual TLS support
 
-## 系统要求
+## System requirements
 
-| 项目 | 要求 |
+| Item | Requirement |
 | ---- | ---- |
-| 发行版 | Ubuntu 22.04 及以上及衍生版；其他发行版建议 AppImage |
-| 架构 | x86_64 或 ARM64（aarch64） |
-| 图形 | Vulkan 兼容 GPU 与驱动 |
-| 网络 | 可访问 Broker 的 1883（明文）或 8883（TLS）端口 |
+| Distribution | Ubuntu 22.04 and later plus derivatives; other distributions should use the AppImage |
+| Architecture | x86_64 or ARM64 (aarch64) |
+| Graphics | Vulkan-compatible GPU and driver |
+| Network | Access to the broker on port 1883 (plain) or 8883 (TLS) |
 
-NetAssistant 需要 Vulkan 渲染界面。Ubuntu 上可安装 `mesa-vulkan-drivers`；虚拟机、WSL 或远程桌面环境需确认已启用 3D 加速，否则无法启动图形界面。
+NetAssistant needs Vulkan to render its interface. On Ubuntu you can install `mesa-vulkan-drivers`; in a virtual machine, WSL or remote desktop environment, make sure 3D acceleration is enabled, otherwise the graphical interface cannot start.
 
-## 安装
+## Installation
 
-### 推荐：deb 包
+### Recommended: deb package
 
 ```bash
 sudo apt install ./netassistant-linux-x86_64.deb
 ```
 
-安装后从应用菜单启动，或在终端运行 `netassistant`。deb 会自动解析依赖。
+After installing, launch it from the application menu or run `netassistant` in a terminal. The deb resolves dependencies automatically.
 
-### AppImage（免安装）
+### AppImage (no installation)
 
 ```bash
 chmod +x netassistant-linux-x86_64.AppImage
 ./netassistant-linux-x86_64.AppImage
 ```
 
-适合 Fedora、Arch 等非 Debian 系发行版。如果系统缺少 FUSE，改用 tar.gz。
+Suits non-Debian distributions such as Fedora and Arch. If the system lacks FUSE, use the tar.gz instead.
 
-### tar.gz（精简环境）
+### tar.gz (minimal environments)
 
 ```bash
 tar -xzf netassistant-linux-x86_64.tar.gz
@@ -105,62 +105,62 @@ chmod +x netassistant
 
 ### ARM64
 
-树莓派 5、ARM 服务器等设备下载 `linux-aarch64` 对应的 deb、AppImage 或 tar.gz，用法相同。ARM64 构建为自动产物，未经真机完整测试，建议先在目标设备验证。
+On a Raspberry Pi 5, an ARM server or similar hardware, download the `linux-aarch64` deb, AppImage or tar.gz; usage is the same. ARM64 builds are automatic artifacts that have not been fully tested on real hardware, so verify them on the target device first.
 
-## 第一次连接 MQTT
+## First MQTT connection
 
-1. 打开 NetAssistant，点击 `+新建`，协议选择 **MQTT**
-2. 填写 Broker 地址、端口、Client ID、用户名与密码
-3. 需要加密时打开 TLS，按证书来源选择校验方式
-4. 连接成功后订阅 `test/#` 或业务 topic
-5. 在发送区填写 topic、QoS、retain 与 payload，点击发布
+1. Open NetAssistant, click `+ New` and choose **MQTT** as the protocol
+2. Enter the broker address, port, client ID, username and password
+3. Turn on TLS if encryption is needed and choose the verification mode based on the certificate source
+4. After connecting, subscribe to `test/#` or a real business topic
+5. In the send area, fill in topic, QoS, retain and payload, then publish
 
-完整步骤见 [MQTT 调试教程](/guide/mqtt)。
+See the [MQTT debugging tutorial](/guide/mqtt) for the full walkthrough.
 
-## 在 Linux 上配置 TLS
+## Configure TLS on Linux
 
-- 证书与私钥使用 PEM 文件路径，支持 PKCS#8、PKCS#1 与 SEC1
-- 私有 CA 选择「自定义 CA」，指向 CA 的 PEM；公共 CA 使用默认系统根证书
-- 双向认证需成对填写客户端证书与私钥；配置只保存路径
-- 本地联调自签证书时可临时跳过校验，生产环境不要使用
+- Certificates and private keys are PEM file paths; PKCS#8, PKCS#1 and SEC1 are supported
+- For a private CA choose "Custom CA" and point it at the CA PEM; public CAs use the default system roots
+- Mutual TLS needs the client certificate and private key filled in as a pair; only the paths are saved
+- For local testing with self-signed certificates you can temporarily skip verification; do not use that in production
 
-握手失败排查见 [MQTT 排错](/mqtt-troubleshooting#tls-握手失败)。
+For handshake failures, see [MQTT troubleshooting](/mqtt-troubleshooting#tls-handshake-failures).
 
-## 适合 Linux 的场景
+## Scenarios suited to Linux
 
-- 开发机本地 Docker 跑 EMQX / Mosquitto，直接连 `127.0.0.1`
-- 服务器桌面环境上排查设备上报，低内存不拖慢系统
-- 树莓派接串口设备后，在同一台机器上抓 MQTT 与 TCP/UDP
-- 需要免安装 AppImage，放在 U 盘或共享目录直接运行
+- Run EMQX / Mosquitto in Docker on a developer machine and connect straight to `127.0.0.1`
+- Diagnose device reporting on a server desktop without slowing the system down
+- Attach a serial device to a Raspberry Pi and capture MQTT and TCP/UDP on the same machine
+- Run the AppImage from a USB drive or shared directory without installing anything
 
-如果你更关心 Linux 上的 TCP/UDP 调试，可以看 [Linux 网络调试助手](/linux-network-debug-tool)。
+If you care more about TCP/UDP debugging on Linux, see the [Linux network debugging tool](/linux-network-debug-tool).
 
-## 常见问题
+## FAQ
 
-### Linux 上怎么安装 MQTT 客户端？
+### How do I install an MQTT client on Linux?
 
-Ubuntu/Debian 用 deb 包；其他发行版用 AppImage 或 tar.gz，赋予执行权限后运行。
+Use the deb package on Ubuntu/Debian; on other distributions use the AppImage or tar.gz, add execute permission and run it.
 
-### 启动提示 Vulkan 相关错误怎么办？
+### What should I do if startup reports a Vulkan error?
 
-安装 `mesa-vulkan-drivers`，并确认虚拟机或远程环境已启用 3D 加速；无 Vulkan 环境无法启动图形界面。
+Install `mesa-vulkan-drivers` and make sure 3D acceleration is enabled in a virtual machine or remote environment; without Vulkan the graphical interface cannot start.
 
-### 支持树莓派等 ARM64 设备吗？
+### Does it support ARM64 devices such as Raspberry Pi?
 
-提供 aarch64 的 deb、AppImage 与 tar.gz，但为自动构建产物，建议先验证。
+Yes, aarch64 deb, AppImage and tar.gz builds are provided, but they are automatic artifacts, so verify them first.
 
-### AppImage 无法运行怎么办？
+### What if the AppImage will not run?
 
-先 `chmod +x`，检查 FUSE；仍失败时改用 tar.gz。
+Run `chmod +x` first and check FUSE; if it still fails, switch to the tar.gz.
 
-### Linux 版支持 MQTT over WebSocket 吗？
+### Does the Linux version support MQTT over WebSocket?
 
-不支持，只通过 TCP 直连 Broker。
+No, it connects to the broker over TCP only.
 
-## 相关页面
+## Related pages
 
-- 功能与参数：[MQTT 客户端](/mqtt-client)
-- 连接与订阅教程：[MQTT 调试教程](/guide/mqtt)
-- 连接失败排查：[MQTT 排错](/mqtt-troubleshooting)
-- 其他平台：[Windows 版](/mqtt-client-windows)、[macOS 版](/mqtt-client-mac)
-- [下载 Linux 版](/download)
+- Features and parameters: [MQTT client](/mqtt-client)
+- Connect and subscribe tutorial: [MQTT debugging tutorial](/guide/mqtt)
+- Diagnosing connection failures: [MQTT troubleshooting](/mqtt-troubleshooting)
+- Other platforms: [Windows client](/mqtt-client-windows), [macOS client](/mqtt-client-mac)
+- [Download for Linux](/download)

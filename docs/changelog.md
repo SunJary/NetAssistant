@@ -1,261 +1,261 @@
 ---
-title: 更新日志
-description: NetAssistant 版本更新记录与路线图：TCP 解码器、UDP 广播设备发现、高并发压力测试、多语言界面、十六进制编辑器，覆盖 Windows、Linux、macOS。
+title: Changelog
+description: "NetAssistant changelog: TCP decoders, UDP broadcast device discovery, stress testing, multi-language UI and hex editor, on Windows, Linux and macOS."
 ---
 
-# 更新日志
+# Changelog
 
-所有正式版本的更新记录发布在 [GitHub Releases](https://github.com/sunjary/netassistant/releases) 页面。
+All official release notes are published on the [GitHub Releases](https://github.com/sunjary/netassistant/releases) page.
 
 ## v1.5.1 <Badge type="tip" text="2026-11-23" />
 
-- **随机数据生成**：工具箱新增「随机」分组，覆盖 UUID、随机字符串与国密密钥
-  - **UUID / 字符串**：UUID v4 支持标准 36 位与无横线 32 位；十六进制（可切换大写）与十进制数字串支持 1–1024 位；自定义字符集可按「数字 / 小写 / 大写 / 符号」点选，支持排除易混淆字符与「随机密码 / 字母数字」预设
-  - **SM2 / SM4 密钥**：SM2 生成私钥（64 位 hex）与 SEC1 未压缩公钥（130 位 hex，04 开头）；SM4 生成 16 字节密钥与 IV（各 32 位 hex）
-  - **批量与复制**：一次生成 1–100 条，逐行复制或「全部复制」；结果以快照保留，仅点击「生成」时刷新，参数变化自动清空
-  - 全部使用操作系统 CSPRNG，字符抽样采用拒绝采样避免取模偏差；生成离线完成，不联网、不落盘
-- **连接名称、重命名与复制**：新建/编辑连接可填可选名称，连接列表与标签页标题显示名称（列表为「名称 @ 地址 [协议]」，超长自动省略、悬停可看全名）；右键新增「重命名连接」（留空恢复仅显示地址）与「复制连接」（预填源配置并另存为新连接，MQTT 自动换新 Client ID，避免同 Broker 互踢）；连接信息栏新增用户名展示
-- **MQTT 订阅独立开关**：每条订阅可单独开关，开启时等待 broker 确认（SUBACK）后才点亮，失败或 10 秒无响应自动关闭该条并提示具体 topic；关闭状态持久化，断线重连后只恢复开启中的订阅；持久会话离线时提示先连接再取消
-- **MQTT 发布失败提示**：MQTT 5 下 QoS 1/2 被 broker 拒收、或任何协议本地发送失败时，右上角通知带上目标 topic 与原因码（MQTT 5 可区分「没有权限」等具体原因），相同提示 3 秒内只弹一次，消息日志仍逐条记录
-- **新建连接默认 MQTT 5.0**：协议版本默认值改为 5.0，既有配置仍按保存的版本回填
-- QoS 芯片悬停显示「至多一次 / 至少一次 / 仅一次」语义词；连接列表行悬停显示完整展示名
+- **Random data generation**: the toolbox gains a Random group for UUIDs, random strings and Chinese national crypto keys
+  - **UUID / strings**: UUID v4 in the standard 36-character form or a 32-character dash-free form; hex strings (uppercase optional) and decimal digits from 1 to 1024 characters; a custom charset picked by checkboxes (digits / lowercase / uppercase / symbols) with ambiguous-character exclusion and Random password / Letters + digits presets
+  - **SM2 / SM4 keys**: SM2 produces a private key (64 hex chars) and a SEC1 uncompressed public key (130 hex chars, starting with 04); SM4 produces a 16-byte key and IV (32 hex chars each)
+  - **Batch and copy**: generate 1-100 values at once, then copy rows individually or all at once; results are snapshotted and refresh only when you click Generate, while changing any parameter clears the previous result
+  - Everything uses the OS CSPRNG with rejection sampling to avoid modulo bias; generation is fully offline and never writes to disk
+- **Connection names, rename and duplicate**: new/edit dialogs accept an optional name; the connection list and tab title show the name (the list renders `name @ host:port [PROTOCOL]` with ellipsis plus a full-name tooltip); the context menu adds "Rename Connection" (clear it to show the address only) and "Duplicate Connection" (prefills the source config into a new connection, with a fresh Client ID for MQTT so two clients never kick each other off the same broker); the info panel now shows the username
+- **Per-subscription switch for MQTT**: every subscription can be toggled individually; it lights up only after the broker confirms it (SUBACK), and a failure or a 10-second timeout disables that entry with the topic in the message; the off state is persisted and only enabled entries are restored after reconnect; for a persistent session, an offline unsubscribe prompts you to connect first
+- **MQTT publish failure hints**: when a QoS 1/2 publish is rejected by the broker under MQTT 5, or a local send fails under any protocol version, a top-right notification names the target topic and reason code (MQTT 5 distinguishes cases such as "not authorized"); identical notifications are shown once per 3 seconds while the message log still records every entry
+- **New connections default to MQTT 5.0**: the protocol version now defaults to 5.0 for new connections, while existing configs keep their saved version
+- Hovering a QoS chip shows its semantics (at most once / at least once / exactly once), and connection list rows show the full label on hover
 
-修复与优化：
+Fixes and improvements:
 
-- 配置写入改为原子写（临时文件 + `sync_all` + `rename`），窗口几何状态拆分到独立文件，避免异常退出时配置只写入一半或两份内存快照互相覆盖
-- 订阅 / 发布失败提示统一带上 topic 并去重，避免发送任务或 ACL 拒绝时通知刷屏
+- Config writes are now atomic (temp file + `sync_all` + `rename`) and window geometry moved to its own file, so a crash can no longer leave a half-written config or let two in-memory snapshots overwrite each other
+- Subscription and publish failure notifications now include the topic and are deduplicated, so send tasks or ACL rejections no longer flood the notification area
 
 ## v1.5.0 <Badge type="tip" text="2026-11-15" />
 
-- **MQTT over TLS**：MQTT 连接支持 TLS 加密（3.1.1 与 5.0 均可用），在新建 / 编辑连接的 MQTT 区域配置
-  - **证书校验三档**：系统根证书（默认）、自定义 CA（填 PEM 文件路径，可点「选择文件」回填）、跳过校验（不安全，仅用于自签联调，传输仍然加密）
-  - **双向认证**：可选客户端证书与私钥（PEM，支持 PKCS#8 / PKCS#1 / SEC1），需成对填写
-  - **ALPN**：可选、逗号分隔，留空不下发；多数 broker 不需要，仅特定网关或负载均衡要求时填写
-  - **握手失败可读**：证书过期、主机名不匹配、证书链不受信任等情况给出具体原因与处置建议，而不是裸错误码
-  - 连接配置只保存证书文件路径、不保存 PEM 内容，配置可安全导出或分享；TLS 对 3.1.1 与 5.0 同时生效
-- **MQTT 5.0**：新增 MQTT 5.0 客户端（基于 rumqttc v5），与 3.1.1 客户端并存，可按连接选择
-  - **协议版本**：连接配置新增「协议版本」（3.1.1 / 5.0）；旧配置默认 3.1.1，行为与历史版本一致
-  - **5.0 连接属性**：「会话过期（秒）」留空不下发、0 表示断开即过期；「接收最大值」1-65535，留空不下发
-  - **Clean Start**：沿用 Clean Session 开关；Client ID 为空时自动使用 clean start，避免空 ID + 持久会话被 broker 拒绝
-  - **原因码可读化**：CONNACK 连接被拒、SUBACK 订阅失败、broker 主动 DISCONNECT 均显示具体原因码与 broker 说明
-  - 订阅管理、发布（QoS / retain）、遗嘱、消息记录、自动回复与断线重连后恢复订阅，均与 3.1.1 客户端一致
+- **MQTT over TLS**: MQTT connections can now use TLS (available for both 3.1.1 and 5.0), configured in the MQTT section of the new / edit connection dialog
+  - **Three verification modes**: system roots (default), custom CA (PEM file path, with a file picker) or skip verification (insecure, for self-signed debugging only - traffic is still encrypted)
+  - **Mutual TLS**: optional client certificate and private key (PEM, PKCS#8 / PKCS#1 / SEC1), provided as a pair
+  - **ALPN**: optional and comma separated, omitted when empty; most brokers do not need it, only specific gateways or load balancers
+  - **Readable handshake failures**: expired certificates, hostname mismatches and untrusted chains report the concrete cause and a suggested fix instead of a raw error code
+  - Only certificate file paths are stored, never PEM contents, so configs stay safe to export or share; TLS applies to both 3.1.1 and 5.0
+- **MQTT 5.0**: a new MQTT 5.0 client (powered by rumqttc v5) alongside the 3.1.1 client, selectable per connection
+  - **Protocol version**: a new selector offers 3.1.1 or 5.0; existing configs stay on 3.1.1 with unchanged behaviour
+  - **5.0 connect properties**: Session Expiry (seconds; leave empty to omit, 0 expires on disconnect) and Receive Maximum (1-65535; leave empty to omit)
+  - **Clean Start**: follows the Clean Session toggle, and is forced when the Client ID is empty so brokers do not reject an empty ID with a persistent session
+  - **Human readable reason codes**: CONNACK refusals, SUBACK failures and broker-initiated DISCONNECTs show the reason code plus the broker's reason string
+  - Subscription management, publish (QoS / retain), last will, message log, auto-reply and subscription restore after reconnect all behave the same as with 3.1.1
 
-修复与优化：
+Fixes and improvements:
 
-- MQTT 收包路径减少一次整帧内存拷贝，大报文下的 CPU 与内存开销更低
-- 安装包要求 Windows 10 1709（Build 16299）及以上：系统不满足时在安装阶段直接提示（如 Windows Server 2016），避免"装完打不开"
+- The MQTT receive path skips one full-frame copy, lowering CPU and memory cost for large payloads
+- The installer now requires Windows 10 version 1709 (Build 16299) or later and shows a clear message on unsupported systems such as Windows Server 2016, instead of installing an app that cannot start
 
 ## v1.4.2 <Badge type="tip" text="2026-11-10" />
 
-- **回复规则导入 / 导出**：支持将一个连接的回复规则打包导出为规则包文件，也可从规则包文件导入到当前连接；导入时可选择合并或覆盖，便于在多台机器间迁移规则
-- **回复规则复制到连接**：在回复规则对话框中可一键将当前连接的规则复制到其他连接，省去逐条重建；适合多连接复用同一套应答逻辑
+- **Reply rule import / export**: export a connection's reply rules as a rule bundle file, or import a bundle into the current connection; import supports merge or overwrite, making it easy to move rules between machines
+- **Copy reply rules to another connection**: copy the current connection's rules to other connections in one click instead of rebuilding them one by one; useful when multiple connections share the same response logic
 
 ## v1.4.1 <Badge type="tip" text="2026-10-31" />
 
-- **滚动条直达最新消息**：修复气泡实际行高大于行高估算值（多行 JSON、长报文等）时，滚动条拖到轨道底部仍停在历史中部、最后几条消息无法到达的问题——拇指触底即锚定最后一条消息，且不改动「自动滚动」开关状态
-- **MQTT 订阅列表**：订阅一览占满侧栏剩余高度（同服务端「客户端连接」列表），订阅变多时改为框内滚动、不再撑高面板；悬停向上弹出完整 topic（长 topic 行内省略显示，提示不再被滚动容器裁切），双击复制 topic
-- **消息气泡更宽**：气泡最大宽度由固定值改为消息区宽度的 75%，长报文与多行 JSON 换行更少
-- **复制提示**：双击来源地址 `ip:port` 或 MQTT topic 复制后，右上角弹出「已复制到剪贴板」轻提示
-- **右键菜单不再越界**：连接列表与订阅行的右键菜单改用统一上下文菜单承载，自动收敛到窗口内；收藏面板按窗口边界钳制位置，贴边时不被裁切
-- 重连与「重连后已重新发起订阅」等正常状态提示改为成功色并 5 秒后自动消失，不再以红色常驻；连接建立、断开、开始监听或报错时同步清理过期提示
+- **Scrollbar reaches the latest message**: fixed an issue where dragging the scrollbar to the bottom still stopped mid-history when bubble heights exceeded the estimated row height (multi-line JSON, long payloads), leaving the newest messages unreachable — the thumb now anchors the latest message at the bottom of the track without changing the auto-scroll toggle
+- **MQTT subscription list**: the subscription overview now fills the remaining side-panel height (like the server's "client connections" list) and scrolls inside the box instead of growing the panel; hovering opens a card above the row with the full topic (long topics are ellipsized inline and the tip is no longer clipped by the scroll container), and double-clicking copies the topic
+- **Wider message bubbles**: bubbles now take up to 75% of the message area instead of a fixed width, so long payloads and multi-line JSON wrap less
+- **Copy feedback**: double-clicking a source address `ip:port` or an MQTT topic now shows a "copied to clipboard" toast in the top-right corner
+- **Context menus stay in view**: the context menus of connection rows and subscription rows now use the shared menu component and stay within the window; the favorites panel is clamped to the window bounds so it is no longer clipped at the edges
+- Reconnect and "resubscribed after reconnect" hints now render in a success colour and disappear after 5 seconds instead of lingering in red; stale hints are also cleared when a connection is established, closed, starts listening or errors
 
 ## v1.4.0 <Badge type="tip" text="2026-10-24" />
 
-- **MQTT 客户端**：新增 MQTT 3.1.1 客户端（基于 rumqttc），完整复用现有调试工作流
-  - **连接配置**：新建/编辑连接支持 MQTT 协议，可配置 Broker 地址与端口（默认 1883）、Client ID、用户名/密码、KeepAlive、Clean Session 与遗嘱消息（topic / payload / QoS / retain）
-  - **订阅管理**：运行时新增 / 编辑 / 取消订阅，无需重连；订阅按连接隔离，断线自动重连后自动恢复订阅
-  - **发布消息**：发送区支持 topic、QoS 0/1/2 与 retain，payload 沿用文本 / Hex 模式；topic 输入框右侧下拉可复用当前连接最近发送过的 topic（连同 QoS / retain），历史按连接持久化，最多 20 条
-  - **消息与自动回复**：消息记录显示 topic 标签（retain 单独标记），双击 topic 复制原文；自动回复的应答回发到收到消息的 topic；周期发送按当前发布 topic 发送
-  - **协议约束**：MQTT 下隐藏解码器与「结尾字符」，不提供压测、逐行发送与定时任务；首版暂不支持 TLS、MQTT 5.0 与 MQTT over WebSocket
-- **内置工具箱**：标签栏右侧扳手图标打开常驻工具箱，左侧分组「转换 / 校验 / 哈希 / 时间 / JSON / 编码」，各组输入独立、输入即出结果、结果行可一键复制
-  - **转换**：文本 → Hex、Hex → 文本两个独立输入块
-  - **校验**：XOR、Sum8、LRC、CRC16-Modbus、CRC16-CCITT-FALSE、CRC32
-  - **哈希**：MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512；bcrypt / Argon2id / PBKDF2-SHA256 密码哈希（随机盐）；文件摘要（多算法、单遍读取）与哈希对比（按长度自动识别算法并标记匹配）
-  - **时间**：时间戳 ⇄ 日期双向识别（秒 / 毫秒、本地 / UTC、ISO 8601、星期与相对时间）
-  - **JSON**：美化 / 压缩，标准 JSON 失败时回退 JSON5 宽松解析
-  - **编码**：Base64 与 URL 编解码
-- **消息文本可选中与右键工具**：气泡正文支持拖选、双击选词、三击选行与 `Ctrl/Cmd+C`；右键菜单可复制选中 / 全文，并对选中内容（未选中时对整条消息）执行文本 ⇄ Hex 转换与六种校验；拖选时选区高亮实时跟随鼠标，浅色主题下配色更清晰
-- **回复规则 JSON 字段条件**：新增 JSON 字段谓词，支持 `data.items[0].temp` 等路径与 `== / != / > / >= / < / <= / 包含 / 存在` 运算符；消息变量新增 `${rx.json:路径}` JSON 字段取值
-- **消息列表交互优化**：新增气泡入场动画、尾部跟随与更稳定的滚动条滑块；双击来源地址可直接复制 `ip:port`（MQTT 下双击 topic 标签复制 topic）
-- **性能优化**：TCP 客户端 / 服务端 / 压测连接开启 `TCP_NODELAY`；半帧兜底刷新由 50ms 降至 10ms，降低往返压测 RTT 尖峰；升级 gpui-kit 0.8 并启用 gpui-fast
+- **MQTT client**: a new MQTT 3.1.1 client (powered by rumqttc) that fully reuses the existing debugging workflow
+  - **Connection settings**: create/edit connections with the MQTT protocol, configuring the broker address and port (default 1883), Client ID, username/password, KeepAlive, Clean Session and a last-will message (topic / payload / QoS / retain)
+  - **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and restored automatically after an automatic reconnect
+  - **Publishing**: the send area supports topic, QoS 0/1/2 and retain while the payload keeps using text / hex mode; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS / retain), persisted per connection with up to 20 entries
+  - **Messages and auto reply**: messages show a topic pill (retain is marked separately), and double-clicking it copies the raw topic; auto replies are published back to the topic the message arrived on; periodic send uses the current publish topic
+  - **Protocol constraints**: decoders and the suffix selector are hidden for MQTT, and stress testing, line-send tasks and timed tasks are not offered; the first version does not support TLS, MQTT 5.0 or MQTT over WebSocket
+- **Built-in toolbox**: open it from the wrench icon at the right of the tab bar — a permanent toolbox tab with Convert / Checksum / Hash / Time / JSON / Encoding groups; each group keeps its own input, results appear as you type, and every result row has a copy button
+  - **Convert**: separate text → Hex and Hex → text blocks
+  - **Checksum**: XOR, Sum8, LRC, CRC16-Modbus, CRC16-CCITT-FALSE and CRC32
+  - **Hash**: MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512; bcrypt / Argon2id / PBKDF2-SHA256 password hashes (random salt); file digests (multiple algorithms, single read pass) and hash comparison (auto-detects the algorithm by length and marks a match)
+  - **Time**: bidirectional timestamp ⇄ date conversion (seconds / milliseconds, local / UTC, ISO 8601, weekday and relative time)
+  - **JSON**: beautify / minify with a JSON5 fallback when strict JSON parsing fails
+  - **Encoding**: Base64 and URL encode/decode
+- **Selectable message text with context tools**: drag-select, double-click a word or triple-click a line in a bubble and copy with `Ctrl/Cmd+C`; the context menu copies the selection or the full message and runs text ⇄ Hex conversion or six checksum algorithms on the selection (or the whole message); the selection highlight follows the mouse live and reads clearly on light themes
+- **JSON field conditions in reply rules**: a new JSON field predicate supports paths such as `data.items[0].temp` with `== / != / > / >= / < / <= / contains / exists`; message variables gain `${rx.json:path}`
+- **Message list interaction**: message bubbles animate in, the list follows the tail more smoothly and the scrollbar thumb is more stable; double-clicking a source address copies `ip:port` (on MQTT, double-clicking the topic pill copies the topic)
+- **Performance**: `TCP_NODELAY` is enabled for TCP clients, servers and stress connections; the half-frame fallback flush drops from 50ms to 10ms, reducing RTT spikes in round-trip stress tests; gpui-kit upgraded to 0.8 with gpui-fast enabled
 
-修复与优化：
+Fixes and improvements:
 
-- 配置文件不可读时不再 panic，并保留无法识别的连接配置，避免数据丢失
-- 新建/编辑连接表单提供即时校验反馈，修复 UDP 地址解析问题
-- UDP 接收缓冲提升至 64 KiB，修复大于 1024 字节的数据报被截断或读循环退出的问题；超过 65507 字节的数据报发送前拦截并提示；发送失败给出明确反馈
-- 修复工具箱哈希结果写入过期与密码哈希（KDF）阻塞主线程的问题
+- Unreadable config files no longer panic, and unrecognized connection configs are preserved to avoid data loss
+- New/edit connection forms give instant validation feedback, and UDP address parsing is fixed
+- The UDP receive buffer is raised to 64 KiB, fixing datagrams larger than 1024 bytes being truncated or killing the read loop; datagrams over 65507 bytes are rejected with a clear message before sending, and send failures now surface explicit feedback
+- Fixed stale writes of toolbox hash results and password hashing (KDF) blocking the main thread
 
 ## v1.3.0 <Badge type="tip" text="2026-10-09" />
 
-- **自定义回复规则**：把原来的「固定自动回复」升级为规则引擎，每条规则由「匹配条件 + 应答动作」组成，对收到的报文按条件匹配并自动应答
-  - **匹配条件**：支持「全部满足 / 任一满足 / 取反」任意嵌套，以及多种原子谓词——包含字节序列、定长精确匹配、定长掩码匹配、前缀 + 长度区间（可附加位置约束）、帧长度区间、指定偏移字节、指定偏移整数、帧尾匹配、正则、来源地址（支持 CIDR）、字段取值、校验值验算
-  - **应答动作**：内容支持接收帧变量 `${rx.*}` 与各类通用变量；可单独设置编码方式（原样 / 追加 LF / 追加 CRLF / 继承连接），二进制协议选「原样」可避免帧尾被追加换行导致校验失败
-  - **按连接隔离**：规则只对所属连接生效，连接页的「自动回复」开关是该连接唯一总闸；支持启用 / 停用、复制、拖拽排序（自上而下、命中即停）、触发次数统计与清零
-  - **内联试跑**：编辑弹窗内填入测试报文即时查看是否命中、首个未满足的条件、实际渲染出的应答内容与引用的接收帧变量
-  - 旧版固定自动回复内容可一键迁移为等价规则
-- **消息变量**：发送框、定时任务与回复规则统一支持变量，在原有 `${seq}` / `${timestamp}` / `${uuid}` / `${random:min:max}` 等通用变量基础上，新增接收帧变量 `${rx.*}`（`raw` / `hex` / `ascii` / `base64` 与 `u8` / `u16be` / `i32le` 等整数取值）、发送时生成的校验值 `${crc16modbus:off:len}` 等，以及 `${= 表达式 }` 单表达式；Hex 模式下数值变量自动转为十六进制
-- **发送任务（逐行发送）**：导入文件或粘贴多行后可按行逐条发送，支持每条间隔、循环发送与最大轮次，任务面板实时显示进度并可暂停 / 继续 / 停止 / 删除
-- **定时任务（心跳）**：每个连接最多添加 1 个定时任务，按固定间隔无限循环发送单条消息，可设置是否随连接自动启动；任务面板可见，间隔可随时编辑并立即生效
-- **结尾字符（LF / CRLF）**：发送区新增「结尾」选择（无 / LF / CRLF），对所有发出的消息生效，并同时作用于逐行发送任务与自动回复；压力测试配置中可独立设置「结尾字符」（继承 / 无 / LF / CRLF），发送时在每包末尾追加，「继承」跟随消息面板的结尾设置
-- **HEX 输入右键增强**：右键菜单新增剪切 / 复制 / 粘贴 / 全选，以及校验工具——直接对输入内容计算 XOR、累加和 Sum8、LRC、CRC16-Modbus、CRC16-CCITT-FALSE、CRC32
-- **Linux deb 包**：新增 x86_64 与 ARM64 的 deb 打包，Debian/Ubuntu 及衍生版可 `sudo apt install ./netassistant-*.deb` 安装并自动解决依赖
+- **Custom reply rules**: the old fixed "auto-reply" is now a rule engine — each rule is a match condition plus a reply action, matching incoming frames and answering automatically
+  - **Match conditions**: arbitrary nesting of "all of / any of / not", plus a range of atomic predicates — contains bytes, fixed exact, fixed masked, prefix + length range (with optional positional constraints), frame length range, byte at offset, integer at offset, suffix, regex, source address (CIDR allowed), field value, and checksum validation
+  - **Reply action**: content may use received-frame variables `${rx.*}` and general variables; each rule can set its own encoding (Raw / append LF / append CRLF / inherit from the connection) — pick "Raw" for binary protocols so no line ending is appended and the checksum stays valid
+  - **Scoped per connection**: a rule only applies to its own connection, and the connection page's "Auto Reply" switch is that connection's single master gate; supports enable/disable, duplicate, drag-to-reorder (top to bottom, first hit wins), trigger counts and reset
+  - **Inline test run**: enter a test frame in the editor to immediately see whether it hits, the first unmet condition, the rendered reply, and the received-frame variables it uses
+  - Legacy fixed auto-reply content can be migrated into an equivalent rule in one click
+- **Message variables**: the send box, timed tasks and reply rules all support variables — beyond the existing `${seq}` / `${timestamp}` / `${uuid}` / `${random:min:max}`, new received-frame variables `${rx.*}` (`raw` / `hex` / `ascii` / `base64` and integer accessors such as `u8` / `u16be` / `i32le`), checksums generated at send time (`${crc16modbus:off:len}` and others), and `${= expression }`; in Hex mode numeric variables are converted to hexadecimal automatically
+- **Send tasks (line-by-line)**: import a file or paste multiple lines to send them one per line, with a per-line interval, looping and a maximum round count; the task panel shows live progress and supports pause / resume / stop / delete
+- **Timed tasks (heartbeat)**: each connection supports one timed task that loops a single message at a fixed interval, optionally auto-starting with the connection; visible in the task panel, with an interval you can edit and apply immediately
+- **Trailing character (LF / CRLF)**: a new "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message, and also to line-send tasks and auto reply; the stress test config has its own "Trailer" option (Inherit / None / LF / CRLF) appended to each packet on send, where "Inherit" follows the message panel's suffix setting
+- **Hex input context menu**: added cut / copy / paste / select all, plus checksum tools that compute XOR, Sum8, Modbus LRC, CRC16-Modbus, CRC16-CCITT-FALSE and CRC32 directly on the input
+- **Linux deb package**: new deb packaging for x86_64 and ARM64 — Debian/Ubuntu and derivatives can install with `sudo apt install ./netassistant-*.deb`, which resolves dependencies automatically
 
-修复与优化：
+Fixes and improvements:
 
-- 依赖迁移至 gpui-kit
+- Dependencies migrated to gpui-kit
 
 ## v1.2.0 <Badge type="tip" text="2026-09-23" />
 
-- **键盘快捷键**：新增应用级快捷键，`Ctrl+Enter` 发送、`Ctrl+Tab` / `Ctrl+Shift+Tab` 与 `Ctrl+PageDown/PageUp` 循环切换标签页、`Ctrl+1..9` 直接跳转标签页、`Ctrl+W` 关闭标签页、`Ctrl+N` 新建连接、`Ctrl+K` 聚焦消息输入框、`Ctrl+F` 消息搜索；无论焦点在输入框还是空白区均生效
-- **消息搜索**：工具栏放大镜或 `Ctrl+F` 唤起非模态搜索浮层，实时显示命中计数 `i/n`，`Enter` / `Shift+Enter` 或上/下按钮环形跳转，命中项整行高亮并自动滚动到视口；`Esc` 关闭，跳转时自动关闭自动滚动避免定位漂移
-- **ASCII ↔ Hex 双向互转**：文本/十六进制模式切换时按 UTF-8 整体互转；右键菜单「转换为 Hex / 转换为文本」以只读结果窗口展示转换结果并支持复制，不改写输入框；不可打印字节以 `\n` `\r` `\t` `\\` 与 `\xNN` 转义，`Hex → 文本 → Hex` 往返字节级一致；十六进制表示统一为大写
-- **文件数据源**：工具栏「打开文件」按钮从本地文件读取内容填入发送框，支持 UTF-8 / GBK / ANSI 编码选择与内容预览，文件大小以可读格式显示，上限 1 MiB；Hex 模式按原始字节导入，超大内容自动切换为文本编辑
-- **消息条数上限（保留最后 N 条）**：消息工具栏新增条数输入框（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息以控制内存占用；与自动滚动联动，关闭自动滚动时自动置 `0` 并停止淘汰，重新开启恢复原值。不淘汰时（`0` 或关闭自动滚动）消息会持续累积，大量收发或长时间压测下内存占用会不断增加；清空消息或重新设置较小的条数上限后，超出部分会被立即丢弃，内存随之下降
+- **Keyboard shortcuts**: new application-level shortcuts — `Ctrl+Enter` to send, `Ctrl+Tab` / `Ctrl+Shift+Tab` and `Ctrl+PageDown/PageUp` to cycle tabs, `Ctrl+1..9` to jump to a tab, `Ctrl+W` to close a tab, `Ctrl+N` for a new connection, `Ctrl+K` to focus the message input, `Ctrl+F` for message search; they work whether the focus is in an input or on empty space
+- **Message search**: open a non-modal search overlay from the toolbar magnifier or `Ctrl+F`, with a live `i/n` match counter; jump ring-wise with `Enter` / `Shift+Enter` or the up/down buttons, with the matching row highlighted and scrolled into view; `Esc` closes it, and jumping turns auto-scroll off to keep the position stable
+- **ASCII ↔ Hex conversion**: switching between text and hex mode converts the content as UTF-8; the context menu's "Convert to Hex / Convert to Text" shows the result in a read-only window with a copy button without rewriting the input; non-printable bytes are escaped as `\n` `\r` `\t` `\\` and `\xNN`, so `Hex → Text → Hex` round-trips byte-for-byte; hex output is consistently uppercase
+- **File data source**: the toolbar's "Open File" button reads a local file into the send box, with UTF-8 / GBK / ANSI encoding selection and content preview, human-readable file size, and a 1 MiB limit; hex mode imports raw bytes, and oversized content falls back to text editing
+- **Message count cap (keep last N)**: a new count input next to auto-scroll (default 10000, `0` = unlimited) drops the oldest messages once exceeded to bound memory usage; it is linked to auto-scroll — turning auto-scroll off sets it to `0` and stops dropping, and turning it back on restores the previous value. With dropping disabled (`0` or auto-scroll off) messages keep accumulating, so memory grows under heavy or long-running traffic; clearing the messages or lowering the cap discards the excess immediately and brings memory down
 
-修复与优化：
+Fixes and improvements:
 
-- 关闭标签页时清理网络资源与订阅，避免资源泄漏
-- 修复多行输入框 `Ctrl+Enter` 发送后光标归位、并残留自动插入换行符的问题
-- 标签页按打开顺序排序；依赖升级（reqwest 0.13 等，TLS 根证书改用系统证书库）
+- Network resources and subscriptions are now cleaned up when a tab is closed, avoiding leaks
+- Fixed the caret being reset and a stray newline left behind after sending with `Ctrl+Enter` in the multi-line input
+- Tabs are now ordered by open time; dependency upgrades (reqwest 0.13 and others, TLS root certificates now come from the system store)
 
 ## v1.1.2 <Badge type="tip" text="2026-09-17" />
 
-- **Windows 安装程序**：新增基于 Inno Setup 的官方安装包（`netassistant-windows-x86_64-setup.exe`），自动创建开始菜单与桌面快捷方式，支持 winget 安装及自动升级
-- **压测场景性能优化**：将网络事件与 UI 事件分离并按批处理，洪泛压测下服务端消息实时同步，显著降低内存占用与界面卡顿
-- **TCP/UDP 收发路径优化**：重构网络层收发与解码流程，提升吞吐与稳定性
+- **Windows installer**: new official Inno Setup installer (`netassistant-windows-x86_64-setup.exe`) that creates Start Menu and desktop shortcuts automatically, and supports winget install & auto-upgrade
+- **Stress-test performance**: separated network events from UI events and process them in batches, keeping the server message list in sync during heavy floods while lowering memory usage and UI stutter
+- **TCP/UDP path optimization**: reworked send/receive and decode flow for improved throughput and stability
 
 ## v1.1.1 <Badge type="tip" text="2026-09-13" />
 
-- **客户端本地地址/端口绑定**：新建/编辑连接「更多设置」中可指定本地 IP 与本地端口，适配多网卡及对端按源地址过滤的场景；连接成功后信息面板显示实际生效的本地端点
-- **TCP 监听重构**：重构 TCP 监听实现，修复 TCP 接收消息问题
-- 性能优化：日志批量刷写、消息展示惰性计算、压测延迟直方图与 HEX 编辑器提速
-- 修复 UDP 停止时 Socket 泄漏及端口绑定报错问题
+- **Client local address/port binding**: specify the local IP and local port under "More Settings" when creating/editing a connection, for multi-NIC setups or peers filtering by source address; the effective local endpoint is shown in the info panel once connected
+- **TCP listen refactor**: reworked the TCP listen implementation and fixed TCP message receiving issues
+- Performance improvements: batched log flushing, lazy message display recompute, faster stress latency histogram and HEX editor
+- Fixed UDP socket leak on stop and port bind error reporting
 
 ## v1.1.0 <Badge type="tip" text="2026-08-31" />
 
-- **多语言界面（i18n）**：基于 rust-i18n 的多语言支持，界面文案、对话框、面板全面国际化
-- **十六进制（HEX）编辑器**：新增 HEX 编辑器，支持十六进制与文本双视图编辑报文
-- **压力测试面板**：支持滚动查看，对话框交互优化
+- **Multilingual interface (i18n)**: multi-language support built on rust-i18n, with full internationalization of UI texts, dialogs and panels
+- **HEX editor**: new hex editor with dual hex/text views for editing payloads
+- **Stress panel**: scrollable panel and improved dialog interactions
 
 ## v1.0.1 <Badge type="tip" text="2026-08-25" />
 
-- **压力测试配置支持插入变量**：配置报文时可插入动态变量
-- 修复压力测试 UI 卡顿问题
-- **Linux AppImage 构建**：修复 AppRun / GTK 依赖问题，支持 Linux AppImage 分发
+- **Variable templates in stress configs**: insert dynamic variables into message payloads
+- Fixed a stress test UI lag issue
+- **Linux AppImage build**: fixed AppRun / GTK dependency issues, AppImage distribution for Linux
 
 ## v1.0.0 <Badge type="tip" text="2026-08-13" />
 
-首个正式版本。核心能力：
+First stable release. Core capabilities:
 
-- TCP/UDP 客户端与服务端，IPv4/IPv6 双栈
-- 四种 TCP 解码器（原始 / 行分隔 / 长度前缀 / JSON），解决粘包问题
-- 聊天式报文记录，消息收藏与备注、关键字搜索
-- 消息导出（TXT/JSON/CSV）与实时日志记录
-- 自动回复、周期发送
-- UDP 广播回复智能展示，助力物联网设备发现调试
-- 内置 TCP/UDP 高并发压力测试引擎（QPS、延迟分位数、失败原因分类、CSV 报告）
-- 暗黑模式、多标签页、多语言界面
-- 十六进制编辑器
+- TCP/UDP client & server with IPv4/IPv6 dual stack
+- Four TCP decoders (raw / line-delimited / length-prefix / JSON) solving sticky packet issues
+- Chat-style message log with favorites, remarks and keyword search
+- Message export (TXT/JSON/CSV) and real-time logging
+- Auto-reply and periodic send
+- Smart UDP broadcast reply display for IoT device discovery debugging
+- Built-in TCP/UDP high-concurrency stress engine (QPS, latency percentiles, failure breakdown, CSV reports)
+- Dark mode, multi-tab, multilingual interface
+- HEX editor
 
-本版本内的主要迭代：
+Highlights within this release:
 
-- **TCP/UDP 压力测试**：新增压力测试引擎、配置对话框与压测面板
-- TCP 解码器与 JSON 解码器优化
-- 优化消息列表渲染，降低内存占用
-- 修复退出应用异常等问题
+- **TCP/UDP stress testing**: new stress engine, config dialog and stress panel
+- TCP decoder and JSON decoder optimizations
+- Optimized message list rendering with lower memory usage
+- Fixed issues such as abnormal app exit
 
 ## v0.9.1 <Badge type="tip" text="2026-08-07" />
 
-- UI 整体优化：主题配色调整、日志级别调整
+- Overall UI polish: theme color adjustments and log level changes
 
 ## v0.9.0 <Badge type="tip" text="2026-08-02" />
 
-- **连接编辑**：支持编辑已有连接配置
-- **JSON 格式化**：报文内容 JSON Pretty 展示
-- 消息区改用等宽字体，日志更易读
-- 升级 GPUI 框架版本
+- **Connection editing**: edit existing saved connection configs
+- **JSON formatting**: JSON pretty display for message content
+- Monospace font for the message area, easier to read
+- Upgraded the GPUI framework version
 
 ## v0.8.0 <Badge type="tip" text="2026-07-22" />
 
-- **UDP 请求端高亮**：UDP 服务端收到回复时，高亮非预期的来源地址，便于排查异常来源
-- **手动添加客户端**：UDP 服务端支持手动添加客户端地址
+- **Unexpected source highlighting**: when the UDP server receives replies, unexpected source addresses are highlighted to spot abnormal senders
+- **Manual client addition**: manually add client addresses in UDP server mode
 
 ## v0.7.1 <Badge type="tip" text="2026-07-21" />
 
-- 修复 UDP 客户端来源地址过滤问题，可正常接收广播回复
+- Fixed the UDP client source address filtering issue so broadcast replies are received correctly
 
 ## v0.7.0 <Badge type="tip" text="2026-07-15" />
 
-- **消息导出**：支持将报文记录导出（TXT/JSON/CSV），并支持实时日志记录到文件
+- **Message export**: export message history (TXT/JSON/CSV) with real-time logging to file
 
 ## v0.6.1 <Badge type="tip" text="2026-06-05" />
 
-- 修复 GNOME 桌面下窗口拖动问题（改用 TitleBar 组件）
+- Fixed window dragging on GNOME (switched to the TitleBar component)
 
 ## v0.6.0 <Badge type="tip" text="2026-05-20" />
 
-- **消息收藏**：支持收藏常用报文消息并添加备注，便于快速复用
+- **Message favorites**: favorite frequently used messages with remarks for quick reuse
 
 ## v0.5.1 <Badge type="tip" text="2026-05-11" />
 
-- 修复断开连接时未正确关闭连接的问题
+- Fixed connections not being closed properly on disconnect
 
 ## v0.5.0 <Badge type="tip" text="2026-03-15" />
 
-- **消息列表重构**：基于 GPUI List 重写消息列表与滚动条，长列表滚动更流畅
-- 支持 Ubuntu 22 构建
+- **Message list rewrite**: rebuilt the message list and scrollbar on GPUI List for smoother long-list scrolling
+- Ubuntu 22 build support
 
 ## v0.4.5 <Badge type="tip" text="2026-03-10" />
 
-- **IPv6 支持**：TCP/UDP 连接支持 IPv6
-- **服务端发送消息**：TCP/UDP 服务端可主动向客户端发送消息
-- **自动滚动配置**：消息列表自动滚动可配置
-- 界面显示当前版本号
+- **IPv6 support**: TCP/UDP connections now support IPv6
+- **Server message sending**: TCP/UDP servers can proactively send messages to clients
+- **Auto-scroll option**: the message list auto-scroll is now configurable
+- Current version shown in the UI
 
 ## v0.4.4 <Badge type="tip" text="2026-03-01" />
 
-- 修复发送消息相关问题，优化 UI 自适应布局
-- 使用 `smol::channel` 避免消息量大时的 UI 卡顿
+- Fixed message sending issues and improved adaptive UI layout
+- Switched to `smol::channel` to avoid UI lag under heavy message load
 
 ## v0.4.3 <Badge type="tip" text="2026-02-16" />
 
-- **TCP 解码器系统增强**：新增解码器选择对话框，支持多种解码方式
-- 修复消息实时刷新与主题问题
+- **Enhanced TCP decoder system**: new decoder selection dialog with multiple decoding options
+- Fixed real-time message refresh and theme issues
 
 ## v0.4.2 <Badge type="tip" text="2026-02-12" />
 
-- **消息复制 / 清空**：支持复制单条消息、一键清空消息列表
-- **自动回复 HEX 模式**：自动回复支持十六进制内容
-- 消息列表增加滚动条，重构连接网络 UI 与消息发送逻辑
-- 主题与配色更新
+- **Copy / clear messages**: copy a single message or clear the whole list at once
+- **Hex auto-reply**: auto-reply now supports hex content
+- Added a scrollbar to the message list; refactored connection networking UI and message sender
+- Theme and color updates
 
 ## v0.4.1 <Badge type="tip" text="2026-01-31" />
 
-- 修复 TCP 接收端将单条消息拆分为多条的问题
-- 修复暗黑模式问题，发布流程附带提交记录
+- Fixed TCP receiver splitting a single message into multiple messages
+- Fixed dark mode issues; release workflow now includes commit logs
 
 ## v0.4.0 <Badge type="tip" text="2026-01-27" />
 
-- **暗黑模式**：支持明暗主题切换
-- 修复 macOS 构建
+- **Dark mode**: light/dark theme switching
+- Fixed the macOS build
 
 ## v0.3.0 <Badge type="tip" text="2026-01-20" />
 
-- 修复连接与标签页不匹配问题，引入连接 ID；支持多行标签
+- Fixed connection/tab mismatch by introducing connection IDs; multi-line tabs supported
 
 ## v0.2.0 <Badge type="tip" text="2026-01-20" />
 
-- 修复关闭标签页时未关闭连接的问题
+- Fixed connections not being closed when closing a tab
 
 ## v0.1.0 <Badge type="tip" text="2026-01-20" />
 
-- 首个公开版本：TCP/UDP 客户端与服务端、多标签页、连接配置持久化、自动回复
+- First public release: TCP/UDP client & server, multi-tab, persistent connection configs, auto-reply
 
-## 路线图
+## Roadmap
 
-- [x] 多语言支持（v1.1.0）
-- [x] 文件数据源（v1.2.0）
-- [ ] 支持 SSE 调试
-- [ ] 支持更多数据格式的编解码
-- [ ] 支持 WebSocket 协议
+- [x] Multilingual interface (v1.1.0)
+- [x] File data source (v1.2.0)
+- [ ] SSE debugging
+- [ ] More data format codecs
+- [ ] WebSocket protocol

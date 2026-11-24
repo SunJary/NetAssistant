@@ -1,6 +1,6 @@
 ---
-title: Modbus TCP 调试 - 报文构造与 CRC16 校验
-description: 用 NetAssistant 调试 Modbus TCP：按 MBAP + PDU 构造十六进制报文、收发原始字节、导出记录；工具箱提供 CRC16-Modbus 校验，并说明 TCP 帧为何不需要 CRC。
+title: Modbus TCP Debugging - Frames & CRC16
+description: Build and send Modbus TCP frames as structured hex, inspect raw replies, export logs and compute CRC16-Modbus in the toolbox. No native Modbus parser.
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "用于 Modbus TCP 报文构造与收发的网络调试工具，支持十六进制收发、CRC16-Modbus 校验与自动回复。",
+            "description": "A network debug tool for building and sending Modbus TCP frames as hex, with CRC16-Modbus in the toolbox and automatic replies.",
             "url": "https://netassistant.trydo.top/modbus-tcp",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,42 +24,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "NetAssistant 是 Modbus 协议客户端吗？",
+                "name": "Is NetAssistant a Modbus protocol client?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不是。它只提供 TCP 连接与十六进制收发，功能码和数据模型需要你自己构造。"
+                  "text": "No. It provides TCP connectivity and hex send/receive; you construct function codes and data yourself."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Modbus TCP 需要 CRC 吗？",
+                "name": "Does Modbus TCP need a CRC?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不需要。MBAP 含长度字段，完整性由 TCP 保证；CRC16-Modbus 属于 RTU 帧。"
+                  "text": "No. MBAP includes a length field and TCP guarantees integrity; CRC16-Modbus is for RTU frames."
                 }
               },
               {
                 "@type": "Question",
-                "name": "怎么构造一条请求？",
+                "name": "How do I build a request?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "按「事务号 + 0000 + 长度 + 单元号 + 功能码 + 数据」拼接，在 Hex 模式下发送即可。"
+                  "text": "Concatenate transaction ID + 0000 + length + unit ID + function code + data, then send it in hex mode."
                 }
               },
               {
                 "@type": "Question",
-                "name": "能模拟 Modbus 从站吗？",
+                "name": "Can it simulate a Modbus slave?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以到字节层：TCP 服务端监听 502，用回复规则返回预设 Hex。寄存器模型和异常码需要真实设备或专用模拟器。"
+                  "text": "At the byte level: listen on 502 with a TCP server and return canned hex through reply rules. Register models and exception codes need a real device or a dedicated simulator."
                 }
               },
               {
                 "@type": "Question",
-                "name": "为什么设备没有响应？",
+                "name": "Why is the device not responding?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "检查端口是否为 502、单元标识符是否正确、长度字段是否与实际字节数一致，以及设备是否只接受 RTU over TCP 封装。"
+                  "text": "Check that the port is 502, the unit ID is correct, the length field matches the actual byte count, and whether the device expects RTU over TCP framing."
                 }
               }
             ]
@@ -68,106 +68,106 @@ head:
       }
 ---
 
-# Modbus TCP 调试：用十六进制报文直接对话
+# Modbus TCP Debugging: Talk in Hex Frames
 
-先说明边界：**NetAssistant 不是 Modbus 协议客户端**。它不识别功能码、寄存器地址或数据模型，也不提供点表。它提供的是 TCP 连接和十六进制收发——你按 Modbus 规范构造字节，工具原样发出并显示响应。对需要看清每一字节的联调场景，这反而更直接。
+First, the boundary: **NetAssistant is not a Modbus protocol client**. It does not understand function codes, register addresses or data models, and it ships no point table. It provides a TCP connection and hex send/receive—you build the bytes to the Modbus specification, and the tool sends them verbatim and shows the response. For integration work where every byte matters, that is often more direct.
 
-> [下载 NetAssistant](/download) · [TCP 调试工具](/tcp-debug-tool) · [全部功能](/features)
+> [Download NetAssistant](/download) · [TCP debug tool](/tcp-debug-tool) · [All features](/features)
 
-![十六进制收发](../assets/screenshots/zh/screenshot_hex.png)
+![Hex send and receive](../assets/screenshots/en/screenshot_hex.png)
 
-## 适合谁
+## Who it is for
 
-- **PLC / 网关联调**：验证设备 502 端口是否响应、返回帧结构是否正确
-- **协议开发**：逐字节比对请求与响应，确认 MBAP 长度、单元标识符
-- **故障复现**：手工重放一条报文，判断问题在报文还是业务逻辑
-- **快速验证**：不想为一次调试安装完整的 Modbus 主站软件
+- **PLC and gateway integration**: check that port 502 responds and that frames are structured correctly
+- **Protocol development**: compare requests and responses byte by byte, including MBAP length and unit ID
+- **Fault reproduction**: replay a single frame to decide whether the problem is the frame or the application
+- **Quick checks**: avoid installing a full Modbus master for one debugging session
 
-## Modbus TCP 帧结构
+## Modbus TCP frame layout
 
-一条 Modbus TCP 报文由 MBAP 报文头和 PDU 组成：
+A Modbus TCP frame is an MBAP header followed by a PDU:
 
-| 字段 | 长度 | 说明 |
+| Field | Length | Meaning |
 | ---- | ---- | ---- |
-| 事务标识符 | 2 字节 | 请求与响应配对，可用序号 |
-| 协议标识符 | 2 字节 | Modbus 固定为 `00 00` |
-| 长度 | 2 字节 | 后续字节数（单元标识符 + PDU） |
-| 单元标识符 | 1 字节 | 从站地址，网关场景常用 |
-| 功能码 | 1 字节 | 如 03 读保持寄存器、06 写单寄存器 |
-| 数据 | N 字节 | 起始地址、数量或写入值 |
+| Transaction ID | 2 bytes | Pairs request and response; a counter works well |
+| Protocol ID | 2 bytes | Always `00 00` for Modbus |
+| Length | 2 bytes | Number of following bytes (unit ID + PDU) |
+| Unit ID | 1 byte | Slave address, often used behind gateways |
+| Function code | 1 byte | e.g. 03 read holding registers, 06 write single register |
+| Data | N bytes | Start address, quantity or value |
 
-注意：**Modbus TCP 没有 CRC**。完整性由 TCP 和 MBAP 长度字段保证。`CRC16-Modbus` 是 Modbus RTU 的校验算法，只应附加在 RTU 帧末尾。
+Note: **Modbus TCP has no CRC**. Integrity comes from TCP and the MBAP length field. `CRC16-Modbus` is a Modbus RTU checksum and belongs at the end of an RTU frame only.
 
-## 示例：读取保持寄存器
+## Example: read holding registers
 
-读取从站 1 的起始地址 0、10 个保持寄存器：
+Read 10 holding registers starting at address 0 from unit 1:
 
 ```text
 00 01 00 00 00 06 01 03 00 00 00 0A
 ```
 
-- `00 01`：事务标识符
-- `00 00`：协议标识符
-- `00 06`：长度 = 单元标识符(1) + 功能码(1) + 数据(4)
-- `01`：单元标识符
-- `03`：读保持寄存器
-- `00 00`：起始地址
-- `00 0A`：寄存器数量 10
+- `00 01`: transaction ID
+- `00 00`: protocol ID
+- `00 06`: length = unit ID (1) + function code (1) + data (4)
+- `01`: unit ID
+- `03`: read holding registers
+- `00 00`: start address
+- `00 0A`: quantity, 10 registers
 
-一条正常的响应可能是：
+A normal response might be:
 
 ```text
 00 01 00 00 00 05 01 03 02 00 64
 ```
 
-`00 64` 即十进制 100。如果功能码变成 `83`，说明返回了异常码，需要查设备手册确认是地址非法、数量越界还是权限问题。
+`00 64` is 100 in decimal. If the function code becomes `83`, the slave returned an exception; consult the device manual for illegal address, illegal quantity or permission issues.
 
-## 在 NetAssistant 中怎么做
+## How to do it in NetAssistant
 
-1. 新建 TCP 客户端，连接设备 IP 与 502 端口
-2. 发送区切换到 Hex 模式，粘贴完整报文
-3. 点击发送，在接收区查看响应；保持 Hex 显示便于逐字节比对
-4. 需要周期轮询时开启周期发送，把请求间隔设为采集周期
-5. 需要模拟从站时，新建 TCP 服务端监听 502，并用回复规则按请求字节自动返回响应
+1. Create a TCP client and connect to the device on port 502
+2. Switch the send area to hex mode and paste the complete frame
+3. Send and inspect the response; keep hex display on for byte-level comparison
+4. For polling, enable periodic send and set the interval to your sampling period
+5. To simulate a slave, create a TCP server on port 502 and use reply rules to return a fixed hex response when request bytes match
 
-![文本与 Hex 互转](../assets/screenshots/zh/screenshot_text_hex_convert.png)
+![Text and hex conversion](../assets/screenshots/en/screenshot_text_hex_convert.png)
 
-## CRC16-Modbus 用在哪
+## Where CRC16-Modbus fits
 
-调试 Modbus RTU（串口）时，报文末尾需要 2 字节 CRC，低字节在前。NetAssistant 工具箱的「校验」分组提供 `CRC16-Modbus`：输入去掉 CRC 的 Hex 字节序列即可得到校验值。由于 NetAssistant 不提供串口能力，这个结果主要用于：
+Modbus RTU frames over serial end with a 2-byte CRC, low byte first. The toolbox's Checksum group provides `CRC16-Modbus`: paste the hex bytes without the CRC to get the value. Since NetAssistant has no serial support, this is mainly useful to:
 
-- 核对设备手册或抓包中的 RTU 帧校验是否正确
-- 为网关、转换器准备 RTU 报文字节
+- Verify an RTU frame captured in a trace or documented in a manual
+- Prepare RTU bytes for a gateway or protocol converter
 
-Modbus TCP 帧不需要也不会校验这个值。
+Modbus TCP frames neither need nor carry this checksum.
 
-## 常见问题
+## FAQ
 
-### NetAssistant 是 Modbus 协议客户端吗？
+### Is NetAssistant a Modbus protocol client?
 
-不是。它只提供 TCP 连接与十六进制收发，功能码和数据模型需要你自己构造。
+No. It provides TCP connectivity and hex send/receive; you construct function codes and data yourself.
 
-### Modbus TCP 需要 CRC 吗？
+### Does Modbus TCP need a CRC?
 
-不需要。MBAP 含长度字段，完整性由 TCP 保证；CRC16-Modbus 属于 RTU 帧。
+No. MBAP includes a length field and TCP guarantees integrity; CRC16-Modbus is for RTU frames.
 
-### 怎么构造一条请求？
+### How do I build a request?
 
-按「事务号 + 0000 + 长度 + 单元号 + 功能码 + 数据」拼接，在 Hex 模式下发送即可。
+Concatenate transaction ID + 0000 + length + unit ID + function code + data, then send it in hex mode.
 
-### 能模拟 Modbus 从站吗？
+### Can it simulate a Modbus slave?
 
-可以到字节层：TCP 服务端监听 502，用回复规则返回预设 Hex。寄存器模型和异常码需要真实设备或专用模拟器。
+At the byte level: listen on 502 with a TCP server and return canned hex through reply rules. Register models and exception codes need a real device or a dedicated simulator.
 
-### 为什么设备没有响应？
+### Why is the device not responding?
 
-检查端口是否为 502、单元标识符是否正确、长度字段是否与实际字节数一致，以及设备是否只接受 RTU over TCP 封装。
+Check that the port is 502, the unit ID is correct, the length field matches the actual byte count, and whether the device expects RTU over TCP framing.
 
-## 相关页面
+## Related pages
 
-- [十六进制发送](/hex-send)
-- [TCP 调试工具](/tcp-debug-tool)
-- [TCP 粘包与拆包](/tcp-sticky-packet)
-- [Windows 网络调试助手](/windows-network-debug-tool)
-- [全部功能](/features)
-- [下载 NetAssistant](/download)
+- [Hex send](/hex-send)
+- [TCP debug tool](/tcp-debug-tool)
+- [TCP sticky packets](/tcp-sticky-packet)
+- [Windows network debugging tool](/windows-network-debug-tool)
+- [All features](/features)
+- [Download NetAssistant](/download)

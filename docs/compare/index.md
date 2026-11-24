@@ -1,61 +1,61 @@
 ---
-title: MQTT 客户端对比 - MQTTX、Explorer 与 MQTT.fx
-description: 四种 MQTT 客户端怎么选：MQTTX 适合 WebSocket 与脚本，MQTT Explorer 适合 topic 树浏览，MQTT.fx 是商业客户端，NetAssistant 免费轻量并支持 TCP/UDP 与 MQTT。
+title: "MQTT Client Comparison: MQTTX, Explorer, MQTT.fx"
+description: "Compare four MQTT clients: MQTTX for WebSocket and scripting, MQTT Explorer for topic trees, commercial MQTT.fx and free lightweight NetAssistant with TCP/UDP."
 ---
 
-# MQTT 客户端对比：四种工具怎么选
+# MQTT Client Comparison: Choosing the Best MQTT Client
 
-选 MQTT 客户端没有唯一答案，差别主要在四件事：是否免费、占多少资源、要不要 WebSocket 或脚本、以及你是在「浏览 Broker」还是「盯报文排错」。下面先给结论，再按场景展开。
+There is no single answer when choosing an MQTT client: the differences come down to four things — whether it is free, how many resources it uses, whether you need WebSocket or scripting, and whether you are browsing a broker or watching messages to troubleshoot. The verdicts come first, then the scenarios.
 
-## 一句话结论
+## The short answer
 
-| 工具 | 授权 | 技术栈 | 协议范围 | 界面模型 | 最适合 |
+| Tool | License | Stack | Protocol scope | UI model | Best for |
 | ---- | ---- | ---- | ---- | ---- | ---- |
-| MQTTX | 免费开源 | Electron | MQTT（TCP / TLS / WebSocket） | 聊天式收发 + 脚本 | 全功能调试、WebSocket、自动化 |
-| MQTT Explorer | 免费开源 | Electron | MQTT | topic 树 + 数值图表 | 浏览 Broker 结构、清理 retained |
-| MQTT.fx | 商业授权，提供试用 | Java | MQTT | topic 浏览器 + 消息编辑 | 已购授权、完整 5.0 工具链 |
-| NetAssistant | 免费开源（Apache-2.0） | Rust 原生 | TCP/UDP + MQTT | 报文流 + topic 标签 | 轻量现场、TCP/UDP 混合调试 |
+| MQTTX | Free and open source | Electron | MQTT (TCP / TLS / WebSocket) | Chat-style send and receive + scripting | Full-feature debugging, WebSocket, automation |
+| MQTT Explorer | Free and open source | Electron | MQTT | Topic tree + numeric charts | Browsing broker structure, cleaning up retained messages |
+| MQTT.fx | Commercial, trial available | Java | MQTT | Topic browser + message editor | Existing licenses, full 5.0 tooling |
+| NetAssistant | Free and open source (Apache-2.0) | Rust native | TCP/UDP + MQTT | Message stream + topic tags | Lightweight field work, mixed TCP/UDP debugging |
 
-## 按场景选择
+## Choose by scenario
 
-- **需要 WebSocket、脚本或完整 5.0 属性**：选 [MQTTX](/comparison-mqttx)
-- **要摸清 Broker 上有哪些 topic、批量清理 retained**：选 [MQTT Explorer](/compare/mqtt-explorer)
-- **公司已购授权，团队流程固定**：继续用 [MQTT.fx](/compare/mqtt-fx)
-- **要免费、低内存，且同时调 TCP/UDP 与 MQTT**：选 [NetAssistant](/mqtt-client)
-- **只想快速验证连接、订阅与报文**：NetAssistant 足够，安装见 [下载页](/download)
+- **You need WebSocket, scripting or full 5.0 properties**: choose [MQTTX](/comparison-mqttx)
+- **You want to map the topics on a broker and bulk-clean retained messages**: choose [MQTT Explorer](/compare/mqtt-explorer)
+- **Your company already owns a license and the team workflow is fixed**: keep using [MQTT.fx](/compare/mqtt-fx)
+- **You want free, low memory, and TCP/UDP plus MQTT in one place**: choose [NetAssistant](/mqtt-client)
+- **You only need to verify a connection, subscription and messages quickly**: NetAssistant is enough; install it from the [download page](/download)
 
-## 关键差异
+## Key differences
 
-### 资源占用
+### Resource usage
 
-Electron 客户端功能多，但常驻内存更高；Rust 原生的 NetAssistant 约 20MB，适合低配现场机、远程桌面或长期挂着。具体占用与系统、消息量有关，以实测为准。
+Electron clients pack in more features but usually hold a higher resident memory; the Rust-native NetAssistant uses about 20MB, which suits low-spec field machines, remote desktops or always-on use. Actual usage depends on the system and message volume — measure it on your own setup.
 
-### 传输与协议
+### Transport and protocols
 
-MQTTX 支持 WebSocket，适合浏览器或云平台接入；NetAssistant 只支持 TCP 直连，但把 TCP/UDP 客户端与服务端和 MQTT 放在同一个应用里。MQTT Explorer 与 MQTT.fx 主要围绕 MQTT 本身。
+MQTTX supports WebSocket, which suits browser or cloud-platform access; NetAssistant supports direct TCP only, but puts TCP/UDP clients and servers alongside MQTT in the same app. MQTT Explorer and MQTT.fx focus mainly on MQTT itself.
 
-### 界面模型
+### UI model
 
-topic 树适合浏览整个命名空间；报文流适合盯住几个 topic 看收发顺序。两者不是替代关系，很多人会同时装两个：Explorer 看结构，NetAssistant 或 MQTTX 看报文。
+A topic tree suits browsing a whole namespace; a message stream suits watching send and receive order on a few topics. The two are not substitutes — many people install both: Explorer to see structure, NetAssistant or MQTTX to see messages.
 
-### MQTT 5.0 覆盖
+### MQTT 5.0 coverage
 
-MQTTX 与 MQTT.fx 的 5.0 覆盖更完整；NetAssistant 提供 Clean Start、会话过期、接收最大值与常见原因码，不提供用户属性、Will Delay、共享订阅等高级特性。需要完整 5.0 时选前两者。
+MQTTX and MQTT.fx have fuller 5.0 coverage; NetAssistant provides Clean Start, session expiry, receive maximum and common reason codes, but not user properties, Will Delay, shared subscriptions and other advanced features. Choose the first two when you need full 5.0.
 
-### 压测
+### Stress testing
 
-NetAssistant 的压测只用于 TCP/UDP，MQTT 暂不支持。MQTT 并发与吞吐测试请用 MQTTX Bench 或 emqtt_bench。
+NetAssistant's stress testing covers TCP/UDP only; MQTT is not supported yet. Use MQTTX Bench or emqtt_bench for MQTT concurrency and throughput tests.
 
-## 详细对比
+## Detailed comparisons
 
 - [NetAssistant vs MQTTX](/comparison-mqttx)
 - [NetAssistant vs MQTT Explorer](/compare/mqtt-explorer)
 - [NetAssistant vs MQTT.fx](/compare/mqtt-fx)
 - [NetAssistant vs NetAssist](/compare/netassist)
 
-## 下一步
+## Next steps
 
-- 了解 NetAssistant 的 MQTT 能力：[MQTT 客户端](/mqtt-client)
-- 从零连接 Broker：[MQTT 调试教程](/guide/mqtt)
-- 常见问题速查：[MQTT 常见问题](/mqtt-faq)
-- [下载 NetAssistant](/download)
+- Learn what NetAssistant's MQTT mode can do: [MQTT client](/mqtt-client)
+- Connect to a broker from scratch: [MQTT tutorial](/guide/mqtt)
+- Quick answers to common questions: [MQTT FAQ](/mqtt-faq)
+- [Download NetAssistant](/download)

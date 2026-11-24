@@ -1,6 +1,6 @@
 ---
-title: UDP 调试工具 - 收发测试与多客户端
-description: NetAssistant 的 UDP 调试工具：UDP 客户端与服务端、手动添加客户端与多设备回复展示，支持 Hex 收发、周期发送和回复规则，跨平台免费。
+title: UDP Debug Tool - Send, Receive & Multiple Clients
+description: UDP client and server, manual client entries, replies from multiple devices, hex payloads, periodic send and reply rules. Windows, macOS, Linux.
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "UDP 调试工具，支持 UDP 客户端与服务端、广播发现、手动添加客户端、多设备回复展示与 Hex 收发。",
+            "description": "A UDP debug tool with client and server modes, broadcast discovery, manual client entries, multi-device replies and hex payloads.",
             "url": "https://netassistant.trydo.top/udp-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,42 +24,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "UDP 调试工具怎么用？",
+                "name": "How do I use the UDP debug tool?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "新建 UDP 客户端填目标地址直接发送，或新建 UDP 服务端监听本地端口接收，无连接、无需握手。"
+                  "text": "Create a UDP client and send to a target, or create a UDP server and listen on a local port. No handshake is involved."
                 }
               },
               {
                 "@type": "Question",
-                "name": "为什么发送成功却收不到回复？",
+                "name": "Why does a send succeed but no reply arrive?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "UDP 不保证送达。检查目标端口是否监听、防火墙是否放行、报文格式是否符合设备要求。"
+                  "text": "UDP does not guarantee delivery. Check the target listener, firewall rules and payload format."
                 }
               },
               {
                 "@type": "Question",
-                "name": "如何接收多个设备的回复？",
+                "name": "How do I receive replies from multiple devices?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "向广播地址发送指令，NetAssistant 会显示所有回复并高亮非预期来源。"
+                  "text": "Broadcast the command; NetAssistant shows every reply and highlights unexpected sources."
                 }
               },
               {
                 "@type": "Question",
-                "name": "UDP 会粘包吗？",
+                "name": "Does UDP suffer from sticky packets?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不会。UDP 保留数据报边界，但可能丢包、重复或乱序。"
+                  "text": "No. Datagram boundaries are preserved, though packets can be lost, duplicated or reordered."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持广播和 IPv6 吗？",
+                "name": "Does it support broadcast and IPv6?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持广播发送；地址支持 IPv4 与 IPv6。"
+                  "text": "Broadcast sending is supported, and addresses can be IPv4 or IPv6."
                 }
               }
             ]
@@ -68,96 +68,96 @@ head:
       }
 ---
 
-# UDP 调试工具：无连接收发与多设备回复
+# UDP Debug Tool: Connectionless Send, Receive and Multi-Device Replies
 
-UDP 没有握手、没有重传，填好地址就能发。这让它成为设备发现、心跳上报、日志推送和实时控制的常用协议，也让“发出去了但没反应”变得难以判断。NetAssistant 的 UDP 调试工具把客户端、服务端和多设备回复放在同一个界面里。
+UDP has no handshake and no retransmission: enter an address and send. That makes it the default for device discovery, heartbeats, log shipping and real-time control, and it also makes "sent but no response" hard to diagnose. The NetAssistant UDP debug tool puts client, server and multi-device replies in one window.
 
-> [下载 NetAssistant](/download) · [TCP/UDP 调试指南](/guide/tcp-udp) · [全部功能](/features)
+> [Download NetAssistant](/download) · [TCP/UDP debugging guide](/guide/tcp-udp) · [All features](/features)
 
-![UDP 客户端（深色主题）](../assets/screenshots/zh/screenshot_udp_client_dark.png)
+![UDP client in dark theme](../assets/screenshots/en/screenshot_udp_client_dark.png)
 
-## 适合谁
+## Who it is for
 
-- **物联网/嵌入式开发者**：验证设备 UDP 上报、指令下发与心跳
-- **做设备发现的人**：向广播地址发 discovery 指令，收集局域网设备回复
-- **后端开发者**：快速起一个 UDP 服务端，看客户端到底发了什么
-- **排查网络策略的人**：确认某端口 UDP 是否被防火墙放行
+- **IoT and embedded developers**: verify UDP reporting, commands and heartbeats
+- **Device discovery work**: broadcast a discovery command and collect LAN replies
+- **Backend developers**: spin up a UDP server and see exactly what the client sent
+- **Network policy checks**: confirm whether a UDP port is allowed by a firewall
 
-## 客户端与服务端
+## Client and server
 
-| 模式 | 行为 | 用途 |
+| Mode | Behavior | Use |
 | ---- | ---- | ---- |
-| UDP 客户端 | 指定目标地址与端口发送数据报 | 向设备或服务发指令、模拟上报 |
-| UDP 服务端 | 监听本地端口接收数据报 | 模拟设备、检查客户端实际发送内容 |
-| 手动添加客户端 | 在客户端列表中直接补一条目标地址 | 同时向多个设备发送、固定常用目标 |
+| UDP client | Send datagrams to a target address and port | Send commands, simulate reports |
+| UDP server | Listen on a local port and receive datagrams | Simulate a device, inspect client traffic |
+| Add client manually | Add extra targets to the client list | Send to several devices, keep common targets |
 
-UDP 客户端不需要“连接”动作，目标地址就是收件人。服务端只需要监听端口，收到数据报时会显示来源 `ip:port`，双击即可复制。
+A UDP client does not connect; the target address is the destination. The server simply listens, and each datagram shows its source `ip:port`, which can be copied with a double-click.
 
-## 广播与多设备回复
+## Broadcast and multiple replies
 
-向 `192.168.1.255` 这类子网广播地址发送 discovery 指令时，网内所有设备都可能回复。很多工具只显示目标地址的回复，其余响应会被丢掉；NetAssistant 会全部展示，并把非预期来源用浅红色高亮，避免漏掉设备。
+When you send a discovery command to a subnet broadcast address such as `192.168.1.255`, every device on the network may reply. Many tools show only replies from the configured target and silently drop the rest. NetAssistant displays all of them and highlights unexpected sources so no device is missed.
 
-具体广播地址选择、抓包排查与常见失败原因，见 [UDP 广播设备发现](/udp-broadcast-device-discovery)。
+For broadcast address selection, packet capture and common failure causes, see [UDP broadcast device discovery](/udp-broadcast-device-discovery).
 
-![UDP 手动添加客户端](../assets/screenshots/zh/screenshot_udp_add_client.png)
+![Adding a UDP client manually](../assets/screenshots/en/screenshot_udp_add_client.png)
 
-## 收发能力
+## Send and receive features
 
-- **文本 / Hex 模式**：Hex 模式发送原始字节，适合带 `0x00` 的二进制数据报
-- **结尾字符**：可选无、LF 或 CRLF，匹配设备侧解析规则
-- **周期发送**：按固定间隔重复发送，模拟心跳或持续上报
-- **回复规则**：按字节、JSON、正则或校验和匹配后自动应答
-- **文件数据源**：从文件读取报文，支持 UTF-8 / GBK / ANSI，上限 1 MiB
-- **消息管理**：搜索、收藏、导出 TXT / JSON / CSV，开启实时日志落盘
+- **Text / hex modes**: hex sends raw bytes, which matters for datagrams containing `0x00`
+- **Line ending**: none, LF or CRLF to match the device parser
+- **Periodic send**: repeat at a fixed interval for heartbeats or continuous reporting
+- **Reply rules**: match by bytes, JSON, regex or checksum and reply automatically
+- **File source**: load payloads from a file with UTF-8 / GBK / ANSI decoding, up to 1 MiB
+- **Message management**: search, favorites and export to TXT / JSON / CSV, plus optional live logging
 
-## 快速开始
+## Quick start
 
-1. 新建连接，选择 UDP 客户端或服务端
-2. 客户端填写目标地址与端口；服务端填写监听端口
-3. 在发送区输入内容，选择文本或 Hex 模式
-4. 点击发送，在接收区查看回复与来源地址
-5. 需要同时发多台设备时，用「添加客户端」维护目标列表
-6. 需要持续发送时开启周期发送
+1. Create a connection and choose UDP client or server
+2. For a client, enter the target address and port; for a server, enter the listening port
+3. Type a payload and choose text or hex mode
+4. Send, then inspect the reply and its source address in the message view
+5. Use **Add client** to maintain several targets
+6. Enable periodic send for repeated traffic
 
-## UDP 与 TCP 的调试差异
+## UDP vs TCP for debugging
 
-| 维度 | UDP | TCP |
+| Dimension | UDP | TCP |
 | ---- | ---- | ---- |
-| 连接 | 无连接，直接发送 | 需要握手建链 |
-| 消息边界 | 保留数据报边界 | 字节流，需要解码器切分 |
-| 可靠性 | 不保证送达、不重传 | 有序、可靠、自动重传 |
-| 广播/组播 | 支持广播 | 不支持广播 |
-| 适用场景 | 设备发现、心跳、实时控制 | 文件传输、长连接指令通道 |
+| Connection | Connectionless, send immediately | Handshake required |
+| Message boundaries | Preserved per datagram | Byte stream, needs a decoder |
+| Reliability | No delivery guarantee, no retransmission | Ordered, reliable, retransmits |
+| Broadcast / multicast | Broadcast supported | No broadcast |
+| Typical use | Discovery, heartbeats, real-time control | File transfer, long-lived command channels |
 
-因为 UDP 可能丢包，调试时不要用“发一次没回复”直接判断对端故障，先确认监听端口、防火墙和报文格式。
+Because UDP can drop packets, do not conclude that the peer is broken after one silent send. Check the listening port, firewall rules and payload format first.
 
-## 常见问题
+## FAQ
 
-### UDP 调试工具怎么用？
+### How do I use the UDP debug tool?
 
-新建 UDP 客户端填目标地址直接发送，或新建 UDP 服务端监听本地端口接收，无连接、无需握手。
+Create a UDP client and send to a target, or create a UDP server and listen on a local port. No handshake is involved.
 
-### 为什么发送成功却收不到回复？
+### Why does a send succeed but no reply arrive?
 
-UDP 不保证送达。检查目标端口是否监听、防火墙是否放行、报文格式是否符合设备要求。
+UDP does not guarantee delivery. Check the target listener, firewall rules and payload format.
 
-### 如何接收多个设备的回复？
+### How do I receive replies from multiple devices?
 
-向广播地址发送指令，NetAssistant 会显示所有回复并高亮非预期来源。
+Broadcast the command; NetAssistant shows every reply and highlights unexpected sources.
 
-### UDP 会粘包吗？
+### Does UDP suffer from sticky packets?
 
-不会。UDP 保留数据报边界，但可能丢包、重复或乱序。
+No. Datagram boundaries are preserved, though packets can be lost, duplicated or reordered.
 
-### 支持广播和 IPv6 吗？
+### Does it support broadcast and IPv6?
 
-支持广播发送；地址支持 IPv4 与 IPv6。
+Broadcast sending is supported, and addresses can be IPv4 or IPv6.
 
-## 相关页面
+## Related pages
 
-- [UDP 广播设备发现](/udp-broadcast-device-discovery)
-- [TCP 调试工具](/tcp-debug-tool)
-- [TCP/UDP 压力测试](/tcp-stress-test)
-- [Windows 网络调试助手](/windows-network-debug-tool)
-- [全部功能](/features)
-- [下载 NetAssistant](/download)
+- [UDP broadcast device discovery](/udp-broadcast-device-discovery)
+- [TCP debug tool](/tcp-debug-tool)
+- [TCP/UDP stress testing](/tcp-stress-test)
+- [Windows network debugging tool](/windows-network-debug-tool)
+- [All features](/features)
+- [Download NetAssistant](/download)

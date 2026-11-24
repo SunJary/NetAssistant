@@ -244,7 +244,7 @@ impl<'a> MainWindow<'a> {
                                         Tooltip::new(text).build(window, cx)
                                     }),
                             )
-                            // 语言切换按钮：点击展开 中文/English 下拉列表
+                            // 语言切换按钮：点击展开语言下拉列表
                             .child(
                                 div()
                                     .w_8()
@@ -497,7 +497,7 @@ impl<'a> MainWindow<'a> {
                                 .absolute()
                                 .top(px(44.0))
                                 .right(px(12.0))
-                                .w_40()
+                                .w_48()
                                 .py_1()
                                 .bg(theme.background)
                                 .rounded_md()
@@ -508,7 +508,17 @@ impl<'a> MainWindow<'a> {
                                 .flex_col()
                                 // 菜单项显示语言原生名称，不随当前语言变化
                                 .child(language_menu_item("中文", "zh-CN", &current_locale, cx))
-                                .child(language_menu_item("English", "en", &current_locale, cx)),
+                                .child(language_menu_item("English", "en", &current_locale, cx))
+                                .child(language_menu_item("日本語", "ja", &current_locale, cx))
+                                .child(language_menu_item("Deutsch", "de", &current_locale, cx))
+                                .child(language_menu_item("Русский", "ru", &current_locale, cx))
+                                .child(language_menu_item(
+                                    "Português (Brasil)",
+                                    "pt-BR",
+                                    &current_locale,
+                                    cx,
+                                ))
+                                .child(language_menu_item("Español", "es", &current_locale, cx)),
                         ),
                 )
             })

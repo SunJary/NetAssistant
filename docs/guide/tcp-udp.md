@@ -1,170 +1,170 @@
 ---
-title: TCP/UDP 调试教程 - 连接、收发与自动回复
-description: TCP/UDP 调试教程：创建连接、选择解码器、文本与十六进制收发、周期发送、自动回复、消息管理、IPv6 与 UDP 设备发现，含快捷键说明。
+title: TCP/UDP Debugging Tutorial - Connect, Send & Auto-Reply
+description: "Step-by-step TCP/UDP debugging tutorial: decoders, text and hex send, periodic tasks, reply rules, message search, IPv6 and UDP device discovery."
 ---
 
-# TCP/UDP 调试
+# TCP/UDP Debugging
 
-> [下载 NetAssistant](/download) · [TCP 调试工具](/tcp-debug-tool) · [全部功能](/features)
+> [Download NetAssistant](/download) · [TCP debug tool](/tcp-debug-tool) · [All features](/features)
 
-## TCP 解码器
+## TCP Decoders
 
-TCP 是字节流协议，存在粘包/拆包问题。NetAssistant 在连接详情页提供原始数据、行分隔、长度前缀与 JSON 四种解码器，按协议格式选择即可；各方案的边界规则与取舍见 [TCP 粘包与拆包](/tcp-sticky-packet)。
+TCP is a byte-stream protocol and suffers from sticky/split packet issues. NetAssistant offers raw, line, length-prefix and JSON decoders on the connection detail page; pick one based on your protocol format. See [TCP sticky packets](/tcp-sticky-packet) for boundary rules, trade-offs and troubleshooting.
 
-![TCP 解码器截图](../../assets/screenshots/zh/screenshot_tcp_decoder.png)
+![TCP decoder screenshot](../../assets/screenshots/en/screenshot_tcp_decoder.png)
 
-## 消息模式
+## Message Modes
 
-在底部输入框上方选择消息发送模式：
+Choose the send mode above the input box at the bottom:
 
-- **文本模式**：直接输入字符串消息；输入 JSON 时可用「美化」「压缩」按钮格式化待发送内容
-- **十六进制模式**：输入十六进制格式数据，如 `0A0B0C`，适合二进制协议调试
+- **Text mode**: type plain string messages; when entering JSON, use the "Prettify" and "Minify" buttons to format the outgoing payload
+- **Hex mode**: enter data in hexadecimal format, e.g. `0A0B0C`, suitable for binary protocol debugging
 
-接收区顶部可切换「原始/美化/压缩」全局显示格式：美化展示 JSON 缩进，压缩去除空白，非 JSON 内容原样显示。
+The receive area can switch between Raw/Prettified/Minified display formats globally: prettified shows indented JSON, minified removes whitespace, and non-JSON content is displayed as-is.
 
-### ASCII ↔ Hex 互转
+### ASCII ↔ Hex Conversion
 
-在文本模式与十六进制模式之间切换时，输入框内容会按 UTF-8 整体互转，无需手工改写：
+Switching between text mode and hex mode converts the input content as UTF-8, so there is no need to rewrite it by hand:
 
-- **文本 → Hex**：每个字符按 UTF-8 字节编码为两位十六进制（大写），如 `ok` → `6F 6B`
-- **Hex → 文本**：字节解码为字符，不可打印字节以 `\n` `\r` `\t` `\\` 与 `\xNN` 转义表示，如 `00 FF` → `\x00 \xFF`
+- **Text → Hex**: every character is encoded as two uppercase hex digits per UTF-8 byte, e.g. `ok` → `6F 6B`
+- **Hex → Text**: bytes are decoded back to characters; non-printable bytes are escaped as `\n` `\r` `\t` `\\` and `\xNN`, e.g. `00 FF` → `\x00 \xFF`
 
-因此 `Hex → 文本 → Hex` 往返后字节完全一致，二进制数据不会在转换中丢失；`${...}` 变量占位符在转换时原样保留。
+As a result, `Hex → Text → Hex` round-trips byte-for-byte, so binary data is never lost in conversion; `${...}` variable placeholders are preserved as-is.
 
-也可以在输入框内**右键**选择「转换为 Hex / 转换为文本」：对选中内容（未选中则对全文）执行转换，结果在只读窗口中展示并可一键复制，**不会改写输入框内容**。
+You can also **right-click** inside the input and pick "Convert to Hex / Convert to Text": the selected text (or the whole content when nothing is selected) is converted and the result is shown in a read-only window you can copy from — the input itself is **not** rewritten.
 
-![ASCII 与 Hex 互转截图](../../assets/screenshots/zh/screenshot_text_hex_convert.png)
+![ASCII to hex conversion screenshot](../../assets/screenshots/en/screenshot_text_hex_convert.png)
 
-### 从文件导入内容
+### Importing Content from a File
 
-点击工具栏「打开文件」按钮，可从本地文件读取内容并填入发送框：
+Click the "Open File" button in the toolbar to read a local file into the send box:
 
-1. 选择文件（上限 1 MiB，文件大小为 1024 进制可读格式，如 `256 KB`）
-2. 选择文件编码：UTF-8（严格解码，非法字节会提示改用其它编码）、GBK、ANSI（系统代码页）
-3. 预览确认后点击「确定」填入发送框
+1. Choose a file (1 MiB limit; the size is shown in a 1024-based human-readable form such as `256 KB`)
+2. Choose the file encoding: UTF-8 (strict decoding — invalid bytes prompt you to pick another encoding), GBK, or ANSI (system code page)
+3. Preview the result and click "OK" to fill the send box
 
-十六进制模式下文件按**原始字节**导入，不涉及编码；内容超过 4096 字节时会自动切换为文本编辑，发送内容保持完整。
+In hex mode the file is imported as **raw bytes** with no encoding involved; content over 4096 bytes falls back to text editing while the payload stays complete.
 
-![文件数据源截图](../../assets/screenshots/zh/screenshot_file_source.png)
+![File data source screenshot](../../assets/screenshots/en/screenshot_file_source.png)
 
-## 周期发送与发送任务
+## Periodic Send and Send Tasks
 
-**周期发送**：在连接标签页勾选周期发送，设置发送间隔（毫秒）后点击 `[发送]`，即可按间隔重复发送当前输入框内容；取消勾选可停止。适合长时间稳定性测试或模拟设备心跳。
+**Periodic send**: enable periodic send on the connection tab, set the send interval (in milliseconds) and click `[Send]` to repeat the current send-box content at that interval; uncheck to stop. Suitable for long-run stability tests or simulating device heartbeats.
 
-**逐行发送**：从文件导入或粘贴多行后，在发送方式中选择「逐行发送」，按行逐条发送；支持设置每条间隔、循环发送与最多轮次。任务面板实时显示进度，可暂停 / 继续 / 停止 / 删除。
+**Line-by-line send**: after importing a file or pasting multiple lines, choose "Send Line by Line" as the send mode to send them one per line; you can set a per-line interval, looping and a maximum round count. The task panel shows live progress with pause / resume / stop / delete.
 
-**定时任务（心跳）**：每个连接最多添加 1 个定时任务，按固定间隔无限循环发送单条消息（支持 `${...}` 变量），可设置是否随连接自动启动；间隔可在任务面板中随时修改并立即生效。
+**Timed task (heartbeat)**: each connection supports one timed task that loops a single message (with `${...}` variables) at a fixed interval, optionally auto-starting with the connection; the interval can be edited in the task panel and applies immediately.
 
-发送时可在发送区选择「结尾」（无 / LF / CRLF），对所有发出的消息生效，并同时作用于逐行发送任务与自动回复。
+A "Suffix" selector in the send area (None / LF / CRLF) applies to every outgoing message, and also to line-send tasks and auto reply.
 
-## 自动回复（回复规则）
+## Auto-Reply (Reply Rules)
 
-1. 在连接标签页点击 `[管理规则]`，新建或编辑规则
-2. 每条规则由**条件**与**动作**组成：条件支持「全部满足 / 任一满足 / 取反」嵌套，以及包含字节、定长精确/掩码、前缀+长度区间、偏移字节/整数、帧尾、正则、来源地址、校验值验算等多种谓词；动作为命中后发送的应答内容，可引用 `${rx.*}` 等接收帧变量
-3. 连接页的「自动回复」开关是该连接的唯一总闸，规则仅在所属连接内生效（自上而下求值，命中即停）
-4. 编辑弹窗内可「内联试跑」：填入测试报文即时查看是否命中、首个未满足的条件与实际渲染出的应答
+1. Click `[Manage Rules]` on the connection tab to create or edit rules
+2. Each rule is a **condition** plus an **action**: conditions support nesting of "all of / any of / not" and predicates such as contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address and checksum validation; the action is the reply content sent on a hit, and may use received-frame variables such as `${rx.*}`
+3. The connection page's "Auto Reply" switch is that connection's single master gate, and rules only apply within their own connection (evaluated top to bottom, first hit wins)
+4. The editor offers an "inline test run": enter a test frame to immediately see whether it hits, the first unmet condition, and the rendered reply
 
-![回复规则截图](../../assets/screenshots/zh/screenshot_reply_rule.png)
+![Reply rules screenshot](../../assets/screenshots/en/screenshot_reply_rule.png)
 
-适合模拟服务端或客户端响应，验证对端处理逻辑。
+Suitable for simulating server or client responses and verifying the peer's handling logic.
 
-## 消息管理
+## Message Management
 
-- **复制消息**：点击消息项上的复制按钮，将内容复制到剪贴板（支持文本和十六进制格式）
-- **收藏消息**：点击收藏按钮将消息加入收藏夹，可在弹窗中填写备注，并通过关键字搜索快速定位
-- **导出消息记录**：点击导出按钮，选择 TXT / JSON / CSV 格式保存到本地
-- **实时日志记录**：点击「日志记录」开关开启后，所有消息实时异步写入日志文件（每条消息自动 flush 落盘）。默认保存到 `文档/NetAssistant/logs/` 目录，点击铅笔按钮可自定义路径，日志文件名可点击直接打开所在目录，断开连接自动刷新关闭
+- **Copy message**: click the copy button on a message item to copy its content to the clipboard (text and hex formats supported)
+- **Favorite messages**: click the favorite button to add a message to favorites, add a remark in the popup, and locate it quickly via keyword search
+- **Export message history**: click the export button and choose TXT / JSON / CSV to save locally
+- **Real-time logging**: toggle "Log Recording" on and all messages are written asynchronously to a log file in real time (each message is flushed to disk automatically). By default logs are saved to `Documents/NetAssistant/logs/`; click the pencil button to customize the path, click the log file name to open its directory, and the log is flushed and closed automatically on disconnect
 
-### 消息搜索
+### Message Search
 
-`Ctrl+F` 或点击工具栏的放大镜图标打开搜索浮层（非模态，悬浮在消息区右上角）：
+Press `Ctrl+F` or click the magnifier icon in the toolbar to open the search overlay (non-modal, floating in the top-right corner of the message area):
 
-1. 输入关键字即时显示命中计数 `i/n`（无命中显示 `0/0`）
-2. `Enter` 或 `↓` 跳到下一个命中，`Shift+Enter` 或 `↑` 跳到上一个；到达末尾后环形回到开头
-3. 命中项整行以浅灰底高亮，并自动滚动到视口
-4. `Esc` 或 `✕` 关闭浮层
+1. Type a keyword to see the match counter `i/n` live (`0/0` when nothing matches)
+2. `Enter` or `↓` jumps to the next match; `Shift+Enter` or `↑` jumps to the previous one, wrapping around at the ends
+3. The matching row is highlighted with a light grey background and scrolled into view
+4. `Esc` or `✕` closes the overlay
 
-搜索匹配的是报文**原始内容**（与「原始/美化/压缩」显示格式无关），范围为当前保留在内存中的消息（已应用客户端过滤）。跳转时会自动关闭自动滚动，避免消息淘汰导致定位漂移。
+Search matches the **raw content** of messages (independent of the Raw/Prettified/Minified display format) and only covers messages currently held in memory (after the per-client filter is applied). Jumping turns auto-scroll off so that eviction cannot make the position drift.
 
-![消息搜索截图](../../assets/screenshots/zh/screenshot_search.png)
+![Message search screenshot](../../assets/screenshots/en/screenshot_search.png)
 
-### 消息条数上限
+### Message Count Cap
 
-工具栏「自动滚动」旁可设置「保留最后 N 条」，默认 `10000`：
+The "Keep last" input next to auto-scroll in the toolbar defaults to `10000`:
 
-- 超出上限后自动淘汰最早的消息，避免长时间压测下内存持续增长；输入后按回车或点击别处（失焦）生效
-- `0` 表示不限制（此时内存会随消息量持续增长）
-- 关闭「自动滚动」时该值自动置 `0` 并禁用：不淘汰任何消息，列表完全冻结，便于向上翻阅历史
-- 重新开启「自动滚动」会恢复原来的设置值，并立即裁剪到该条数、滚动到底部
-- 注意：不淘汰时（`0` 或关闭自动滚动）消息会持续累积，大量收发或长时间压测下内存占用会明显增长；需要回收内存时，点击工具栏的「清空」按钮，或重新开启自动滚动并设置较小的条数上限——超出部分会被立即丢弃，内存占用随之下降
+- Once the cap is exceeded, the oldest messages are dropped so memory does not grow during long stress runs. Press Enter or click elsewhere (blur) to apply the value
+- `0` means unlimited (memory then keeps growing with the message volume)
+- Turning auto-scroll off sets the value to `0` and disables it: nothing is dropped and the list is fully frozen, which makes reading back through history comfortable
+- Turning auto-scroll back on restores the previous value, trims the list to it immediately and scrolls to the bottom
+- Note: with dropping disabled (`0` or auto-scroll off) messages keep accumulating, so memory grows noticeably under heavy or long-running traffic. To reclaim it, click "Clear" in the toolbar, or re-enable auto-scroll with a smaller cap — the excess is dropped immediately and memory usage goes down
 
-## IPv6 支持
+## IPv6 Support
 
-创建连接时地址支持 IPv4 与 IPv6 双栈，例如填入 `::1` 或 `fe80::xxxx` 即可调试 IPv6 环境。
+Addresses support both IPv4 and IPv6 when creating a connection — enter `::1` or `fe80::xxxx` to debug in an IPv6 environment.
 
-![IPv6 截图](../../assets/screenshots/zh/screenshot_ipv6.png)
+![IPv6 screenshot](../../assets/screenshots/en/screenshot_ipv6.png)
 
-## 本地端口绑定
+## Local Port Binding
 
-默认情况下，客户端连接由系统自动选择本地网卡与临时端口。当对端按源地址/源端口做白名单（工业设备、防火墙规则等）时，可在新建/编辑连接 → 「更多设置」中指定：
+By default, client connections let the OS pick the local interface and an ephemeral port. When the peer whitelists by source address/port (industrial devices, firewall rules, etc.), specify them under New/Edit Connection → "More Settings":
 
-- **本地地址**：客户端使用的本机 IP（如 `192.168.1.100`），留空由系统自动选择网卡；仅支持 IP，不支持域名
-- **本地端口**：客户端使用的本地端口（如 `50000`），留空由系统自动分配
+- **Local Address**: the local IP to use (e.g. `192.168.1.100`); leave empty for auto selection. IP only — hostnames are not accepted
+- **Local Port**: the local port to use (e.g. `50000`); leave empty for automatic assignment
 
-连接成功后，左侧信息面板的「本地地址」行会显示实际生效的本地端点（UDP 自动分配的临时端口也在此可见）。本地地址族需与远端一致：IPv4 远端配 IPv4 本地地址，IPv6 同理。
+Once connected, the "Local" row in the left info panel shows the effective local endpoint (including auto-assigned UDP ports). The local address family must match the remote: IPv4 remote ↔ IPv4 local, same for IPv6.
 
-注意：TCP 固定本地端口快速重连时，端口可能因 TIME_WAIT 短暂占用而报错；本地端口被其他进程占用时也会明确报错提示。
+Note: with a fixed local port, rapid TCP reconnects may fail briefly with a clear error while the port sits in TIME_WAIT; a local port occupied by another process also fails with an explicit error message.
 
-## UDP 场景
+## UDP Scenarios
 
-UDP 客户端/服务端、广播与多设备回复的完整用法见 [UDP 调试工具](/udp-debug-tool)。
+For UDP client/server, broadcast and multi-device replies in depth, see the [UDP debug tool](/udp-debug-tool).
 
-### 手动添加客户端
+### Manual Client Addition
 
-UDP 是无连接协议，服务端无法天然感知客户端。在 UDP 服务端模式下：
+UDP is connectionless, so a server cannot inherently detect its clients. In UDP server mode:
 
-1. 点击 `[+添加客户端]` 按钮
-2. 输入目标客户端的 IP 和端口
-3. 添加完成后即可主动向该地址发送消息
+1. Click the `[+ Add Client]` button
+2. Enter the target client's IP and port
+3. Once added, you can proactively send messages to that address
 
-![UDP 手动添加客户端截图](../../assets/screenshots/zh/screenshot_udp_add_client.png)
+![UDP manual client addition screenshot](../../assets/screenshots/en/screenshot_udp_add_client.png)
 
-### 设备发现（上位机/物联网调试）
+### Device Discovery (Host Workstation / IoT Debugging)
 
-当需要发现局域网内的物联网/嵌入式设备时：
+When you need to discover IoT/embedded devices on the local network:
 
-想了解广播地址选择、非预期地址回复的处理和收不到回复的排查，见 [UDP 广播设备发现](/udp-broadcast-device-discovery)。
+For broadcast address choices, handling unexpected replies and troubleshooting missing responses, see [UDP broadcast device discovery](/udp-broadcast-device-discovery).
 
-1. 向广播地址（如 `192.168.1.255`）发送 discovery 指令
-2. 所有设备的回复都会正常显示（不会被源地址过滤）
-3. 来自非目标地址的设备回复，源地址会用**浅红色高亮**标识，鼠标悬停显示「非预期地址的回复」提示
-4. 既不丢失重要的设备响应，又能清晰区分广播回复与目标地址正常回复
+1. Send a discovery command to the broadcast address (e.g. `192.168.1.255`)
+2. Replies from all devices are displayed normally (never filtered by source address)
+3. Device replies from non-target addresses are marked with a **light-red highlight** on the source address, with an "Unexpected address reply" tooltip on hover
+4. No important device response is lost, while broadcast replies stay clearly distinguished from normal replies to the target address
 
-![UDP 广播暗黑模式截图](../../assets/screenshots/zh/screenshot_udp_stress_dark.png)
+![UDP broadcast dark mode screenshot](../../assets/screenshots/en/screenshot_udp_stress_dark.png)
 
-## 多连接与客户端查看
+## Multiple Connections & Client View
 
-- **多标签页管理**：使用标签页切换不同连接，点击标签页上的 `×` 关闭连接，右键点击连接可删除或编辑保存的配置
-- **客户端消息查看**：服务端模式下，左侧面板显示已连接的客户端列表；点击单个客户端地址可只查看该客户端的消息，再次点击取消选择恢复显示所有消息
+- **Multi-tab management**: switch between connections using tabs; click the `×` on a tab to close the connection; right-click a connection to delete or edit its saved config
+- **Per-client message view**: in server mode, the left panel shows the list of connected clients; click a client address to view only that client's messages, and click again to deselect and show all messages
 
-## 十六进制模式与 HEX 编辑
+## Hex Mode & HEX Editor
 
-Hex 模式、文本互转与校验的完整说明见 [十六进制发送](/hex-send)。
+For hex mode, text conversion and checksums in depth, see [hex send](/hex-send).
 
-![十六进制模式截图](../../assets/screenshots/zh/screenshot_hex.png)
+![Hex mode screenshot](../../assets/screenshots/en/screenshot_hex.png)
 
-## 快捷键
+## Keyboard Shortcuts
 
-| 快捷键 | 功能 |
-| ------ | ---- |
-| `Ctrl+Enter` | 发送当前标签页的消息 |
-| `Ctrl+F` | 打开消息搜索浮层（已打开则重新聚焦，不用于关闭） |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | 循环切换到下一个 / 上一个标签页 |
-| `Ctrl+PageDown` / `Ctrl+PageUp` | 切换到下一个 / 上一个标签页 |
-| `Ctrl+1` … `Ctrl+9` | 直接跳转到第 N 个标签页 |
-| `Ctrl+W` | 关闭当前标签页 |
-| `Ctrl+N` | 新建连接 |
-| `Ctrl+K` | 聚焦消息输入框 |
-| `Esc` | 关闭搜索浮层或收藏夹列表 |
+| Shortcut | Action |
+| -------- | ------ |
+| `Ctrl+Enter` | Send the current tab's message |
+| `Ctrl+F` | Open the message search overlay (re-focuses it if already open; does not close it) |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle to the next / previous tab |
+| `Ctrl+PageDown` / `Ctrl+PageUp` | Switch to the next / previous tab |
+| `Ctrl+1` … `Ctrl+9` | Jump directly to the Nth tab |
+| `Ctrl+W` | Close the current tab |
+| `Ctrl+N` | New connection |
+| `Ctrl+K` | Focus the message input |
+| `Esc` | Close the search overlay or the favorites list |
 
-macOS 上使用 `Cmd` 代替 `Ctrl`。快捷键在任何焦点状态下均生效：焦点位于输入框、HEX 编辑器或空白区域时都可使用。例外：在代码编辑器（消息输入框、自动回复、压测报文）内按 `Ctrl+F` 打开的是编辑器自带的查找面板，不会唤起消息搜索。
+Use `Cmd` instead of `Ctrl` on macOS. The shortcuts work regardless of the current focus: they are available whether the focus is in an input, the HEX editor or empty space. One exception: inside a code editor (message input, auto-reply, stress payload), `Ctrl+F` opens the editor's own find panel instead of the message search overlay.

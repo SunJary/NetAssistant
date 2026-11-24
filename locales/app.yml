@@ -5,103 +5,253 @@ title_bar:
   language:
     zh-CN: 切换语言 / Switch Language
     en: 切换语言 / Switch Language
+    ja: "言語を切り替え"
+    de: "Sprache wechseln"
+    ru: "Сменить язык / Switch Language"
+    pt-BR: "Mudar idioma / Switch Language"
+    es: "Cambiar idioma / Switch Language"
   star_tooltip_hint:
     zh-CN: 如果本项目对你有帮助，欢迎来 GitHub Star 一下
     en: If this project helps you, please give it a Star on GitHub
+    ja: "このプロジェクトがお役に立てば、GitHub で Star をお願いします"
+    de: "Wenn Ihnen dieses Projekt hilft, geben Sie ihm gerne einen Star auf GitHub"
+    ru: "Если проект оказался полезен, поставьте ему звезду на GitHub"
+    pt-BR: "Se este projeto te ajuda, deixe uma Star no GitHub"
+    es: "Si este proyecto le resulta útil, anímese a darle una Star en GitHub"
   star_tooltip_count:
     zh-CN: 已有 %{count} 位用户 Star，觉得有用的话也来 Star 下吧
     en: "%{count} users have starred this project — join them!"
+    ja: "すでに %{count} 人が Star しています。役に立ったら Star をお願いします"
+    de: "Bereits %{count} Nutzer haben einen Star vergeben – machen Sie mit!"
+    ru: "Уже %{count} пользователей поставило звезду — присоединяйтесь!"
+    pt-BR: "%{count} usuários já deram Star — junte-se a eles!"
+    es: "%{count} usuarios han dado una Star; si le resulta útil, ¡súmese!"
   update_found:
     zh-CN: 发现新版本 %{version}，点击查看
     en: "New version %{version} available — click to view"
+    ja: "新しいバージョン %{version} が見つかりました。クリックで表示"
+    de: "Neue Version %{version} verfügbar, klicken Sie zum Anzeigen"
+    ru: "Доступна новая версия %{version} — нажмите, чтобы посмотреть"
+    pt-BR: "Nova versão %{version} disponível — clique para ver"
+    es: "Nueva versión %{version} disponible; haga clic para verla"
   update_found_generic:
     zh-CN: 发现新版本，点击查看
     en: New version available — click to view
+    ja: "新しいバージョンがあります。クリックで表示"
+    de: "Neue Version verfügbar, klicken Sie zum Anzeigen"
+    ru: "Доступна новая версия — нажмите, чтобы посмотреть"
+    pt-BR: "Nova versão disponível — clique para ver"
+    es: "Nueva versión disponible; haga clic para verla"
 
 star_prompt:
   title:
     zh-CN: 喜欢 NetAssistant？
     en: Enjoying NetAssistant?
+    ja: "NetAssistant が気に入りましたか？"
+    de: "Gefällt Ihnen NetAssistant?"
+    ru: "Нравится NetAssistant?"
+    pt-BR: "Curtindo o NetAssistant?"
+    es: "¿Le gusta NetAssistant?"
   body:
     zh-CN: 给项目加个 Star 支持一下吧！
     en: Give the project a Star to support it!
+    ja: "プロジェクトに Star を付けて応援してください！"
+    de: "Geben Sie dem Projekt einen Star als Unterstützung!"
+    ru: "Поставьте проекту звезду в поддержку!"
+    pt-BR: "Dê uma Star no projeto para apoiar!"
+    es: "¡Apoye el proyecto dándole una Star!"
   action:
     zh-CN: ⭐ 给个 Star
     en: ⭐ Give a Star
+    ja: "⭐ Star を付ける"
+    de: "⭐ Star vergeben"
+    ru: "⭐ Поставить звезду"
+    pt-BR: "⭐ Dar uma Star"
+    es: "⭐ Dar una Star"
   dismiss:
     zh-CN: 近期不再提示
     en: Don't show again for now
+    ja: "しばらく表示しない"
+    de: "Eine Zeit lang nicht mehr anzeigen"
+    ru: "Больше не напоминать"
+    pt-BR: "Não mostrar por enquanto"
+    es: "No mostrar por ahora"
 
 context_menu:
   edit:
     zh-CN: 编辑连接
     en: Edit Connection
+    ja: "接続を編集"
+    de: "Verbindung bearbeiten"
+    ru: "Изменить подключение"
+    pt-BR: "Editar conexão"
+    es: "Editar conexión"
   rename:
     zh-CN: 重命名连接
     en: Rename Connection
+    ja: "接続名を変更"
+    de: "Verbindung umbenennen"
+    ru: "Переименовать подключение"
+    pt-BR: "Renomear conexão"
+    es: "Renombrar conexión"
   duplicate:
     zh-CN: 复制连接
     en: Duplicate Connection
+    ja: "接続を複製"
+    de: "Verbindung duplizieren"
+    ru: "Дублировать подключение"
+    pt-BR: "Duplicar conexão"
+    es: "Duplicar conexión"
   delete:
     zh-CN: 删除连接
     en: Delete Connection
+    ja: "接続を削除"
+    de: "Verbindung löschen"
+    ru: "Удалить подключение"
+    pt-BR: "Excluir conexão"
+    es: "Eliminar conexión"
   edit_subscription:
     zh-CN: 编辑订阅…
     en: Edit Subscription…
+    ja: "購読を編集…"
+    de: "Abonnement bearbeiten…"
+    ru: "Изменить подписку…"
+    pt-BR: "Editar assinatura…"
+    es: "Editar suscripción…"
   unsubscribe:
     zh-CN: 取消订阅
     en: Unsubscribe
+    ja: "購読を解除"
+    de: "Abbestellen"
+    ru: "Отменить подписку"
+    pt-BR: "Cancelar assinatura"
+    es: "Cancelar suscripción"
   copy_selection:
     zh-CN: 复制选中
     en: Copy Selection
+    ja: "選択範囲をコピー"
+    de: "Auswahl kopieren"
+    ru: "Копировать выделенное"
+    pt-BR: "Copiar seleção"
+    es: "Copiar selección"
   copy_full:
     zh-CN: 复制全文
     en: Copy All
+    ja: "すべてコピー"
+    de: "Alles kopieren"
+    ru: "Копировать всё"
+    pt-BR: "Copiar tudo"
+    es: "Copiar todo"
 
 # 连接状态值（ConnectionStatus Display，标签页左侧信息区）
 connection_status:
   not_connected:
     zh-CN: 未连接
     en: Not Connected
+    ja: "未接続"
+    de: "Nicht verbunden"
+    ru: "Не подключено"
+    pt-BR: "Não conectado"
+    es: "No conectado"
   disconnected:
     zh-CN: 已断开
     en: Disconnected
+    ja: "切断済み"
+    de: "Getrennt"
+    ru: "Отключено"
+    pt-BR: "Desconectado"
+    es: "Desconectado"
   connecting:
     zh-CN: 连接中
     en: Connecting
+    ja: "接続中"
+    de: "Verbinden…"
+    ru: "Подключение…"
+    pt-BR: "Conectando"
+    es: "Conectando"
   connected:
     zh-CN: 已连接
     en: Connected
+    ja: "接続済み"
+    de: "Verbunden"
+    ru: "Подключено"
+    pt-BR: "Conectado"
+    es: "Conectado"
   listening:
     zh-CN: 监听中
     en: Listening
+    ja: "待ち受け中"
+    de: "Lauscht"
+    ru: "Прослушивание"
+    pt-BR: "Ouvindo"
+    es: "Escuchando"
   error:
     zh-CN: 错误
     en: Error
+    ja: "エラー"
+    de: "Fehler"
+    ru: "Ошибка"
+    pt-BR: "Erro"
+    es: "Error"
 
 # 解码器类型值（DecoderConfig Display，标签页左侧信息区）
 decoder_config:
   bytes:
     zh-CN: 原始数据
     en: Raw Data
+    ja: "生データ"
+    de: "Rohdaten"
+    ru: "Исходные данные"
+    pt-BR: "Dados brutos"
+    es: "Datos sin procesar"
   line_based:
     zh-CN: 换行符
     en: Newline
+    ja: "改行"
+    de: "Zeilenumbruch"
+    ru: "Перевод строки"
+    pt-BR: "Quebra de linha"
+    es: "Salto de línea"
   length_delimited:
     zh-CN: 长度前缀
     en: Length Prefix
+    ja: "長さプレフィックス"
+    de: "Längenpräfix"
+    ru: "Префикс длины"
+    pt-BR: "Prefixo de comprimento"
+    es: "Prefijo de longitud"
   fixed_length:
     zh-CN: 固定长度
     en: Fixed Length
+    ja: "固定長"
+    de: "Feste Länge"
+    ru: "Фиксированная длина"
+    pt-BR: "Comprimento fixo"
+    es: "Longitud fija"
 
 # 消息显示模式值（MessageDisplayMode::label，消息列表"格式"字段）
 display_mode:
   normal:
     zh-CN: 原始
     en: Raw
+    ja: "元のまま"
+    de: "Roh"
+    ru: "Исходный"
+    pt-BR: "Bruto"
+    es: "Sin procesar"
   json_pretty:
     zh-CN: 美化
     en: Pretty
+    ja: "整形"
+    de: "Formatiert"
+    ru: "Форматированный"
+    pt-BR: "Formatado"
+    es: "Formateado"
   json_minified:
     zh-CN: 压缩
     en: Minified
+    ja: "圧縮"
+    de: "Minimiert"
+    ru: "Сжатый"
+    pt-BR: "Minificado"
+    es: "Minificado"

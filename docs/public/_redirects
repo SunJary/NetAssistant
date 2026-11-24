@@ -1,0 +1,4 @@
+# 旧 /en/ 地址已迁移：英文成为根目录内容，中文迁至 /zh/
+# Cloudflare Pages 308 重定向；GitHub Pages 由 /en/ 存根页（meta refresh/JS）兜底
+/en / 308
+/en/* /:splat 308

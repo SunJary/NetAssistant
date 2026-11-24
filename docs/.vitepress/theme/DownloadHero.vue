@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useData } from 'vitepress'
 
 const { lang } = useData()
-const isEn = computed(() => lang.value.startsWith('en'))
+const isZh = computed(() => lang.value.startsWith('zh'))
 
 const os = ref('other')
 const copied = ref(false)
@@ -15,37 +15,8 @@ const releaseBase = `https://github.com/${repo}/releases/latest/download/`
 const latestPage = `https://github.com/${repo}/releases/latest`
 
 const texts = computed(() =>
-  isEn.value
+  isZh.value
     ? {
-        eyebrow: 'Free and open source · No signup',
-        title: 'Download NetAssistant',
-        lead: 'Pick your platform. Links always point to the latest release.',
-        recommended: 'Recommended for your system',
-        download: 'Download',
-        winget: 'Or install with winget',
-        copy: 'Copy',
-        copied: 'Copied',
-        other: 'Other platforms and packages',
-        version: 'Latest version',
-        published: 'Published',
-        size: 'Size',
-        loading: 'Fetching version information…',
-        slow: 'Download slow from GitHub? Try winget on Windows, or use a trusted GitHub acceleration service.',
-        windows: 'Windows',
-        mac: 'macOS',
-        linux: 'Linux',
-        winNote: 'Windows 10 1709+ · x64 · installer',
-        macNote: 'macOS 10.15+ · Universal (Apple Silicon & Intel)',
-        linuxNote: 'Ubuntu 22.04+ · x64 · deb package',
-        winZip: 'Portable zip',
-        winArm: 'Windows ARM64 zip',
-        macZip: 'macOS zip',
-        linuxAppImage: 'AppImage',
-        linuxTar: 'tar.gz',
-        linuxArm: 'Linux ARM64',
-        all: 'All releases on GitHub'
-      }
-    : {
         eyebrow: '免费开源 · 无需注册',
         title: '下载 NetAssistant',
         lead: '选择你的平台，链接始终指向最新版本。',
@@ -73,6 +44,35 @@ const texts = computed(() =>
         linuxTar: 'tar.gz',
         linuxArm: 'Linux ARM64',
         all: 'GitHub 上的全部版本'
+      }
+    : {
+        eyebrow: 'Free and open source · No signup',
+        title: 'Download NetAssistant',
+        lead: 'Pick your platform. Links always point to the latest release.',
+        recommended: 'Recommended for your system',
+        download: 'Download',
+        winget: 'Or install with winget',
+        copy: 'Copy',
+        copied: 'Copied',
+        other: 'Other platforms and packages',
+        version: 'Latest version',
+        published: 'Published',
+        size: 'Size',
+        loading: 'Fetching version information…',
+        slow: 'Download slow from GitHub? Try winget on Windows, or use a trusted GitHub acceleration service.',
+        windows: 'Windows',
+        mac: 'macOS',
+        linux: 'Linux',
+        winNote: 'Windows 10 1709+ · x64 · installer',
+        macNote: 'macOS 10.15+ · Universal (Apple Silicon & Intel)',
+        linuxNote: 'Ubuntu 22.04+ · x64 · deb package',
+        winZip: 'Portable zip',
+        winArm: 'Windows ARM64 zip',
+        macZip: 'macOS zip',
+        linuxAppImage: 'AppImage',
+        linuxTar: 'tar.gz',
+        linuxArm: 'Linux ARM64',
+        all: 'All releases on GitHub'
       }
 )
 
@@ -132,7 +132,7 @@ const platforms = computed(() => [
 const version = computed(() => release.value?.tag_name || '')
 const published = computed(() => {
   if (!release.value?.published_at) return ''
-  return new Date(release.value.published_at).toLocaleDateString(isEn.value ? 'en-US' : 'zh-CN')
+  return new Date(release.value.published_at).toLocaleDateString(isZh.value ? 'zh-CN' : 'en-US')
 })
 const primarySize = computed(() => {
   if (!primary.value || !release.value?.assets) return ''

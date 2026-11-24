@@ -1,7 +1,7 @@
 ---
-title: 下载 NetAssistant - Windows / Linux / macOS 官方免费下载
+title: Download NetAssistant - Free for Windows, Linux & macOS
 titleTemplate: ':title'
-description: 下载 NetAssistant 跨平台网络调试工具：Windows、Linux、macOS 的 x64 与 ARM64，winget、deb/AppImage/tar.gz 与源码编译方式，附系统要求。
+description: "Download NetAssistant for Windows, Linux and macOS on x64 and ARM64: winget, deb/AppImage/tar.gz packages, or build from source, with system requirements."
 head:
   - - script
     - type: application/ld+json
@@ -14,7 +14,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "跨平台网络调试工具，支持 TCP/UDP 客户端与服务端、MQTT 3.1.1 / 5.0、粘包解码、十六进制收发与 TCP/UDP 压力测试。",
+            "description": "A cross-platform network debugging tool with TCP/UDP client and server, MQTT 3.1.1 / 5.0, framing decoders, hex payloads and TCP/UDP stress testing.",
             "url": "https://netassistant.trydo.top/download",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -25,42 +25,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "NetAssistant 是免费的吗？",
+                "name": "Is NetAssistant free?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购、订阅或功能限制。"
+                  "text": "Yes. NetAssistant is open source under the Apache-2.0 license with all features free to use, no in-app purchases, subscriptions or feature limits."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持哪些操作系统？",
+                "name": "Which operating systems are supported?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持 Windows 10 1709 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。"
+                  "text": "Windows 10 version 1709 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Windows 上怎么安装？",
+                "name": "How do I install on Windows?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "推荐使用 winget：在终端执行 winget install SunJary.NetAssistant 即可，后续用 winget upgrade 升级。也可以下载安装程序或免安装 zip。"
+                  "text": "Use winget: run winget install SunJary.NetAssistant in a terminal and upgrade later with winget upgrade. You can also use the installer or a portable zip."
                 }
               },
               {
                 "@type": "Question",
-                "name": "有 ARM64 版本吗？",
+                "name": "Is there an ARM64 build?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "有。Windows、Linux 均提供 aarch64 构建，macOS 提供 Intel 与 Apple Silicon 通用的 DMG，适合 Surface Pro X、树莓派 5、M 系列 Mac 等设备。"
+                  "text": "Yes. Windows and Linux ship aarch64 builds, and macOS offers a universal DMG for both Intel and Apple Silicon, covering Surface Pro X, Raspberry Pi 5 and M-series Macs."
                 }
               },
               {
                 "@type": "Question",
-                "name": "macOS 提示无法验证开发者怎么办？",
+                "name": "macOS says it cannot verify the developer. What should I do?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "这是未公证应用的正常提示，并非应用损坏。右键点击 NetAssistant 选择「打开」，或在「系统设置 → 隐私与安全性」中选择「仍要打开」即可。"
+                  "text": "This is normal for unsigned, non-notarized apps and does not mean the app is damaged. Right-click NetAssistant and choose Open, or go to System Settings → Privacy & Security and click Open Anyway."
                 }
               }
             ]
@@ -69,61 +69,61 @@ head:
       }
 ---
 
-# 下载
+# Download
 
-NetAssistant 支持 Windows、Linux 和 macOS，各平台均提供 x64 与 ARM64 版本。以下下载链接始终指向[最新版本](https://github.com/sunjary/netassistant/releases/latest)的文件，点击即直接下载；历史版本请见 [GitHub Releases](https://github.com/sunjary/netassistant/releases)。
+NetAssistant is available for Windows, Linux and macOS, with both x64 and ARM64 builds for each platform. The download links below always point to the files of the [latest release](https://github.com/sunjary/netassistant/releases/latest) — click to download directly. Older versions can be found on [GitHub Releases](https://github.com/sunjary/netassistant/releases).
 
-按平台查看详细安装说明：[Windows](/windows-network-debug-tool) · [macOS](/mac-network-debug-tool) · [Linux](/linux-network-debug-tool)。
+Platform-specific install guides: [Windows](/windows-network-debug-tool) · [macOS](/mac-network-debug-tool) · [Linux](/linux-network-debug-tool).
 
 <DownloadHero />
 
 ## Windows
 
-**推荐：使用 winget 安装**（支持自动升级）
+**Recommended: install with winget** (supports automatic upgrades)
 
 ```bash
 winget install SunJary.NetAssistant
 ```
 
-升级：
+To upgrade:
 
 ```bash
 winget upgrade SunJary.NetAssistant
 ```
 
-**或使用安装程序**：下载 [netassistant-windows-x86_64-setup.exe](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-windows-x86_64-setup.exe)，按向导安装（自动创建开始菜单与桌面快捷方式）。
+**Or use the installer**: download [netassistant-windows-x86_64-setup.exe](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-windows-x86_64-setup.exe) and follow the wizard (creates Start Menu and desktop shortcuts automatically).
 
-**备选**：下载 [netassistant-windows-x86_64.zip](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-windows-x86_64.zip)，解压后运行 `netassistant.exe`。
+**Alternative**: download [netassistant-windows-x86_64.zip](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-windows-x86_64.zip), extract it and run `netassistant.exe`.
 
-**ARM64 设备**（Surface Pro X、骁龙笔记本等）：winget 与安装程序目前仅提供 x64 版本，ARM64 请下载 [netassistant-windows-aarch64.zip](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-windows-aarch64.zip)，解压后运行 `netassistant.exe`。该版本为自动构建产物，未经真机完整测试。
+**ARM64 devices** (Surface Pro X, Snapdragon laptops, etc.): winget and the installer currently ship x64 only. On ARM64, download [netassistant-windows-aarch64.zip](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-windows-aarch64.zip), extract it and run `netassistant.exe`. This build is produced automatically and has not been fully tested on real hardware.
 
 ## Linux
 
-**推荐：deb 包**（Debian/Ubuntu 及衍生版，自动安装依赖）
+**Recommended: deb package** (Debian/Ubuntu and derivatives, installs dependencies automatically)
 
-1. 下载 [netassistant-linux-x86_64.deb](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-x86_64.deb)
-2. 安装（自动解析依赖）：
+1. Download [netassistant-linux-x86_64.deb](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-x86_64.deb)
+2. Install (dependencies resolved automatically):
 
 ```bash
 sudo apt install ./netassistant-linux-x86_64.deb
 ```
 
-3. 从应用菜单启动，或终端运行 `netassistant`
+3. Launch from the application menu, or run `netassistant` in a terminal
 
-**AppImage**（免安装，适合 Fedora/Arch 等其他发行版）
+**AppImage** (portable, for Fedora/Arch and other distros)
 
-1. 下载 [netassistant-linux-x86_64.AppImage](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-x86_64.AppImage)
-2. 添加执行权限并运行：
+1. Download [netassistant-linux-x86_64.AppImage](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-x86_64.AppImage)
+2. Add execute permission and run:
 
 ```bash
 chmod +x netassistant-linux-x86_64.AppImage
 ./netassistant-linux-x86_64.AppImage
 ```
 
-**备选：tar.gz**（轻量）
+**Alternative: tar.gz** (lightweight)
 
-1. 下载 [netassistant-linux-x86_64.tar.gz](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-x86_64.tar.gz)
-2. 解压并运行：
+1. Download [netassistant-linux-x86_64.tar.gz](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-x86_64.tar.gz)
+2. Extract and run:
 
 ```bash
 tar -xzf netassistant-linux-x86_64.tar.gz
@@ -131,28 +131,28 @@ chmod +x netassistant
 ./netassistant
 ```
 
-**ARM64 设备**（树莓派 5、ARM 服务器等）：下载 [netassistant-linux-aarch64.AppImage](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-aarch64.AppImage)、[netassistant-linux-aarch64.deb](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-aarch64.deb) 或 [netassistant-linux-aarch64.tar.gz](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-aarch64.tar.gz)，用法同上。该版本为自动构建产物，未经真机完整测试。
+**ARM64 devices** (Raspberry Pi 5, ARM servers, etc.): download [netassistant-linux-aarch64.deb](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-aarch64.deb), [netassistant-linux-aarch64.AppImage](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-aarch64.AppImage) or [netassistant-linux-aarch64.tar.gz](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-linux-aarch64.tar.gz), usage is the same as above. This build is produced automatically and has not been fully tested on real hardware.
 
 ## macOS
 
-**推荐：通用 DMG**（Intel 与 Apple Silicon 通用）
+**Recommended: universal DMG** (works on both Intel and Apple Silicon)
 
-1. 下载 [netassistant-macos-universal.dmg](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-macos-universal.dmg)，打开后将 NetAssistant 拖入 Applications 文件夹
-2. 首次打开若提示「无法验证开发者」（未公证应用的正常现象，并非应用损坏）：右键点击 NetAssistant → 打开；或在「系统设置 → 隐私与安全性」中选择仍要打开
+1. Download [netassistant-macos-universal.dmg](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-macos-universal.dmg), open it and drag NetAssistant into the Applications folder
+2. If macOS warns "cannot verify the developer" on first launch (normal for unsigned, non-notarized apps — not corruption): right-click NetAssistant → Open; or go to System Settings → Privacy & Security and click "Open Anyway"
 
-**备选**：下载 [netassistant-macos-universal.zip](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-macos-universal.zip)，解压即用（保留可执行权限）。
+**Alternative**: download [netassistant-macos-universal.zip](https://github.com/sunjary/netassistant/releases/latest/download/netassistant-macos-universal.zip) and extract it to run directly (executable permissions are preserved).
 
-## 系统要求
+## System Requirements
 
-| 平台 | 要求 |
-| ---- | ---- |
-| Windows | Windows 10 1709（Build 16299）或更高版本，含 Windows 11（x64 / ARM64）。支持 Windows Server 2019 及以上，不支持 Windows Server 2016 及更早系统 |
-| Linux | Ubuntu 22.04 及以上（x86_64 / ARM64），需 Vulkan 兼容 GPU |
-| macOS | macOS 10.15 或更高版本 |
+| Platform | Requirements |
+| -------- | ------------ |
+| Windows | Windows 10 version 1709 (Build 16299) or later, including Windows 11 (x64 / ARM64). Windows Server 2019 and later are supported; Windows Server 2016 and earlier are not |
+| Linux | Ubuntu 22.04 or later (x86_64 / ARM64), Vulkan-compatible GPU |
+| macOS | macOS 10.15 or later |
 
-## 从源代码编译
+## Building from Source
 
-如需自定义编译或获取最新开发版本：
+To build a custom version or get the latest development snapshot:
 
 ```bash
 git clone https://github.com/sunjary/netassistant.git
@@ -160,44 +160,44 @@ cd netassistant
 cargo build --release
 ```
 
-编译完成后，可执行文件位于 `target/release` 目录下。
+After building, the executable is located in the `target/release` directory.
 
-## 依赖报错处理
+## Troubleshooting Dependency Errors
 
-多数桌面系统已自带所需依赖，可直接运行；仅当启动报错时按提示安装即可（Linux）：
+Most desktop systems already ship the required dependencies and run out of the box. On Linux, only install these if startup fails with an error:
 
-- AppImage 启动报 FUSE 相关错误（如 `AppImages require FUSE to run`）：
+- AppImage fails with a FUSE error (e.g. `AppImages require FUSE to run`):
 
 ```bash
 sudo apt install libfuse2
 ```
 
-- 裸二进制 / tar.gz 启动报缺少 GTK3（如 `error while loading shared libraries: libgtk-3.so.0`）：
+- Bare binary / tar.gz fails with a missing GTK3 library (e.g. `error while loading shared libraries: libgtk-3.so.0`):
 
 ```bash
 sudo apt install libgtk-3-0
 ```
 
-## 常见问题
+## FAQ
 
-### NetAssistant 是免费的吗？
+### Is NetAssistant free?
 
-是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，没有内购、订阅或功能限制。
+Yes. NetAssistant is open source under the Apache-2.0 license with all features free to use, no in-app purchases, subscriptions or feature limits.
 
-### 支持哪些操作系统？
+### Which operating systems are supported?
 
-支持 Windows 10 1709 及以上、macOS 10.15 及以上、Ubuntu 22.04 及以上的 Linux 发行版，每个平台都提供 x64 与 ARM64 构建。
+Windows 10 version 1709 or later, macOS 10.15 or later, and Linux distributions such as Ubuntu 22.04 or later. Each platform ships both x64 and ARM64 builds.
 
-### Windows 上怎么安装？
+### How do I install on Windows?
 
-推荐使用 winget：在终端执行 `winget install SunJary.NetAssistant` 即可，后续用 `winget upgrade` 升级。也可以下载安装程序或免安装 zip。
+Use winget: run `winget install SunJary.NetAssistant` in a terminal and upgrade later with `winget upgrade`. You can also use the installer or a portable zip.
 
-### 有 ARM64 版本吗？
+### Is there an ARM64 build?
 
-有。Windows、Linux 均提供 aarch64 构建，macOS 提供 Intel 与 Apple Silicon 通用的 DMG，适合 Surface Pro X、树莓派 5、M 系列 Mac 等设备。
+Yes. Windows and Linux ship aarch64 builds, and macOS offers a universal DMG for both Intel and Apple Silicon, covering Surface Pro X, Raspberry Pi 5 and M-series Macs.
 
-### macOS 提示无法验证开发者怎么办？
+### macOS says it cannot verify the developer. What should I do?
 
-这是未公证应用的正常提示，并非应用损坏。右键点击 NetAssistant 选择「打开」，或在「系统设置 → 隐私与安全性」中选择「仍要打开」即可。
+This is normal for unsigned, non-notarized apps and does not mean the app is damaged. Right-click NetAssistant and choose **Open**, or go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
-更多问题见 [常见问题 FAQ](/faq)，版本更新见 [更新日志](/changelog)。
+See the [FAQ](/faq) for more questions and the [changelog](/changelog) for releases.

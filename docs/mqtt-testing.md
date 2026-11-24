@@ -1,6 +1,6 @@
 ---
-title: MQTT 测试工具 - QoS、retain、遗嘱与通配符验证
-description: 用 NetAssistant 验证 MQTT 常见行为：QoS 0/1/2、retain 与清除、遗嘱消息、通配符订阅、ACL 权限与自动回复；并明确说明 MQTT 暂不支持压测。
+title: MQTT Testing Tool - QoS, Retain, Last Will and Wildcards
+description: An MQTT testing tool for QoS 0/1/2, retain and clearing, last will, wildcard subscriptions, ACL checks and auto-reply, with a clear note that MQTT stress testing is not supported.
 head:
   - - script
     - type: application/ld+json
@@ -11,152 +11,152 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "怎么测试 MQTT 遗嘱消息？",
+            "name": "How do I test an MQTT last will message?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "在连接设置的「更多设置」里配置遗嘱 topic、payload、QoS 与 retain，连接后用另一个客户端订阅该 topic，再强制结束进程或断网让连接异常断开。主动点击断开属于正常断开，不会触发遗嘱。"
+              "text": "Configure the will topic, payload, QoS and retain under Additional settings, connect, then subscribe to that topic from another client and force-kill the process or drop the network to break the connection abnormally. Clicking Disconnect is a normal disconnect and does not trigger the will."
             }
           },
           {
             "@type": "Question",
-            "name": "retain 消息怎么清除？",
+            "name": "How do I clear a retained message?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "向同一个 topic 发布空 payload 并勾选 retain，Broker 会删除该 topic 的保留消息；之后新订阅者不会再收到。"
+              "text": "Publish an empty payload to the same topic with retain enabled, and the broker removes the retained message for that topic; new subscribers will no longer receive it."
             }
           },
           {
             "@type": "Question",
-            "name": "QoS 1 为什么会收到重复消息？",
+            "name": "Why does QoS 1 deliver duplicate messages?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "QoS 1 是至少一次语义，重传或重连可能导致重复投递，需要应用层按消息 ID 或业务键去重；QoS 2 才保证仅一次。"
+              "text": "QoS 1 is at-least-once semantics, so retransmission or reconnects may deliver a message twice. Deduplicate in the application by message ID or business key; only QoS 2 guarantees exactly once."
             }
           },
           {
             "@type": "Question",
-            "name": "通配符订阅为什么收不到消息？",
+            "name": "Why do I receive no messages with a wildcard subscription?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "常见原因是 topic 与过滤器层级不匹配、`#` 没有放在末尾、`+` 没有占满一整层，或者订阅的是以 `$` 开头的系统 topic 却没用显式主题订阅。"
+              "text": "Common causes are a topic that does not match the filter's levels, `#` not placed last, `+` not filling an entire level, or subscribing to a `$` system topic without an explicit topic subscription."
             }
           },
           {
             "@type": "Question",
-            "name": "可以对 MQTT 做压力测试吗？",
+            "name": "Can I stress test MQTT?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "NetAssistant 的压测功能只用于 TCP/UDP，不提供 MQTT 压测。MQTT 并发与吞吐测试请使用 MQTTX Bench、emqtt_bench 等专用工具。"
+              "text": "NetAssistant's stress testing applies to TCP/UDP only and does not provide MQTT load testing. For MQTT concurrency and throughput tests, use dedicated tools such as MQTTX Bench or emqtt_bench."
             }
           }
         ]
       }
 ---
 
-# MQTT 测试工具：QoS、retain、遗嘱与通配符验证
+# MQTT Testing Tool: Verify QoS, Retain, Last Will and Wildcards
 
-联调时真正要确认的往往不是「能不能连上」，而是「消息会不会丢、会不会重复、离线后能不能补、权限有没有生效」。下面这些场景都可以用 NetAssistant 的两个连接（一个订阅、一个发布）完成，不需要额外脚本。
+What you really need to confirm during integration is rarely "can it connect", but "will messages get lost, will they duplicate, can they be recovered after going offline, and are permissions enforced". The scenarios below can all be done with two NetAssistant connections (one subscribing, one publishing), without extra scripts.
 
-## 测试前准备
+## Before you start
 
-- 一个可用的 Broker，本地 Mosquitto 即可；配置方法见 [MQTT 调试教程](/guide/mqtt#本地起一个-broker-测试)
-- 两条 MQTT 连接：一条订阅目标 topic，一条发布
-- 需要观察离线行为时，使用固定 Client ID，并留意 Clean Session / Clean Start
+- A working broker; local Mosquitto is enough. For setup, see [the MQTT tutorial](/guide/mqtt#run-a-local-broker)
+- Two MQTT connections: one subscribing to the target topic, one publishing
+- To observe offline behavior, use a fixed client ID and watch Clean Session / Clean Start
 
-## QoS 0/1/2 验证
+## Verifying QoS 0/1/2
 
-| QoS | 语义 | 观察点 |
+| QoS | Semantics | What to watch |
 | ---- | ---- | ---- |
-| 0 | 至多一次 | 发送最快，网络抖动时可能直接丢失，没有 Broker 回执 |
-| 1 | 至少一次 | 可能重复；断开重连后适合观察补发与重复 |
-| 2 | 仅一次 | 开销最大，正常情况下不应重复 |
+| 0 | At most once | Fastest to send; messages may be lost when the network is unstable, with no broker acknowledgement |
+| 1 | At least once | Duplicates are possible; disconnecting and reconnecting is a good way to watch redelivery and duplicates |
+| 2 | Exactly once | Highest overhead; should not duplicate under normal conditions |
 
-测试方法：订阅 `test/qos/#`，分别用 QoS 0/1/2 发布同一 payload，对比消息数量与时间。QoS 1 出现重复是协议允许的行为，不是客户端 bug；需要去重时在业务侧处理。
+Test method: subscribe to `test/qos/#`, publish the same payload at QoS 0/1/2, and compare message counts and timing. Duplicates at QoS 1 are behavior the protocol allows, not a client bug; deduplicate on the business side when needed.
 
-5.0 下如果发布被拒，通知会显示原因码，例如 `0x87` 未授权、`0x97` 配额超限；3.1.1 只能看到本地发送失败，需要查 Broker 日志。
+Under 5.0, a rejected publish shows the reason code in the notification, for example `0x87` not authorized or `0x97` quota exceeded; under 3.1.1 you only see a local send failure and need to check the broker logs.
 
-## retain 测试
+## Retain testing
 
-1. 发布一条消息到 `test/retain`，勾选 **retain**
-2. 新开一条连接并订阅 `test/retain`，应立即收到最后一条保留消息
-3. 发布空 payload 并勾选 retain，清除该 topic 的保留消息
-4. 再次新订阅，确认不再收到
+1. Publish a message to `test/retain` with **retain** enabled
+2. Open a new connection and subscribe to `test/retain`; the last retained message should arrive immediately
+3. Publish an empty payload with retain enabled to clear the retained message for that topic
+4. Subscribe again from a new connection and confirm nothing is received
 
-注意：retain 是 Broker 行为，部分 Broker 或云平台会关闭该能力，发布时可能返回 `0x9A`（不支持 retain）。
+Note: retain is broker behavior. Some brokers or cloud platforms disable it, and a publish may return `0x9A` (retain not supported).
 
-## 遗嘱消息测试
+## Last will testing
 
-1. 在连接配置的「更多设置」中启用遗嘱，填写 topic、payload、QoS 与 retain
-2. 用另一条连接订阅遗嘱 topic
-3. 连接后强制结束 NetAssistant 进程，或断开网络等待 KeepAlive 超时
-4. 订阅端应收到遗嘱消息
+1. In the connection's "Additional settings", enable the last will and fill in topic, payload, QoS and retain
+2. Subscribe to the will topic from another connection
+3. After connecting, force-kill the NetAssistant process, or drop the network and wait for the keep-alive timeout
+4. The subscriber should receive the will message
 
-主动点击「断开」属于正常断开，不会触发遗嘱。NetAssistant 不支持 5.0 的 Will Delay，遗嘱会在 Broker 检测到异常断开后立即发布。如果没收到，检查遗嘱 topic 的发布权限与订阅过滤器。
+Clicking "Disconnect" is a normal disconnect and does not trigger the will. NetAssistant does not support 5.0 Will Delay; the will is published as soon as the broker detects the abnormal disconnect. If it does not arrive, check the publish permission for the will topic and the subscription filter.
 
-## 通配符与系统 topic
+## Wildcards and system topics
 
-| 过滤器 | 能匹配 | 不能匹配 |
+| Filter | Matches | Does not match |
 | ---- | ---- | ---- |
-| `device/+/status` | `device/1/status` | `device/1/2/status`、`device/status` |
-| `device/#` | `device`、`device/1/status` | 以 `$` 开头的系统 topic |
-| `$SYS/#` | `$SYS/broker/uptime` 等 | 普通业务 topic |
+| `device/+/status` | `device/1/status` | `device/1/2/status`, `device/status` |
+| `device/#` | `device`, `device/1/status` | System topics starting with `$` |
+| `$SYS/#` | `$SYS/broker/uptime` and similar | Ordinary business topics |
 
-`#` 必须放在末尾，`+` 必须占满一整层。共享订阅 `$share/group/topic` 当前不支持，订阅会失败。
+`#` must be placed last, and `+` must fill an entire level. Shared subscriptions `$share/group/topic` are not supported, and subscribing fails.
 
-## ACL 与权限测试
+## ACL and permission testing
 
-用受限账号分别验证连接、订阅、发布：
+Use a restricted account to verify connect, subscribe and publish separately:
 
-- 连接被拒：5.0 返回 `0x87`，3.1.1 返回码 5
-- 订阅被拒：5.0 SUBACK `0x87`，订阅开关自动关闭并提示
-- 发布被拒：5.0 PUBACK `0x87`，右上角通知带 topic 与原因
+- Connection refused: 5.0 returns `0x87`, 3.1.1 returns code 5
+- Subscription refused: 5.0 SUBACK `0x87`; the subscription switch turns off automatically with a message
+- Publish refused: 5.0 PUBACK `0x87`; the top-right notification shows the topic and the reason
 
-只允许订阅、不允许发布的 ACL 会让订阅端一直收不到消息，排查时先确认发布端是否成功。
+An ACL that allows subscribe but not publish leaves the subscriber receiving nothing; when troubleshooting, first confirm that the publisher succeeds.
 
-## 离线消息与会话
+## Offline messages and sessions
 
-- 3.1.1：关闭 Clean Session，固定 Client ID，QoS 1 订阅后断开，再发布，重连观察补发
-- 5.0：关闭 Clean Start，会话过期设为正数（如 300 秒），其余步骤相同
-- Clean Session / Clean Start 开启时，断开即清理会话，不会补发离线消息
+- 3.1.1: turn off Clean Session, use a fixed client ID, subscribe at QoS 1, disconnect, publish, then reconnect and watch the redelivery
+- 5.0: turn off Clean Start, set session expiry to a positive value (for example 300 seconds), and follow the same steps
+- With Clean Session / Clean Start on, the session is cleared on disconnect and offline messages are not redelivered
 
-Broker 对离线队列长度和过期策略有各自限制，结果以 Broker 配置为准。
+Brokers have their own limits on offline queue length and expiry policy; the result depends on the broker configuration.
 
-## 自动回复与周期发送
+## Auto-reply and periodic send
 
-- **自动回复**：应答会发回收到消息的 topic，适合模拟设备响应平台指令
-- **周期发送**：按当前发布 topic 定时发送，适合模拟心跳或周期上报
+- **Auto-reply**: the response is published back to the topic the message arrived on, handy for simulating a device answering platform commands
+- **Periodic send**: sends on the current publish topic on an interval, handy for simulating heartbeats or periodic reporting
 
-两者都复用现有调试能力，不额外引入脚本。测试自动回复时避免「回复又被规则匹配」造成循环，必要时收窄规则或降低频率。
+Both reuse the existing debugging features and add no scripting. When testing auto-reply, avoid a loop where the reply matches the rule again; narrow the rule or lower the frequency if needed.
 
-## 暂不支持压测
+## Stress testing is not supported
 
-MQTT 暂不支持压测：压测引擎只适用于 TCP/UDP，MQTT 模式不提供连接数、吞吐和时延压测。需要 MQTT 压测时使用 MQTTX Bench、emqtt_bench 等工具，本工具更适合做功能验证与单连接行为观察。
+MQTT stress testing is not supported: the stress engine applies to TCP/UDP only, and MQTT mode offers no connection-count, throughput or latency load testing. For MQTT load testing, use MQTTX Bench, emqtt_bench or similar tools; this tool is better suited to functional verification and observing single-connection behavior.
 
-## 常见问题
+## FAQ
 
-### 怎么测试 MQTT 遗嘱消息？
+### How do I test an MQTT last will message?
 
-配置遗嘱后用另一条连接订阅，再强制结束进程或断网；主动断开不会触发。
+Configure the will, subscribe from another connection, then force-kill the process or drop the network; a manual disconnect does not trigger it.
 
-### retain 消息怎么清除？
+### How do I clear a retained message?
 
-向同一 topic 发布空 payload 并勾选 retain。
+Publish an empty payload to the same topic with retain enabled.
 
-### QoS 1 为什么会收到重复消息？
+### Why does QoS 1 deliver duplicate messages?
 
-QoS 1 是至少一次语义，重传或重连可能重复，需要应用层去重。
+QoS 1 is at-least-once semantics; retransmission or reconnects may duplicate, so deduplicate in the application.
 
-### 通配符订阅为什么收不到消息？
+### Why do I receive no messages with a wildcard subscription?
 
-检查层级匹配、`#` 位置、`+` 是否占满整层，以及 `$` 系统 topic 是否显式订阅。
+Check level matching, the position of `#`, whether `+` fills a whole level, and whether `$` system topics are subscribed explicitly.
 
-### 可以对 MQTT 做压力测试吗？
+### Can I stress test MQTT?
 
-不可以，压测仅用于 TCP/UDP；MQTT 压测请用 MQTTX Bench 或 emqtt_bench。
+No. Stress testing applies to TCP/UDP only; for MQTT load testing use MQTTX Bench or emqtt_bench.
 
-## 相关页面
+## Related pages
 
-- 参数与界面说明：[MQTT 客户端](/mqtt-client)
-- 失败原因与原因码：[MQTT 排错](/mqtt-troubleshooting)
-- 5.0 会话与原因码：[MQTT 5.0 客户端](/mqtt-5)
-- [下载 NetAssistant](/download)
+- Parameters and UI: [MQTT client](/mqtt-client)
+- Failure causes and reason codes: [MQTT troubleshooting](/mqtt-troubleshooting)
+- 5.0 sessions and reason codes: [MQTT 5.0 client](/mqtt-5)
+- [Download NetAssistant](/download)

@@ -1,6 +1,6 @@
 ---
-title: 十六进制发送 - HEX 收发与文本转换
-description: NetAssistant 的十六进制发送功能：Hex 模式直接发送原始字节，文本与 Hex 双向转换、不可打印字节转义、文件导入报文，适合二进制协议调试，跨平台免费。
+title: Hex Send - HEX Payloads & ASCII Conversion
+description: Send raw bytes in hex mode, convert between text and hex byte-for-byte, escape non-printable bytes and load payloads from files. Free and cross-platform.
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "支持十六进制收发与文本/Hex 双向转换的网络调试工具，可发送原始字节、导入文件报文并计算六种校验。",
+            "description": "A network debug tool with hex send/receive, byte-for-byte text and hex conversion, escaped non-printable bytes and file payloads.",
             "url": "https://netassistant.trydo.top/hex-send",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,42 +24,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "十六进制发送和文本发送有什么区别？",
+                "name": "What is the difference between text and hex send?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "文本按 UTF-8 编码发送输入内容；Hex 把你输入的十六进制按字节解释后原样发送。"
+                  "text": "Text encodes input as UTF-8; hex interprets it as hexadecimal bytes and sends them verbatim."
                 }
               },
               {
                 "@type": "Question",
-                "name": "文本和 Hex 怎么互转？",
+                "name": "How do I convert between text and hex?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "切换模式时整体转换，消息右键菜单和工具箱也能单项转换，往返字节级一致。"
+                  "text": "Switching modes converts the whole payload; the message menu and toolbox provide one-off conversions, byte-for-byte."
                 }
               },
               {
                 "@type": "Question",
-                "name": "不可打印字符怎么显示？",
+                "name": "How are non-printable bytes displayed?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "以 \\xNN 转义显示，例如 0x00 显示为 \\x00。"
+                  "text": "They are escaped as \\xNN, for example 0x00 becomes \\x00."
                 }
               },
               {
                 "@type": "Question",
-                "name": "能发送文件内容吗？",
+                "name": "Can I send file content?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以。文件数据源支持 UTF-8 / GBK / ANSI，单文件上限 1 MiB。"
+                  "text": "Yes. The file source supports UTF-8 / GBK / ANSI with a 1 MiB limit."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持串口十六进制发送吗？",
+                "name": "Does it support hex send over serial?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不支持。Hex 收发用于 TCP/UDP/MQTT，NetAssistant 不提供串口功能。"
+                  "text": "No. Hex send/receive works over TCP/UDP/MQTT; NetAssistant has no serial support."
                 }
               }
             ]
@@ -68,83 +68,83 @@ head:
       }
 ---
 
-# 十六进制发送：直接控制发出的每一个字节
+# Hex Send: Control Every Byte You Put on the Wire
 
-文本模式适合 JSON、AT 指令和日志，但二进制协议不认字符串。帧头 `AA 55`、寄存器地址 `0x00 0x0A`、结束符 `0D 0A`，这些都需要按字节发出去。NetAssistant 的 **Hex 模式**发送的就是原始字节，而不是把“AA 55”这几个字符当文本发出去。
+Text mode is fine for JSON, AT commands and logs, but binary protocols do not understand strings. Frame headers like `AA 55`, register addresses like `0x00 0x0A` and terminators like `0D 0A` must go out as bytes. NetAssistant's **hex mode** sends raw bytes—it does not send the characters "AA 55" as text.
 
-> [下载 NetAssistant](/download) · [TCP 调试工具](/tcp-debug-tool) · [全部功能](/features)
+> [Download NetAssistant](/download) · [TCP debug tool](/tcp-debug-tool) · [All features](/features)
 
-![Hex 收发界面](../assets/screenshots/zh/screenshot_hex.png)
+![Hex send and receive](../assets/screenshots/en/screenshot_hex.png)
 
-## 适合谁
+## Who it is for
 
-- **二进制协议联调**：自定义帧头、长度、命令字、校验位
-- **设备指令调试**：下发含 `0x00` 或不可打印字符的控制帧
-- **协议复现**：从抓包或手册里复制一段 Hex 原样重放
-- **校验核对**：发送前先算 CRC，再和响应帧比对
+- **Binary protocol integration**: custom headers, lengths, command bytes and checksums
+- **Device commands**: frames containing `0x00` or non-printable data
+- **Protocol replay**: paste a frame from a capture or manual and resend it unchanged
+- **Checksum checks**: compute a CRC before sending and compare it with the response
 
-## 文本模式与 Hex 模式
+## Text vs hex mode
 
-| 模式 | 输入 `41 42` 时实际发送 | 适用 |
+| Mode | What `41 42` sends | Best for |
 | ---- | ---- | ---- |
-| 文本 | 字符 `4` `1` 空格 `4` `2` 的 UTF-8 字节 | JSON、AT 指令、可读日志 |
-| Hex | 两个字节 `0x41` `0x42` | 二进制帧、定长协议、校验字段 |
+| Text | UTF-8 bytes for `4`, `1`, space, `4`, `2` | JSON, AT commands, readable logs |
+| Hex | The two bytes `0x41` `0x42` | Binary frames, fixed-length protocols, checksums |
 
-最常见的错误是：报文已经按 Hex 写好了，却忘了切换模式，结果对端收到一串 ASCII 字符。发送前先确认模式，再看接收区的显示格式。
+The most common mistake is writing a frame in hex but forgetting to switch modes, so the peer receives an ASCII string. Check the mode before sending, and check the display format in the receive area.
 
-## 双向转换与转义
+## Conversion and escaping
 
-- 发送框在文本与 Hex 模式间切换时，按 UTF-8 整体转换
-- 消息气泡右键可「转换为 Hex / 转换为文本」，结果在独立窗口中展示并可复制
-- 工具箱「转换」分组提供文本 → Hex、Hex → 文本两个独立输入块
-- 不可打印字节以 `\xNN` 转义，往返转换字节级一致，不会因为显示而丢失数据
-- 对选中内容（未选中时对整条消息）可执行六种校验：XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32
+- Switching the send area between text and hex converts the payload as UTF-8
+- The message context menu offers **Convert to Hex / Convert to Text**, with the result in a window you can copy from
+- The toolbox's Convert group has separate text → hex and hex → text blocks
+- Non-printable bytes are escaped as `\xNN`, and round-tripping is byte-for-byte
+- Six checksums can be applied to a selection or a whole message: XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32
 
-![文本与 Hex 互转](../assets/screenshots/zh/screenshot_text_hex_convert.png)
+![Text and hex conversion](../assets/screenshots/en/screenshot_text_hex_convert.png)
 
-## 一个完整的发送流程
+## A complete send workflow
 
-以自定义帧 `AA 55 | 长度 | 命令 | 数据 | CRC16` 为例：
+Take a custom frame `AA 55 | length | command | data | CRC16`:
 
-1. 按协议拼出除校验外的字节，例如 `AA 55 04 01 00 02 03 04`
-2. 在工具箱「校验」中输入这段 Hex，取 CRC16 结果
-3. 把校验值按协议要求的字节序追加到末尾
-4. 切换到 Hex 模式，粘贴完整帧并发送
-5. 接收区保持 Hex 显示，逐字节核对响应
+1. Assemble the bytes without the checksum, e.g. `AA 55 04 01 00 02 03 04`
+2. Paste them into the toolbox Checksum group and read the CRC16 result
+3. Append the checksum in the byte order your protocol requires
+4. Switch to hex mode, paste the full frame and send
+5. Keep the receive area in hex display and compare the response byte by byte
 
-需要周期下发时开启周期发送；需要自动应答时，用回复规则按字节条件匹配请求并返回固定帧。
+Enable periodic send for repeated commands, or use reply rules to return a fixed frame when request bytes match.
 
-## 文件数据源
+## File source
 
-报文很长或来自固件、抓包导出时，不必手工粘贴：文件数据源可从本地文件读取内容填入发送框，支持 UTF-8 / GBK / ANSI 编码选择与内容预览，文件大小以可读格式显示，单文件上限 **1 MiB**。
+For long frames exported from firmware or a packet capture, skip manual copy-paste: the file source loads a local file into the send area, supports UTF-8 / GBK / ANSI decoding with a preview, shows a readable file size and accepts up to **1 MiB** per file.
 
-## 常见问题
+## FAQ
 
-### 十六进制发送和文本发送有什么区别？
+### What is the difference between text and hex send?
 
-文本按 UTF-8 编码发送输入内容；Hex 把你输入的十六进制按字节解释后原样发送。
+Text encodes input as UTF-8; hex interprets it as hexadecimal bytes and sends them verbatim.
 
-### 文本和 Hex 怎么互转？
+### How do I convert between text and hex?
 
-切换模式时整体转换，消息右键菜单和工具箱也能单项转换，往返字节级一致。
+Switching modes converts the whole payload; the message menu and toolbox provide one-off conversions, byte-for-byte.
 
-### 不可打印字符怎么显示？
+### How are non-printable bytes displayed?
 
-以 `\xNN` 转义显示，例如 `0x00` 显示为 `\x00`。
+They are escaped as `\xNN`, for example `0x00` becomes `\x00`.
 
-### 能发送文件内容吗？
+### Can I send file content?
 
-可以。文件数据源支持 UTF-8 / GBK / ANSI，单文件上限 1 MiB。
+Yes. The file source supports UTF-8 / GBK / ANSI with a 1 MiB limit.
 
-### 支持串口十六进制发送吗？
+### Does it support hex send over serial?
 
-不支持。Hex 收发用于 TCP/UDP/MQTT，NetAssistant 不提供串口功能。
+No. Hex send/receive works over TCP/UDP/MQTT; NetAssistant has no serial support.
 
-## 相关页面
+## Related pages
 
-- [Modbus TCP 调试](/modbus-tcp)
-- [TCP 调试工具](/tcp-debug-tool)
-- [TCP 粘包与拆包](/tcp-sticky-packet)
-- [Windows 网络调试助手](/windows-network-debug-tool)
-- [全部功能](/features)
-- [下载 NetAssistant](/download)
+- [Modbus TCP debugging](/modbus-tcp)
+- [TCP debug tool](/tcp-debug-tool)
+- [TCP sticky packets](/tcp-sticky-packet)
+- [Windows network debugging tool](/windows-network-debug-tool)
+- [All features](/features)
+- [Download NetAssistant](/download)

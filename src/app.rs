@@ -2383,20 +2383,7 @@ impl NetAssistantApp {
         self.local_port_input
             .update(cx, |i, cx| i.set_value(String::new(), window, cx));
         // 占位符跟随当前语言(placeholder 在 InputState 创建时固化, 语言切换后需刷新)
-        self.local_address_input.update(cx, |i, cx| {
-            i.set_placeholder(
-                t!("new_connection.local_address_placeholder").to_string(),
-                window,
-                cx,
-            )
-        });
-        self.local_port_input.update(cx, |i, cx| {
-            i.set_placeholder(
-                t!("new_connection.local_port_placeholder").to_string(),
-                window,
-                cx,
-            )
-        });
+        self.refresh_placeholders(window, cx);
 
         // 命令式打开对话框(由 Root 管理层叠)
         open_new_connection_dialog(cx.entity().downgrade(), window, cx);
@@ -2557,20 +2544,7 @@ impl NetAssistantApp {
             )
         });
         // 占位符跟随当前语言(placeholder 在 InputState 创建时固化, 语言切换后需刷新)
-        self.local_address_input.update(cx, |i, cx| {
-            i.set_placeholder(
-                t!("new_connection.local_address_placeholder").to_string(),
-                window,
-                cx,
-            )
-        });
-        self.local_port_input.update(cx, |i, cx| {
-            i.set_placeholder(
-                t!("new_connection.local_port_placeholder").to_string(),
-                window,
-                cx,
-            )
-        });
+        self.refresh_placeholders(window, cx);
         self.edit_message_input_mode = message_input_mode;
         self.edit_decoder_config = decoder;
         self.show_connection_advanced = true;
@@ -5013,6 +4987,76 @@ impl NetAssistantApp {
     /// 切换界面语言：设置运行时 locale、同步组件库内置文案，并持久化到配置
     /// 切换后 cx.notify() 触发整棵视图树重渲染，t! 宏取词即生效
     /// 注意: placeholder 在 InputState 创建时固化，不随重渲染更新，需在此逐个刷新
+    /// 刷新全部常驻输入框的 placeholder
+    ///
+    /// placeholder 在 Input/Editor 创建时固化，语言切换后不随重渲染更新，
+    /// 需显式重新设置；打开新建/编辑连接对话框时也会调用一次以对齐当前语言
+    fn refresh_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        macro_rules! set_ph {
+            ($input:expr, $key:literal) => {
+                $input.update(cx, |i, cx| {
+                    i.set_placeholder(t!($key).to_string(), window, cx)
+                });
+            };
+        }
+
+        // 连接对话框
+        set_ph!(self.connection_name_input, "new_connection.name_placeholder");
+        set_ph!(self.rename_connection_input, "rename_connection.placeholder");
+        set_ph!(
+            self.local_address_input,
+            "new_connection.local_address_placeholder"
+        );
+        set_ph!(
+            self.local_port_input,
+            "new_connection.local_port_placeholder"
+        );
+        set_ph!(
+            self.mqtt_username_input,
+            "new_connection.mqtt_optional_placeholder"
+        );
+        set_ph!(
+            self.mqtt_password_input,
+            "new_connection.mqtt_optional_placeholder"
+        );
+        set_ph!(
+            self.mqtt_session_expiry_input,
+            "new_connection.mqtt_optional_placeholder"
+        );
+        set_ph!(
+            self.mqtt_receive_max_input,
+            "new_connection.mqtt_optional_placeholder"
+        );
+        set_ph!(
+            self.mqtt_tls_ca_input,
+            "new_connection.mqtt_tls_ca_placeholder"
+        );
+        set_ph!(
+            self.mqtt_tls_cert_input,
+            "new_connection.mqtt_optional_placeholder"
+        );
+        set_ph!(
+            self.mqtt_tls_key_input,
+            "new_connection.mqtt_optional_placeholder"
+        );
+        set_ph!(
+            self.mqtt_tls_alpn_input,
+            "new_connection.mqtt_optional_placeholder"
+        );
+
+        // 工具箱各组输入
+        set_ph!(self.toolbox_convert_text_input, "toolbox.convert_text_placeholder");
+        set_ph!(self.toolbox_convert_hex_input, "toolbox.convert_hex_placeholder");
+        set_ph!(self.toolbox_checksum_input, "toolbox.checksum_placeholder");
+        set_ph!(self.toolbox_hash_input, "toolbox.hash_placeholder");
+        set_ph!(self.toolbox_hash_compare_input, "toolbox.hash_compare_placeholder");
+        set_ph!(self.toolbox_ts_input, "toolbox.time_ts_placeholder");
+        set_ph!(self.toolbox_date_input, "toolbox.time_date_placeholder");
+        set_ph!(self.toolbox_json_input, "toolbox.json_placeholder");
+        set_ph!(self.toolbox_base64_input, "toolbox.b64_placeholder");
+        set_ph!(self.toolbox_url_input, "toolbox.url_placeholder");
+    }
+
     pub fn set_language(&mut self, language: &str, window: &mut Window, cx: &mut Context<Self>) {
         rust_i18n::set_locale(language);
         gpui_kit::component::set_locale(language);
@@ -5020,7 +5064,10 @@ impl NetAssistantApp {
         self.show_language_menu = false;
         info!("界面语言已切换为: {}", language);
 
-        // 刷新各 tab 常驻输入框的 placeholder（搜索框 / 消息输入框）
+        // 刷新常驻输入框（连接对话框 / 工具箱）的 placeholder
+        self.refresh_placeholders(window, cx);
+
+        // 刷新各 tab 常驻输入框的 placeholder（搜索框 / 消息输入框 / MQTT 发布主题）
         for tab in self.connection_tabs.values_mut() {
             tab.search_input.update(cx, |input, cx| {
                 input.set_placeholder(
@@ -5038,6 +5085,13 @@ impl NetAssistantApp {
                     )
                 });
             }
+            tab.mqtt_publish_topic_input.update(cx, |input, cx| {
+                input.set_placeholder(
+                    t!("connection_tab.mqtt_publish_topic_placeholder").to_string(),
+                    window,
+                    cx,
+                )
+            });
         }
 
         cx.notify();

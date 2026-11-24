@@ -1,6 +1,6 @@
 ---
-title: MQTT TLS 配置 - 证书校验、自签证书与双向认证
-description: NetAssistant 的 MQTT TLS 设置：系统根证书、自定义 CA 与跳过校验三种模式，自签证书、双向认证（mTLS）、ALPN 配置与常见握手错误处理，适用于 3.1.1 与 5.0。
+title: "MQTT TLS Setup: Verification, Self-Signed Certs and mTLS"
+description: "NetAssistant MQTT TLS settings: system roots, custom CA or skipped verification, self-signed certs, mutual TLS and ALPN, plus fixes for TLS handshake errors."
 head:
   - - script
     - type: application/ld+json
@@ -11,85 +11,85 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "MQTT TLS 用哪个端口？",
+            "name": "Which port does MQTT TLS use?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "TLS 通常使用 8883，明文 MQTT 使用 1883。端口和 TLS 开关必须匹配，否则会在握手阶段失败。"
+              "text": "TLS usually uses 8883, while plain MQTT uses 1883. The port and the TLS switch must match, or the connection fails during the handshake."
             }
           },
           {
             "@type": "Question",
-            "name": "自签证书一定要跳过校验吗？",
+            "name": "Do self-signed certificates always require skipping verification?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "不一定。更安全的做法是把自建 CA 的 PEM 填入「自定义 CA」，由客户端校验 Broker 证书链；只有在临时联调、无法拿到 CA 文件时才使用跳过校验。"
+              "text": "No. A safer option is to put the private CA's PEM into Custom CA so the client verifies the broker certificate chain; skip verification only for temporary debugging when no CA file is available."
             }
           },
           {
             "@type": "Question",
-            "name": "跳过证书校验安全吗？",
+            "name": "Is skipping certificate verification safe?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "跳过校验后传输仍然加密，但不验证 Broker 身份，存在中间人攻击风险，只适合本地或测试环境，不要用于生产。"
+              "text": "Traffic is still encrypted, but the broker's identity is not verified, so man-in-the-middle attacks are possible. Use it only for local or test environments, never in production."
             }
           },
           {
             "@type": "Question",
-            "name": "支持 MQTT 双向认证吗？",
+            "name": "Does NetAssistant support mutual TLS?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "支持。填写客户端证书与私钥（PEM，支持 PKCS#8、PKCS#1 与 SEC1，需成对）即可完成 mTLS；Broker 侧需要开启 require_certificate 等对应配置。"
+              "text": "Yes. Provide a client certificate and private key (PEM, PKCS#8, PKCS#1 or SEC1, as a pair) to complete mTLS; the broker must enable the matching setting such as require_certificate."
             }
           },
           {
             "@type": "Question",
-            "name": "证书内容会保存到配置里吗？",
+            "name": "Is certificate content saved in the configuration?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "不会。连接配置只保存证书文件路径，不保存 PEM 内容，私钥不会写入配置文件。"
+              "text": "No. The connection configuration stores only certificate file paths, not PEM content, and the private key is never written to the config file."
             }
           }
         ]
       }
 ---
 
-# MQTT TLS：证书校验、自签证书与双向认证
+# MQTT TLS: Certificate Verification, Self-Signed Certificates and Mutual TLS
 
-公网、云 IoT 平台和多数生产 Broker 都要求加密连接。NetAssistant 的 MQTT 客户端在 3.1.1 与 5.0 下使用同一套 TLS 设置：填好端口、选择校验方式，需要时再补客户端证书即可。证书过期、主机名不匹配、证书链不受信任都会给出可读的握手错误。
+Public networks, cloud IoT platforms and most production brokers require encrypted connections. NetAssistant's MQTT client uses the same TLS settings under 3.1.1 and 5.0: set the port, choose a verification mode, and add a client certificate when needed. Expired certificates, hostname mismatches and untrusted chains all surface as readable handshake errors.
 
-## 什么时候需要 TLS
+## When you need TLS
 
-- Broker 监听 8883，或云平台明确要求 `mqtts`
-- 报文经过公网、公司外部网络或不可信 Wi-Fi
-- 平台要求双向认证，客户端必须出示证书
-- 本地联调可以用明文 1883；一旦验证通过，上线前再切 TLS 复测
+- The broker listens on 8883, or the cloud platform explicitly requires `mqtts`
+- Traffic crosses the public internet, an external corporate network or untrusted Wi-Fi
+- The platform requires mutual TLS, so the client must present a certificate
+- Local debugging can use plaintext 1883; once it works, switch to TLS and retest before going live
 
-> NetAssistant 只支持 TCP 直连，不支持 MQTT over WebSocket，因此 `wss://` 地址无法连接。
+> NetAssistant only supports direct TCP connections and not MQTT over WebSocket, so `wss://` addresses cannot be used.
 
-## 三种证书校验方式
+## Three certificate verification modes
 
-| 模式 | 适用场景 | 行为 |
+| Mode | When to use | Behavior |
 | ---- | ---- | ---- |
-| 系统根证书（默认） | Broker 使用公共 CA 签发证书 | 按操作系统信任链校验 |
-| 自定义 CA | 自建 CA、私有证书链、企业内网 CA | 读取指定 PEM 文件校验证书链 |
-| 跳过校验 | 临时联调、无法获取 CA 的自签证书 | 不验证身份，传输仍然加密 |
+| System roots (default) | The broker certificate is issued by a public CA | Verified against the operating system trust chain |
+| Custom CA | Private CA, private certificate chain, corporate internal CA | Reads the specified PEM file to verify the chain |
+| Verification skipped | Temporary debugging, self-signed certificate without a CA file | No identity check; traffic is still encrypted |
 
-「自定义 CA」比「跳过校验」更安全：既保留加密，也能确认连到的是正确的 Broker。选择后点「选择文件」回填 PEM 路径即可。
+Custom CA is safer than skipped verification: it keeps encryption and still confirms you reached the right broker. After selecting it, click "Choose file" to fill in the PEM path.
 
-## 配置步骤
+## Configuration steps
 
-1. 端口填 Broker 的 TLS 端口，通常是 `8883`。
-2. 打开 **TLS** 开关。
-3. 按证书来源选择校验方式；使用私有 CA 时填入 CA 的 PEM 文件。
-4. Broker 要求双向认证时，填写客户端证书与私钥（PEM，成对）。
-5. Broker 要求 ALPN 时填写协议名，多个用逗号分隔，例如 `mqtt`；留空则不下发。
-6. 点击连接，握手失败时按提示检查端口、证书链与主机名。
+1. Set the port to the broker's TLS port, usually `8883`.
+2. Turn on the **TLS** switch.
+3. Choose a verification mode for the certificate source; for a private CA, point to its PEM file.
+4. If the broker requires mutual TLS, fill in the client certificate and private key (PEM, as a pair).
+5. If the broker requires ALPN, enter the protocol names, comma-separated, for example `mqtt`; leave it empty to omit them.
+6. Click connect; if the handshake fails, check the port, certificate chain and hostname as prompted.
 
-证书路径会随连接配置保存，但 PEM 内容与私钥不会写入配置。
+Certificate paths are saved with the connection configuration, but the PEM content and private key are not written to it.
 
-## 用自签证书测试
+## Testing with a self-signed certificate
 
-本地验证 TLS 时，可以生成一张带 SAN 的证书，避免主机名不匹配：
+To verify TLS locally, generate a certificate with a SAN to avoid a hostname mismatch:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
@@ -98,7 +98,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
   -addext "subjectAltName=DNS:broker.local,IP:127.0.0.1"
 ```
 
-Mosquitto 侧的最小 TLS 配置：
+A minimal TLS configuration for Mosquitto:
 
 ```ini
 listener 8883
@@ -107,66 +107,66 @@ certfile server.crt
 keyfile server.key
 ```
 
-客户端连接 `broker.local:8883`（或 `127.0.0.1:8883`），校验方式选「自定义 CA」并指向 CA 文件。使用单张自签证书时，也可以直接把 `server.crt` 当作 CA 文件。只有在拿不到任何证书文件时才用「跳过校验」。
+Connect the client to `broker.local:8883` (or `127.0.0.1:8883`), choose Custom CA and point it at the CA file. If you use a single self-signed certificate, you can also point directly at `server.crt` as the CA file. Use "Verification skipped" only when no certificate file can be obtained.
 
-## 双向认证（mTLS）
+## Mutual TLS (mTLS)
 
-Broker 开启 `require_certificate true` 后，客户端必须提供由可信 CA 签发的证书：
+After the broker enables `require_certificate true`, the client must present a certificate signed by a trusted CA:
 
-1. 准备客户端证书、私钥，以及签发它的 CA。
-2. 在连接配置中填写客户端证书与私钥路径，两者必须成对。
-3. 私钥支持 PKCS#8、PKCS#1 与 SEC1 格式；加密私钥需要先解密或提供未加密版本。
-4. CA 校验方式仍按 Broker 证书的来源选择，客户端证书与 Broker 证书可以来自同一 CA。
+1. Prepare the client certificate, private key and the CA that issued it.
+2. In the connection settings, fill in the client certificate and private key paths; the two must be provided as a pair.
+3. Private keys in PKCS#8, PKCS#1 and SEC1 format are supported; encrypted keys must be decrypted first or supplied in an unencrypted version.
+4. Choose the CA verification mode according to where the broker certificate comes from; the client and broker certificates may come from the same CA.
 
 ## ALPN
 
-部分 Broker 或网关要求 TLS ALPN 协商。把协议名填入 ALPN 输入框，多个用英文逗号分隔；不确定时留空，让客户端不下发 ALPN，避免协商失败。
+Some brokers or gateways require TLS ALPN negotiation. Enter the protocol names in the ALPN field, separated by commas; when unsure, leave it empty so the client does not send ALPN and negotiation cannot fail.
 
-## 常见握手错误
+## Common handshake errors
 
-| 提示 | 原因 | 处理 |
+| Message | Cause | Fix |
 | ---- | ---- | ---- |
-| certificate verify failed / unknown CA | 证书链不受信任 | 改用「自定义 CA」并填对 CA 文件 |
-| hostname mismatch | 连接地址不在证书 SAN 中 | 使用证书里的域名连接，或重签证书 |
-| certificate expired | 证书过期 | 更新证书；联调时可临时跳过校验 |
-| Broker 要求客户端证书 | 开启了双向认证 | 补客户端证书与私钥 |
-| handshake failure | 端口与 TLS 开关不匹配、ALPN 不一致 | 8883 开 TLS、1883 关 TLS，按 Broker 要求填 ALPN |
+| certificate verify failed / unknown CA | The certificate chain is not trusted | Switch to Custom CA and point at the correct CA file |
+| hostname mismatch | The connection address is not in the certificate SAN | Connect using the domain in the certificate, or reissue the certificate |
+| certificate expired | The certificate has expired | Renew it; skip verification temporarily while debugging |
+| Broker requires a client certificate | Mutual TLS is enabled | Add the client certificate and private key |
+| handshake failure | Port and TLS switch do not match, or ALPN differs | Enable TLS on 8883 and disable it on 1883; set ALPN as the broker requires |
 
-更多连接与订阅问题见 [MQTT 排错](/mqtt-troubleshooting)。
+For more connection and subscription issues, see [MQTT troubleshooting](/mqtt-troubleshooting).
 
-## 安全建议
+## Security recommendations
 
-- 生产环境不要使用「跳过校验」
-- 私钥单独存放并限制文件权限，不要提交到仓库
-- 证书到期前轮换，客户端只需更新文件路径
-- 优先使用带 SAN 的证书，避免依赖 Common Name
-- 双向认证时，为每台设备或每个开发者签发独立客户端证书
+- Do not use "Verification skipped" in production
+- Store private keys separately with restricted file permissions and never commit them to a repository
+- Rotate certificates before they expire; the client only needs the updated file paths
+- Prefer certificates with a SAN instead of relying on the Common Name
+- With mutual TLS, issue a separate client certificate for each device or developer
 
-## 常见问题
+## FAQ
 
-### MQTT TLS 用哪个端口？
+### Which port does MQTT TLS use?
 
-TLS 通常使用 8883，明文 MQTT 使用 1883。端口和 TLS 开关必须匹配，否则会在握手阶段失败。
+TLS usually uses 8883 and plain MQTT uses 1883. The port and the TLS switch must match, or the connection fails during the handshake.
 
-### 自签证书一定要跳过校验吗？
+### Do self-signed certificates always require skipping verification?
 
-不一定。把自建 CA 的 PEM 填入「自定义 CA」更安全；只有临时联调、拿不到 CA 文件时才跳过校验。
+No. Putting the private CA's PEM into Custom CA is safer; skip verification only for temporary debugging when no CA file is available.
 
-### 跳过证书校验安全吗？
+### Is skipping certificate verification safe?
 
-传输仍然加密，但不验证 Broker 身份，存在中间人风险，只适合本地或测试环境。
+Traffic is still encrypted, but the broker's identity is not verified, so a man-in-the-middle risk remains. It suits local or test environments only.
 
-### 支持 MQTT 双向认证吗？
+### Does NetAssistant support mutual TLS?
 
-支持。填写成对的客户端证书与私钥（PEM）即可；Broker 侧需开启对应配置。
+Yes. Provide a paired client certificate and private key (PEM); the broker side must enable the corresponding setting.
 
-### 证书内容会保存到配置里吗？
+### Is certificate content saved in the configuration?
 
-不会。配置只保存文件路径，不保存 PEM 内容，私钥不会写入配置文件。
+No. The configuration stores only file paths, not PEM content, and the private key is never written to the config file.
 
-## 相关页面
+## Related pages
 
-- TLS 参数与界面说明：[MQTT 客户端](/mqtt-client#mqtt-over-tls)
-- 握手失败排查：[MQTT 排错](/mqtt-troubleshooting#tls-握手失败)
-- 从连接到第一条消息：[MQTT 调试教程](/guide/mqtt)
-- [下载 NetAssistant](/download)
+- TLS settings and UI reference: [MQTT client](/mqtt-client#mqtt-over-tls)
+- Handshake failure troubleshooting: [MQTT troubleshooting](/mqtt-troubleshooting#tls-handshake-failures)
+- From connecting to the first message: [MQTT tutorial](/guide/mqtt)
+- [Download NetAssistant](/download)

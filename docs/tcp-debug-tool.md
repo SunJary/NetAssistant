@@ -1,6 +1,6 @@
 ---
-title: TCP 调试工具 - 收发、解码与自动回复
-description: NetAssistant 的 TCP 调试工具：客户端与服务端双模式、IPv4/IPv6、四种解码器切分消息，支持 Hex 收发、周期发送与自动回复，跨平台免费。
+title: TCP Debug Tool - Send, Receive & Framing
+description: TCP client and server modes, IPv4/IPv6, four framing decoders, hex payloads, periodic send and reply rules. Free for Windows, macOS and Linux.
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "轻量级 TCP 调试工具，支持 TCP 客户端与服务端、四种解码器、Hex 收发、周期发送与自动回复。",
+            "description": "A lightweight TCP debug tool with client and server modes, four framing decoders, hex payloads, periodic send and automatic replies.",
             "url": "https://netassistant.trydo.top/tcp-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,42 +24,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "TCP 调试工具主要解决什么问题？",
+                "name": "What problems does a TCP debug tool solve?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "确认能否连上、把字节流正确切分成消息、快速验证应答链路，这三件事覆盖了大部分 TCP 联调场景。"
+                  "text": "Reachability, correct message framing and quick response validation—the core of most TCP integration work."
                 }
               },
               {
                 "@type": "Question",
-                "name": "为什么收到的数据粘在一起？",
+                "name": "Why does received data arrive glued together?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "TCP 是字节流，没有消息边界。需要在应用层用换行、长度前缀或 JSON 等规则切分，并选择对应解码器。"
+                  "text": "TCP is a byte stream with no message boundaries. Define boundaries with newlines, length prefixes or JSON and select the matching decoder."
                 }
               },
               {
                 "@type": "Question",
-                "name": "能同时做 TCP 客户端和服务端吗？",
+                "name": "Can it act as both client and server?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以。两种模式都支持，服务端模式下可同时管理多个客户端连接。"
+                  "text": "Yes, both modes are supported, and server mode can manage multiple client connections."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持 IPv6 吗？",
+                "name": "Does it support IPv6?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。客户端与服务端均可使用 IPv4 或 IPv6 地址。"
+                  "text": "Yes, both client and server modes work with IPv4 and IPv6."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持串口或 Unix Socket 吗？",
+                "name": "Does it support serial ports or Unix sockets?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "不支持。NetAssistant 只处理 TCP/UDP/MQTT 网络连接，不包含串口调试功能。"
+                  "text": "No. NetAssistant handles TCP/UDP/MQTT network connections only and is not a serial port tool."
                 }
               }
             ]
@@ -68,89 +68,89 @@ head:
       }
 ---
 
-# TCP 调试工具：连得上、分得清、回得快
+# TCP Debug Tool: Connect, Frame and Respond
 
-做设备联调或后端接口验证时，TCP 调试通常卡在三个地方：端口连不上、收到的数据粘成一团、发出去后收不到对端应答。NetAssistant 把这三件事放在同一个界面里：客户端/服务端连接、四种解码器、回复规则与周期发送。
+TCP debugging usually gets stuck in three places: the port will not connect, the received bytes look glued together, or a request gets no reply. NetAssistant puts all three in one window: client and server connections, four decoders, reply rules and periodic send.
 
-> [下载 NetAssistant](/download) · [TCP/UDP 调试指南](/guide/tcp-udp) · [全部功能](/features)
+> [Download NetAssistant](/download) · [TCP/UDP debugging guide](/guide/tcp-udp) · [All features](/features)
 
-![TCP 客户端收发界面](../assets/screenshots/zh/screenshot_client.png)
+![TCP client send and receive](../assets/screenshots/en/screenshot_client.png)
 
-## 适合谁
+## Who it is for
 
-- **嵌入式/物联网开发者**：和 TCP 设备、网关、DTU 联调，验证上报与下发
-- **后端开发者**：不写临时脚本，直接向自研服务发一条原始报文看响应
-- **协议对接人员**：按十六进制逐字节检查帧结构
-- **需要模拟服务端的人**：本地监听端口，等待设备主动连接
+- **Embedded and IoT developers**: debug TCP devices, gateways and DTUs
+- **Backend developers**: send a raw request to an in-house service without writing a throwaway script
+- **Protocol integrators**: inspect frames byte by byte in hex
+- **Anyone simulating a server**: listen on a local port and wait for devices to connect
 
-## 三种连接方式
+## Three connection modes
 
-| 模式 | 用途 | 典型场景 |
+| Mode | Purpose | Typical use |
 | ---- | ---- | ---- |
-| TCP 客户端 | 主动连接远端地址与端口 | 连接设备、测试服务端接口 |
-| TCP 服务端 | 监听本地端口并接受连接 | 模拟设备接入平台、验证客户端行为 |
-| 本地地址绑定 | 指定发出的源地址或监听网卡 | 多网卡环境、验证来源 IP |
+| TCP client | Connect to a remote address and port | Devices, service endpoints |
+| TCP server | Listen on a local port and accept connections | Simulate a platform or device service |
+| Local bind | Choose the source address or NIC | Multi-NIC hosts, source IP checks |
 
-地址支持 IPv4 与 IPv6。服务端模式下可以同时保留多个客户端连接，每个连接独立收发。
+Both IPv4 and IPv6 are supported. Server mode keeps multiple client connections, each with its own send and receive view.
 
-## 解决粘包：四种解码器
+## Fixing sticky packets: four decoders
 
-TCP 不保证消息边界，解码器决定“什么时候算一条完整消息”。NetAssistant 提供原始数据、行分隔、长度前缀与 JSON 四种解码器，分别对应自定义二进制、文本协议、TLV 与 JSON over TCP 场景。
+TCP does not preserve message boundaries. The decoder decides when a message is complete. NetAssistant offers raw, line, length-prefix and JSON decoders for custom binary, text protocols, TLV and JSON over TCP.
 
-选错解码器是“消息看起来粘在一起”的最常见原因。解码器只影响显示与切分，不改变实际发送的字节。四种方案的边界规则、优缺点与排查步骤见 [TCP 粘包与拆包](/tcp-sticky-packet)。
+Picking the wrong decoder is the most common reason messages look stuck together. Decoders only affect display and splitting; they do not change the bytes sent. See [TCP sticky packets](/tcp-sticky-packet) for boundary rules, trade-offs and troubleshooting.
 
-![TCP 解码器设置](../assets/screenshots/zh/screenshot_tcp_decoder.png)
+![TCP decoder settings](../assets/screenshots/en/screenshot_tcp_decoder.png)
 
-## 发送与自动响应
+## Sending and automatic replies
 
-- **文本 / Hex 模式**：文本模式按 UTF-8 发送，Hex 模式直接发送原始字节，适合含 `0x00` 或不可打印字符的帧
-- **结尾字符**：可选择继承、无、LF 或 CRLF，避免手动补换行
-- **周期发送**：按固定间隔重复发送，用于心跳、保活或模拟设备上报
-- **回复规则**：按字节、JSON、正则或校验和条件匹配收到的消息，自动回一条预设内容，用来模拟服务端应答
-- **文件数据源**：从本地文件读取报文填入发送框，支持 UTF-8 / GBK / ANSI 编码，单文件上限 1 MiB
+- **Text / hex modes**: text is sent as UTF-8; hex sends raw bytes, which matters for frames containing `0x00` or non-printable data
+- **Line ending**: inherit, none, LF or CRLF, so you do not have to append newlines by hand
+- **Periodic send**: repeat at a fixed interval for heartbeats or simulated device reports
+- **Reply rules**: match incoming messages by bytes, JSON, regex or checksum and reply automatically to emulate a server
+- **File source**: load a payload from a local file with UTF-8 / GBK / ANSI decoding, up to 1 MiB
 
-![自动回复规则](../assets/screenshots/zh/screenshot_reply_rule.png)
+![Automatic reply rule](../assets/screenshots/en/screenshot_reply_rule.png)
 
-## 快速开始
+## Quick start
 
-1. 新建连接，选择 TCP 客户端或服务端
-2. 客户端填写目标地址与端口；服务端填写监听端口
-3. 连接成功后，在接收区选择与协议匹配的解码器
-4. 在发送区输入报文，选择文本或 Hex 模式
-5. 需要自动应答时添加回复规则，需要持续上报时开启周期发送
-6. 用搜索定位关键字，或把当前记录导出为 TXT / JSON / CSV
+1. Create a connection and choose TCP client or server
+2. Enter the target address and port, or the local listening port
+3. After connecting, pick the decoder that matches your protocol
+4. Type a payload and choose text or hex mode
+5. Add a reply rule for automatic responses, or enable periodic send
+6. Use search to find a message or export the log as TXT / JSON / CSV
 
-## 什么时候需要压测
+## When to stress test
 
-功能验证通过后，如果还想知道服务端能扛多少并发、p99 延迟是多少，用内置的 [TCP/UDP 压力测试](/tcp-stress-test)，不必再装 JMeter 或 wrk。
+Once functional checks pass, use the built-in [TCP/UDP stress testing](/tcp-stress-test) to measure QPS and p99 latency instead of installing JMeter or wrk.
 
-## 常见问题
+## FAQ
 
-### TCP 调试工具主要解决什么问题？
+### What problems does a TCP debug tool solve?
 
-确认能否连上、把字节流正确切分成消息、快速验证应答链路，这三件事覆盖了大部分 TCP 联调场景。
+Reachability, correct message framing and quick response validation—the core of most TCP integration work.
 
-### 为什么收到的数据粘在一起？
+### Why does received data arrive glued together?
 
-TCP 是字节流，没有消息边界。需要在应用层用换行、长度前缀或 JSON 等规则切分，并选择对应解码器。
+TCP is a byte stream with no message boundaries. Define boundaries with newlines, length prefixes or JSON and select the matching decoder.
 
-### 能同时做 TCP 客户端和服务端吗？
+### Can it act as both client and server?
 
-可以。两种模式都支持，服务端模式下可同时管理多个客户端连接。
+Yes, both modes are supported, and server mode can manage multiple client connections.
 
-### 支持 IPv6 吗？
+### Does it support IPv6?
 
-支持。客户端与服务端均可使用 IPv4 或 IPv6 地址。
+Yes, both client and server modes work with IPv4 and IPv6.
 
-### 支持串口或 Unix Socket 吗？
+### Does it support serial ports or Unix sockets?
 
-不支持。NetAssistant 只处理 TCP/UDP/MQTT 网络连接，不包含串口调试功能。
+No. NetAssistant handles TCP/UDP/MQTT network connections only and is not a serial port tool.
 
-## 相关页面
+## Related pages
 
-- [TCP 粘包与拆包](/tcp-sticky-packet)
-- [TCP/UDP 压力测试](/tcp-stress-test)
-- [Socket 调试工具](/socket-debug-tool)
-- [UDP 调试工具](/udp-debug-tool)
-- [Windows 网络调试助手](/windows-network-debug-tool)
-- [全部功能](/features)
+- [TCP sticky packets](/tcp-sticky-packet)
+- [TCP/UDP stress testing](/tcp-stress-test)
+- [Socket debug tool](/socket-debug-tool)
+- [UDP debug tool](/udp-debug-tool)
+- [Windows network debugging tool](/windows-network-debug-tool)
+- [All features](/features)

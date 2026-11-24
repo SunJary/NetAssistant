@@ -5,304 +5,804 @@ stress_config:
   title:
     zh-CN: 压测配置
     en: Stress Test Configuration
+    ja: "負荷テスト設定"
+    de: "Lasttest-Konfiguration"
+    ru: "Настройка нагрузочного теста"
+    pt-BR: "Configuração do teste de carga"
+    es: "Configuración de prueba de carga"
   target_label:
     zh-CN: 目标
     en: Target
+    ja: "ターゲット"
+    de: "Ziel"
+    ru: "Цель"
+    pt-BR: "Destino"
+    es: "Destino"
   payload_placeholder:
     zh-CN: "输入报文内容, 支持 ${seq} ${timestamp} 等变量..."
     en: "Enter payload content, supports variables like ${seq} and ${timestamp}..."
+    ja: "ペイロードを入力（${seq} ${timestamp} などの変数に対応）…"
+    de: "Nutzdaten eingeben, unterstützt Variablen wie ${seq} und ${timestamp}…"
+    ru: "Введите содержимое пакета, поддерживаются переменные ${seq}, ${timestamp} и др.…"
+    pt-BR: "Digite o conteúdo do payload; aceita variáveis como ${seq} e ${timestamp}…"
+    es: "Introduzca el contenido del mensaje; admite variables como ${seq} y ${timestamp}…"
   concurrency_label:
     zh-CN: 并发客户端数
     en: Concurrent Clients
+    ja: "同時クライアント数"
+    de: "Gleichzeitige Clients"
+    ru: "Число одновременных клиентов"
+    pt-BR: "Clientes simultâneos"
+    es: "Clientes simultáneos"
   send_interval_label:
     zh-CN: "发包间隔(ms, 0=不限速)"
     en: "Send Interval (ms, 0 = unlimited)"
+    ja: "送信間隔(ms, 0=無制限)"
+    de: "Sendeintervall (ms, 0 = unbegrenzt)"
+    ru: "Интервал отправки (мс, 0 = без ограничения)"
+    pt-BR: "Intervalo de envio (ms, 0 = sem limite)"
+    es: "Intervalo de envío (ms, 0 = sin límite)"
   payload_content_label:
     zh-CN: 报文内容
     en: Payload Content
+    ja: "ペイロード内容"
+    de: "Nutzdaten"
+    ru: "Содержимое пакета"
+    pt-BR: "Conteúdo do payload"
+    es: "Contenido del mensaje"
   trailer_label:
     zh-CN: 结尾字符
     en: Trailer
+    ja: "終端文字"
+    de: "Abschlusszeichen"
+    ru: "Окончание"
+    pt-BR: "Caractere final"
+    es: "Carácter final"
   trailer_hint:
     zh-CN: 发送时在每包末尾追加；「继承」跟随消息面板的结尾设置
     en: Appended to each packet on send; "Inherit" follows the message panel's trailer setting
+    ja: "送信時に各パケットの末尾へ付加します。「継承」はメッセージパネルの終端設定に従います"
+    de: "Wird beim Senden an jedes Paket angehängt; „Vererbt“ folgt der Abschluss-Einstellung des Nachrichtenbereichs"
+    ru: "Добавляются в конец каждого пакета при отправке; «Наследовать» использует настройку «Окончание» панели сообщений"
+    pt-BR: "Anexado ao fim de cada pacote no envio; \"Herdar\" segue a configuração de sufixo do painel de mensagens"
+    es: "Se añade al final de cada paquete al enviar; «Heredar» sigue el ajuste de carácter final del panel de mensajes"
   trailer_inherit:
     zh-CN: 继承
     en: Inherit
+    ja: "継承"
+    de: "Vererbt"
+    ru: "Наследовать"
+    pt-BR: "Herdar"
+    es: "Heredar"
   trailer_none:
     zh-CN: 无
     en: None
+    ja: "なし"
+    de: "Keine"
+    ru: "Нет"
+    pt-BR: "Nenhum"
+    es: "Ninguno"
   trailer_lf:
     zh-CN: LF
     en: LF
+    ja: "LF"
+    de: "LF"
+    ru: "LF"
+    pt-BR: "LF"
+    es: "LF"
   trailer_crlf:
     zh-CN: CRLF
     en: CRLF
+    ja: "CRLF"
+    de: "CRLF"
+    ru: "CRLF"
+    pt-BR: "CRLF"
+    es: "CRLF"
   reading_port_config:
     zh-CN: "ⓘ 正在读取系统临时端口配置…"
     en: "ⓘ Reading system ephemeral port configuration…"
+    ja: "ⓘ システムの一時ポート設定を読み込み中…"
+    de: "ⓘ Systemkonfiguration für temporäre Ports wird gelesen…"
+    ru: "ⓘ Чтение конфигурации временных портов системы…"
+    pt-BR: "ⓘ Lendo a configuração de portas efêmeras do sistema…"
+    es: "ⓘ Leyendo la configuración de puertos efímeros del sistema…"
   port_config_unreadable:
     zh-CN: "⚠ 未能读取系统临时端口配置，建议点击「重新检测」或查看「端口说明」手动获取"
     en: "⚠ Failed to read the system ephemeral port configuration. Click 'Re-detect' or see 'Port Help' to get it manually"
+    ja: "⚠ システムの一時ポート設定を読み取れませんでした。「再検出」をクリックするか、「ポートの説明」を参照して手動で取得してください"
+    de: "⚠ Die Systemkonfiguration für temporäre Ports konnte nicht gelesen werden. Klicken Sie auf „Neu erkennen“ oder sehen Sie unter „Port-Info“ nach, um sie manuell zu ermitteln"
+    ru: "⚠ Не удалось прочитать конфигурацию временных портов системы. Нажмите «Повторить поиск» или откройте «Справку по портам», чтобы узнать вручную"
+    pt-BR: "⚠ Não foi possível ler a configuração de portas efêmeras do sistema. Clique em \"Detectar novamente\" ou consulte \"Ajuda de portas\" para obtê-la manualmente"
+    es: "⚠ No se pudo leer la configuración de puertos efímeros del sistema. Haga clic en «Volver a detectar» o consulte «Ayuda de puertos» para obtenerla manualmente"
   port_warning_detected:
     zh-CN: "⚠ 检测到临时端口 %{count} 个 (%{start}-%{end}), 并发超过 %{max} 可能连接失败"
     en: "⚠ Detected %{count} ephemeral ports (%{start}-%{end}); concurrency above %{max} may cause connection failures"
+    ja: "⚠ 一時ポートが %{count} 個 (%{start}-%{end}) 検出されました。同時接続が %{max} を超えると接続に失敗する可能性があります"
+    de: "⚠ %{count} temporäre Ports erkannt (%{start}-%{end}), bei Parallelität über %{max} können Verbindungen fehlschlagen"
+    ru: "⚠ Обнаружено %{count} временных портов (%{start}-%{end}); при числе подключений выше %{max} возможны сбои соединения"
+    pt-BR: "⚠ Detectadas %{count} portas efêmeras (%{start}-%{end}); concorrência acima de %{max} pode causar falhas de conexão"
+    es: "⚠ Se detectaron %{count} puertos efímeros (%{start}-%{end}); una concurrencia superior a %{max} puede provocar fallos de conexión"
   port_help_link:
     zh-CN: 端口说明
     en: Port Help
+    ja: "ポートの説明"
+    de: "Port-Info"
+    ru: "Справка по портам"
+    pt-BR: "Ajuda de portas"
+    es: "Ayuda de puertos"
   re_detect_link:
     zh-CN: 重新检测
     en: Re-detect
+    ja: "再検出"
+    de: "Neu erkennen"
+    ru: "Повторить поиск"
+    pt-BR: "Detectar novamente"
+    es: "Volver a detectar"
   stress_mode_label:
     zh-CN: 压测模式
     en: Stress Test Mode
+    ja: "負荷テストモード"
+    de: "Lasttest-Modus"
+    ru: "Режим нагрузки"
+    pt-BR: "Modo do teste"
+    es: "Modo de prueba de carga"
   mode_throughput:
     zh-CN: "吞吐(只发不等)"
     en: "Throughput (send only)"
+    ja: "スループット(送信のみ)"
+    de: "Durchsatz (nur senden)"
+    ru: "Пропускная способность (только отправка)"
+    pt-BR: "Vazão (só envia)"
+    es: "Rendimiento (solo enviar)"
   mode_pingpong:
     zh-CN: "往返(测RTT)"
     en: "Ping-Pong (RTT)"
+    ja: "ピンポン(RTT 測定)"
+    de: "Ping-Pong (RTT)"
+    ru: "Запрос-ответ (RTT)"
+    pt-BR: "Ping-pong (RTT)"
+    es: "Ida y vuelta (RTT)"
   connection_mode_label:
     zh-CN: 连接模式
     en: Connection Mode
+    ja: "接続モード"
+    de: "Verbindungsmodus"
+    ru: "Режим подключения"
+    pt-BR: "Modo de conexão"
+    es: "Modo de conexión"
   mode_long_connection:
     zh-CN: 长连接
     en: Long Connection
+    ja: "ロングコネクション"
+    de: "Persistente Verbindung"
+    ru: "Длинное соединение"
+    pt-BR: "Conexão longa"
+    es: "Conexión persistente"
   mode_short_connection:
     zh-CN: 短连接
     en: Short Connection
+    ja: "ショートコネクション"
+    de: "Kurze Verbindung"
+    ru: "Короткое соединение"
+    pt-BR: "Conexão curta"
+    es: "Conexión corta"
   insert_variable:
     zh-CN: 插入变量
     en: Insert Variable
+    ja: "変数を挿入"
+    de: "Variable einfügen"
+    ru: "Вставить переменную"
+    pt-BR: "Inserir variável"
+    es: "Insertar variable"
   mode_text:
     zh-CN: 文本
     en: Text
+    ja: "テキスト"
+    de: "Text"
+    ru: "Текст"
+    pt-BR: "Texto"
+    es: "Texto"
   more_settings_collapse:
     zh-CN: "▼ 更多设置"
     en: "▼ More Settings"
+    ja: "▼ 詳細設定"
+    de: "▼ Weitere Einstellungen"
+    ru: "▼ Дополнительные настройки"
+    pt-BR: "▼ Mais configurações"
+    es: "▼ Más ajustes"
   more_settings_expand:
     zh-CN: "▶ 更多设置"
     en: "▶ More Settings"
+    ja: "▶ 詳細設定"
+    de: "▶ Weitere Einstellungen"
+    ru: "▶ Дополнительные настройки"
+    pt-BR: "▶ Mais configurações"
+    es: "▶ Más ajustes"
   qps_limit_label:
     zh-CN: "全局QPS限制(留空=不限)"
     en: "Global QPS Limit (empty = unlimited)"
+    ja: "全体 QPS 制限(空欄=無制限)"
+    de: "Globales QPS-Limit (leer = unbegrenzt)"
+    ru: "Общий лимит QPS (пусто = без ограничения)"
+    pt-BR: "Limite global de QPS (vazio = sem limite)"
+    es: "Límite global de QPS (vacío = sin límite)"
   timeout_label:
     zh-CN: "超时(ms)"
     en: "Timeout (ms)"
+    ja: "タイムアウト(ms)"
+    de: "Timeout (ms)"
+    ru: "Тайм-аут (мс)"
+    pt-BR: "Timeout (ms)"
+    es: "Tiempo de espera (ms)"
   stop_condition_label:
     zh-CN: 停止条件
     en: Stop Condition
+    ja: "停止条件"
+    de: "Stoppbedingung"
+    ru: "Условие остановки"
+    pt-BR: "Condição de parada"
+    es: "Condición de parada"
   stop_duration:
     zh-CN: 限时
     en: Duration
+    ja: "時間指定"
+    de: "Dauer"
+    ru: "По времени"
+    pt-BR: "Duração"
+    es: "Duración"
   stop_count:
     zh-CN: 定量
     en: Count
+    ja: "パケット数指定"
+    de: "Anzahl"
+    ru: "По количеству"
+    pt-BR: "Quantidade"
+    es: "Cantidad"
   stop_either:
     zh-CN: 先到先停
     en: Whichever First
+    ja: "早い方で停止"
+    de: "Was zuerst eintritt"
+    ru: "Что наступит раньше"
+    pt-BR: "O que vier primeiro"
+    es: "La que ocurra primero"
   stop_manual:
     zh-CN: 手动
     en: Manual
+    ja: "手動"
+    de: "Manuell"
+    ru: "Вручную"
+    pt-BR: "Manual"
+    es: "Manual"
   stop_duration_secs:
     zh-CN: "限时(秒)"
     en: "Duration (s)"
+    ja: "時間指定(秒)"
+    de: "Dauer (s)"
+    ru: "По времени (с)"
+    pt-BR: "Duração (s)"
+    es: "Duración (s)"
   stop_count_total:
     zh-CN: "定量(总发包数)"
     en: "Count (total packets)"
+    ja: "パケット数指定(総送信数)"
+    de: "Anzahl (Pakete gesamt)"
+    ru: "По количеству (всего пакетов)"
+    pt-BR: "Quantidade (total de pacotes)"
+    es: "Cantidad (paquetes totales)"
   ramp_up_label:
     zh-CN: "阶梯 ramp-up"
     en: "Staged ramp-up"
+    ja: "段階的ランプアップ"
+    de: "Stufenweises Ramp-up"
+    ru: "Постепенный ramp-up"
+    pt-BR: "Ramp-up gradual"
+    es: "Ramp-up escalonado"
   ramp_up_duration:
     zh-CN: "爬升时长(秒)"
     en: "Ramp-up Duration (s)"
+    ja: "ランプアップ時間(秒)"
+    de: "Ramp-up-Dauer (s)"
+    ru: "Длительность нарастания (с)"
+    pt-BR: "Duração do ramp-up (s)"
+    es: "Duración del ramp-up (s)"
   auto_reconnect_label:
     zh-CN: 断线自动重连
     en: Auto Reconnect on Disconnect
+    ja: "切断時に自動再接続"
+    de: "Automatisch neu verbinden bei Abbruch"
+    ru: "Автопереподключение при разрыве"
+    pt-BR: "Reconectar automaticamente ao cair"
+    es: "Reconexión automática al desconectarse"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   start_stress:
     zh-CN: 开始压测
     en: Start Stress Test
+    ja: "負荷テスト開始"
+    de: "Lasttest starten"
+    ru: "Начать тест"
+    pt-BR: "Iniciar teste"
+    es: "Iniciar prueba de carga"
 
 decoder_selection:
   title:
     zh-CN: 选择解码器
     en: Select Decoder
+    ja: "デコーダーの選択"
+    de: "Decoder auswählen"
+    ru: "Выбор декодера"
+    pt-BR: "Selecionar decodificador"
+    es: "Seleccionar decodificador"
   decoder_type_label:
     zh-CN: 解码器类型
     en: Decoder Type
+    ja: "デコーダーの種類"
+    de: "Decoder-Typ"
+    ru: "Тип декодера"
+    pt-BR: "Tipo de decodificador"
+    es: "Tipo de decodificador"
   kind_bytes:
     zh-CN: 原始数据
     en: Raw Data
+    ja: "生データ"
+    de: "Rohdaten"
+    ru: "Исходные данные"
+    pt-BR: "Dados brutos"
+    es: "Datos sin procesar"
   kind_line_based:
     zh-CN: 换行符
     en: Newline
+    ja: "改行"
+    de: "Zeilenumbruch"
+    ru: "Перевод строки"
+    pt-BR: "Quebra de linha"
+    es: "Salto de línea"
   kind_length_delimited:
     zh-CN: 长度前缀
     en: Length Prefix
+    ja: "長さプレフィックス"
+    de: "Längenpräfix"
+    ru: "Префикс длины"
+    pt-BR: "Prefixo de comprimento"
+    es: "Prefijo de longitud"
   kind_fixed_length:
     zh-CN: 固定长度
     en: Fixed Length
+    ja: "固定長"
+    de: "Feste Länge"
+    ru: "Фиксированная длина"
+    pt-BR: "Comprimento fixo"
+    es: "Longitud fija"
   kind_json:
     zh-CN: JSON
     en: JSON
+    ja: "JSON"
+    de: "JSON"
+    ru: "JSON"
+    pt-BR: "JSON"
+    es: "JSON"
   desc_bytes:
     zh-CN: "不进行任何解码处理, 收到的数据原样输出"
     en: "No decoding; received data is output as-is"
+    ja: "デコード処理を行わず、受信データをそのまま出力します"
+    de: "Keine Dekodierung; empfangene Daten werden unverändert ausgegeben"
+    ru: "Без декодирования: полученные данные выводятся как есть"
+    pt-BR: "Sem decodificação; os dados recebidos são exibidos como estão"
+    es: "Sin decodificación; los datos recibidos se muestran tal cual"
   desc_line_based:
     zh-CN: '按换行符(\n 或 \r\n)分割消息'
     en: 'Split messages by newline (\n or \r\n)'
+    ja: "改行 (\\n または \\r\\n) でメッセージを分割します"
+    de: "Nachrichten werden an Zeilenumbrüchen (\\n oder \\r\\n) getrennt"
+    ru: "Разделение сообщений по переводу строки (\\n или \\r\\n)"
+    pt-BR: "Divide as mensagens por quebra de linha (\\n ou \\r\\n)"
+    es: "Divide los mensajes por saltos de línea (\\n o \\r\\n)"
   desc_length_delimited:
     zh-CN: "报文头部含长度字段, 按其值读取对应字节作为一条消息"
     en: "The packet header contains a length field; bytes read according to its value form one message"
+    ja: "パケットの先頭に長さフィールドがあり、その値に従って読み取ったバイトを 1 メッセージとします"
+    de: "Der Paketkopf enthält ein Längenfeld; die entsprechend seinem Wert gelesenen Bytes bilden eine Nachricht"
+    ru: "В заголовке пакета есть поле длины; байты в количестве, равном его значению, образуют одно сообщение"
+    pt-BR: "O cabeçalho do pacote tem um campo de comprimento; os bytes lidos conforme seu valor formam uma mensagem"
+    es: "La cabecera del paquete contiene un campo de longitud; los bytes leídos según su valor forman un mensaje"
   desc_fixed_length:
     zh-CN: "每 N 字节切分为一帧, 无长度字段"
     en: "Splits a frame every N bytes; no length field"
+    ja: "N バイトごとに 1 フレームへ分割します。長さフィールドはありません"
+    de: "Alle N Bytes wird ein Frame abgetrennt; kein Längenfeld"
+    ru: "Каждые N байт образуют кадр; поле длины отсутствует"
+    pt-BR: "Divide um quadro a cada N bytes; sem campo de comprimento"
+    es: "Divide en una trama cada N bytes, sin campo de longitud"
   desc_json:
     zh-CN: "按 JSON 边界解析消息"
     en: "Parses messages by JSON boundaries"
+    ja: "JSON の区切りに従ってメッセージを解析します"
+    de: "Nachrichten werden anhand der JSON-Grenzen aufgeteilt"
+    ru: "Разбор сообщений по границам JSON"
+    pt-BR: "Analisa as mensagens pelos limites do JSON"
+    es: "Analiza los mensajes según los límites de JSON"
   length_prefix_params:
     zh-CN: 长度前缀参数
     en: Length Prefix Parameters
+    ja: "長さプレフィックスのパラメータ"
+    de: "Parameter für Längenpräfix"
+    ru: "Параметры префикса длины"
+    pt-BR: "Parâmetros do prefixo de comprimento"
+    es: "Parámetros del prefijo de longitud"
   frame_structure:
     zh-CN: "帧结构: [跳过 offset 字节][长度字段 len 字节][载荷 (长度值+调整值) 字节]"
     en: "Frame structure: [skip offset bytes][length field of len bytes][payload of (length value + adjustment) bytes]"
+    ja: "フレーム構造: [offset バイトをスキップ][長さフィールド len バイト][ペイロード (長さ値+調整値) バイト]"
+    de: "Framestruktur: [Offset-Bytes überspringen][Längenfeld mit len Bytes][Nutzdaten mit (Längenwert + Anpassung) Bytes]"
+    ru: "Структура кадра: [пропуск offset байт][поле длины len байт][полезная нагрузка (значение длины + поправка) байт]"
+    pt-BR: "Estrutura do quadro: [salto de offset bytes][campo de comprimento de len bytes][payload de (valor do comprimento + ajuste) bytes]"
+    es: "Estructura de trama: [se omiten offset bytes][campo de longitud de len bytes][carga útil de (valor de longitud + ajuste) bytes]"
   length_field_offset:
     zh-CN: 长度字段偏移量
     en: Length Field Offset
+    ja: "長さフィールドのオフセット"
+    de: "Offset des Längenfelds"
+    ru: "Смещение поля длины"
+    pt-BR: "Deslocamento do campo de comprimento"
+    es: "Desplazamiento del campo de longitud"
   length_field_offset_hint:
     zh-CN: "长度字段前跳过的字节数(如魔术位)"
     en: "Bytes skipped before the length field (e.g. magic bytes)"
+    ja: "長さフィールドの前にスキップするバイト数(マジックバイトなど)"
+    de: "Vor dem Längenfeld übersprungene Bytes (z. B. Magic-Bytes)"
+    ru: "Число байт, пропускаемых перед полем длины (например, magic-байты)"
+    pt-BR: "Bytes ignorados antes do campo de comprimento (ex.: bytes mágicos)"
+    es: "Bytes omitidos antes del campo de longitud (p. ej., bytes mágicos)"
   length_field_length:
     zh-CN: 长度字段长度
     en: Length Field Length
+    ja: "長さフィールドの長さ"
+    de: "Länge des Längenfelds"
+    ru: "Длина поля длины"
+    pt-BR: "Tamanho do campo de comprimento"
+    es: "Longitud del campo de longitud"
   length_field_length_hint:
     zh-CN: "长度字段占用字节数(1/2/4/8)"
     en: "Bytes occupied by the length field (1/2/4/8)"
+    ja: "長さフィールドが占めるバイト数(1/2/4/8)"
+    de: "Vom Längenfeld belegte Bytes (1/2/4/8)"
+    ru: "Число байт, занимаемых полем длины (1/2/4/8)"
+    pt-BR: "Bytes ocupados pelo campo de comprimento (1/2/4/8)"
+    es: "Bytes que ocupa el campo de longitud (1/2/4/8)"
   length_adjustment:
     zh-CN: 长度调整值
     en: Length Adjustment
+    ja: "長さ調整値"
+    de: "Längenanpassung"
+    ru: "Поправка длины"
+    pt-BR: "Ajuste de comprimento"
+    es: "Ajuste de longitud"
   length_adjustment_hint:
     zh-CN: "长度值与实际载荷的差值, 可为负数"
     en: "Difference between the length value and the actual payload; can be negative"
+    ja: "長さ値と実際のペイロードとの差。負の値も可"
+    de: "Differenz zwischen Längenwert und tatsächlichen Nutzdaten; kann negativ sein"
+    ru: "Разница между значением длины и фактической нагрузкой; может быть отрицательной"
+    pt-BR: "Diferença entre o valor do comprimento e o payload real; pode ser negativa"
+    es: "Diferencia entre el valor de longitud y la carga útil real; puede ser negativa"
   max_frame_length:
     zh-CN: 最大帧长度
     en: Max Frame Length
+    ja: "最大フレーム長"
+    de: "Maximale Framelänge"
+    ru: "Максимальная длина кадра"
+    pt-BR: "Comprimento máximo do quadro"
+    es: "Longitud máxima de trama"
   max_frame_length_hint:
     zh-CN: "单帧最大字节数, 超出则丢弃"
     en: "Maximum bytes per frame; excess data is discarded"
+    ja: "1 フレームの最大バイト数。超過分は破棄されます"
+    de: "Maximale Bytes pro Frame; darüber hinausgehende Daten werden verworfen"
+    ru: "Максимум байт в кадре; излишек отбрасывается"
+    pt-BR: "Máximo de bytes por quadro; o excedente é descartado"
+    es: "Máximo de bytes por trama; el exceso se descarta"
   length_includes_self:
     zh-CN: 长度值包含长度字段本身
     en: Length Value Includes the Length Field Itself
+    ja: "長さ値に長さフィールド自体を含む"
+    de: "Längenwert enthält das Längenfeld selbst"
+    ru: "Значение длины включает само поле длины"
+    pt-BR: "O valor do comprimento inclui o próprio campo de comprimento"
+    es: "El valor de longitud incluye el propio campo de longitud"
   length_includes_self_hint:
     zh-CN: "勾选后长度值表示总帧长, 不勾选表示载荷长度"
     en: "When checked, the length value is the total frame length; unchecked, it is the payload length"
+    ja: "チェック時は長さ値がフレーム全体の長さ、未チェック時はペイロードの長さを表します"
+    de: "Wenn aktiviert, gibt der Längenwert die gesamte Framelänge an; sonst die Nutzdatenlänge"
+    ru: "Если включено, значение длины — общая длина кадра; если выключено — длина нагрузки"
+    pt-BR: "Marcado, o valor é o comprimento total do quadro; desmarcado, é o comprimento do payload"
+    es: "Si se marca, el valor de longitud es la longitud total de la trama; si no, es la longitud de la carga útil"
   byte_order:
     zh-CN: 字节序
     en: Byte Order
+    ja: "バイトオーダー"
+    de: "Byte-Reihenfolge"
+    ru: "Порядок байтов"
+    pt-BR: "Ordem dos bytes"
+    es: "Orden de bytes"
   byte_order_big:
     zh-CN: 大端序
     en: Big Endian
+    ja: "ビッグエンディアン"
+    de: "Big Endian"
+    ru: "Big-endian"
+    pt-BR: "Big endian"
+    es: "Big Endian"
   byte_order_little:
     zh-CN: 小端序
     en: Little Endian
+    ja: "リトルエンディアン"
+    de: "Little Endian"
+    ru: "Little-endian"
+    pt-BR: "Little endian"
+    es: "Little Endian"
   keep_full_frame:
     zh-CN: 保留完整帧
     en: Keep Full Frame
+    ja: "フレーム全体を保持"
+    de: "Vollständigen Frame behalten"
+    ru: "Сохранять полный кадр"
+    pt-BR: "Manter quadro completo"
+    es: "Conservar la trama completa"
   keep_full_frame_hint:
     zh-CN: "勾选后输出包含偏移与长度字段的完整帧, 不勾选仅输出载荷"
     en: "When checked, output includes the full frame with offset and length field; unchecked, only the payload"
+    ja: "チェック時はオフセットと長さフィールドを含むフレーム全体を出力し、未チェック時はペイロードのみ出力します"
+    de: "Wenn aktiviert, enthält die Ausgabe den vollständigen Frame mit Offset und Längenfeld; sonst nur die Nutzdaten"
+    ru: "Если включено, вывод содержит полный кадр со смещением и полем длины; если выключено — только нагрузку"
+    pt-BR: "Marcado, a saída inclui o quadro completo com deslocamento e campo de comprimento; desmarcado, apenas o payload"
+    es: "Si se marca, la salida incluye la trama completa con el desplazamiento y el campo de longitud; si no, solo la carga útil"
   fixed_length_params:
     zh-CN: 固定长度参数
     en: Fixed Length Parameters
+    ja: "固定長のパラメータ"
+    de: "Parameter für feste Länge"
+    ru: "Параметры фиксированной длины"
+    pt-BR: "Parâmetros de comprimento fixo"
+    es: "Parámetros de longitud fija"
   frame_length:
     zh-CN: "帧长度(字节)"
     en: "Frame Length (bytes)"
+    ja: "フレーム長(バイト)"
+    de: "Framelänge (Bytes)"
+    ru: "Длина кадра (байт)"
+    pt-BR: "Comprimento do quadro (bytes)"
+    es: "Longitud de trama (bytes)"
   fixed_length_hint:
     zh-CN: "每凑够指定字节数切分出一帧, 不够则等待后续数据"
     en: "A frame is split out once the specified number of bytes is accumulated; otherwise it waits for more data"
+    ja: "指定バイト数が揃うたびに 1 フレームを切り出します。不足時は後続のデータを待ちます"
+    de: "Ein Frame wird abgetrennt, sobald die angegebene Byteanzahl erreicht ist; andernfalls wird auf weitere Daten gewartet"
+    ru: "Кадр выделяется при накоплении заданного числа байт; иначе ожидаются новые данные"
+    pt-BR: "Um quadro é separado quando a quantidade de bytes é atingida; caso contrário, aguarda mais dados"
+    es: "Se extrae una trama al acumular el número de bytes indicado; si no, se esperan más datos"
   fixed_length_flush_hint:
     zh-CN: "断开连接时, 缓冲区内不足一帧的剩余数据会被强制输出"
     en: "On disconnect, leftover buffer data shorter than one frame is flushed as output"
+    ja: "切断時は、バッファ内の 1 フレーム未満の残りデータが強制出力されます"
+    de: "Beim Trennen der Verbindung werden verbleibende Pufferdaten, die kürzer als ein Frame sind, zwangsweise ausgegeben"
+    ru: "При отключении остаток буфера, не образующий полный кадр, принудительно выводится"
+    pt-BR: "Ao desconectar, os dados restantes no buffer menores que um quadro são emitidos à força"
+    es: "Al desconectarse, los datos restantes del búfer menores que una trama se vuelcan como salida"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   confirm:
     zh-CN: 确定
     en: OK
+    ja: "OK"
+    de: "OK"
+    ru: "ОК"
+    pt-BR: "OK"
+    es: "Aceptar"
 
 port_limit_help:
   title:
     zh-CN: 临时端口与压测并发上限说明
     en: "Ephemeral Ports and Stress Test Concurrency Limits"
+    ja: "一時ポートと負荷テスト同時接続上限の説明"
+    de: "Temporäre Ports und Obergrenze der Lasttest-Parallelität"
+    ru: "Временные порты и пределы параллельности нагрузочного теста"
+    pt-BR: "Portas efêmeras e limites de concorrência do teste de carga"
+    es: "Puertos efímeros y límites de concurrencia de la prueba de carga"
   close:
     zh-CN: 关闭
     en: Close
+    ja: "閉じる"
+    de: "Schließen"
+    ru: "Закрыть"
+    pt-BR: "Fechar"
+    es: "Cerrar"
   reading_port_config:
     zh-CN: "正在读取系统端口配置…"
     en: "Reading system port configuration…"
+    ja: "システムのポート設定を読み込み中…"
+    de: "System-Portkonfiguration wird gelesen…"
+    ru: "Чтение конфигурации портов системы…"
+    pt-BR: "Lendo a configuração de portas do sistema…"
+    es: "Leyendo la configuración de puertos del sistema…"
   port_range_summary:
     zh-CN: "%{start}-%{end} (共约 %{count} 个端口)"
     en: "%{start}-%{end} (about %{count} ports in total)"
+    ja: "%{start}-%{end} (合計約 %{count} ポート)"
+    de: "%{start}-%{end} (insgesamt ca. %{count} Ports)"
+    ru: "%{start}-%{end} (всего около %{count} портов)"
+    pt-BR: "%{start}-%{end} (cerca de %{count} portas no total)"
+    es: "%{start}-%{end} (unos %{count} puertos en total)"
   detect_failed:
     zh-CN: "获取失败, 请点击「重新检测」或使用下方命令手动查看"
     en: "Detection failed. Click 'Re-detect' or use the command below to check manually"
+    ja: "取得に失敗しました。「再検出」をクリックするか、以下のコマンドで手動確認してください"
+    de: "Ermittlung fehlgeschlagen. Klicken Sie auf „Neu erkennen“ oder prüfen Sie es manuell mit dem Befehl unten"
+    ru: "Не удалось определить. Нажмите «Повторить поиск» или проверьте вручную командой ниже"
+    pt-BR: "Falha na detecção. Clique em \"Detectar novamente\" ou use o comando abaixo para verificar manualmente"
+    es: "Error en la detección. Haga clic en «Volver a detectar» o use el comando siguiente para consultar el rango manualmente"
   section_current_range:
     zh-CN: 当前临时端口范围
     en: "Current Ephemeral Port Range"
+    ja: "現在の一時ポート範囲"
+    de: "Aktueller Bereich temporärer Ports"
+    ru: "Текущий диапазон временных портов"
+    pt-BR: "Faixa atual de portas efêmeras"
+    es: "Rango actual de puertos efímeros"
   re_detect:
     zh-CN: 重新检测
     en: Re-detect
+    ja: "再検出"
+    de: "Neu erkennen"
+    ru: "Повторить поиск"
+    pt-BR: "Detectar novamente"
+    es: "Volver a detectar"
   section_time_wait:
     zh-CN: "TCP 短连接与 TIME_WAIT"
     en: "TCP Short Connections and TIME_WAIT"
+    ja: "TCP ショートコネクションと TIME_WAIT"
+    de: "TCP-Kurzverbindungen und TIME_WAIT"
+    ru: "Короткие TCP-соединения и TIME_WAIT"
+    pt-BR: "Conexões curtas TCP e TIME_WAIT"
+    es: "Conexiones TCP cortas y TIME_WAIT"
   time_wait_desc_1:
     zh-CN: "TCP 连接由四元组 (源IP, 源端口, 目标IP, 目标端口) 唯一标识。压测同一目标时，源IP / 目标IP / 目标端口三者固定，只有源端口可变。短连接关闭后，该四元组进入 TIME_WAIT 状态 (60-120秒)，期间此端口不能被同一程序用于连接同一目标。"
     en: "A TCP connection is uniquely identified by the 4-tuple (source IP, source port, target IP, target port). When stress testing the same target, the source IP, target IP, and target port are fixed, leaving only the source port variable. After a short connection closes, the 4-tuple enters the TIME_WAIT state (60-120 seconds), during which this port cannot be used by the same program to connect to the same target."
+    ja: "TCP 接続は 4 タプル (送信元 IP、送信元ポート、宛先 IP、宛先ポート) で一意に識別されます。同一ターゲットへの負荷テストでは送信元 IP・宛先 IP・宛先ポートが固定され、変化するのは送信元ポートのみです。ショートコネクションを閉じると、その 4 タプルは TIME_WAIT 状態 (60～120 秒) に入り、その間このポートを同じプログラムから同じターゲットへの接続に使用できません。"
+    de: "Eine TCP-Verbindung wird eindeutig durch das 4-Tupel (Quell-IP, Quellport, Ziel-IP, Zielport) identifiziert. Beim Lasttest auf dasselbe Ziel sind Quell-IP, Ziel-IP und Zielport fest, nur der Quellport ist variabel. Nach dem Schließen einer kurzen Verbindung geht das 4-Tupel in den Zustand TIME_WAIT über (60-120 Sekunden); währenddessen kann dieser Port vom selben Programm nicht für eine Verbindung zum selben Ziel verwendet werden."
+    ru: "TCP-соединение однозначно определяется четвёркой (IP источника, порт источника, IP назначения, порт назначения). При нагрузке на одну цель IP источника, IP назначения и порт назначения фиксированы, меняется только порт источника. После закрытия короткого соединения эта четвёрка переходит в состояние TIME_WAIT (60-120 секунд), и в течение этого времени порт нельзя использовать той же программе для подключения к той же цели."
+    pt-BR: "Uma conexão TCP é identificada de forma única pela 4-tupla (IP de origem, porta de origem, IP de destino, porta de destino). Ao testar o mesmo destino, o IP de origem, o IP de destino e a porta de destino são fixos, restando apenas a porta de origem variável. Após o fechamento de uma conexão curta, essa 4-tupla entra no estado TIME_WAIT (60-120 segundos), período em que a porta não pode ser usada pelo mesmo programa para conectar ao mesmo destino."
+    es: "Una conexión TCP se identifica de forma única mediante la cuádrupla (IP de origen, puerto de origen, IP de destino, puerto de destino). Al realizar una prueba de carga sobre el mismo destino, la IP de origen, la IP de destino y el puerto de destino son fijos, y solo varía el puerto de origen. Tras cerrarse una conexión corta, la cuádrupla entra en estado TIME_WAIT (60-120 segundos), durante el cual ese puerto no puede ser usado por el mismo programa para conectar con el mismo destino."
   time_wait_desc_2:
     zh-CN: "稳态下短连接占用的端口数 ≈ 并发数 × (TIME_WAIT时长 / 发包间隔)。发包间隔越短，端口消耗放大越严重，建议改用长连接模式或降低并发。"
     en: "In steady state, ports used by short connections ≈ concurrency × (TIME_WAIT duration / send interval). The shorter the send interval, the more severe the port consumption amplification. Consider switching to long connection mode or lowering concurrency."
+    ja: "定常状態でショートコネクションが使用するポート数 ≈ 同時接続数 × (TIME_WAIT 時間 / 送信間隔)。送信間隔が短いほどポート消費が拡大するため、ロングコネクションモードへの変更や同時接続数の削減を推奨します。"
+    de: "Im Beharrungszustand gilt: von kurzen Verbindungen belegte Ports ≈ Parallelität × (TIME_WAIT-Dauer / Sendeintervall). Je kürzer das Sendeintervall, desto stärker steigt der Portverbrauch. Wechseln Sie daher möglichst in den Modus für persistente Verbindungen oder reduzieren Sie die Parallelität."
+    ru: "В установившемся режиме число портов, занятых короткими соединениями, ≈ параллельность × (длительность TIME_WAIT / интервал отправки). Чем короче интервал, тем сильнее растёт расход портов. Рекомендуем перейти на длинные соединения или снизить параллельность."
+    pt-BR: "Em regime estável, as portas usadas por conexões curtas ≈ concorrência × (duração do TIME_WAIT / intervalo de envio). Quanto menor o intervalo de envio, maior a amplificação do consumo de portas; considere usar o modo de conexão longa ou reduzir a concorrência."
+    es: "En estado estacionario, los puertos ocupados por conexiones cortas ≈ concurrencia × (duración de TIME_WAIT / intervalo de envío). Cuanto más corto sea el intervalo de envío, mayor será la amplificación del consumo de puertos; se recomienda cambiar al modo de conexión persistente o reducir la concurrencia."
   udp_desc:
     zh-CN: "UDP 不走 TCP 连接，无 TIME_WAIT 问题，端口消耗仅与并发数相关。"
     en: "UDP does not establish TCP connections and has no TIME_WAIT issue; port consumption depends only on concurrency."
+    ja: "UDP は TCP 接続を使用しないため TIME_WAIT の問題はなく、ポート消費は同時接続数のみに依存します。"
+    de: "UDP baut keine TCP-Verbindungen auf und hat kein TIME_WAIT-Problem; der Portverbrauch hängt nur von der Parallelität ab."
+    ru: "UDP не устанавливает TCP-соединений, проблемы TIME_WAIT нет; расход портов зависит только от параллельности."
+    pt-BR: "O UDP não estabelece conexões TCP e não tem problema de TIME_WAIT; o consumo de portas depende apenas da concorrência."
+    es: "UDP no establece conexiones TCP y no tiene el problema de TIME_WAIT; el consumo de puertos depende solo de la concurrencia."
   section_over_limit:
     zh-CN: 超过端口上限会怎样
     en: "What Happens When the Port Limit Is Exceeded"
+    ja: "ポート上限を超えるとどうなるか"
+    de: "Was passiert bei Überschreitung der Port-Obergrenze"
+    ru: "Что произойдёт при превышении лимита портов"
+    pt-BR: "O que acontece ao exceder o limite de portas"
+    es: "Qué ocurre al superar el límite de puertos"
   over_limit_desc:
     zh-CN: "并发超过临时端口范围时，新建连接会报 AddrNotAvailable (Linux/macOS) 或 WSAEADDRINUSE (Windows) 错误，压测的连接失败率会骤升。NetAssistant 会在压测结束后的 stress_failure_*.log 中给出诊断建议。"
     en: "When concurrency exceeds the ephemeral port range, new connections fail with AddrNotAvailable (Linux/macOS) or WSAEADDRINUSE (Windows), and the connection failure rate of the stress test spikes. NetAssistant provides diagnostic suggestions in stress_failure_*.log after the stress test ends."
+    ja: "同時接続数が一時ポート範囲を超えると、新規接続時に AddrNotAvailable (Linux/macOS) または WSAEADDRINUSE (Windows) エラーが発生し、負荷テストの接続失敗率が急上昇します。NetAssistant は負荷テスト終了後に stress_failure_*.log へ診断のヒントを出力します。"
+    de: "Übersteigt die Parallelität den Bereich der temporären Ports, schlagen neue Verbindungen mit AddrNotAvailable (Linux/macOS) oder WSAEADDRINUSE (Windows) fehl, und die Verbindungsfehlerrate des Lasttests steigt sprunghaft an. NetAssistant gibt nach dem Lasttest in stress_failure_*.log Diagnosehinweise aus."
+    ru: "Если параллельность превышает диапазон временных портов, новые соединения завершаются ошибкой AddrNotAvailable (Linux/macOS) или WSAEADDRINUSE (Windows), и доля неудачных соединений резко возрастает. По завершении теста NetAssistant даёт рекомендации в файле stress_failure_*.log."
+    pt-BR: "Quando a concorrência excede a faixa de portas efêmeras, novas conexões falham com AddrNotAvailable (Linux/macOS) ou WSAEADDRINUSE (Windows), e a taxa de falha de conexão do teste dispara. O NetAssistant fornece sugestões de diagnóstico em stress_failure_*.log após o término do teste."
+    es: "Cuando la concurrencia supera el rango de puertos efímeros, las nuevas conexiones fallan con AddrNotAvailable (Linux/macOS) o WSAEADDRINUSE (Windows), y la tasa de fallos de conexión de la prueba de carga se dispara. NetAssistant ofrece sugerencias de diagnóstico en stress_failure_*.log al finalizar la prueba de carga."
   note_permission:
     zh-CN: "注: 应用自身的端口范围检测全程只需普通用户权限，不涉及提权。调优命令需用户自行以管理员身份执行。"
     en: "Note: The app's own port range detection only requires normal user privileges throughout, with no elevation involved. Tuning commands must be executed by the user with administrator privileges."
+    ja: "注: アプリ自身のポート範囲検出はすべて一般ユーザー権限で実行でき、権限昇格は不要です。チューニングコマンドはユーザー自身が管理者権限で実行してください。"
+    de: "Hinweis: Die Erkennung des Portbereichs durch die Anwendung erfordert durchgängig nur normale Benutzerrechte, ohne Rechteausweitung. Tuning-Befehle müssen Sie selbst mit Administratorrechten ausführen."
+    ru: "Примечание: проверка диапазона портов выполняется с обычными правами пользователя, без повышения привилегий. Команды настройки нужно выполнять самостоятельно от имени администратора."
+    pt-BR: "Obs.: a detecção da faixa de portas do próprio aplicativo exige apenas privilégios de usuário comum, sem elevação. Os comandos de ajuste devem ser executados pelo usuário com privilégios de administrador."
+    es: "Nota: la detección del rango de puertos de la propia aplicación solo requiere privilegios de usuario normal en todo momento, sin elevación. Los comandos de ajuste debe ejecutarlos el usuario con privilegios de administrador."
   section_view_range:
     zh-CN: 查看当前端口范围
     en: "View Current Port Range"
+    ja: "現在のポート範囲を表示"
+    de: "Aktuellen Portbereich anzeigen"
+    ru: "Просмотр текущего диапазона портов"
+    pt-BR: "Ver a faixa de portas atual"
+    es: "Ver el rango de puertos actual"
   section_tune_range:
     zh-CN: 调大端口范围
     en: "Increase Port Range"
+    ja: "ポート範囲を拡大"
+    de: "Portbereich vergrößern"
+    ru: "Увеличение диапазона портов"
+    pt-BR: "Ampliar a faixa de portas"
+    es: "Ampliar el rango de puertos"
   perm_normal_user_exec:
     zh-CN: 普通用户可执行
     en: "Executable by a normal user"
+    ja: "一般ユーザーで実行可能"
+    de: "Als normaler Benutzer ausführbar"
+    ru: "Доступно обычному пользователю"
+    pt-BR: "Executável por usuário comum"
+    es: "Ejecutable por un usuario normal"
   perm_normal_user_read:
     zh-CN: 普通用户可读
     en: "Readable by a normal user"
+    ja: "一般ユーザーで閲覧可能"
+    de: "Als normaler Benutzer lesbar"
+    ru: "Доступно для чтения обычному пользователю"
+    pt-BR: "Legível por usuário comum"
+    es: "Legible por un usuario normal"
   platform_not_supported:
     zh-CN: 当前平台不支持自动检测
     en: "Automatic detection is not supported on this platform"
+    ja: "現在のプラットフォームでは自動検出に対応していません"
+    de: "Automatische Erkennung wird auf dieser Plattform nicht unterstützt"
+    ru: "Автоматическое определение не поддерживается на этой платформе"
+    pt-BR: "A detecção automática não é suportada nesta plataforma"
+    es: "La detección automática no es compatible con esta plataforma"
   tune_windows_tcp:
     zh-CN: "需管理员 CMD; 将 TCP 临时端口扩展为 10000-65535"
     en: "Requires admin CMD; extends TCP ephemeral ports to 10000-65535"
+    ja: "管理者 CMD が必要。TCP の一時ポートを 10000-65535 に拡張します"
+    de: "Erfordert Admin-CMD; erweitert die TCP-Ports für temporäre Verbindungen auf 10000-65535"
+    ru: "Нужна консоль администратора; расширяет временные порты TCP до 10000-65535"
+    pt-BR: "Requer CMD de administrador; amplia as portas efêmeras TCP para 10000-65535"
+    es: "Requiere CMD de administrador; amplía los puertos efímeros TCP a 10000-65535"
   tune_windows_ipv6:
     zh-CN: "需管理员 CMD; IPv6 也一并调大 (推荐)"
     en: "Requires admin CMD; also extends IPv6 (recommended)"
+    ja: "管理者 CMD が必要。IPv6 も併せて拡張します (推奨)"
+    de: "Erfordert Admin-CMD; erweitert auch IPv6 (empfohlen)"
+    ru: "Нужна консоль администратора; IPv6 также расширяется (рекомендуется)"
+    pt-BR: "Requer CMD de administrador; também amplia o IPv6 (recomendado)"
+    es: "Requiere CMD de administrador; también amplía IPv6 (recomendado)"
   tune_linux_sysctl:
     zh-CN: "需 sudo; 将临时端口扩展为 10000-65535"
     en: "Requires sudo; extends ephemeral ports to 10000-65535"
+    ja: "sudo が必要。一時ポートを 10000-65535 に拡張します"
+    de: "Erfordert sudo; erweitert die temporären Ports auf 10000-65535"
+    ru: "Нужен sudo; расширяет временные порты до 10000-65535"
+    pt-BR: "Requer sudo; amplia as portas efêmeras para 10000-65535"
+    es: "Requiere sudo; amplía los puertos efímeros a 10000-65535"
   tune_linux_conf:
     zh-CN: "需 sudo; 写入配置文件, 重启后生效"
     en: "Requires sudo; writes to a config file, takes effect after reboot"
+    ja: "sudo が必要。設定ファイルに書き込み、再起動後に反映されます"
+    de: "Erfordert sudo; schreibt in eine Konfigurationsdatei, wirksam nach Neustart"
+    ru: "Нужен sudo; запись в файл конфигурации, вступает в силу после перезагрузки"
+    pt-BR: "Requer sudo; grava em um arquivo de configuração, com efeito após reiniciar"
+    es: "Requiere sudo; escribe en el archivo de configuración y se aplica tras reiniciar"
   tune_macos:
     zh-CN: "需 sudo; 将起始端口从 49152 降到 32768, 扩展约 16384 个端口"
     en: "Requires sudo; lowers the start port from 49152 to 32768, adding about 16384 ports"
+    ja: "sudo が必要。開始ポートを 49152 から 32768 に下げ、約 16384 ポート拡張します"
+    de: "Erfordert sudo; senkt den Startport von 49152 auf 32768, ca. 16384 zusätzliche Ports"
+    ru: "Нужен sudo; понижает начальный порт с 49152 до 32768, добавляя около 16384 портов"
+    pt-BR: "Requer sudo; reduz a porta inicial de 49152 para 32768, adicionando cerca de 16384 portas"
+    es: "Requiere sudo; reduce el puerto inicial de 49152 a 32768, añadiendo unos 16384 puertos"

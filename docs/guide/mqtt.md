@@ -1,6 +1,6 @@
 ---
-title: MQTT 调试教程 - 连接 Broker、订阅与发布
-description: 从新建 MQTT 连接开始，完成 Broker 连接、订阅 topic、发布消息与 TLS 配置；含本地 Mosquitto 测试、常见失败原因和排错入口，支持 MQTT 3.1.1 / 5.0。
+title: MQTT Tutorial - Connect to a Broker, Subscribe and Publish
+description: "Step-by-step MQTT client tutorial: create a connection, connect to a broker, subscribe to topics, publish messages and enable TLS, with a local Mosquitto example and troubleshooting links. MQTT 3.1.1 / 5.0."
 head:
   - - script
     - type: application/ld+json
@@ -11,167 +11,167 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "MQTT 默认端口是多少？",
+            "name": "What is the default MQTT port?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "明文 MQTT 默认使用 1883，TLS 加密使用 8883。使用 8883 时需要在连接配置中开启 TLS，否则握手会失败；NetAssistant 不支持 MQTT over WebSocket。"
+              "text": "Plain MQTT uses port 1883 by default and TLS uses 8883. Enable TLS in the connection settings when using 8883, otherwise the handshake fails. MQTT over WebSocket is not supported."
             }
           },
           {
             "@type": "Question",
-            "name": "Client ID 可以随便填吗？",
+            "name": "Can I use any client ID?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "同一 Broker 上 Client ID 必须唯一。两个客户端使用相同 Client ID 时，后连接的会把前一个踢下线；用「复制连接」创建副本时，NetAssistant 会自动生成新的 Client ID。"
+              "text": "Client IDs must be unique on the same broker. When two clients share one ID, the newer connection kicks the older one offline; duplicating a connection in NetAssistant generates a fresh client ID automatically."
             }
           },
           {
             "@type": "Question",
-            "name": "订阅成功但收不到消息怎么办？",
+            "name": "Why do I get no messages after subscribing?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "先确认订阅开关已开启、发布 topic 能被订阅过滤器匹配，再检查 retained、QoS、ACL 与会话设置。完整排查步骤见 MQTT 排错页。"
+              "text": "Check that the subscription switch is on, the publish topic matches the topic filter, and retained, QoS, ACL and session settings are correct. See the MQTT troubleshooting page for the full checklist."
             }
           },
           {
             "@type": "Question",
-            "name": "NetAssistant 支持 MQTT over WebSocket 吗？",
+            "name": "Does NetAssistant support MQTT over WebSocket?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "不支持。目前只支持 TCP 直连 Broker，WebSocket 接入需要使用 MQTTX 等其他客户端。"
+              "text": "No. It connects to brokers over TCP only; use MQTTX or another client for WebSocket endpoints."
             }
           },
           {
             "@type": "Question",
-            "name": "需要选择 MQTT 5.0 吗？",
+            "name": "Should I choose MQTT 5.0?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "多数 Broker 用 3.1.1 就能完成订阅与发布。需要会话过期、接收最大值或更具体的失败原因码时选 5.0；用户属性、Will Delay、共享订阅等高级特性暂未提供。"
+              "text": "Most brokers work fine with 3.1.1 for subscribe and publish. Choose 5.0 when you need session expiry, receive maximum or more specific reason codes; user properties, Will Delay and shared subscriptions are not provided."
             }
           }
         ]
       }
 ---
 
-# MQTT 调试教程：从连接到第一条订阅消息
+# MQTT Tutorial: From a Connection to Your First Message
 
-想确认设备有没有上报、平台指令有没有下发，最快的方法是用一个 MQTT 客户端连上 Broker，订阅 topic 再看报文。这篇教程用 NetAssistant 走完完整流程：新建连接 → 连接 Broker → 订阅 → 发布 → 验证，最后给出 TLS 与本地 Broker 的测试方法。
+The fastest way to check whether a device is publishing or a platform command is being delivered is to connect an MQTT client to the broker, subscribe to the topic and watch the traffic. This tutorial walks through the whole flow with NetAssistant: create a connection, connect, subscribe, publish and verify, followed by TLS and local-broker testing.
 
-> 已经有连接、只是收不到消息？直接看 [MQTT 连接与订阅排错](/mqtt-troubleshooting)。
+> Already connected but receiving nothing? Jump to [MQTT troubleshooting](/mqtt-troubleshooting).
 
-## 开始之前
+## Before you start
 
-1. 安装 NetAssistant：Windows 可用 `winget install SunJary.NetAssistant`，其他平台见[下载页](/download)。
-2. 准备一个可用的 Broker：本地 Mosquitto、EMQX，或云厂商 IoT 平台；需要地址、端口与认证信息。
-3. 确认要订阅或发布的 topic；不确定时先查设备端或平台文档，避免靠猜。
+1. Install NetAssistant: on Windows run `winget install SunJary.NetAssistant`, or use the [download page](/download) for other platforms.
+2. Have a broker ready: local Mosquitto, EMQX, or a cloud IoT platform, with its address, port and credentials.
+3. Know the topic you want to subscribe to or publish to; check the device or platform docs instead of guessing.
 
-## 第 1 步：新建 MQTT 连接
+## Step 1: Create an MQTT connection
 
-点击左侧 `+新建`，协议选择 **MQTT**，然后填写：
+Click `+ New` on the left, choose **MQTT** as the protocol, then fill in:
 
-| 字段 | 说明 |
-| ---- | ---- |
-| 地址 / 端口 | Broker 主机名与端口，明文默认 1883，TLS 默认 8883 |
-| Client ID | 同一 Broker 上必须唯一；留空时 5.0 会强制 clean start |
-| 用户名 / 密码 | Broker 开启认证时填写，留空表示匿名 |
-| KeepAlive | 心跳间隔，默认 60 秒；网络不稳定时可适当调大 |
-| 协议版本 | 5.0（默认）或 3.1.1，按 Broker 支持情况选择 |
+| Field | Description |
+| ----- | ----- |
+| Host / port | Broker hostname and port; 1883 for plain MQTT, 8883 for TLS |
+| Client ID | Must be unique per broker; when empty, 5.0 forces a clean start |
+| Username / password | Required when the broker enables authentication; leave empty for anonymous access |
+| KeepAlive | Heartbeat interval, 60 seconds by default; raise it on unstable networks |
+| Protocol version | 5.0 (default) or 3.1.1, depending on what the broker supports |
 
-「更多设置」里可以配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）。连接名称可留空，填写后列表与标签页会显示名称，方便区分多个环境。
+Additional settings hold Clean Session and last-will messages (topic / payload / QoS / retain). The connection name is optional; when set, the list and tab title show it, which helps separate environments.
 
-![新建 MQTT 连接](../../assets/screenshots/zh/screenshot_mqtt_new_client.png)
+![New MQTT connection](../../assets/screenshots/en/screenshot_mqtt_new_client.png)
 
-## 第 2 步：连接 Broker
+## Step 2: Connect to the broker
 
-点击 `连接`。连接成功后，详情页会显示当前 Broker、协议版本和连接状态；失败时右上角会给出可读原因：
+Click `Connect`. On success the detail page shows the broker, protocol version and connection state; on failure a readable reason appears in the top-right corner:
 
-- 3.1.1 返回 CONNACK 错误码（协议版本不支持、Client ID 被拒、认证失败等）
-- 5.0 显示具体原因码，例如 `0x86` 用户名或密码错误、`0x87` 未授权
-- TLS 证书过期、主机名不匹配、证书链不受信任会单独提示
+- 3.1.1 returns a CONNACK error code (unsupported protocol version, identifier rejected, authentication failed and so on)
+- 5.0 shows a specific reason code, such as `0x86` for a bad username or password and `0x87` for not authorized
+- TLS problems such as an expired certificate, hostname mismatch or untrusted chain are reported separately
 
-如果一直连不上，先按[排错页的第一步](/mqtt-troubleshooting#先做三个快速检查)确认端口与地址。
+If the connection never establishes, start with [the quick checks](/mqtt-troubleshooting#three-quick-checks).
 
-![MQTT 客户端界面](../../assets/screenshots/zh/screenshot_mqtt_client.png)
+![MQTT client interface](../../assets/screenshots/en/screenshot_mqtt_client.png)
 
-## 第 3 步：订阅 topic
+## Step 3: Subscribe to a topic
 
-在左侧「订阅」块点击 `＋`，填写 topic 与 QoS。常用的通配符写法：
+In the **Subscriptions** block on the left, click `＋` and enter a topic and QoS. Common wildcard forms:
 
-- `device/+/status`：`+` 匹配单层，能命中 `device/1/status`，不匹配 `device/1/2/status`
-- `device/#`：`#` 匹配多层，必须放在末尾
-- `$SYS/#`：以 `$` 开头的系统 topic 需要显式订阅，`#` 不会匹配
+- `device/+/status`: `+` matches a single level, so it matches `device/1/status` but not `device/1/2/status`
+- `device/#`: `#` matches multiple levels and must be the last segment
+- `$SYS/#`: system topics that start with `$` must be subscribed explicitly; `#` does not match them
 
-每条订阅都有独立开关：打开后等待 Broker 确认（SUBACK）才点亮，失败或 10 秒无响应会自动关闭并提示原因。第一次联调可以先用 `test/#` 验证链路，再收窄到真实 topic。
+Every subscription has its own switch: it only lights up after the broker confirms it (SUBACK), and a failure or a 10-second timeout turns it off with a reason. For a first test, subscribe to `test/#`, then narrow down to the real topics.
 
-## 第 4 步：发布消息
+## Step 4: Publish a message
 
-在发送区填写 topic、选择 QoS 与 retain，输入 payload 后点击发布：
+In the send area, enter a topic, choose QoS and retain, type the payload and publish:
 
-- **QoS 0**：至多一次，最快，可能丢消息
-- **QoS 1**：至少一次，可能重复，适合大多数设备上报
-- **QoS 2**：仅一次，开销最大，适合不能重复的指令
-- **retain**：Broker 保留最后一条消息，新订阅者会立即收到
+- **QoS 0**: at most once, fastest, messages may be lost
+- **QoS 1**: at least once, may duplicate, the usual choice for device telemetry
+- **QoS 2**: exactly once, highest overhead, for commands that must not repeat
+- **retain**: the broker keeps the last message and delivers it to new subscribers immediately
 
-先订阅再发布，才能在自己的消息区看到这条消息。topic 输入框右侧的下拉会保留当前连接最近用过的 topic、QoS 与 retain。
+Subscribe before publishing so the message shows up in your own message view. The dropdown at the right of the topic input remembers recent topics together with QoS and retain.
 
-## 第 5 步：验证与保存
+## Step 5: Verify and save
 
-消息区会按 topic 标签展示收到的报文，retain 消息带标记；双击 topic 标签可复制原始 topic。连接配置会自动保存，下次启动直接可用。
+The message view labels every entry with its topic and marks retained messages; double-click a topic label to copy the raw topic. Connection configs are saved automatically and are ready on the next launch.
 
-发布失败时右上角通知会带上目标 topic 与原因（MQTT 5 可区分无权限等具体原因），相同提示 3 秒内只弹一次，消息日志仍逐条记录。
+When publishing fails, the top-right notification names the target topic and reason (MQTT 5 distinguishes cases such as not authorized); identical notifications are shown once per 3 seconds while the log still records every entry.
 
-## 用 TLS 连接（可选）
+## Connect over TLS (optional)
 
-如果 Broker 使用 8883 或要求加密，在连接配置中开启 TLS，并按证书来源选择校验方式：
+If the broker listens on 8883 or requires encryption, enable TLS and choose how to verify the certificate:
 
-- **系统根证书**：Broker 使用公共 CA 签发的证书
-- **自定义 CA**：自建 CA 或私有证书链，填 PEM 路径
-- **跳过校验**：仅用于自签证书联调，传输仍加密但不验证身份
+- **System roots**: the broker uses a certificate from a public CA
+- **Custom CA**: self-built CA or private chain, as a PEM file
+- **Skip verification**: for self-signed development certificates only; traffic is still encrypted but identity is not verified
 
-需要双向认证时，再填客户端证书与私钥（PEM，需成对）。配置细节见 [MQTT TLS 配置](/mqtt-tls) 与 [MQTT over TLS](/mqtt-client#mqtt-over-tls)。
+For mutual TLS, also provide a client certificate and private key (PEM, in pairs). See [MQTT TLS configuration](/mqtt-tls) and [MQTT over TLS](/mqtt-client#mqtt-over-tls) for the details.
 
-## 本地起一个 Broker 测试
+## Run a local broker
 
-没有现成 Broker 时，可以用 Mosquitto 在本机验证链路。准备一个 `mosquitto.conf`：
+If you do not have a broker yet, Mosquitto is enough to verify the flow. Create `mosquitto.conf`:
 
 ```ini
 listener 1883
 allow_anonymous true
 ```
 
-启动：
+Start it:
 
 ```bash
 mosquitto -c mosquitto.conf -v
 ```
 
-然后在 NetAssistant 中连接 `127.0.0.1:1883`，订阅 `test/#`，向 `test/hello` 发布一条消息即可。该配置只适合本机测试，生产环境请开启认证与 TLS。
+Then connect to `127.0.0.1:1883` in NetAssistant, subscribe to `test/#` and publish to `test/hello`. This configuration is for local testing only; enable authentication and TLS in production.
 
-## 常见问题
+## FAQ
 
-### MQTT 默认端口是多少？
+### What is the default MQTT port?
 
-明文 MQTT 默认 1883，TLS 默认 8883。使用 8883 时必须在连接配置中开启 TLS，否则握手会失败；NetAssistant 不支持 MQTT over WebSocket。
+Plain MQTT uses 1883 and TLS uses 8883. Enable TLS when connecting to 8883, otherwise the handshake fails. MQTT over WebSocket is not supported.
 
-### Client ID 可以随便填吗？
+### Can I use any client ID?
 
-同一 Broker 上必须唯一。两个客户端使用相同 Client ID 时，后连接的会把前一个踢下线；用「复制连接」创建副本时，NetAssistant 会自动生成新的 Client ID。
+It must be unique per broker. Reusing an ID kicks the previous connection offline; duplicating a connection in NetAssistant generates a new client ID automatically.
 
-### 订阅成功但收不到消息怎么办？
+### Why do I get no messages after subscribing?
 
-先确认订阅开关已开启、发布 topic 能被订阅过滤器匹配，再检查 retained、QoS、ACL 与会话设置。完整步骤见 [MQTT 排错](/mqtt-troubleshooting)。
+Check that the subscription switch is on and the publish topic matches the filter, then check retained, QoS, ACL and session settings. See [MQTT troubleshooting](/mqtt-troubleshooting) for the full flow.
 
-### 支持 MQTT over WebSocket 吗？
+### Does NetAssistant support MQTT over WebSocket?
 
-不支持。目前只支持 TCP 直连 Broker，WebSocket 接入需要使用 MQTTX 等其他客户端。
+No. It connects over TCP only; use MQTTX or another client for WebSocket endpoints.
 
-### 需要选择 MQTT 5.0 吗？
+### Should I choose MQTT 5.0?
 
-多数 Broker 用 3.1.1 就能完成订阅与发布。需要会话过期、接收最大值或更具体的失败原因码时选 5.0；用户属性、Will Delay、共享订阅等高级特性暂未提供。
+Most brokers work with 3.1.1. Choose 5.0 for session expiry, receive maximum or more specific reason codes; user properties, Will Delay and shared subscriptions are not provided.
 
-## 下一步
+## Next steps
 
-- 连不上或收不到消息：[MQTT 连接与订阅排错](/mqtt-troubleshooting)
-- 完整能力与参数说明：[MQTT 客户端](/mqtt-client)
-- 和 MQTTX 的差异：[MQTTX 替代品对比](/comparison-mqttx)
-- [下载 NetAssistant](/download)
+- Connection or subscription problems: [MQTT troubleshooting](/mqtt-troubleshooting)
+- Full capabilities and settings: [MQTT client](/mqtt-client)
+- How it differs from MQTTX: [MQTTX alternative comparison](/comparison-mqttx)
+- [Download NetAssistant](/download)

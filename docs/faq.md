@@ -1,6 +1,6 @@
 ---
-title: 常见问题 FAQ - 网络调试助手支持 Mac 吗？
-description: NetAssistant 常见问题：是否支持 macOS 与 Linux、与网络调试助手（NetAssist）的区别、winget 安装、Linux 安装包、TCP 粘包处理与高并发压测。
+title: FAQ - Does NetAssistant Support macOS?
+description: "NetAssistant FAQ: macOS and Linux availability, the difference from NetAssist, winget install, Linux packages, TCP sticky packets and TCP/UDP stress testing."
 head:
   - - script
     - type: application/ld+json
@@ -11,117 +11,117 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "网络调试助手（NetAssist）支持 macOS 吗？",
+            "name": "Does the classic NetAssist network debugging tool support macOS?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "需要区分两个名字相近的软件：NetAssistant（本站介绍的跨平台网络调试工具）支持 macOS、Windows 和 Linux，x64 与 ARM64 均有原生构建；而名字相近的老牌工具 NetAssist 仅提供 Windows 版本。想在 Mac 或 Linux 上做 TCP/UDP 调试，可以直接使用 NetAssistant。"
+              "text": "Two similarly named tools should be distinguished: NetAssistant (the cross-platform tool documented on this site) supports macOS, Windows and Linux with native x64 and ARM64 builds, while the similarly named classic NetAssist only provides a Windows version. For TCP/UDP debugging on macOS or Linux, use NetAssistant directly."
             }
           },
           {
             "@type": "Question",
-            "name": "NetAssistant 和网络调试助手（NetAssist）有什么区别？",
+            "name": "What is the difference between NetAssistant and NetAssist?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "两者是不同的软件。NetAssist 是仅限 Windows 的闭源工具；NetAssistant 是基于 Rust 的开源（Apache-2.0）跨平台工具，支持 Windows/Linux/macOS 的 x64 与 ARM64，内置四种 TCP 解码器解决粘包问题，并提供高并发压力测试（QPS 与 p50/p95/p99 延迟）。详细对比见网络调试工具对比页面。"
+              "text": "They are different pieces of software. NetAssist is a closed-source Windows-only tool; NetAssistant is an open-source (Apache-2.0) cross-platform tool built with Rust, supporting Windows/Linux/macOS on x64 and ARM64, with four TCP decoders for sticky packets and built-in high-concurrency stress testing (QPS and p50/p95/p99 latency)."
             }
           },
           {
             "@type": "Question",
-            "name": "如何用 winget 安装 NetAssistant？",
+            "name": "How do I install NetAssistant with winget?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "在 Windows 上执行 winget install SunJary.NetAssistant 即可安装，后续可通过 winget upgrade SunJary.NetAssistant 自动升级。"
+              "text": "Run winget install SunJary.NetAssistant on Windows. Later upgrades are available via winget upgrade SunJary.NetAssistant."
             }
           },
           {
             "@type": "Question",
-            "name": "Linux 下有 deb 安装包吗？",
+            "name": "Is there a deb package for Linux?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "提供 deb、AppImage 与 tar.gz 三种格式（x86_64 与 aarch64）。Debian/Ubuntu 及衍生版推荐 deb 包，sudo apt install 自动解决依赖；AppImage 适合 Fedora/Arch 等其他发行版，首次运行需安装 libfuse2；tar.gz 需自行安装 GTK3 依赖。"
+              "text": "NetAssistant ships deb, AppImage and tar.gz packages for Linux (x86_64 and aarch64). On Debian/Ubuntu and derivatives the deb package is recommended — sudo apt install resolves dependencies automatically; AppImage suits Fedora/Arch and other distros (libfuse2 required on first run); tar.gz needs GTK3 installed."
             }
           },
           {
             "@type": "Question",
-            "name": "NetAssistant 是免费开源的吗？",
+            "name": "Is NetAssistant free and open source?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "是的。NetAssistant 基于 Apache-2.0 许可证开源，全部功能免费使用，源码托管在 GitHub。"
+              "text": "Yes. NetAssistant is released under the Apache-2.0 license, all features are free, and the source code is hosted on GitHub."
             }
           },
           {
             "@type": "Question",
-            "name": "如何解决 TCP 粘包问题？",
+            "name": "How do I handle TCP sticky packets?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "NetAssistant 内置四种 TCP 解码器：原始数据、行分隔、长度前缀和 JSON，可按协议格式自动分帧，无需手动数字节长度。参见使用指南中的 TCP/UDP 调试章节。"
+              "text": "NetAssistant ships four TCP decoders: raw data, line-delimited, length-prefix and JSON, which split the byte stream automatically according to your protocol format. See the TCP/UDP debugging guide for details."
             }
           }
         ]
       }
 ---
 
-# 常见问题（FAQ）
+# FAQ
 
-## 网络调试助手（NetAssist）支持 macOS 吗？
+## Does the classic NetAssist network debugging assistant support macOS?
 
-先区分一下：这是两个**名字相近但完全不同的软件**，拼写只差结尾的 ant 三个字母——
+First, a quick disambiguation — these are **two different products** whose names differ only in the trailing "ant":
 
-- **NetAssistant**（本页介绍的这款）：开源跨平台工具，**Windows、Linux、macOS 全部支持**，x64 与 ARM64 均有原生构建，Mac 上可以直接用 → [前往下载](/download)
-- **NetAssist**（野人家园的老牌工具）：仅提供 Windows 版本，没有 macOS 与 Linux 版
+- **NetAssistant** (the tool documented on this site): open-source and cross-platform — **Windows, Linux and macOS are all supported**, with native x64 and ARM64 builds, so it runs on a Mac out of the box → [download](/download)
+- **NetAssist** (the classic Windows-only tool): no macOS or Linux version
 
-所以，如果你想在 Mac 或 Linux 上做 TCP/UDP 调试，直接用 **NetAssistant** 即可，操作方式与常用调试助手一致，上手见[快速上手](/guide/)。更详细的差异对比见[网络调试工具对比](/comparison)。
+So for TCP/UDP debugging on a Mac or on Linux, just use **NetAssistant** — it works the same way as the debugging assistants you already know. See [Getting Started](/guide/) and the full [comparison table](/comparison).
 
-## NetAssistant 和网络调试助手（NetAssist）有什么区别？
+## What is the difference between NetAssistant and NetAssist?
 
-两者是**不同的软件**，只是名字相近：
+They are **different pieces of software** with similar names:
 
-| | NetAssistant | 网络调试助手（NetAssist） |
+| | NetAssistant | NetAssist |
 | ---- | ---- | ---- |
-| 平台 | Windows / Linux / macOS（x64 + ARM64） | 仅 Windows |
-| 开源 | ✅ Apache-2.0 | ❌ 闭源 |
-| TCP 解码器（粘包处理） | 原始 / 行 / 长度前缀 / JSON | 有限 |
-| TCP/UDP 高并发压测 | ✅ QPS + p50/p95/p99 | ❌ |
+| Platforms | Windows / Linux / macOS (x64 + ARM64) | Windows only |
+| Open source | ✅ Apache-2.0 | ❌ Closed source |
+| TCP decoders (sticky packets) | Raw / line / length-prefix / JSON | Limited |
+| TCP/UDP high-concurrency stress testing | ✅ QPS + p50/p95/p99 | ❌ |
 
-完整的对比表见[网络调试工具对比](/comparison)。
+See the full [comparison table](/comparison).
 
-## 如何用 winget 安装 NetAssistant？
+## How do I install NetAssistant with winget?
 
-Windows 用户推荐使用 winget 安装（支持自动升级）：
+On Windows, the recommended way is winget (with automatic upgrades):
 
 ```bash
 winget install SunJary.NetAssistant
 ```
 
-升级命令：
+Upgrade later with:
 
 ```bash
 winget upgrade SunJary.NetAssistant
 ```
 
-更多安装方式见[下载页面](/download)。
+More installation options on the [download page](/download).
 
-## Linux 下有 deb 安装包吗？
+## Is there a deb package for Linux?
 
-有。提供 **deb**、**AppImage** 与 **tar.gz** 三种格式（x86_64 与 aarch64 均有构建）：
+Yes. **deb**, **AppImage** and **tar.gz** packages are provided (both x86_64 and aarch64):
 
-- **deb**（推荐）：Debian/Ubuntu 及衍生版使用，`sudo apt install ./netassistant-linux-x86_64.deb` 自动解决依赖，Ubuntu 22.04 及以上均可安装
-- **AppImage**：免安装开箱即用，适合 Fedora/Arch 等其他发行版；首次运行需 `sudo apt install libfuse2`
-- **tar.gz**：解压即用，需自行安装 GTK3 依赖（`sudo apt install libgtk-3-0`）
+- **deb** (recommended): for Debian/Ubuntu and derivatives — `sudo apt install ./netassistant-linux-x86_64.deb` resolves dependencies automatically; works on Ubuntu 22.04 and later
+- **AppImage**: portable, works out of the box — great for Fedora/Arch and other distros; first run needs `sudo apt install libfuse2`
+- **tar.gz**: extract and run, requires GTK3 (`sudo apt install libgtk-3-0`)
 
-下载地址见[下载页面](/download#linux)。
+Download links on the [download page](/download#linux).
 
-## NetAssistant 是免费开源的吗？
+## Is NetAssistant free and open source?
 
-是的。NetAssistant 基于 **Apache-2.0** 许可证开源，全部功能免费使用，源码托管在 [GitHub](https://github.com/SunJary/NetAssistant)，欢迎参与贡献。
+Yes. NetAssistant is released under the **Apache-2.0** license with all features free. The source code is hosted on [GitHub](https://github.com/SunJary/NetAssistant) — contributions are welcome.
 
-## 如何解决 TCP 粘包问题？
+## How do I handle TCP sticky packets?
 
-NetAssistant 内置四种 TCP 解码器，可按协议格式自动分帧，不用再对着字节流手动数长度：
+NetAssistant ships four TCP decoders that split the byte stream automatically, so you never count bytes by hand:
 
-1. **原始数据**：按到达顺序原样展示
-2. **行分隔**：按换行符拆分
-3. **长度前缀**：按包头长度字段拆分
-4. **JSON**：按完整 JSON 对象拆分
+1. **Raw data**: displayed in arrival order
+2. **Line-delimited**: split by newline
+3. **Length-prefix**: split by the header length field
+4. **JSON**: split per complete JSON object
 
-切换入口与用法参见[使用指南](/guide/tcp-udp)。
+See the [TCP/UDP debugging guide](/guide/tcp-udp) for usage.

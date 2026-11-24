@@ -1,6 +1,6 @@
 ---
-title: MQTT 5.0 客户端 - 会话过期、原因码与 3.1.1 差异
-description: NetAssistant 的 MQTT 5.0 支持范围：Clean Start、会话过期、接收最大值与连接/订阅/发布原因码，对比 3.1.1 的差异，并说明用户属性、Will Delay、共享订阅等未提供的高级特性。
+title: "MQTT 5.0 Client: Session Expiry, Reason Codes vs 3.1.1"
+description: "What NetAssistant covers in MQTT 5.0: clean start, session expiry, receive maximum and reason codes, how it differs from 3.1.1, and what is missing."
 head:
   - - script
     - type: application/ld+json
@@ -11,164 +11,164 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "NetAssistant 支持完整的 MQTT 5.0 吗？",
+            "name": "Does NetAssistant support the full MQTT 5.0 specification?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "覆盖基础能力：协议版本切换、Clean Start、会话过期、接收最大值，以及连接、订阅、发布与断开时的原因码。用户属性、Will Delay、订阅标识符、共享订阅等高级特性暂未提供。"
+              "text": "It covers the basics: protocol version switching, clean start, session expiry, receive maximum, and reason codes on connect, subscribe, publish and disconnect. Advanced features such as user properties, Will Delay, subscription identifiers and shared subscriptions are not provided."
             }
           },
           {
             "@type": "Question",
-            "name": "5.0 和 3.1.1 应该选哪个？",
+            "name": "Should I choose 5.0 or 3.1.1?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Broker 支持 5.0 且需要会话过期、更具体的原因码时选 5.0；老设备、老 Broker 或只需要基础订阅发布时，3.1.1 更省事，行为也更简单。"
+              "text": "Choose 5.0 when the broker supports it and you need session expiry or more specific reason codes; choose 3.1.1 for older devices and brokers or plain publish/subscribe, where behavior is simpler."
             }
           },
           {
             "@type": "Question",
-            "name": "会话过期应该填多少？",
+            "name": "What value should session expiry have?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "填 0 表示断开即过期；填大于 0 的秒数时，Broker 会在该时间内保留会话与离线消息。做离线消息测试时，需要 Clean Start 关闭并设置正数过期时间。"
+              "text": "0 expires the session on disconnect; a positive number of seconds makes the broker keep the session and offline messages for that long. For offline message testing, turn clean start off and set a positive expiry."
             }
           },
           {
             "@type": "Question",
-            "name": "接收最大值有什么用？",
+            "name": "What is receive maximum for?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "它限定 Broker 可同时向客户端投递的 QoS 1/2 报文数量，避免设备或客户端被大量在途消息压垮。留空则不下发该属性，由 Broker 使用默认值。"
+              "text": "It limits how many QoS 1/2 messages the broker may deliver concurrently, keeping devices or clients from being overwhelmed by in-flight messages. Leave it empty to omit the property and let the broker use its default."
             }
           },
           {
             "@type": "Question",
-            "name": "5.0 的订阅失败原因码在哪里看？",
+            "name": "Where can I see the MQTT 5.0 subscribe failure reason code?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "订阅开关打开后会等待 Broker 确认，失败时通知与日志会显示 SUBACK 原因码，例如 0x87 未授权、0x8F 过滤器非法、0x97 配额超限。"
+              "text": "The subscription switch waits for broker confirmation; on failure, notifications and logs show the SUBACK reason code, such as 0x87 not authorized, 0x8F invalid filter or 0x97 quota exceeded."
             }
           }
         ]
       }
 ---
 
-# MQTT 5.0 客户端：会话、原因码与 3.1.1 差异
+# MQTT 5.0 Client: Sessions, Reason Codes and 3.1.1 Differences
 
-MQTT 5.0 不是「换个大版本号」：它把连接被拒、订阅失败、发布被拒的原因写进了协议，还增加了会话过期与流控属性。NetAssistant 的 5.0 实现聚焦调试最常用的部分——看得懂失败原因、控得住离线会话，同时不牺牲轻量。
+MQTT 5.0 is not just a bigger version number: it writes the reasons for refused connections, failed subscriptions and rejected publishes into the protocol, and adds session expiry and flow-control properties. NetAssistant's 5.0 implementation focuses on what debugging needs most — readable failure reasons and controllable offline sessions — without sacrificing its lightweight footprint.
 
-## 5.0 能解决什么问题
+## What 5.0 solves
 
-- **失败原因可读**：Broker 拒绝连接、订阅或发布时返回具体原因码，不再只有「失败」两个字
-- **会话可控**：用会话过期决定断开后 Broker 保留多久的会话与离线消息
-- **流控可调**：用接收最大值限制同时投递的 QoS 1/2 报文数量
-- **版本可切换**：同一份连接配置在 3.1.1 与 5.0 之间切换，便于对比 Broker 行为
+- **Readable failure reasons**: the broker returns a specific reason code when it refuses a connection, subscription or publish, instead of a bare "failed"
+- **Controllable sessions**: session expiry decides how long the broker keeps the session and offline messages after a disconnect
+- **Tunable flow control**: receive maximum caps how many QoS 1/2 messages may be in flight at once
+- **Switchable versions**: toggle the same connection configuration between 3.1.1 and 5.0 to compare broker behavior
 
-## 支持的能力
+## Supported capabilities
 
-| 能力 | NetAssistant 5.0 | 说明 |
+| Capability | NetAssistant 5.0 | Notes |
 | ---- | ---- | ---- |
-| Clean Start | 支持 | 沿用连接表单的 Clean Session 开关；Client ID 为空时强制 clean start |
-| 会话过期 | 支持 | 单位秒，留空不下发；0 表示断开即过期 |
-| 接收最大值 | 支持 | 1–65535，留空不下发 |
-| 连接原因码 | 支持 | CONNACK 被拒时显示原因码与 Broker 说明 |
-| 订阅原因码 | 支持 | SUBACK 失败时显示具体原因码 |
-| 发布原因码 | 支持 | QoS 1/2 的 PUBACK / PUBREC 失败原因 |
-| 断开原因 | 支持 | Broker 主动 DISCONNECT 时显示原因 |
-| QoS / retain / 遗嘱 | 支持 | 行为与 3.1.1 一致 |
+| Clean Start | Supported | Reuses the Clean Session switch in the connection form; clean start is forced when Client ID is empty |
+| Session expiry | Supported | In seconds; omitted when empty; 0 expires on disconnect |
+| Receive maximum | Supported | 1–65535; omitted when empty |
+| Connect reason codes | Supported | Shows the reason code and broker reason string when CONNACK is refused |
+| Subscribe reason codes | Supported | Shows the exact reason code when SUBACK fails |
+| Publish reason codes | Supported | Failure reasons in PUBACK / PUBREC for QoS 1/2 |
+| Disconnect reasons | Supported | Shows the reason when the broker sends DISCONNECT |
+| QoS / retain / last will | Supported | Same behavior as 3.1.1 |
 
-## 未提供的高级特性
+## Advanced features not provided
 
-当前版本不提供以下能力，需要时请使用 MQTTX 或其他完整实现：
+The current version does not offer the following; use MQTTX or another complete implementation when you need them:
 
-- 用户属性（User Properties）
-- Will Delay（遗嘱延迟）
-- 订阅标识符（Subscription Identifier）
-- 共享订阅（Shared Subscription，`$share/...`）
-- 其他 5.0 高级特性（如主题别名等）
+- User properties
+- Will Delay
+- Subscription identifiers
+- Shared subscriptions (`$share/...`)
+- Other advanced 5.0 features such as topic aliases
 
-## 与 3.1.1 的差异
+## Differences from 3.1.1
 
-| 维度 | MQTT 3.1.1 | MQTT 5.0 |
+| Dimension | MQTT 3.1.1 | MQTT 5.0 |
 | ---- | ---- | ---- |
-| 连接被拒 | CONNACK 返回码 1–5 | 原因码，如 `0x86` 认证失败、`0x87` 未授权 |
-| 订阅失败 | 只有拒绝结果 | SUBACK 原因码，可区分权限、过滤器、配额 |
-| 发布失败 | PUBACK 不带原因码 | 可携带原因码，能定位 ACL 与 topic 问题 |
-| 会话过期 | 无此属性 | 可设置 0 或正数秒 |
-| 接收最大值 | 无此属性 | 1–65535，可选 |
-| Broker 主动断开 | 通常直接断开 | 可带原因码与说明 |
+| Connection refused | CONNACK return code 1–5 | Reason code, e.g. `0x86` bad credentials, `0x87` not authorized |
+| Subscription failure | Rejection only | SUBACK reason code that distinguishes permissions, filter and quota |
+| Publish failure | PUBACK carries no reason code | May carry a reason code to pinpoint ACL and topic issues |
+| Session expiry | Not available | 0 or a positive number of seconds |
+| Receive maximum | Not available | 1–65535, optional |
+| Broker-initiated disconnect | Usually a plain disconnect | May carry a reason code and reason string |
 
-## Clean Start 与会话过期
+## Clean Start and session expiry
 
-- **Clean Start 开启**：每次连接都新建会话，Broker 丢弃旧会话与离线消息
-- **Clean Start 关闭 + 会话过期 0**：连接期间保留状态，断开即清理
-- **Clean Start 关闭 + 会话过期 > 0**：Broker 在过期前保留订阅与离线消息，重连后可继续收
+- **Clean Start on**: every connection creates a new session, and the broker discards the old session and its offline messages
+- **Clean Start off + session expiry 0**: state is kept while connected and cleared on disconnect
+- **Clean Start off + session expiry > 0**: the broker keeps subscriptions and offline messages until expiry, so a reconnect resumes delivery
 
-做离线消息测试时，先关闭 Clean Session（即关闭 Clean Start），把会话过期设成 300 秒，订阅 QoS 1 并断开，再向该 topic 发布消息，重连后观察是否补发。Broker 对离线队列的实现和上限不同，结果以 Broker 行为为准。
+To test offline messages, first turn Clean Session (that is, Clean Start) off, set session expiry to 300 seconds, subscribe at QoS 1 and disconnect, then publish to that topic and reconnect to see whether the messages are delivered. Brokers differ in how they implement and cap offline queues, so the broker's behavior is the final word.
 
-Client ID 为空时，5.0 会强制 clean start，此时会话过期不会生效；需要持久会话时请填写固定且唯一的 Client ID。
+When Client ID is empty, 5.0 forces clean start and session expiry has no effect; for a persistent session, fill in a fixed, unique Client ID.
 
-## 接收最大值怎么填
+## How to set receive maximum
 
-接收最大值告诉 Broker「我最多同时处理多少条在途 QoS 1/2 消息」。默认留空即可；在低配设备、弱网或需要限制突发流量时再设置：
+Receive maximum tells the broker "how many in-flight QoS 1/2 messages I can handle at once". Leaving it empty is the default; set it on low-spec devices, weak networks or when you need to limit bursts:
 
-- 设备内存小：填 10–50，降低同时投递量
-- 正常桌面调试：留空，使用 Broker 默认值
-- 排查「消息堆积」：临时填小值，观察 Broker 是否按窗口投递
+- Small device memory: set 10–50 to lower the concurrent delivery volume
+- Normal desktop debugging: leave it empty and use the broker default
+- Investigating message pile-ups: temporarily set a small value and watch whether the broker delivers within that window
 
-## 原因码速查
+## Reason code quick reference
 
-| 原因码 | 含义 | 常见场景 |
+| Reason code | Meaning | Typical scenario |
 | ---- | ---- | ---- |
-| `0x84` | 不支持的协议版本 | Broker 不支持 5.0 |
-| `0x85` | Client ID 无效 | 为空、超长或含非法字符 |
-| `0x86` | 用户名或密码错误 | 凭据不正确 |
-| `0x87` | 未授权 | ACL 不允许连接、订阅或发布 |
-| `0x88` | Broker 不可用 | 维护、过载 |
-| `0x89` | Broker 忙 | 重试或限流 |
-| `0x8A` | 客户端被封禁 | 联系管理员 |
-| `0x8F` | topic 过滤器非法 | 通配符写法错误 |
-| `0x90` | topic 名称非法 | 发布 topic 为空或含通配符 |
-| `0x97` | 配额超限 | 订阅数或在途消息过多 |
-| `0x99` | payload 格式非法 | Broker 声明了格式校验 |
-| `0x9F` | 连接频率超限 | 重连过快 |
+| `0x84` | Unsupported protocol version | The broker does not support 5.0 |
+| `0x85` | Client ID not valid | Empty, too long or containing invalid characters |
+| `0x86` | Bad username or password | Incorrect credentials |
+| `0x87` | Not authorized | The ACL does not allow connecting, subscribing or publishing |
+| `0x88` | Server unavailable | Maintenance or overload |
+| `0x89` | Server busy | Retry or throttle |
+| `0x8A` | Banned | Contact the administrator |
+| `0x8F` | Topic filter invalid | Malformed wildcard syntax |
+| `0x90` | Topic name invalid | The publish topic is empty or contains wildcards |
+| `0x97` | Quota exceeded | Too many subscriptions or in-flight messages |
+| `0x99` | Payload format invalid | The broker declared payload validation |
+| `0x9F` | Connection rate exceeded | Reconnecting too quickly |
 
-完整排查步骤见 [MQTT 排错](/mqtt-troubleshooting)。
+For full troubleshooting steps, see [MQTT troubleshooting](/mqtt-troubleshooting).
 
-## 什么时候选 5.0
+## When to choose 5.0
 
-- 需要区分配权失败、topic 非法、配额超限等具体原因
-- 需要测试离线消息与会话过期
-- 需要限制 Broker 的并发投递量
-- Broker 与云平台明确支持 5.0
+- You need to distinguish authorization failures, invalid topics, quota limits and other specific causes
+- You need to test offline messages and session expiry
+- You need to limit the broker's concurrent delivery volume
+- The broker and cloud platform explicitly support 5.0
 
-只需要基础订阅、发布与 TLS 联调时，3.1.1 也完全够用，而且日志更简单、兼容性更广。
+For basic subscribe, publish and TLS debugging, 3.1.1 is entirely sufficient, with simpler logs and broader compatibility.
 
-## 常见问题
+## FAQ
 
-### NetAssistant 支持完整的 MQTT 5.0 吗？
+### Does NetAssistant support the full MQTT 5.0 specification?
 
-覆盖基础能力：版本切换、Clean Start、会话过期、接收最大值与原因码；用户属性、Will Delay、订阅标识符、共享订阅等高级特性暂未提供。
+It covers the basics: version switching, clean start, session expiry, receive maximum and reason codes; advanced features such as user properties, Will Delay, subscription identifiers and shared subscriptions are not provided.
 
-### 5.0 和 3.1.1 应该选哪个？
+### Should I choose 5.0 or 3.1.1?
 
-需要会话过期与具体原因码时选 5.0；老设备、老 Broker 或只做基础调试时选 3.1.1。
+Choose 5.0 for session expiry and specific reason codes; choose 3.1.1 for older devices and brokers or basic debugging.
 
-### 会话过期应该填多少？
+### What value should session expiry have?
 
-0 表示断开即过期；做离线消息测试时关闭 Clean Start，填一个正数秒数。
+0 expires on disconnect; for offline message testing, turn Clean Start off and enter a positive number of seconds.
 
-### 接收最大值有什么用？
+### What is receive maximum for?
 
-限制 Broker 同时投递的 QoS 1/2 报文数量；留空使用 Broker 默认值。
+It limits how many QoS 1/2 messages the broker delivers at the same time; leave it empty to use the broker default.
 
-### 5.0 的订阅失败原因码在哪里看？
+### Where can I see the MQTT 5.0 subscribe failure reason code?
 
-订阅开关等待 SUBACK 后，失败通知与日志会显示原因码，例如 `0x87`、`0x8F`、`0x97`。
+After the subscription switch waits for SUBACK, failure notifications and logs show the reason code, for example `0x87`, `0x8F` or `0x97`.
 
-## 相关页面
+## Related pages
 
-- 连接与订阅参数：[MQTT 客户端](/mqtt-client#mqtt-5-0-可选)
-- 订阅失败与连接被拒排查：[MQTT 排错](/mqtt-troubleshooting)
-- 从零开始连接：[MQTT 调试教程](/guide/mqtt)
-- [下载 NetAssistant](/download)
+- Connection and subscription settings: [MQTT client](/mqtt-client#mqtt-5-0-optional)
+- Subscription failures and refused connections: [MQTT troubleshooting](/mqtt-troubleshooting)
+- Connecting from scratch: [MQTT tutorial](/guide/mqtt)
+- [Download NetAssistant](/download)

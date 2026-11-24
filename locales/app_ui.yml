@@ -5,33 +5,88 @@ app_ui:
   send_not_connected:
     zh-CN: 连接未建立
     en: Connection not established
+    ja: "接続が確立されていません"
+    de: "Verbindung nicht hergestellt"
+    ru: "Соединение не установлено"
+    pt-BR: "Conexão não estabelecida"
+    es: "Conexión no establecida"
   send_failed:
     zh-CN: 发送消息失败
     en: Failed to send message
+    ja: "メッセージの送信に失敗しました"
+    de: "Nachricht konnte nicht gesendet werden"
+    ru: "Не удалось отправить сообщение"
+    pt-BR: "Falha ao enviar mensagem"
+    es: "No se pudo enviar el mensaje"
   send_client_write_unavailable:
     zh-CN: 客户端写入发送器不可用
     en: Client write sender unavailable
+    ja: "クライアントの書き込み送信器が使用できません"
+    de: "Schreibsender des Clients nicht verfügbar"
+    ru: "Отправитель записи клиента недоступен"
+    pt-BR: "Remetente de escrita do cliente indisponível"
+    es: "El remitente de escritura del cliente no está disponible"
   mqtt_connecting_wait:
     zh-CN: 连接中（等待 broker 确认），消息尚未发出
     en: Connecting (awaiting broker confirmation); message not sent yet
+    ja: "接続中（broker の確認待ち）のため、メッセージはまだ送信されていません"
+    de: "Verbindung wird hergestellt (warte auf Broker-Bestätigung), Nachricht noch nicht gesendet"
+    ru: "Подключение (ожидание подтверждения брокера); сообщение ещё не отправлено"
+    pt-BR: "Conectando (aguardando confirmação do broker); mensagem ainda não enviada"
+    es: "Conectando (esperando la confirmación del broker); el mensaje aún no se ha enviado"
   invalid_address_format:
     zh-CN: "无效的地址格式: %{addr}"
     en: "Invalid address format: %{addr}"
+    ja: "無効なアドレス形式: %{addr}"
+    de: "Ungültiges Adressformat: %{addr}"
+    ru: "Неверный формат адреса: %{addr}"
+    pt-BR: "Formato de endereço inválido: %{addr}"
+    es: "Formato de dirección no válido: %{addr}"
   add_client_failed:
     zh-CN: "添加客户端失败: %{error}"
     en: "Failed to add client: %{error}"
+    ja: "クライアントの追加に失敗しました: %{error}"
+    de: "Client konnte nicht hinzugefügt werden: %{error}"
+    ru: "Не удалось добавить клиента: %{error}"
+    pt-BR: "Falha ao adicionar cliente: %{error}"
+    es: "No se pudo agregar el cliente: %{error}"
   filter_text:
     zh-CN: 纯文本文件
     en: Text Files
+    ja: "テキストファイル"
+    de: "Textdateien"
+    ru: "Текстовые файлы"
+    pt-BR: "Arquivos de texto"
+    es: "Archivos de texto"
   filter_json:
     zh-CN: JSON 文件
     en: JSON Files
+    ja: "JSON ファイル"
+    de: "JSON-Dateien"
+    ru: "Файлы JSON"
+    pt-BR: "Arquivos JSON"
+    es: "Archivos JSON"
   filter_csv:
     zh-CN: CSV 文件
     en: CSV Files
+    ja: "CSV ファイル"
+    de: "CSV-Dateien"
+    ru: "Файлы CSV"
+    pt-BR: "Arquivos CSV"
+    es: "Archivos CSV"
   filter_log:
     zh-CN: 日志文件
     en: Log Files
+    ja: "ログファイル"
+    de: "Protokolldateien"
+    ru: "Файлы журналов"
+    pt-BR: "Arquivos de log"
+    es: "Archivos de registro"
   filter_all:
     zh-CN: 所有文件
     en: All Files
+    ja: "すべてのファイル"
+    de: "Alle Dateien"
+    ru: "Все файлы"
+    pt-BR: "Todos os arquivos"
+    es: "Todos los archivos"

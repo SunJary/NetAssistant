@@ -1,6 +1,6 @@
 ---
-title: Linux 网络调试助手 - TCP/UDP 调试与压测
-description: NetAssistant 是 Linux 上的免费开源网络调试助手，提供 deb、AppImage、tar.gz 三种安装方式，支持 x86_64 与 ARM64，内置粘包解码、MQTT 以及 TCP/UDP 压测。
+title: Linux Network Debugging Tool - TCP/UDP
+description: "Free, open-source Linux network debugging tool: deb, AppImage and tar.gz for x86_64 and ARM64, TCP/UDP client and server, decoders and TCP/UDP stress testing."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Linux x86_64, Linux ARM64",
-            "description": "Linux 上的免费开源网络调试助手，提供 deb、AppImage、tar.gz 安装包，支持 x86_64 与 ARM64，内置 TCP/UDP 客户端与服务端、粘包解码、MQTT 调试，以及仅用于 TCP/UDP 的压力测试。",
+            "description": "Free, open-source Linux network debugging tool with deb, AppImage and tar.gz packages for x86_64 and ARM64, TCP/UDP client and server, decoders and TCP/UDP stress testing.",
             "url": "https://netassistant.trydo.top/linux-network-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,42 +24,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "Linux 上怎么安装 NetAssistant？",
+                "name": "How do I install NetAssistant on Linux?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Debian/Ubuntu 及衍生版推荐下载 deb 包，执行 sudo apt install ./netassistant-linux-x86_64.deb 自动解析依赖；其他发行版可用 AppImage 或 tar.gz。详见下载页。"
+                  "text": "On Debian or Ubuntu, download the deb package and run sudo apt install ./netassistant-linux-x86_64.deb. Other distributions can use the AppImage or tar.gz package. See the download page."
                 }
               },
               {
                 "@type": "Question",
-                "name": "AppImage 启动报 FUSE 错误怎么办？",
+                "name": "How do I fix the AppImage FUSE error?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "先安装 libfuse2：sudo apt install libfuse2，然后再运行 AppImage。"
+                  "text": "Install libfuse2 with sudo apt install libfuse2, then run the AppImage again."
                 }
               },
               {
                 "@type": "Question",
-                "name": "启动报缺少 libgtk-3.so.0 怎么办？",
+                "name": "What if libgtk-3.so.0 is missing?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "安装 GTK3：sudo apt install libgtk-3-0。裸二进制与 tar.gz 版本需要自行安装该依赖。"
+                  "text": "Install GTK3 with sudo apt install libgtk-3-0. The bare binary and tar.gz packages require it."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持 ARM64 和树莓派吗？",
+                "name": "Does the Linux build support ARM64 and Raspberry Pi?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。提供 aarch64 的 deb、AppImage 与 tar.gz，可在树莓派 5、ARM 服务器等设备上运行。"
+                  "text": "Yes. aarch64 deb, AppImage and tar.gz packages are available."
                 }
               },
               {
                 "@type": "Question",
-                "name": "有命令行版本吗？",
+                "name": "Does NetAssistant have a CLI?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "目前只提供图形界面版本，没有 CLI。如果需要脚本化测试，可以继续使用 nc、socat、iperf 等命令行工具；NetAssistant 适合需要图形界面、粘包解码和实时指标的场景。"
+                  "text": "No, it is a graphical application. For scripted tests, use nc, socat or iperf; NetAssistant is for GUI debugging, sticky-packet decoding and live metrics."
                 }
               }
             ]
@@ -68,51 +68,51 @@ head:
       }
 ---
 
-# Linux 网络调试助手：TCP/UDP 调试与压力测试
+# Linux Network Debugging Tool: TCP/UDP Debugging and Stress Testing
 
-Linux 上的网络工具很多，但大多数是 `nc`、`socat`、`tcpdump` 这类命令行工具：灵活，却看不到报文交互过程，处理 TCP 粘包要自己写解析，压测还要另找工具。
+Linux has plenty of network tools, but most of them are command-line utilities such as `nc`, `socat` and `tcpdump`: flexible, but without a clear view of the packet exchange, manual handling of TCP sticky packets and no built-in stress testing.
 
-NetAssistant 是 Linux 上的图形化网络调试助手，免费开源，提供 **deb、AppImage、tar.gz** 三种安装方式，支持 x86_64 与 ARM64（含树莓派）。TCP/UDP 客户端与服务端、四种粘包解码器、MQTT 3.1.1 / 5.0 调试，以及仅用于 TCP/UDP 的高并发压力测试都在同一个应用里。
+NetAssistant is a graphical Linux network debugging tool, free and open source, available as **deb, AppImage and tar.gz** for x86_64 and ARM64 (including Raspberry Pi). TCP/UDP client and server, four sticky-packet decoders, MQTT 3.1.1 / 5.0 debugging and TCP/UDP-only high-concurrency stress testing live in one app.
 
-> [下载 Linux 版](/download) · [查看全部功能](/features) · [快速上手](/guide/)
+> [Download for Linux](/download) · [All features](/features) · [Getting started](/guide/)
 
-![NetAssistant 服务端界面](../assets/screenshots/zh/screenshot_server.png)
+![NetAssistant server interface](../assets/screenshots/en/screenshot_server.png)
 
-## 为什么 Linux 用户需要 NetAssistant
+## Why Linux users choose NetAssistant
 
-- **图形化收发调试**：像聊天一样看报文往返，不用在终端里拼 `nc` 参数
-- **接收侧粘包解码**：原始数据、行分隔、长度前缀、JSON 四种解码器，自动按协议分帧
-- **内置压测**：直接看 QPS 与 p50/p95/p99 延迟，不用额外部署压测服务
-- **多平台一致**：Windows、macOS、Linux 同一套操作习惯，配置自动保存
-- **ARM64 支持**：树莓派 5、ARM 服务器等设备有原生 aarch64 构建
+- **Graphical send/receive debugging**: see packet exchanges like a chat instead of assembling `nc` arguments
+- **Receive-side decoders**: raw, line-delimited, length-prefix and JSON decoders split messages by protocol boundary
+- **Built-in stress testing**: QPS and p50/p95/p99 latency without deploying a separate load generator
+- **Consistent across platforms**: the same workflow on Windows, macOS and Linux, with saved configurations
+- **ARM64 support**: native aarch64 builds for Raspberry Pi 5, ARM servers and similar devices
 
-## 在 Linux 上安装
+## Install on Linux
 
-### 推荐：deb 包（Debian / Ubuntu 及衍生版）
+### Recommended: deb package (Debian / Ubuntu and derivatives)
 
-1. 从[下载页](/download)获取 `netassistant-linux-x86_64.deb`
-2. 安装并自动解析依赖：
+1. Download `netassistant-linux-x86_64.deb` from the [download page](/download)
+2. Install it and let apt resolve dependencies:
 
 ```bash
 sudo apt install ./netassistant-linux-x86_64.deb
 ```
 
-3. 从应用菜单启动，或终端运行 `netassistant`
+3. Launch it from the application menu or run `netassistant` in a terminal
 
-### AppImage（免安装，适合 Fedora / Arch 等）
+### AppImage (portable, for Fedora / Arch and others)
 
 ```bash
 chmod +x netassistant-linux-x86_64.AppImage
 ./netassistant-linux-x86_64.AppImage
 ```
 
-首次运行若提示 FUSE 相关错误：
+If it reports a FUSE error on first run:
 
 ```bash
 sudo apt install libfuse2
 ```
 
-### tar.gz（轻量）
+### tar.gz (lightweight)
 
 ```bash
 tar -xzf netassistant-linux-x86_64.tar.gz
@@ -120,95 +120,95 @@ chmod +x netassistant
 ./netassistant
 ```
 
-裸二进制需要 GTK3 依赖；若启动报缺少 `libgtk-3.so.0`：
+The bare binary requires GTK3. If it reports a missing `libgtk-3.so.0`:
 
 ```bash
 sudo apt install libgtk-3-0
 ```
 
-### ARM64 / 树莓派
+### ARM64 / Raspberry Pi
 
-将文件名中的 `x86_64` 替换为 `aarch64`，例如 `netassistant-linux-aarch64.deb`、`netassistant-linux-aarch64.AppImage` 或 `netassistant-linux-aarch64.tar.gz`。ARM64 版本为自动构建产物，未经真机完整测试。
+Replace `x86_64` with `aarch64` in the filename, for example `netassistant-linux-aarch64.deb`, `netassistant-linux-aarch64.AppImage` or `netassistant-linux-aarch64.tar.gz`. The ARM64 build is an automated artifact that has not been fully tested on physical devices.
 
-## 核心功能
+## Core features
 
-### TCP/UDP 客户端与服务端
+### TCP/UDP client and server
 
-创建 TCP 客户端、TCP 服务端、UDP 客户端与 UDP 服务端连接，支持 IPv4/IPv6、多标签页、本地地址与端口绑定，适合服务端联调和设备模拟。
+Create TCP client, TCP server, UDP client and UDP server connections with IPv4/IPv6, multi-tab debugging and local address/port binding.
 
-### TCP 粘包与四种解码器
+### TCP sticky packets and four decoders
 
-Linux 服务端最常见的问题之一就是 TCP 粘包。NetAssistant 在接收侧提供原始数据、行分隔、长度前缀、JSON 四种解码器，按协议格式自动拆分消息。
+TCP sticky packets are one of the most common issues when debugging Linux servers. NetAssistant provides raw, line-delimited, length-prefix and JSON decoders on the receive side.
 
-![TCP 解码器设置](../assets/screenshots/zh/screenshot_tcp_decoder.png)
+![TCP decoder settings](../assets/screenshots/en/screenshot_tcp_decoder.png)
 
-### 内置压力测试
+### Built-in stress testing
 
-对自研服务端做并发吞吐、延迟分布和稳定性评估：Ping-Pong 与吞吐模式、实时 QPS、p50/p95/p99、失败原因分类、CSV 报告导出。[压力测试指南](/guide/stress)
+Evaluate concurrency, latency distribution and stability: Ping-Pong and throughput modes, real-time QPS, p50/p95/p99, failure breakdown and CSV export. See the [stress testing guide](/guide/stress).
 
-### MQTT 调试
+### MQTT debugging
 
-内置 MQTT 3.1.1 / 5.0 客户端，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复，适合物联网与 Broker 联调。
+An MQTT 3.1.1 / 5.0 client with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply.
 
-### 内置工具箱
+### Built-in toolbox
 
-转换、校验、哈希、时间、JSON、编码、随机七组工具常驻标签页，包含 Hex/文本互转、CRC16/CRC32、MD5/SHA、时间戳转换、Base64/URL 编解码与 UUID / 国密密钥生成。
+Convert, checksum, hash, time, JSON, encoding and random tools in a permanent tab, including hex/text conversion, CRC16/CRC32, MD5/SHA, timestamp conversion, Base64/URL encoding and UUID / SM2 / SM4 key generation.
 
-## 和命令行工具的区别
+## NetAssistant vs command-line tools
 
-| 维度 | NetAssistant | nc / socat | Wireshark / tshark |
+| Dimension | NetAssistant | nc / socat | Wireshark / tshark |
 | ---- | ---- | ---- | ---- |
-| 形态 | 图形界面 | 命令行 | 抓包分析 |
-| 报文交互视图 | 聊天式记录，可搜索/收藏/导出 | 需要自己拼输出 | 以抓包为单位 |
-| TCP 粘包解码 | 原始/行/长度前缀/JSON | 需自行解析 | 部分流重组 |
-| 内置压测 | QPS + p50/p95/p99 | 无 | 无 |
-| 脚本化 | 无 | 强 | 强（tshark） |
-| 适合场景 | 图形化联调、协议验证 | 脚本、管道、服务器环境 | 抓包定位、协议分析 |
+| Form | Graphical app | Command line | Packet capture and analysis |
+| Packet exchange view | Chat-style log with search, favorites and export | Manual output handling | Per-packet view |
+| TCP sticky-packet decoders | Raw / line / length-prefix / JSON | Custom parsing required | Partial stream reassembly |
+| Built-in stress testing | QPS + p50/p95/p99 | No | No |
+| Scripting | No | Strong | Strong (tshark) |
+| Best for | GUI debugging and protocol validation | Scripts, pipes and servers | Capture-based troubleshooting |
 
-`nc`/`socat` 的优势是脚本化和无图形环境；Wireshark 擅长抓包定位。NetAssistant 补齐的是**图形化收发、粘包解码和实时压测**这一段。
+`nc` and `socat` are better for scripting and headless environments; Wireshark is better for packet capture. NetAssistant fills the gap for **graphical send/receive, sticky-packet decoding and live load metrics**.
 
-## 典型使用场景
+## Typical use cases
 
-- **嵌入式 Linux / 树莓派**：在设备上直接做 TCP/UDP 联调，验证传感器与控制指令
-- **服务端联调**：作为客户端或服务端模拟对端，验证协议格式与异常处理
-- **物联网设备发现**：UDP 广播发送 discovery 指令，展示所有设备回复并高亮非预期地址
-- **教学与实验**：在 Linux 桌面环境完成网络编程实验，不依赖 Windows 虚拟机
+- **Embedded Linux / Raspberry Pi**: debug TCP/UDP directly on the device and verify sensor or control commands
+- **Server debugging**: act as a client or server to validate protocol formats and error handling
+- **IoT device discovery**: send a UDP broadcast discovery command and highlight replies from unexpected addresses
+- **Teaching and labs**: run network programming labs on a Linux desktop without a Windows VM
 
-## 系统要求
+## System requirements
 
-| 项目 | 要求 |
+| Item | Requirement |
 | ---- | ---- |
-| 系统 | Ubuntu 22.04 及以上或其他主流发行版 |
-| 架构 | x86_64 或 ARM64（aarch64） |
-| 图形环境 | 需要 GTK3；建议 Vulkan 兼容 GPU |
-| 安装方式 | deb、AppImage、tar.gz |
-| 许可 | Apache-2.0，免费使用 |
+| OS | Ubuntu 22.04 or later, or another mainstream distribution |
+| Architecture | x86_64 or ARM64 (aarch64) |
+| Graphics | GTK3 required; a Vulkan-compatible GPU is recommended |
+| Installation | deb, AppImage or tar.gz |
+| License | Apache-2.0, free to use |
 
-## 常见问题
+## FAQ
 
-### Linux 上怎么安装 NetAssistant？
+### How do I install NetAssistant on Linux?
 
-Debian/Ubuntu 及衍生版推荐下载 deb 包，执行 `sudo apt install ./netassistant-linux-x86_64.deb` 自动解析依赖；其他发行版可用 AppImage 或 tar.gz。详见[下载页](/download)。
+On Debian or Ubuntu, download the deb package and run `sudo apt install ./netassistant-linux-x86_64.deb`. Other distributions can use the AppImage or tar.gz package. See the [download page](/download).
 
-### AppImage 启动报 FUSE 错误怎么办？
+### How do I fix the AppImage FUSE error?
 
-先安装 `libfuse2`：`sudo apt install libfuse2`，然后再运行 AppImage。
+Install `libfuse2` with `sudo apt install libfuse2`, then run the AppImage again.
 
-### 启动报缺少 libgtk-3.so.0 怎么办？
+### What if libgtk-3.so.0 is missing?
 
-安装 GTK3：`sudo apt install libgtk-3-0`。裸二进制与 tar.gz 版本需要自行安装该依赖。
+Install GTK3 with `sudo apt install libgtk-3-0`. The bare binary and tar.gz packages require it.
 
-### 支持 ARM64 和树莓派吗？
+### Does the Linux build support ARM64 and Raspberry Pi?
 
-支持。提供 aarch64 的 deb、AppImage 与 tar.gz，可在树莓派 5、ARM 服务器等设备上运行。
+Yes. aarch64 deb, AppImage and tar.gz packages are available.
 
-### 有命令行版本吗？
+### Does NetAssistant have a CLI?
 
-目前只提供图形界面版本，没有 CLI。如果需要脚本化测试，可以继续使用 `nc`、`socat`、`iperf` 等命令行工具；NetAssistant 适合需要图形界面、粘包解码和实时指标的场景。
+No, it is a graphical application. For scripted tests, use `nc`, `socat` or `iperf`; NetAssistant is for GUI debugging, sticky-packet decoding and live metrics.
 
-## 相关页面
+## Related pages
 
-- [Windows 网络调试助手](/windows-network-debug-tool)
-- [macOS 网络调试助手](/mac-network-debug-tool)
-- [TCP/UDP 调试指南](/guide/tcp-udp)
-- [下载 NetAssistant](/download)
+- [Windows network debugging tool](/windows-network-debug-tool)
+- [Mac network debugging tool](/mac-network-debug-tool)
+- [TCP/UDP debugging guide](/guide/tcp-udp)
+- [Download NetAssistant](/download)

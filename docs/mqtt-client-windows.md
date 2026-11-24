@@ -1,6 +1,6 @@
 ---
-title: MQTT 客户端 Windows - winget 安装与调试指南
-description: 在 Windows 10/11 上安装 NetAssistant MQTT 客户端：winget 一条命令、安装程序或免安装 zip；支持 MQTT 3.1.1 / 5.0、TLS、订阅开关与约 20MB 内存，适合现场与远程桌面调试。
+title: MQTT Client for Windows - winget Install Guide
+description: "Install the NetAssistant MQTT client on Windows 10/11 via winget, setup program or portable zip, with MQTT 3.1.1/5.0, TLS and about 20MB of memory."
 head:
   - - script
     - type: application/ld+json
@@ -11,133 +11,133 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "Windows 上怎么安装 MQTT 客户端？",
+            "name": "How do I install an MQTT client on Windows?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "推荐在终端执行 winget install SunJary.NetAssistant，后续用 winget upgrade 升级；也可以从下载页获取安装程序或免安装 zip。"
+              "text": "Run winget install SunJary.NetAssistant in a terminal and upgrade later with winget upgrade; you can also get the setup program or a portable zip from the download page."
             }
           },
           {
             "@type": "Question",
-            "name": "支持哪些 Windows 版本？",
+            "name": "Which Windows versions are supported?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "支持 Windows 10 1709 及以上与 Windows 11，提供 x64 与 ARM64 构建。"
+              "text": "Windows 10 1709 and later, plus Windows 11, with x64 and ARM64 builds available."
             }
           },
           {
             "@type": "Question",
-            "name": "winget 提示找不到包怎么办？",
+            "name": "What if winget cannot find the package?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "先更新 App Installer（应用安装程序）与 winget 源，再重试；仍找不到时直接用下载页的安装程序或免安装 zip。"
+              "text": "Update App Installer and the winget sources, then retry; if it is still missing, use the setup program or portable zip from the download page."
             }
           },
           {
             "@type": "Question",
-            "name": "需要额外放行防火墙吗？",
+            "name": "Do I need to open any firewall ports?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "客户端主动连接 Broker 属于出站流量，通常无需放行；如果公司网络限制出站端口，需要允许 1883 或 8883。"
+              "text": "The client connects outward to the broker, so outbound traffic usually needs no rule; if a corporate network restricts outbound ports, allow 1883 or 8883."
             }
           },
           {
             "@type": "Question",
-            "name": "和 Windows 网络调试助手是同一个软件吗？",
+            "name": "Is this the same app as the Windows network debugging assistant?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "是。NetAssistant 在同一个应用里提供 TCP/UDP 客户端与服务端、MQTT 客户端、粘包解码与 TCP/UDP 压测；MQTT 暂不支持压测。"
+              "text": "Yes. NetAssistant provides TCP/UDP client and server, the MQTT client, sticky-packet decoding and TCP/UDP stress testing in one app; stress testing is not available for MQTT."
             }
           }
         ]
       }
 ---
 
-# MQTT 客户端 Windows：安装、连接与现场调试
+# MQTT Client for Windows: Install, Connect and Field Debugging
 
-Windows 上的 MQTT 客户端不少，但多数是基于 Electron 的专用工具：为了偶尔看几条报文，常驻几百 MB 内存并不划算。NetAssistant 是 Rust 原生的网络调试工具，MQTT 3.1.1 / 5.0 与 TCP/UDP 调试在同一个应用里，内存约 20MB，适合长期挂在远程桌面或低配现场机。
+There is no shortage of MQTT clients on Windows, but most of them are dedicated Electron tools: keeping several hundred MB of memory resident just to glance at a few messages rarely pays off. NetAssistant is a Rust-native network debugging tool that puts MQTT 3.1.1 / 5.0 and TCP/UDP debugging in the same app, using about 20MB of memory — a good fit for machines that sit on a remote desktop or low-spec field hardware for long periods.
 
-## 为什么在 Windows 上选它
+## Why choose it on Windows
 
-- **原生桌面应用**：不是 Electron 套壳，启动快、内存低
-- **协议齐全**：TCP/UDP 客户端与服务端 + MQTT 3.1.1 / 5.0
-- **安装方式灵活**：winget、安装程序、免安装 zip
-- **调试能力完整**：订阅独立开关、QoS 0/1/2、retain、遗嘱、自动回复、搜索与导出
-- **TLS 可用**：三档证书校验，支持客户端证书与私钥做双向认证
+- **Native desktop app**: not an Electron wrapper, so it starts fast and stays light on memory
+- **Complete protocol set**: TCP/UDP client and server plus MQTT 3.1.1 / 5.0
+- **Flexible installation**: winget, setup program or portable zip
+- **Full debugging toolkit**: per-subscription switches, QoS 0/1/2, retain, last-will, auto-reply, search and export
+- **TLS ready**: three certificate verification modes, with client certificate and private key for mutual TLS
 
-## 系统要求
+## System requirements
 
-- Windows 10 1709 及以上，或 Windows 11
-- x64 或 ARM64
-- 出站网络可访问 Broker 的 1883（明文）或 8883（TLS）端口
+- Windows 10 1709 or later, or Windows 11
+- x64 or ARM64
+- Outbound network access to the broker on port 1883 (plain) or 8883 (TLS)
 
-## 安装
+## Installation
 
-### 推荐：winget
+### Recommended: winget
 
 ```powershell
 winget install SunJary.NetAssistant
 ```
 
-升级：
+To upgrade:
 
 ```powershell
 winget upgrade SunJary.NetAssistant
 ```
 
-### 安装程序或免安装 zip
+### Setup program or portable zip
 
-从[下载页](/download)获取 Windows 安装程序，或下载 zip 解压后直接运行。免安装版适合没有管理员权限、需要随身携带或放在 U 盘里的场景。
+Get the Windows setup program from the [download page](/download), or download the zip and run the app directly after extracting it. The portable version suits machines without administrator rights, or when you need to carry the tool on a USB drive.
 
-首次运行时 SmartScreen 可能提示未知发布者；确认来源可信后，选择「更多信息 → 仍要运行」。公司设备若受策略限制，请按 IT 要求处理。
+On first launch SmartScreen may warn about an unknown publisher; once you trust the source, choose "More info → Run anyway". If a corporate device is restricted by policy, follow your IT requirements.
 
-## 第一次连接 MQTT
+## First MQTT connection
 
-1. 打开 NetAssistant，点击 `+新建`，协议选择 **MQTT**
-2. 填写 Broker 地址、端口（1883 或 8883）、Client ID、用户名与密码
-3. 需要加密时打开 TLS，选择证书校验方式
-4. 连接成功后，在左侧订阅 `test/#` 或真实业务 topic
-5. 在发送区填写 topic、QoS、retain 和 payload，点击发布
+1. Open NetAssistant, click `+ New` and choose **MQTT** as the protocol
+2. Enter the broker address, port (1883 or 8883), client ID, username and password
+3. Turn on TLS if encryption is needed and choose the certificate verification mode
+4. After connecting, subscribe to `test/#` or a real business topic in the left panel
+5. In the send area, fill in topic, QoS, retain and payload, then publish
 
-完整步骤与截图见 [MQTT 调试教程](/guide/mqtt)。
+See the [MQTT debugging tutorial](/guide/mqtt) for the full walkthrough with screenshots.
 
-## 适合 Windows 现场的场景
+## Scenarios suited to Windows field work
 
-- **远程桌面 / 跳板机**：内存占用低，长时间挂着不拖慢机器
-- **多环境切换**：连接名称区分测试、预发与生产，标签页并行打开
-- **TCP/UDP 与 MQTT 混合**：网关、私有协议和 MQTT 在同一个工具里排查
-- **离线安装**：zip 版本不依赖在线安装器，适合内网机器
-- **配置留存**：连接配置自动保存，下次启动直接连
+- **Remote desktop / jump hosts**: low memory use, so leaving it running all day does not slow the machine down
+- **Switching between environments**: name connections for test, staging and production, and open them in parallel tabs
+- **TCP/UDP and MQTT together**: troubleshoot gateways, proprietary protocols and MQTT in one tool
+- **Offline installation**: the zip version does not depend on an online installer, which suits intranet machines
+- **Saved configuration**: connections are stored automatically and reconnect on the next launch
 
-如果你更关心 Windows 上的 TCP/UDP 调试，可以看 [Windows 网络调试助手](/windows-network-debug-tool)。
+If you care more about TCP/UDP debugging on Windows, see the [Windows network debugging tool](/windows-network-debug-tool).
 
-## 常见问题
+## FAQ
 
-### Windows 上怎么安装 MQTT 客户端？
+### How do I install an MQTT client on Windows?
 
-运行 `winget install SunJary.NetAssistant`，或从下载页获取安装程序 / 免安装 zip。
+Run `winget install SunJary.NetAssistant`, or get the setup program / portable zip from the download page.
 
-### 支持哪些 Windows 版本？
+### Which Windows versions are supported?
 
-Windows 10 1709 及以上与 Windows 11，提供 x64 与 ARM64 构建。
+Windows 10 1709 and later plus Windows 11, with x64 and ARM64 builds available.
 
-### winget 提示找不到包怎么办？
+### What if winget cannot find the package?
 
-更新 App Installer 与 winget 源后重试；仍找不到就用安装程序或 zip。
+Update App Installer and the winget sources, then retry; if it is still missing, use the setup program or zip.
 
-### 需要额外放行防火墙吗？
+### Do I need to open any firewall ports?
 
-客户端连接 Broker 是出站流量，通常无需放行；公司网络限制出站端口时允许 1883 / 8883。
+Connecting to the broker is outbound traffic, so usually nothing needs to be allowed; if a corporate network restricts outbound ports, allow 1883 / 8883.
 
-### 和 Windows 网络调试助手是同一个软件吗？
+### Is this the same app as the Windows network debugging assistant?
 
-是。MQTT 与 TCP/UDP 调试都在 NetAssistant 里。
+Yes. MQTT and TCP/UDP debugging both live in NetAssistant.
 
-## 相关页面
+## Related pages
 
-- 功能与参数：[MQTT 客户端](/mqtt-client)
-- 连接与订阅教程：[MQTT 调试教程](/guide/mqtt)
-- 连接失败排查：[MQTT 排错](/mqtt-troubleshooting)
-- 其他平台：[macOS 版](/mqtt-client-mac)、[Linux 版](/mqtt-client-linux)
-- 常见问题：[MQTT 常见问题](/mqtt-faq)
-- [下载 Windows 版](/download)
+- Features and parameters: [MQTT client](/mqtt-client)
+- Connect and subscribe tutorial: [MQTT debugging tutorial](/guide/mqtt)
+- Diagnosing connection failures: [MQTT troubleshooting](/mqtt-troubleshooting)
+- Other platforms: [macOS client](/mqtt-client-mac), [Linux client](/mqtt-client-linux)
+- FAQ: [MQTT FAQ](/mqtt-faq)
+- [Download for Windows](/download)

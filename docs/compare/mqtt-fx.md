@@ -1,6 +1,6 @@
 ---
-title: MQTT.fx 替代品 - 免费开源与商业客户端对比
-description: MQTT.fx 5.x 是 Softblade 的商业客户端，提供 30 天试用；NetAssistant 是免费开源的轻量替代，覆盖 MQTT 3.1.1 / 5.0、TLS 与 TCP/UDP 调试，按场景选择。
+title: MQTT.fx Alternative - Free, Lightweight MQTT Client
+description: MQTT.fx 5.x is a commercial Softblade Java client with a free trial; NetAssistant is a free, open-source MQTT 3.1.1 / 5.0 alternative with TLS and TCP/UDP.
 head:
   - - script
     - type: application/ld+json
@@ -11,132 +11,132 @@ head:
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "MQTT.fx 免费吗？",
+            "name": "Is MQTT.fx free?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "当前 MQTT.fx 5.x 是 Softblade 的商业产品，提供免费试用与 Demo 会话；网上较早的 1.x 免费版属于旧版本，授权模式与当前版本不同。具体价格与试用规则以官方页面为准。"
+              "text": "MQTT.fx 5.x is currently a commercial product from Softblade that offers a free trial and demo sessions; the older 1.x free version found online is a legacy release with a different licensing model. Check the official site for exact pricing and trial terms."
             }
           },
           {
             "@type": "Question",
-            "name": "NetAssistant 能替代 MQTT.fx 吗？",
+            "name": "Can NetAssistant replace MQTT.fx?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "在免费、轻量、TCP/UDP 与 MQTT 混合调试的场景可以替代；如果依赖 MQTT.fx 的完整 MQTT 5 工具链、脚本或已购授权，继续使用它更合适。"
+              "text": "It can for free, lightweight debugging and for mixed TCP/UDP plus MQTT work; if you depend on the full MQTT.fx MQTT 5 toolchain, scripting or a license you already own, staying with it is the better choice."
             }
           },
           {
             "@type": "Question",
-            "name": "两者最大的区别是什么？",
+            "name": "What is the biggest difference between them?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "授权与技术栈不同：MQTT.fx 5.x 是商业 Java 客户端，NetAssistant 是 Apache-2.0 开源的 Rust 原生应用，内存约 20MB，并把 TCP/UDP 调试放在同一个应用里。"
+              "text": "Licensing and stack: MQTT.fx 5.x is a commercial Java client, while NetAssistant is a native Rust app open sourced under Apache-2.0 that uses about 20MB of memory and includes TCP/UDP debugging in the same app."
             }
           },
           {
             "@type": "Question",
-            "name": "NetAssistant 支持 MQTT 5.0 吗？",
+            "name": "Does NetAssistant support MQTT 5.0?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "支持基础能力：Clean Start、会话过期、接收最大值，以及连接、订阅、发布的原因码；用户属性、Will Delay、共享订阅等高级特性未提供。"
+              "text": "It supports the basics: Clean Start, session expiry, receive maximum, and reason codes for connect, subscribe and publish; advanced features such as user properties, Will Delay and shared subscriptions are not provided."
             }
           },
           {
             "@type": "Question",
-            "name": "从 MQTT.fx 迁移麻烦吗？",
+            "name": "Is migrating from MQTT.fx difficult?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "不麻烦。新建 MQTT 连接，填入相同的 Broker、端口与账号，按证书来源配置 TLS，再订阅原来的 topic 即可；同时连接两个客户端时 Client ID 要不同。"
+              "text": "No. Create an MQTT connection, enter the same broker, port and account, configure TLS according to the certificate source, and subscribe to your original topics; when both clients connect at the same time, their client IDs must differ."
             }
           }
         ]
       }
 ---
 
-# MQTT.fx 替代品：免费开源、轻量与商业客户端怎么选
+# MQTT.fx Alternative: Free, Open Source or Commercial
 
-MQTT.fx 是很多物联网开发者最早接触的图形化 MQTT 客户端之一，当前 5.x 由 Softblade 以商业授权提供，带免费试用。NetAssistant 不试图在功能数量上对标它，而是走另一条路：免费开源、约 20MB 内存、原生桌面，并把 TCP/UDP 调试和 MQTT 放在一起。
+MQTT.fx is one of the first graphical MQTT clients many IoT developers tried; version 5.x is now offered commercially by Softblade with a free trial. NetAssistant does not try to match it feature for feature. It takes a different path as a free, open-source MQTT.fx alternative: about 20MB of memory, a native desktop app, with TCP/UDP debugging and MQTT in one place.
 
-## MQTT.fx 现在是什么
+## What MQTT.fx is today
 
-- **商业产品**：MQTT.fx 5.x 需要授权，官方提供免费试用与 Demo 会话，具体期限与价格以官网为准
-- **Java 桌面客户端**：跨平台运行，功能覆盖连接配置、topic 浏览、消息编辑、QoS、retain 与 TLS
-- **MQTT 5 特性**：官方提供 MQTT 5 相关能力，完整程度以官方文档与版本为准
-- **老教程注意**：网上大量 1.x 教程对应的免费旧版，与当前 5.x 的授权模式不同
+- **Commercial product**: MQTT.fx 5.x requires a license, and the official site offers a free trial and demo sessions; the exact term and pricing are set by the official site
+- **Java desktop client**: cross-platform, covering connection profiles, topic browsing, message editing, QoS, retain and TLS
+- **MQTT 5 features**: the official documentation describes MQTT 5 capabilities, and completeness depends on the official docs and version
+- **Older tutorials**: many 1.x tutorials online refer to the older free release, whose licensing model differs from today's 5.x
 
-## NetAssistant 的不同
+## How NetAssistant differs
 
-- **免费开源**：Apache-2.0，全部功能可用，没有试用期与许可证管理
-- **Rust 原生**：不是 Java/Electron 套壳，内存约 20MB，低配现场与远程桌面更轻
-- **协议范围更宽**：TCP/UDP 客户端与服务端 + MQTT 3.1.1 / 5.0
-- **TLS 更细**：系统根证书 / 自定义 CA / 跳过校验三档，支持客户端证书做双向认证
-- **边界明确**：不提供脚本、MQTT over WebSocket 与 5.0 高级特性，适合功能验证而不是全功能工作台
+- **Free and open source**: Apache-2.0, all features available, with no trial period and no license management
+- **Rust native**: not a Java or Electron wrapper, about 20MB of memory, lighter on low-spec field machines and remote desktops
+- **Wider protocol scope**: TCP/UDP client and server plus MQTT 3.1.1 / 5.0
+- **Finer TLS control**: system roots / custom CA / skipped verification, with a client certificate for mutual TLS
+- **Clear boundaries**: no scripting, no MQTT over WebSocket and no advanced 5.0 features; built for verifying functionality rather than serving as a full-featured workbench
 
-## 对比表
+## Comparison table
 
-| 维度 | NetAssistant | MQTT.fx 5.x |
+| Dimension | NetAssistant | MQTT.fx 5.x |
 | ---- | ---- | ---- |
-| 授权与费用 | Apache-2.0，免费 | 商业授权，提供试用 |
-| 技术栈 | Rust 原生 | Java 桌面客户端 |
-| 资源占用 | 约 20MB 内存 | 以实际运行为准 |
-| 协议范围 | TCP/UDP + MQTT | MQTT |
-| MQTT 版本 | 3.1.1 / 5.0（基础 5.0） | 3.1.1 / 5.0（以官方为准） |
-| TLS / 双向认证 | 支持 | 支持 |
-| topic 浏览 | 报文流 + topic 标签 + 搜索 | topic 浏览器 + 消息编辑 |
-| 脚本与高级 5.0 | 不支持 | 以官方版本为准 |
-| MQTT 压测 | 不支持 | 不在本页比较范围 |
+| License and cost | Apache-2.0, free | Commercial license with a trial |
+| Stack | Rust native | Java desktop client |
+| Resource use | About 20MB of memory | Depends on the running instance |
+| Protocol scope | TCP/UDP + MQTT | MQTT |
+| MQTT version | 3.1.1 / 5.0 (5.0 basics) | 3.1.1 / 5.0 (per official docs) |
+| TLS / mutual TLS | Supported | Supported |
+| Topic browsing | Message stream + topic tags + search | Topic browser + message editor |
+| Scripting and advanced 5.0 | Not supported | Per the official version |
+| MQTT stress testing | Not supported | Outside the scope of this page |
 
-## 什么场景继续用 MQTT.fx
+## When to stay with MQTT.fx
 
-- 已经购买授权，团队流程围绕它建立
-- 需要更完整的 MQTT 5 属性编辑与高级工具
-- 需要脚本或更复杂的消息处理能力
-- 更习惯它的 topic 浏览器与消息编辑器
+- You have already bought a license and your team's workflow is built around it
+- You need more complete MQTT 5 property editing and advanced tools
+- You need scripting or more complex message processing
+- You are more used to its topic browser and message editor
 
-## 什么场景换成 NetAssistant
+## When to switch to NetAssistant
 
-- 不想为偶尔调试购买授权，或需要可自由分发的开源工具
-- 机器内存紧张，或需要长期挂在远程桌面
-- 同一现场既有 TCP/UDP 私有协议，又有 MQTT
-- 需要 mTLS、自定义 CA、MQTT 5 原因码等基础排错能力
-- 只需要验证连接、订阅、发布与报文内容
+- You do not want to buy a license for occasional debugging, or you need an open-source tool you can distribute freely
+- The machine is short on memory, or the client stays open over remote desktop for long periods
+- The same site has both TCP/UDP private protocols and MQTT
+- You need mTLS, a custom CA or MQTT 5 reason codes for basic troubleshooting
+- You only need to verify connections, subscriptions, publishing and message content
 
-## 从 MQTT.fx 迁移
+## Migrating from MQTT.fx
 
-1. 在 NetAssistant 新建 MQTT 连接，填入相同的 Broker、端口与账号
-2. 按证书来源配置 TLS；原来用 8883 的记得打开 TLS
-3. 订阅之前在 MQTT.fx 里使用的 topic 或通配符
-4. 用发送区复现发布，消息区搜索关键字，必要时导出 JSON
-5. 两个客户端同时连接时，Client ID 必须不同
+1. Create an MQTT connection in NetAssistant and enter the same broker, port and account
+2. Configure TLS according to the certificate source; if you used 8883 before, remember to enable TLS
+3. Subscribe to the topics or wildcards you used in MQTT.fx
+4. Reproduce a publish in the send area, search keywords in the message view, and export JSON when needed
+5. When both clients connect at the same time, the client IDs must differ
 
-MQTT.fx 是 Softblade GmbH 的商标，本页仅做产品对比，与 Softblade 无隶属关系。
+MQTT.fx is a trademark of Softblade GmbH. This page only compares products and has no affiliation with Softblade.
 
-## 常见问题
+## FAQ
 
-### MQTT.fx 免费吗？
+### Is MQTT.fx free?
 
-当前 5.x 是商业产品，提供免费试用与 Demo；较早的 1.x 免费版属于旧版本，规则以官方为准。
+Today's 5.x is a commercial product with a free trial and demo; the earlier 1.x free version is legacy, with terms per the official site.
 
-### NetAssistant 能替代 MQTT.fx 吗？
+### Can NetAssistant replace MQTT.fx?
 
-免费、轻量、TCP/UDP 与 MQTT 混合调试场景可以；依赖完整 5.0 工具链、脚本或已购授权时继续用 MQTT.fx。
+It can for free, lightweight scenarios and for mixed TCP/UDP plus MQTT debugging; keep MQTT.fx when you depend on the full 5.0 toolchain, scripting or a license you already own.
 
-### 两者最大的区别是什么？
+### What is the biggest difference between them?
 
-MQTT.fx 是商业 Java 客户端；NetAssistant 是免费开源的 Rust 原生应用，约 20MB，并包含 TCP/UDP 调试。
+MQTT.fx is a commercial Java client; NetAssistant is a free, open-source native Rust app at about 20MB that also includes TCP/UDP debugging.
 
-### NetAssistant 支持 MQTT 5.0 吗？
+### Does NetAssistant support MQTT 5.0?
 
-支持 Clean Start、会话过期、接收最大值与原因码；高级特性未提供。
+It supports Clean Start, session expiry, receive maximum and reason codes; advanced features are not provided.
 
-### 从 MQTT.fx 迁移麻烦吗？
+### Is migrating from MQTT.fx difficult?
 
-不麻烦，填入相同 Broker 与账号、配置 TLS、订阅原 topic 即可；同时连接时 Client ID 要不同。
+No. Enter the same broker and account, configure TLS and subscribe to your original topics; when both connect at once, the client IDs must differ.
 
-## 相关页面
+## Related pages
 
-- 与 MQTTX 的差异：[MQTTX 替代品对比](/comparison-mqttx)
-- 与 MQTT Explorer 的差异：[MQTT Explorer 对比](/compare/mqtt-explorer)
-- 功能与参数：[MQTT 客户端](/mqtt-client)
-- 常见问题汇总：[MQTT 常见问题](/mqtt-faq)
-- [下载 NetAssistant](/download)
+- Differences from MQTTX: [MQTTX alternative comparison](/comparison-mqttx)
+- Differences from MQTT Explorer: [MQTT Explorer comparison](/compare/mqtt-explorer)
+- Features and parameters: [MQTT client](/mqtt-client)
+- FAQ collection: [MQTT FAQ](/mqtt-faq)
+- [Download NetAssistant](/download)

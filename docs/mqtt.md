@@ -1,69 +1,69 @@
 ---
-title: MQTT 调试指南 - 教程、TLS、5.0 与排错
-description: NetAssistant MQTT 调试总览：从连接 Broker、订阅发布，到 TLS 配置、5.0 会话、QoS/retain/遗嘱测试与连接排错，按任务快速进入对应页面。
+title: "MQTT Debugging Guide: Tutorial, TLS, 5.0 and Troubleshooting"
+description: "MQTT debugging guide for NetAssistant: connect to a broker, subscribe and publish, configure TLS, test MQTT 5.0 sessions and QoS/retain/last will, and troubleshoot failures."
 ---
 
-# MQTT 调试指南：从连接到排错
+# MQTT Debugging Guide: From Connecting to Troubleshooting
 
-这个页面把 MQTT 相关内容按任务串起来。第一次用先从「快速开始」进入；已经能连上、但消息或证书有问题，直接看排错与 TLS；要选工具则看对比总览。
+This page ties the MQTT content together by task. If you are new, start with Quick start; if you can already connect but messages or certificates are giving you trouble, go straight to troubleshooting and TLS; if you are choosing a tool, see the comparison overview.
 
-## 快速开始
+## Quick start
 
-1. [下载并安装 NetAssistant](/download)，支持 Windows、macOS 与 Linux
-2. 按 [MQTT 调试教程](/guide/mqtt) 新建连接、订阅并发布第一条消息
-3. 连不上或收不到消息时，查 [MQTT 排错](/mqtt-troubleshooting)
-4. 需要加密连接，按 [MQTT TLS 配置](/mqtt-tls) 选择证书校验方式
+1. [Download and install NetAssistant](/download), available for Windows, macOS and Linux
+2. Follow the [MQTT tutorial](/guide/mqtt) to create a connection, subscribe and publish your first message
+3. If you cannot connect or receive messages, check [MQTT troubleshooting](/mqtt-troubleshooting)
+4. For encrypted connections, choose a certificate verification mode in [MQTT TLS configuration](/mqtt-tls)
 
-## 按任务找页面
+## Find a page by task
 
-| 你现在要做什么 | 进入页面 |
+| What you want to do | Go to |
 | ---- | ---- |
-| 了解客户端支持哪些能力 | [MQTT 客户端](/mqtt-client) |
-| 第一次连接 Broker、订阅与发布 | [MQTT 调试教程](/guide/mqtt) |
-| 配置 TLS、自签证书、双向认证 | [MQTT TLS](/mqtt-tls) |
-| 使用会话过期、接收最大值与原因码 | [MQTT 5.0](/mqtt-5) |
-| 验证 QoS、retain、遗嘱、通配符 | [MQTT 测试场景](/mqtt-testing) |
-| 连接被拒、订阅失败、收不到消息 | [MQTT 排错](/mqtt-troubleshooting) |
-| 在 Windows / macOS / Linux 安装 | [Windows](/mqtt-client-windows)、[macOS](/mqtt-client-mac)、[Linux](/mqtt-client-linux) |
-| 和 MQTTX、Explorer、MQTT.fx 对比 | [MQTT 客户端对比](/compare/) |
-| 快速查端口、Client ID、QoS 等问题 | [MQTT 常见问题](/mqtt-faq) |
+| Understand what the client supports | [MQTT client](/mqtt-client) |
+| Connect to a broker, subscribe and publish for the first time | [MQTT tutorial](/guide/mqtt) |
+| Configure TLS, self-signed certificates, mutual authentication | [MQTT TLS](/mqtt-tls) |
+| Use session expiry, receive maximum and reason codes | [MQTT 5.0](/mqtt-5) |
+| Verify QoS, retain, last will, wildcards | [MQTT testing scenarios](/mqtt-testing) |
+| Connection refused, subscription failed, no messages arriving | [MQTT troubleshooting](/mqtt-troubleshooting) |
+| Install on Windows / macOS / Linux | [Windows](/mqtt-client-windows), [macOS](/mqtt-client-mac), [Linux](/mqtt-client-linux) |
+| Compare with MQTTX, Explorer, MQTT.fx | [MQTT client comparison](/compare/) |
+| Quickly check ports, Client ID, QoS and similar questions | [MQTT FAQ](/mqtt-faq) |
 
-## 能力摘要
+## Capabilities at a glance
 
-- 协议版本：MQTT 3.1.1 与 5.0，可在同一连接配置中切换
-- 传输：TCP 直连，TLS 支持系统根证书、自定义 CA、跳过校验与双向认证
-- 收发：QoS 0/1/2、retain、遗嘱、通配符订阅、订阅独立开关
-- 5.0：Clean Start、会话过期、接收最大值、连接/订阅/发布原因码
-- 调试：消息搜索、收藏、TXT / JSON / CSV 导出、自动回复、周期发送
-- 边界：不支持 MQTT over WebSocket、脚本、共享订阅与 MQTT 压测
+- Protocol versions: MQTT 3.1.1 and 5.0, switchable in the same connection config
+- Transport: direct TCP; TLS supports system roots, a custom CA, skipped verification and mutual TLS
+- Send and receive: QoS 0/1/2, retain, last-will messages, wildcard subscriptions, per-subscription switches
+- 5.0: Clean Start, session expiry, receive maximum, connect/subscribe/publish reason codes
+- Debugging: message search, favorites, TXT / JSON / CSV export, auto-reply, periodic send
+- Boundaries: no MQTT over WebSocket, no scripting, no shared subscriptions, no MQTT stress testing
 
-完整参数见 [MQTT 客户端](/mqtt-client)。
+For the full settings, see [MQTT client](/mqtt-client).
 
-## 平台安装
+## Platform installation
 
-| 平台 | 安装方式 |
+| Platform | Installation method |
 | ---- | ---- |
-| Windows | winget、安装程序或免安装 zip，见 [Windows 版](/mqtt-client-windows) |
-| macOS | Universal DMG 或 zip，见 [macOS 版](/mqtt-client-mac) |
-| Linux | deb、AppImage、tar.gz，见 [Linux 版](/mqtt-client-linux) |
+| Windows | winget, installer or portable zip, see [Windows version](/mqtt-client-windows) |
+| macOS | Universal DMG or zip, see [macOS version](/mqtt-client-mac) |
+| Linux | deb, AppImage, tar.gz, see [Linux version](/mqtt-client-linux) |
 
-## 选型与对比
+## Choosing and comparing
 
-- [MQTT 客户端对比总览](/compare/)：MQTTX、MQTT Explorer、MQTT.fx 与 NetAssistant 的适用场景
-- [MQTTX 对比](/comparison-mqttx)：WebSocket、脚本与完整 5.0 的差异
-- [MQTT Explorer 对比](/compare/mqtt-explorer)：topic 树与报文流的选择
-- [MQTT.fx 对比](/compare/mqtt-fx)：商业授权与免费开源的取舍
+- [MQTT client comparison overview](/compare/): MQTTX vs MQTT Explorer vs MQTT.fx and NetAssistant, and where each one fits
+- [MQTTX comparison](/comparison-mqttx): the differences in WebSocket, scripting and full 5.0
+- [MQTT Explorer comparison](/compare/mqtt-explorer): topic tree or message stream
+- [MQTT.fx comparison](/compare/mqtt-fx): commercial licensing or free and open source
 
-## 建议阅读顺序
+## Suggested reading order
 
-- 新用户：教程 → 客户端 → 排错
-- 平台/后端：5.0 → 测试场景 → 排错
-- 现场/硬件：Windows 或 Linux 安装页 → 教程 → TLS
-- 选型：对比总览 → 对应竞品对比页 → 客户端
+- New users: tutorial → client → troubleshooting
+- Platform/backend: 5.0 → testing scenarios → troubleshooting
+- Field/hardware: Windows or Linux install page → tutorial → TLS
+- Choosing a tool: comparison overview → the matching competitor comparison → client
 
-## 相关页面
+## Related pages
 
-- [MQTT 客户端](/mqtt-client)
-- [MQTT 调试教程](/guide/mqtt)
-- [MQTT 常见问题](/mqtt-faq)
-- [下载 NetAssistant](/download)
+- [MQTT client](/mqtt-client)
+- [MQTT tutorial](/guide/mqtt)
+- [MQTT FAQ](/mqtt-faq)
+- [Download NetAssistant](/download)

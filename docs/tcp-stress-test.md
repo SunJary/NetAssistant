@@ -1,6 +1,6 @@
 ---
-title: TCP/UDP 压力测试工具 - QPS 与 p99 延迟
-description: NetAssistant 内置 TCP/UDP 压力测试工具：Ping-Pong 与吞吐模式、短连接/长连接、变量模板、实时 QPS、p50/p95/p99 延迟与失败原因分类，支持 CSV 报告导出。
+title: TCP/UDP Stress Testing - QPS & p99 Latency
+description: "TCP/UDP stress testing with Ping-Pong and throughput modes, short/long connections, payload templates, live QPS, p50/p95/p99 latency and CSV export."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "Windows 10+, macOS 10.15+, Linux",
-            "description": "内置 TCP/UDP 压力测试引擎的网络调试工具，支持 Ping-Pong 与吞吐模式、实时 QPS、p50/p95/p99 延迟和 CSV 报告导出。",
+            "description": "A network debugging tool with a built-in TCP/UDP stress engine, Ping-Pong and throughput modes, live QPS, p50/p95/p99 latency and CSV export.",
             "url": "https://netassistant.trydo.top/tcp-stress-test",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,50 +24,50 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "怎么对 TCP 服务端做压力测试？",
+                "name": "How do I stress test a TCP server?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "打开压测页，填写目标地址、端口、并发数、发送速率和消息内容，选择模式与连接方式，点击开始即可。"
+                  "text": "Open the stress page, enter the target, concurrency, send rate and payload, choose the mode and connection type, then start."
                 }
               },
               {
                 "@type": "Question",
-                "name": "QPS 和 p99 延迟应该看哪个？",
+                "name": "Should I look at QPS or p99 latency?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "两者一起看。QPS 反映吞吐能力，p99 反映尾部延迟；只看其中一个容易得出错误结论。"
+                  "text": "Both. QPS shows throughput; p99 shows tail latency. Looking at only one can lead to the wrong conclusion."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持 UDP 压测吗？",
+                "name": "Does it support UDP stress testing?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。TCP 与 UDP 都可以使用 Ping-Pong 或吞吐模式。"
+                  "text": "Yes, both TCP and UDP support Ping-Pong and throughput modes."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持短连接吗？",
+                "name": "Does it support short connections?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。短连接每次请求新建连接，长连接复用连接。"
+                  "text": "Yes. Short connections create a new connection per request; long connections reuse them."
                 }
               },
               {
                 "@type": "Question",
-                "name": "能导出报告吗？",
+                "name": "Can I export a report?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "可以，测试结束后导出 CSV，包含 QPS、延迟分位数与失败原因。"
+                  "text": "Yes, export a CSV with QPS, latency percentiles and failure reasons."
                 }
               },
               {
                 "@type": "Question",
-                "name": "和 JMeter、wrk 有什么区别？",
+                "name": "How is it different from JMeter or wrk?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "JMeter/wrk 更适合脚本化、分布式和持续集成；NetAssistant 适合图形化、原始 TCP/UDP 协议的快速验证。"
+                  "text": "JMeter and wrk are better for scripting, distributed testing and CI. NetAssistant is better for GUI-based, raw TCP/UDP validation."
                 }
               }
             ]
@@ -76,122 +76,122 @@ head:
       }
 ---
 
-# TCP/UDP 压力测试：QPS、p99 延迟与失败分类
+# TCP/UDP Stress Testing: QPS, p99 Latency and Failure Breakdown
 
-服务端能不能扛住并发，不能靠“感觉”。NetAssistant 内置 TCP/UDP 压测引擎，不用再装 JMeter、wrk 或写脚本，填好目标地址和并发数就能看到 QPS、p50/p95/p99 延迟和失败原因。
+You cannot judge whether a server handles concurrency by intuition. NetAssistant includes a built-in TCP/UDP stress engine: enter the target, concurrency and payload, and watch QPS, p50/p95/p99 latency and failure reasons without installing JMeter, wrk or writing a script.
 
-压测引擎是独立逻辑层，基于令牌桶控制发送速率，支持 Ping-Pong 与吞吐两种模式、短连接与长连接。
+The engine runs independently, uses a token bucket to control send rate, and supports Ping-Pong and throughput modes with short or long connections.
 
-> [下载 NetAssistant](/download) · [压测使用指南](/guide/stress) · [全部功能](/features)
+> [Download NetAssistant](/download) · [Stress testing guide](/guide/stress) · [All features](/features)
 
-![配置压力测试](../assets/screenshots/zh/screenshot_udp_stress_dark.png)
+![Stress test configuration](../assets/screenshots/en/screenshot_udp_stress_dark.png)
 
-## 适合什么场景
+## When to use it
 
-- **自研 TCP/UDP 服务端**：验证接口在多并发下的吞吐与延迟
-- **设备并发连接**：模拟多个客户端上线、心跳与断线重连
-- **长稳测试**：持续发送，观察失败率、断连和资源变化
-- **压测前后对比**：同一配置下比较优化前后的 QPS 与 p99
+- **Your own TCP/UDP server**: validate throughput and latency under concurrency
+- **Device concurrency**: simulate many clients connecting, sending heartbeats and reconnecting
+- **Soak testing**: send traffic for a long time and watch failures, disconnects and resource usage
+- **Before/after comparison**: compare QPS and p99 with the same configuration
 
-## 两种压测模式
+## Two modes
 
-| 模式 | 行为 | 统计 | 适用场景 |
+| Mode | Behavior | Metrics | Best for |
 | ---- | ---- | ---- | ---- |
-| Ping-Pong（往返） | 发送后等待响应 | RTT、p50/p95/p99、平均/最大延迟 | 接口性能、请求响应型协议 |
-| 吞吐模式 | 只发送，不等待响应 | QPS、发送成功率、流量 | 最大吞吐、单向推送 |
+| Ping-Pong | Send and wait for a response | RTT, p50/p95/p99, average/max latency | Request-response protocols and API performance |
+| Throughput | Send without waiting | QPS, success rate, traffic | Maximum throughput and one-way push |
 
-连接模式支持**短连接**（每次请求新建连接）与**长连接**。短连接更接近连接建立成本高的场景，长连接更适合持续吞吐测试。
+Connections can be **short-lived** (new connection per request) or **long-lived** (reuse connections). Short connections capture connection-setup cost; long connections are better for sustained throughput.
 
-## 配置步骤
+## Configuration steps
 
-1. 打开标签页上的「压测」入口
-2. 填写目标地址、端口、并发客户端数、发送速率与消息内容
-3. 消息内容可使用变量模板，避免所有请求完全相同
-4. 按需设置结尾字符（继承 / 无 / LF / CRLF）
-5. 选择压测模式与连接模式
-6. 点击开始；配置会自动保存，下次打开自动回填
+1. Open the **Stress** tab
+2. Enter target address, port, concurrent clients, send rate and payload
+3. Use payload templates so requests are not all identical
+4. Optionally set a line ending (inherit / none / LF / CRLF)
+5. Choose the stress mode and connection mode
+6. Start the test; settings are saved and restored next time
 
-## 变量模板
+## Payload templates
 
-| 模板 | 含义 |
+| Template | Meaning |
 | ---- | ---- |
-| `${seq}` | 全局序号 |
-| `${worker_id}` | 线程 ID |
-| `${counter}` | 本地计数 |
-| `${timestamp}` | 时间戳 |
-| `${uuid}` | 随机 UUID |
-| `${random:min:max}` | 随机整数 |
+| `${seq}` | Global sequence number |
+| `${worker_id}` | Worker ID |
+| `${counter}` | Local counter |
+| `${timestamp}` | Timestamp |
+| `${uuid}` | Random UUID |
+| `${random:min:max}` | Random integer |
 
-用变量模板可以让每条报文不同，避免服务端或中间设备做了去重、缓存或合并。
+Templates help avoid server-side deduplication, caching or coalescing that could skew results.
 
-## 实时指标
+## Live metrics
 
-- **QPS**：当前值与峰值
-- **发送统计**：总发送 / 成功 / 失败
-- **连接统计**：活跃连接（当前/峰值）、断连/重连
-- **流量统计**：收发字节
-- **延迟分位数**：p50 / p95 / p99 / 平均 / 最大（仅 Ping-Pong 模式）
-- **失败原因分类**：连接失败 / 发送失败 / 接收超时 / 对端关闭 / 校验失败
+- **QPS**: current and peak
+- **Send statistics**: total / success / failure
+- **Connection statistics**: active (current/peak), disconnects/reconnects
+- **Traffic**: bytes sent and received
+- **Latency percentiles**: p50 / p95 / p99 / average / max (Ping-Pong only)
+- **Failure breakdown**: connect failure / send failure / receive timeout / peer closed / checksum failure
 
-![压力测试结果](../assets/screenshots/zh/screenshot_stress.png)
+![Stress test results](../assets/screenshots/en/screenshot_stress.png)
 
-失败原因分类比单纯的“失败数”更有用：连接失败通常是端口、防火墙或 backlog 问题；接收超时可能是服务端处理慢；对端关闭要看服务端是否主动断连。
+Failure breakdown is more useful than a single failure count: connect failures often mean port, firewall or backlog issues; receive timeouts suggest a slow server; peer-closed errors point to server-side disconnects.
 
-## 报告导出
+## CSV reports
 
-测试结束后可导出 CSV 统计报告，包含 QPS、延迟分位数、成功/失败数与失败原因，方便贴到 issue、压测记录或优化对比表里。测试过程中点击停止按钮可随时终止。
+Export a CSV report after the test with QPS, latency percentiles, success/failure counts and failure reasons. You can stop a running test at any time.
 
-## 和 JMeter、wrk 的区别
+## NetAssistant vs JMeter and wrk
 
-| 维度 | NetAssistant | JMeter / wrk |
+| Dimension | NetAssistant | JMeter / wrk |
 | ---- | ---- | ---- |
-| 形态 | 图形界面，开箱即用 | 脚本/配置驱动 |
-| 协议 | 原始 TCP/UDP | HTTP 为主，TCP 需插件或脚本 |
-| 上手成本 | 低，填写参数即可 | 较高，需要脚本与场景设计 |
-| 分布式压测 | 不支持 | 支持 |
-| 持续集成 | 不适合 | 适合 |
-| 适用阶段 | 联调、临时验证、快速对比 | 完整压测体系、回归与容量评估 |
+| Form | GUI, ready to use | Script/config driven |
+| Protocol | Raw TCP/UDP | Mostly HTTP; TCP via plugins or scripts |
+| Learning curve | Low, fill in parameters | Higher, requires scenarios and scripts |
+| Distributed testing | No | Yes |
+| CI integration | Not suitable | Suitable |
+| Best phase | Development, quick validation | Full load-testing programs and regressions |
 
-NetAssistant 的定位是**开发联调阶段的快速压测**，不是 JMeter/wrk 的替代品。需要分布式、脚本化和长期回归时，仍然应该用专业压测平台。
+NetAssistant is for **quick stress testing during development**, not a replacement for JMeter or wrk. Use a dedicated load-testing platform for distributed, scripted and long-term regression testing.
 
-## 压测建议
+## Practical tips
 
-- 先做小流量预热，再逐步提高并发，避免一上来打满
-- 压测机和被测服务尽量在同一网段，排除公网抖动
-- 同时观察服务端 CPU、内存、连接数和错误日志
-- 长连接看吞吐，短连接看连接建立成本
-- 不要对没有授权的服务做压测
+- Warm up at low load before increasing concurrency
+- Keep the load generator and target on the same network segment when possible
+- Watch server CPU, memory, connection count and error logs during the test
+- Use long connections for throughput and short connections for setup cost
+- Never stress test services you do not have permission to test
 
-## 常见问题
+## FAQ
 
-### 怎么对 TCP 服务端做压力测试？
+### How do I stress test a TCP server?
 
-打开压测页，填写目标地址、端口、并发数、发送速率和消息内容，选择模式与连接方式，点击开始即可。
+Open the stress page, enter the target, concurrency, send rate and payload, choose the mode and connection type, then start.
 
-### QPS 和 p99 延迟应该看哪个？
+### Should I look at QPS or p99 latency?
 
-两者一起看。QPS 反映吞吐能力，p99 反映尾部延迟；只看其中一个容易得出错误结论。
+Both. QPS shows throughput; p99 shows tail latency. Looking at only one can lead to the wrong conclusion.
 
-### 支持 UDP 压测吗？
+### Does it support UDP stress testing?
 
-支持。TCP 与 UDP 都可以使用 Ping-Pong 或吞吐模式。
+Yes, both TCP and UDP support Ping-Pong and throughput modes.
 
-### 支持短连接吗？
+### Does it support short connections?
 
-支持。短连接每次请求新建连接，长连接复用连接。
+Yes. Short connections create a new connection per request; long connections reuse them.
 
-### 能导出报告吗？
+### Can I export a report?
 
-可以，测试结束后导出 CSV，包含 QPS、延迟分位数与失败原因。
+Yes, export a CSV with QPS, latency percentiles and failure reasons.
 
-### 和 JMeter、wrk 有什么区别？
+### How is it different from JMeter or wrk?
 
-JMeter/wrk 更适合脚本化、分布式和持续集成；NetAssistant 适合图形化、原始 TCP/UDP 协议的快速验证。
+JMeter and wrk are better for scripting, distributed testing and CI. NetAssistant is better for GUI-based, raw TCP/UDP validation.
 
-## 相关页面
+## Related pages
 
-- [压力测试使用指南](/guide/stress)
-- [TCP 调试工具](/tcp-debug-tool)
-- [TCP 粘包与拆包](/tcp-sticky-packet)
-- [全部功能](/features)
-- [下载 NetAssistant](/download)
+- [Stress testing guide](/guide/stress)
+- [TCP debug tool](/tcp-debug-tool)
+- [TCP sticky packets](/tcp-sticky-packet)
+- [All features](/features)
+- [Download NetAssistant](/download)

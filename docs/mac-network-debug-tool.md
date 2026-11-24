@@ -1,6 +1,6 @@
 ---
-title: Mac 网络调试助手 - macOS TCP/UDP 调试工具
-description: NetAssist 只有 Windows？NetAssistant 是 macOS 原生网络调试助手，支持 Apple Silicon 与 Intel，免费开源，提供 TCP/UDP、粘包解码、MQTT 以及 TCP/UDP 压测。
+title: Mac Network Debugging Tool - TCP/UDP & MQTT
+description: "macOS TCP/UDP debugging tool for Apple Silicon and Intel: client and server modes, sticky-packet decoders, MQTT and TCP/UDP stress testing. Free and open source."
 head:
   - - script
     - type: application/ld+json
@@ -13,7 +13,7 @@ head:
             "name": "NetAssistant",
             "applicationCategory": "DeveloperApplication",
             "operatingSystem": "macOS 10.15+, Apple Silicon, Intel",
-            "description": "macOS 上的原生网络调试助手，支持 Apple Silicon 与 Intel，提供 TCP/UDP 客户端与服务端、TCP 粘包解码、MQTT 调试，以及仅用于 TCP/UDP 的压力测试。",
+            "description": "Native macOS network debugging tool for Apple Silicon and Intel with TCP/UDP client and server, sticky-packet decoders, MQTT and TCP/UDP-only stress testing.",
             "url": "https://netassistant.trydo.top/mac-network-debug-tool",
             "downloadUrl": "https://github.com/SunJary/NetAssistant/releases",
             "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -24,42 +24,42 @@ head:
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "Mac 上能用网络调试助手吗？",
+                "name": "Is there a Mac version of NetAssist?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "老牌的 NetAssist 仅支持 Windows，没有 macOS 版本。NetAssistant 是 macOS 原生的网络调试助手，可替代 NetAssist 完成 TCP/UDP 调试。"
+                  "text": "NetAssist is Windows-only. NetAssistant is a native macOS network debugging tool that can replace it for TCP/UDP debugging."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持 Apple Silicon 吗？",
+                "name": "Does NetAssistant support Apple Silicon?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持。macOS 版本提供 Universal DMG，同时兼容 Apple Silicon 与 Intel，macOS 10.15 及以上均可运行。"
+                  "text": "Yes. The universal DMG runs on Apple Silicon and Intel Macs with macOS 10.15 or later."
                 }
               },
               {
                 "@type": "Question",
-                "name": "提示“无法验证开发者”怎么办？",
+                "name": "How do I open an app that macOS cannot verify?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "右键点击 NetAssistant 选择“打开”，或在“系统设置 → 隐私与安全性”中选择仍要打开即可。这是未公证应用的正常提示，不需要关闭 Gatekeeper。"
+                  "text": "Right-click NetAssistant and choose Open, or allow it in System Settings > Privacy & Security. This is normal for an app that is not notarized."
                 }
               },
               {
                 "@type": "Question",
-                "name": "和 Packet Sender 有什么区别？",
+                "name": "How is NetAssistant different from Packet Sender?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Packet Sender 的协议覆盖更广，支持 SSL/DTLS、HTTP 客户端与 CLI 自动化；NetAssistant 更专注 TCP/UDP 收发调试，内置接收侧粘包解码和压力测试。想继续用 NetAssist 的操作方式，可看 NetAssist 替代指南；完整对比见网络调试工具对比。"
+                  "text": "Packet Sender covers more protocols, including SSL/DTLS, HTTP and CLI automation. NetAssistant focuses on TCP/UDP debugging with sticky-packet decoders and stress testing. See the comparison or the NetAssist alternative guide."
                 }
               },
               {
                 "@type": "Question",
-                "name": "支持 MQTT 吗？",
+                "name": "Does it support MQTT?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "支持 MQTT 3.1.1 / 5.0 客户端与 TLS，包含订阅管理、QoS 0/1/2、retain 与遗嘱消息；MQTT over WebSocket 与 5.0 高级特性未提供。"
+                  "text": "Yes, MQTT 3.1.1 / 5.0 with TLS, subscriptions, QoS 0/1/2, retain and last-will messages. MQTT over WebSocket and advanced 5.0 features are not provided."
                 }
               }
             ]
@@ -68,118 +68,118 @@ head:
       }
 ---
 
-# Mac 网络调试助手：在 macOS 上调试 TCP/UDP
+# Mac Network Debugging Tool: TCP/UDP Debugging on macOS
 
-很多开发者从 Windows 换到 Mac 后，第一件不习惯的事就是找不到顺手的网络调试工具：老牌的**网络调试助手（NetAssist）只有 Windows 版**，而 Mac 上能同时做 TCP/UDP 客户端、服务端和粘包处理的工具并不多。
+Developers who move from Windows to Mac often run into the same problem: **NetAssist is Windows-only**, and there are not many Mac tools that combine a TCP/UDP client, server, sticky-packet handling and stress testing in one place.
 
-NetAssistant 是 macOS 原生的网络调试助手，支持 Apple Silicon 与 Intel，免费开源。它把 TCP/UDP 客户端与服务端、四种粘包解码器、MQTT 3.1.1 / 5.0 调试、十六进制收发，以及仅用于 TCP/UDP 的高并发压力测试放在同一个应用里。
+NetAssistant is a native macOS network debugging tool for Apple Silicon and Intel. It is free and open source, and brings TCP/UDP client and server, four TCP decoders, MQTT 3.1.1 / 5.0 debugging, hex send/receive and TCP/UDP-only high-concurrency stress testing into one app.
 
-> [下载 macOS 版](/download) · [查看全部功能](/features) · [快速上手](/guide/)
+> [Download for macOS](/download) · [All features](/features) · [Getting started](/guide/)
 
-![NetAssistant macOS 客户端界面](../assets/screenshots/zh/screenshot_client.png)
+![NetAssistant client interface on macOS](../assets/screenshots/en/screenshot_client.png)
 
-## 为什么 Mac 用户需要 NetAssistant
+## Why Mac users choose NetAssistant
 
-- **NetAssist 没有 Mac 版**：想在 macOS 上继续用熟悉的调试方式，需要另一个工具
-- **原生构建**：Rust + GPUI，不是 Electron 套壳，启动快、内存占用低
-- **Apple Silicon 原生支持**：Universal DMG 同时兼容 M1/M2/M3 等 Apple Silicon 与 Intel Mac
-- **功能不缺**：TCP/UDP 客户端与服务端、粘包解码、MQTT、工具箱、TCP/UDP 压测
-- **体验统一**：暗黑模式跟随系统，多标签页管理多个连接，配置自动保存
+- **NetAssist has no Mac version**: continue with a familiar debugging workflow on macOS
+- **Native build**: Rust + GPUI, not an Electron wrapper, with fast startup and low memory usage
+- **Apple Silicon support**: a universal DMG runs on M1/M2/M3 and Intel Macs
+- **Complete feature set**: TCP/UDP client and server, decoders, MQTT, toolbox and TCP/UDP stress testing
+- **Consistent experience**: dark mode follows the system, multi-tab connections and saved configurations
 
-## 在 macOS 上安装
+## Install on macOS
 
-### 推荐：Universal DMG
+### Recommended: universal DMG
 
-1. 从[下载页](/download)获取 `netassistant-macos-universal.dmg`
-2. 打开 DMG，将 NetAssistant 拖入 Applications 文件夹
-3. 首次打开若提示“无法验证开发者”，右键点击 NetAssistant → 打开，或在“系统设置 → 隐私与安全性”中选择仍要打开
+1. Download `netassistant-macos-universal.dmg` from the [download page](/download)
+2. Open the DMG and drag NetAssistant into Applications
+3. If macOS says the developer cannot be verified, right-click NetAssistant and choose Open, or allow it in System Settings > Privacy & Security
 
-这是应用未公证时的正常现象，并非应用损坏，不需要关闭 Gatekeeper。
+This is the normal prompt for an app that is not notarized. It does not mean the app is damaged, and you do not need to disable Gatekeeper.
 
-### 备选：zip
+### Alternative: zip
 
-下载 `netassistant-macos-universal.zip`，解压即用，会保留可执行权限。
+Download `netassistant-macos-universal.zip` and extract it. Executable permissions are preserved.
 
-## 核心功能
+## Core features
 
-### TCP/UDP 客户端与服务端
+### TCP/UDP client and server
 
-在 Mac 上创建 TCP 客户端、TCP 服务端、UDP 客户端与 UDP 服务端连接，支持 IPv4/IPv6、双栈地址、多标签页并行调试和本地端口绑定。
+Create TCP client, TCP server, UDP client and UDP server connections on macOS, with IPv4/IPv6, multi-tab debugging and local address/port binding.
 
-### TCP 粘包与四种解码器
+### TCP sticky packets and four decoders
 
-接收侧支持原始数据、行分隔、长度前缀、JSON 四种解码器，按协议格式自动拆分粘包；发送与接收均支持文本/十六进制模式。
+The receiver supports raw, line-delimited, length-prefix and JSON decoders, splitting messages by protocol boundary. Both send and receive support text and hex modes.
 
-![TCP 解码器设置](../assets/screenshots/zh/screenshot_tcp_decoder.png)
+![TCP decoder settings](../assets/screenshots/en/screenshot_tcp_decoder.png)
 
-### 内置压力测试
+### Built-in stress testing
 
-无需另装压测工具，直接对自研服务端做并发吞吐与延迟评估：实时 QPS、p50/p95/p99、失败原因分类，支持 CSV 报告导出。[压力测试指南](/guide/stress)
+Test your own server without installing another tool: real-time QPS, p50/p95/p99 latency, failure breakdown and CSV export. See the [stress testing guide](/guide/stress).
 
-### MQTT 调试
+### MQTT debugging
 
-内置 MQTT 3.1.1 / 5.0 客户端，支持订阅管理、QoS 0/1/2、retain、遗嘱消息与自动回复，适合物联网设备与 Broker 联调。
+An MQTT 3.1.1 / 5.0 client with subscription management, QoS 0/1/2, retain, last-will messages and auto-reply.
 
-![MQTT 客户端](../assets/screenshots/zh/screenshot_mqtt_client.png)
+![MQTT client](../assets/screenshots/en/screenshot_mqtt_client.png)
 
-### 内置工具箱
+### Built-in toolbox
 
-转换、校验、哈希、时间、JSON、编码、随机七组工具常驻标签页，调试协议时不用在浏览器和编辑器之间来回切换。
+Convert, checksum, hash, time, JSON, encoding and random tools in a permanent tab, so you do not have to switch between the browser and editor while debugging.
 
-## 和其他 Mac 工具的区别
+## NetAssistant vs other Mac tools
 
-| 维度 | NetAssistant | Packet Sender | Wireshark |
+| Dimension | NetAssistant | Packet Sender | Wireshark |
 | ---- | ---- | ---- | ---- |
-| 定位 | TCP/UDP 收发调试 | 多协议收发工具 | 抓包分析 |
-| 客户端/服务端 | TCP/UDP 均支持 | 支持 | 不做收发交互 |
-| 接收侧粘包解码 | 原始/行/长度前缀/JSON | 无 | 部分流重组 |
-| 内置压测 | QPS + 延迟分位数 | 基础 | 无 |
-| 脚本/CLI | 无 | 支持 | tshark |
-| 开源 | Apache-2.0 | 开源 | GPL |
+| Focus | TCP/UDP send/receive debugging | Multi-protocol send/receive | Packet capture and analysis |
+| Client/server | TCP and UDP | Yes | Not for interactive send/receive |
+| Receive-side decoders | Raw / line / length-prefix / JSON | No | Partial stream reassembly |
+| Built-in stress testing | QPS + latency percentiles | Basic | No |
+| Scripting/CLI | No | Yes | tshark |
+| License | Apache-2.0 | Open source | GPL |
 
-Packet Sender 的优势是协议覆盖更广（SSL/DTLS、HTTP、CLI 自动化）；Wireshark 擅长抓包分析。NetAssistant 的定位是**在 Mac 上快速做 TCP/UDP 收发、粘包处理和压测**。
+Packet Sender covers more protocols, including SSL/DTLS, HTTP and CLI automation. Wireshark is the tool for packet capture. NetAssistant is built for **quick TCP/UDP send/receive, sticky-packet handling and stress testing on a Mac**.
 
-## 典型使用场景
+## Typical use cases
 
-- **嵌入式与物联网**：Mac 上通过 UDP 广播发现设备，十六进制收发，按来源地址区分回复
-- **后端接口联调**：作为 TCP/UDP 客户端或服务端验证通信逻辑与异常处理
-- **协议学习与教学**：在 Mac 上完成 TCP/UDP 报文实验，不依赖 Windows 虚拟机
-- **多平台切换**：同一套配置和操作习惯在 Windows、Linux、macOS 之间复用
+- **Embedded and IoT**: UDP broadcast discovery, hex send/receive and highlighting replies from unexpected addresses
+- **Backend verification**: act as a TCP/UDP client or server to validate communication logic
+- **Learning and teaching**: run TCP/UDP labs on a Mac without a Windows virtual machine
+- **Cross-platform work**: keep the same workflow on Windows, Linux and macOS
 
-## 系统要求
+## System requirements
 
-| 项目 | 要求 |
+| Item | Requirement |
 | ---- | ---- |
-| 系统 | macOS 10.15 或更高版本 |
-| 架构 | Apple Silicon 与 Intel（Universal） |
-| 安装方式 | Universal DMG 或 zip |
-| 许可 | Apache-2.0，免费使用 |
+| OS | macOS 10.15 or later |
+| Architecture | Apple Silicon and Intel (universal) |
+| Installation | Universal DMG or zip |
+| License | Apache-2.0, free to use |
 
-## 常见问题
+## FAQ
 
-### Mac 上能用网络调试助手吗？
+### Is there a Mac version of NetAssist?
 
-老牌的 NetAssist 仅支持 Windows，没有 macOS 版本。NetAssistant 是 macOS 原生的网络调试助手，可替代 NetAssist 完成 TCP/UDP 调试。
+NetAssist is Windows-only. NetAssistant is a native macOS network debugging tool that can replace it for TCP/UDP debugging.
 
-### 支持 Apple Silicon 吗？
+### Does NetAssistant support Apple Silicon?
 
-支持。macOS 版本提供 Universal DMG，同时兼容 Apple Silicon 与 Intel，macOS 10.15 及以上均可运行。
+Yes. The universal DMG runs on Apple Silicon and Intel Macs with macOS 10.15 or later.
 
-### 提示“无法验证开发者”怎么办？
+### How do I open an app that macOS cannot verify?
 
-右键点击 NetAssistant 选择“打开”，或在“系统设置 → 隐私与安全性”中选择仍要打开即可。这是未公证应用的正常提示，不需要关闭 Gatekeeper。
+Right-click NetAssistant and choose Open, or allow it in System Settings > Privacy & Security. This is normal for an app that is not notarized.
 
-### 和 Packet Sender 有什么区别？
+### How is NetAssistant different from Packet Sender?
 
-Packet Sender 的协议覆盖更广，支持 SSL/DTLS、HTTP 客户端与 CLI 自动化；NetAssistant 更专注 TCP/UDP 收发调试，内置接收侧粘包解码和压力测试。想继续用 NetAssist 的操作方式，可看 [NetAssist 替代指南](/compare/netassist)；完整对比见[网络调试工具对比](/comparison)。
+Packet Sender covers more protocols, including SSL/DTLS, HTTP and CLI automation. NetAssistant focuses on TCP/UDP debugging with sticky-packet decoders and stress testing. See the [comparison](/comparison) or the [NetAssist alternative guide](/compare/netassist).
 
-### 支持 MQTT 吗？
+### Does it support MQTT?
 
-支持 MQTT 3.1.1 / 5.0 客户端与 TLS，包含订阅管理、QoS 0/1/2、retain 与遗嘱消息；MQTT over WebSocket 与 5.0 高级特性未提供。
+Yes, MQTT 3.1.1 / 5.0 with TLS, subscriptions, QoS 0/1/2, retain and last-will messages. MQTT over WebSocket and advanced 5.0 features are not provided.
 
-## 相关页面
+## Related pages
 
-- [Windows 网络调试助手](/windows-network-debug-tool)
-- [Linux 网络调试助手](/linux-network-debug-tool)
-- [TCP/UDP 调试指南](/guide/tcp-udp)
-- [下载 NetAssistant](/download)
+- [Windows network debugging tool](/windows-network-debug-tool)
+- [Linux network debugging tool](/linux-network-debug-tool)
+- [TCP/UDP debugging guide](/guide/tcp-udp)
+- [Download NetAssistant](/download)

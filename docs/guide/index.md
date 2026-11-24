@@ -1,66 +1,66 @@
 ---
-title: 快速上手 - 安装与第一条 TCP/UDP 报文
-description: NetAssistant 安装与快速上手教程：Windows（winget）、Linux（AppImage）、macOS 三种安装方式，x64 与 ARM64 均有原生构建，三步完成第一次 TCP/UDP 调试。
+title: Getting Started - Install & First Packet
+description: "Install NetAssistant on Windows (winget), Linux (AppImage) or macOS, then run your first TCP/UDP session in three steps, with x64 and ARM64 builds."
 ---
 
-# 快速上手
+# Getting Started
 
-## 系统要求
+## System Requirements
 
-- **Windows**：Windows 10 1709（Build 16299）或更高版本，含 Windows 11；支持 Windows Server 2019 及以上，不支持 Windows Server 2016 及更早系统，x64 与 ARM64 均可
-- **Linux**：需要 GTK3 库（如 Ubuntu 22.04 及以上版本），x86_64 与 ARM64 均可
-- **macOS**：10.15 或更高版本
+- **Windows**: Windows 10 version 1709 (Build 16299) or later, including Windows 11; Windows Server 2019 and later are supported, Windows Server 2016 and earlier are not, on x64 or ARM64
+- **Linux**: GTK3 library required (e.g. Ubuntu 22.04 or later), on x86_64 or ARM64
+- **macOS**: 10.15 or later
 
-## 安装
+## Installation
 
 ### Windows
 
-**推荐方法：使用 winget 安装**
+**Recommended: install with winget**
 
 ```bash
 winget install SunJary.NetAssistant
 ```
 
-后续升级只需运行：
+To upgrade later, simply run:
 
 ```bash
 winget upgrade SunJary.NetAssistant
 ```
 
-**备选方法**：从 [GitHub Release](https://github.com/sunjary/netassistant/releases) 页面下载最新版本。ARM64 设备（Surface Pro X、骁龙笔记本等）winget 与安装程序均不支持，请下载 `netassistant-windows-aarch64.zip`。
+**Alternative**: download the latest version from the [GitHub Release](https://github.com/sunjary/netassistant/releases) page. On ARM64 devices (Surface Pro X, Snapdragon laptops, etc.) neither winget nor the installer is available — download `netassistant-windows-aarch64.zip` instead.
 
 ### Linux
 
-1. 从 [GitHub Release](https://github.com/sunjary/netassistant/releases) 页面下载最新版本的 deb 包（推荐，Debian/Ubuntu 及衍生版，Ubuntu 22.04 及以上均可）
-2. 安装（自动解析依赖）：
+1. Download the latest deb package from the [GitHub Release](https://github.com/sunjary/netassistant/releases) page (recommended for Debian/Ubuntu and derivatives, Ubuntu 22.04 and later)
+2. Install (dependencies resolved automatically):
 
 ```bash
 sudo apt install ./netassistant-linux-x86_64.deb
 ```
 
-3. 从应用菜单启动，或终端运行 `netassistant`
+3. Launch from the application menu, or run `netassistant` in a terminal
 
-其他发行版可用 AppImage（免安装，首次运行需 `sudo apt install libfuse2`）或 tar.gz 解压运行。
+On other distros, use the AppImage (portable, first run needs `sudo apt install libfuse2`) or extract the tar.gz and run the binary directly.
 
-ARM64 设备（树莓派 5、ARM 服务器等）请将上述文件名中的 `x86_64` 替换为 `aarch64`。
+On ARM64 devices (Raspberry Pi 5, ARM servers, etc.) replace `x86_64` with `aarch64` in the filename above.
 
 ### macOS
 
-1. 从 [GitHub Release](https://github.com/sunjary/netassistant/releases) 页面下载最新版本的 macOS 压缩包
-2. 解压安装包，将 NetAssistant 拖放到 Applications 文件夹
-3. 右键点击应用程序，选择「打开」运行（首次运行需要此操作）
+1. Download the latest macOS archive from the [GitHub Release](https://github.com/sunjary/netassistant/releases) page
+2. Extract the archive and drag NetAssistant into the Applications folder
+3. Right-click the app and choose "Open" to run it (required on first launch)
 
-更多细节见[下载页](/download)。
+See the [Download page](/download) for more details.
 
-## 第一次调试：三步跑通
+## Your First Debug Session: Three Steps
 
-1. **创建连接**：点击左侧面板的 `[+新建]` 按钮，选择连接类型（客户端/服务端）、协议（TCP/UDP），填写地址和端口。创建完成后可在连接详情页配置 TCP 解码器类型。
-2. **启动连接**：客户端连接点击 `[连接]` 按钮；服务端连接点击 `[启动]` 按钮。
-3. **发送消息**：在底部输入框上方选择消息发送模式（文本或十六进制），输入内容后点击 `[发送]` 按钮或按 Enter 键发送。
+1. **Create a connection**: click the `[+ New]` button in the left panel, choose the connection type (client/server) and protocol (TCP/UDP), then fill in the address and port. After creation, you can configure the TCP decoder type on the connection detail page.
+2. **Start the connection**: for a client connection, click `[Connect]`; for a server connection, click `[Start]`.
+3. **Send a message**: choose the send mode (text or hex) above the input box at the bottom, type your content, then click `[Send]` or press Enter.
 
-![新建连接截图](../../assets/screenshots/zh/screenshot_new_client.png)
+![New connection screenshot](../../assets/screenshots/en/screenshot_new_client.png)
 
-接下来可以：
+Next steps:
 
-- 调试 TCP 协议时遇到粘包问题？→ 阅读 [TCP/UDP 调试](/guide/tcp-udp)，或看更系统的 [TCP 粘包与拆包](/tcp-sticky-packet)
-- 需要模拟对端响应、周期发送或压测？→ 阅读 [压力测试](/guide/stress)
+- Running into sticky packet issues while debugging TCP? → Read [TCP/UDP Debugging](/guide/tcp-udp), or the deeper [TCP sticky packets](/tcp-sticky-packet) guide
+- Need to simulate peer responses, send periodically, or run stress tests? → Read [Stress Testing](/guide/stress)

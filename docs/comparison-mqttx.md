@@ -1,102 +1,103 @@
 ---
-title: MQTTX 替代品 - NetAssistant vs MQTTX 客户端对比
-description: "NetAssistant 与 MQTTX 对比：Rust 原生、内存约 20MB、MQTT 3.1.1 / 5.0 并支持 TLS；低内存、Windows 现场和 TCP/UDP 混合调试可作轻量替代，WebSocket、脚本与完整 5.0 仍选 MQTTX。"
+title: MQTTX Alternative - NetAssistant vs MQTTX Client Comparison
+titleTemplate: ':title'
+description: "NetAssistant vs MQTTX: a Rust native MQTT 3.1.1 / 5.0 client with TLS using about 20MB. A lightweight alternative for low-memory, Windows field and mixed TCP/UDP work, while WebSocket, scripting and full 5.0 still point to MQTTX."
 ---
 
-# MQTTX 替代品：NetAssistant 与 MQTTX 轻量对比
+# MQTTX Alternative: NetAssistant vs MQTTX, a Lightweight Comparison
 
-如果你用过 **MQTTX**——那个基于 Electron 的 MQTT 客户端——可能注意到它日常常驻内存通常在**几百 MB**（约 300~500MB，随连接数和消息量浮动）。NetAssistant 是 **Rust 原生构建**的网络调试工具，内存占用约 **20MB**。
+If you've used **MQTTX** — the Electron-based MQTT client — you've probably noticed it typically sits at **a few hundred MB of memory** (roughly 300-500MB, depending on open connections and message volume). NetAssistant is built with **Rust natively** and uses about **20MB**.
 
-MQTTX 的 MQTT 功能更全面，这一点不必回避。这个页面不追求「功能全集替代」的结论，而是如实对比两者差异，说明 NetAssistant 在哪些场景可以替代 MQTTX、哪些场景仍应继续用 MQTTX。
+MQTTX is the more capable MQTT client, and this page does not pretend otherwise. It is not aiming for a "replace every feature" verdict; it compares the two honestly and explains when NetAssistant can stand in for MQTTX, and when MQTTX is still the right tool.
 
-想先看 MQTT 模式支持的具体能力与操作步骤，见 [MQTT 客户端](/mqtt-client)。
+For what MQTT mode supports and how to use it, see the [MQTT client](/mqtt-client).
 
-## 技术栈的根本差异
+## Fundamental Tech Stack Differences
 
 | | NetAssistant | MQTTX |
 | ---- | ---- | ---- |
-| 技术栈 | Rust + GPUI（GPU 加速原生 UI） | Electron + Vue 3 |
-| 运行时 | 原生二进制，无内置浏览器内核 | 内置 Chromium + Node.js |
-| 内存占用 | 约 20 MB | 日常几百 MB（约 300~500MB） |
-| 启动时间 | < 100 ms | 秒级 |
-| 分发形式 | 单文件原生二进制 | 打包的 Electron 应用 |
+| Tech stack | Rust + GPUI (GPU-accelerated native UI) | Electron + Vue 3 |
+| Runtime | Native binary, no bundled browser engine | Bundled Chromium + Node.js |
+| Memory footprint | About 20 MB | A few hundred MB in daily use (roughly 300-500MB) |
+| Startup time | < 100 ms | Seconds |
+| Distribution | Single native binary | Packaged Electron app |
 
-Electron 方案的优势是生态成熟、前端开发者可以快速迭代；代价是 Chromium 内核本身就要吃掉几百兆内存，对内存紧张的开发机、远程桌面或虚拟机环境来说可能是个负担。
+The Electron approach offers a mature ecosystem and fast iteration for frontend developers. The trade-off is that Chromium alone eats hundreds of MB — acceptable on a well-specced desktop, but a burden on memory-constrained dev machines, remote desktops or VMs.
 
-Rust 原生构建把这部分开销砍掉了：没有 JS 引擎、没有 DOM 树、没有渲染进程。
+The Rust native build removes that overhead: no JS engine, no DOM tree, no renderer process.
 
-## MQTT 功能对比
+## MQTT Feature Comparison
 
-| 维度 | NetAssistant（MQTT 模式） | MQTTX |
-| ---- | ---- | ---- |
-| MQTT 版本 | ✅ 3.1.1 / 5.0（基础特性） | ✅ 3.1.1 / 5.0（更完整） |
-| MQTT over TLS | ✅ 三档证书校验 + 双向认证 | ✅ |
-| MQTT over WebSocket | ❌ 暂不支持 | ✅ |
-| 连接管理 | ✅ 多标签页 | ✅ 左侧连接列表分组 |
-| 订阅管理 | ✅ 运行时增 / 改 / 取消，断线重连后自动恢复 | ✅ 支持通配符订阅树 |
-| 发布消息 | ✅ 设置 topic、QoS 0/1/2、retain | ✅ |
-| 遗嘱消息 | ✅ 创建连接时配置 topic / payload / QoS / retain | ✅ |
-| 消息展示 | ✅ 聊天式报文，按 topic 标签区分，retain 有标记 | ✅ |
-| 消息搜索 | ✅ 实时高亮 + 环形跳转 | ✅ |
-| JSON 格式化 | ✅ 发送前美化 / 压缩，接收区可切换显示格式 | ✅ |
-| 消息导出 | ✅ TXT / JSON / CSV | — |
-| 自动回复 | ✅ 按条件匹配载荷并自动应答，回发到原 topic（QoS 固定 0、retain=false） | ❌ 无内置按条件应答，需自行写脚本 |
-| 周期发送 | ✅ 按当前发布 topic 定时重发 | — |
-| 脚本 / 自动化 | ❌ | ✅ JavaScript 脚本引擎 |
-| 数据可视化 | ❌ | ✅ Chart.js 折线图 |
-| 跨平台 | ✅ Windows / Linux / macOS（x64 + ARM64 原生构建） | ✅ Windows / Linux / macOS |
-| 开源协议 | ✅ Apache-2.0 | ✅ Apache-2.0 |
+| Dimension | NetAssistant (MQTT mode) | MQTTX |
+| --------- | ---- | ---- |
+| MQTT version | ✅ 3.1.1 / 5.0 (basics) | ✅ 3.1.1 / 5.0 (more complete) |
+| MQTT over TLS | ✅ Three verification modes + mutual TLS | ✅ |
+| MQTT over WebSocket | ❌ Not supported yet | ✅ |
+| Connection management | ✅ Multi-tab | ✅ Grouped connection list |
+| Subscription management | ✅ Add / edit / remove at runtime, auto-restored after reconnect | ✅ Wildcard subscription tree |
+| Publish | ✅ topic, QoS 0/1/2, retain | ✅ |
+| Will message | ✅ Configure topic / payload / QoS / retain when creating the connection | ✅ |
+| Message display | ✅ Chat-style messages with topic labels and retain markers | ✅ |
+| Message search | ✅ Live highlighting with wrap-around navigation | ✅ |
+| JSON formatting | ✅ Beautify / minify before sending, switchable display format | ✅ |
+| Message export | ✅ TXT / JSON / CSV | — |
+| Auto-reply | ✅ Condition-based replies, published back to the received topic (QoS fixed at 0, retain=false) | ❌ No built-in conditional auto-reply; use a script |
+| Periodic send | ✅ Repeats the current payload to the current publish topic on an interval | — |
+| Scripting / automation | ❌ | ✅ JavaScript scripting engine |
+| Data visualization | ❌ | ✅ Chart.js line charts |
+| Cross-platform | ✅ Windows / Linux / macOS (native x64 + ARM64) | ✅ Windows / Linux / macOS |
+| License | ✅ Apache-2.0 | ✅ Apache-2.0 |
 
-> 表中「—」表示该项未做对比，不代表对方不支持。
+> "—" means the item was not compared; it does not mean the other tool lacks it.
 
-## MQTT 模式下的功能边界（重要）
+## What MQTT Mode Does Not Include
 
-MQTT 连接会隐藏一部分通用功能，这是设计上的协议约束，不是 bug：
+Some general features are hidden for MQTT connections by design — these are protocol constraints, not bugs:
 
-- **不提供压测**：压测 tab 在 MQTT 连接下不显示，压测引擎仅用于 TCP/UDP
-- **不提供解码器与「结尾字符」**：MQTT 的消息边界由协议自身保证，无需按行 / 长度前缀 / JSON 拆帧
-- **不提供逐行发送与定时任务**：发送任务入口在 MQTT 连接下隐藏；周期发送仍然可用
-- **不支持 MQTT over WebSocket**；**MQTT 5.0 仅覆盖基础特性**（协议版本、会话过期、接收最大值、原因码），用户属性、Will Delay、订阅标识符、共享订阅等未提供
-- **自动回复的条件范围**：字节级条件、JSON 字段条件作用于 MQTT 载荷；「来源地址」条件在 MQTT 下指向 broker 地址而非设备地址；解码器相关（帧尾等）条件不适用
-- **自动回复的应答参数**：固定回发到收到消息的 topic，QoS 0，retain=false
+- **No stress testing**: the stress tab is not rendered for MQTT connections; the stress engine applies to TCP/UDP only
+- **No decoders and no send trailer**: MQTT defines message boundaries itself, so line / length-prefix / JSON framing is unnecessary
+- **No line-by-line send tasks or scheduled tasks**: the send-task entry is hidden in MQTT mode; periodic send remains available
+- **MQTT over WebSocket is not supported**; **MQTT 5.0 covers the basics only** (protocol version, session expiry, receive maximum, reason codes), with user properties, Will Delay, subscription identifiers, shared subscriptions and other advanced features not provided
+- **Auto-reply condition scope**: byte-level and JSON-field conditions apply to the MQTT payload; the source-address condition refers to the broker address, not the device; decoder-related conditions (frame trailer, etc.) do not apply
+- **Auto-reply reply parameters**: replies always go to the topic the message arrived on, with QoS 0 and retain=false
 
-## 只在 TCP/UDP 生效、与 MQTT 无关的能力
+## Capabilities Limited to TCP/UDP Only
 
-NetAssistant 还有几项 MQTTX 完全没有的能力，但它们**只在 TCP/UDP 连接下可用**，不能算作 MQTT 调试优势：
+NetAssistant has a few capabilities MQTTX does not have at all, but they **only work on TCP/UDP connections**, so they are not MQTT debugging advantages:
 
-- **内置高并发压测**：TCP/UDP 客户端压测，输出 QPS 与 p50/p95/p99 延迟
-- **四种 TCP 解码器**：原始 / 行 / 长度前缀 / JSON，解决 TCP 粘包
-- **逐行发送与定时任务**：批量报文按行顺序发送、心跳定时任务
-- **内置工具箱**：转换 / 校验 / 哈希 / 时间 / JSON / 编码 / 随机（工具箱是独立标签页，开着 MQTT 连接时同样能用）
+- **Built-in high-concurrency stress testing**: TCP/UDP client load testing with QPS and p50/p95/p99 latency
+- **Four TCP decoders**: raw / line / length-prefix / JSON, solving sticky-packet framing
+- **Line-by-line send tasks and scheduled tasks**: batch sending and heartbeat scheduling
+- **Built-in toolbox**: convert / checksum / hash / time / JSON / encode / random (the toolbox is a separate tab and is still usable alongside an MQTT connection)
 
-## 坦白说：MQTTX 做得更好的地方
+## Giving MQTTX Its Due
 
-- **更完整的 MQTT 5.0 支持**：NetAssistant 已支持 3.1.1 / 5.0 与基础连接属性，但用户属性、Will Delay、订阅标识符、共享订阅等高级特性仍需 MQTTX
-- **MQTT over WebSocket**：NetAssistant 只支持 TCP 直连 Broker，走 WebSocket 的 Broker 或网关只能用 MQTTX；TLS 双方都支持，NetAssistant 还提供三档证书校验与双向认证
-- **脚本自动化**：MQTTX 的 JavaScript 脚本引擎可以做复杂数据处理和自动化测试
-- **数据可视化**：MQTTX 的折线图面板适合监控传感器数据流
-- **订阅管理体验**：MQTTX 的通配符订阅树更直观
+- **Fuller MQTT 5.0 support**: NetAssistant supports 3.1.1 / 5.0 with the basic connect properties, but user properties, Will Delay, subscription identifiers, shared subscriptions and other advanced features still need MQTTX
+- **MQTT over WebSocket**: NetAssistant connects to the broker over TCP only, so brokers or gateways that require WebSocket need MQTTX; TLS is supported by both, and NetAssistant adds three verification modes plus mutual TLS
+- **Scripting automation**: MQTTX's JavaScript engine handles complex data processing and automated testing
+- **Data visualization**: MQTTX's chart panels are well suited to streaming sensor data
+- **Subscription UX**: MQTTX's wildcard subscription tree is more intuitive
 
-## 什么场景可以替代 MQTTX
+## When It Can Replace MQTTX
 
-- **内存紧张的环境**：远程开发机跑着 VS Code、Docker、浏览器，只剩几百 MB 时，20MB 的 MQTT 客户端更从容
-- **MQTT 与 TCP/UDP 混在一起调试**：同一工具里既有 MQTT 客户端，也有 TCP/UDP 客户端与服务端，切换协议不用换软件
-- **需要按载荷内容自动应答**：回复规则可以按字节、JSON 字段、正则等条件自动回应，适合模拟设备响应
-- **多平台切换频繁**：Windows、Linux、macOS 原生构建，配置自动保存，x64 与 ARM64 都有
+- **Memory-constrained environments**: when VS Code, Docker and a browser have already eaten most of your remote dev machine's memory, a 20MB MQTT client leaves more headroom
+- **MQTT alongside TCP/UDP debugging**: one tool with an MQTT client plus TCP/UDP clients and servers — no switching apps
+- **Condition-based automatic replies**: reply rules can respond automatically based on payload bytes, JSON fields or regex, useful for simulating device responses
+- **Frequent cross-platform switching**: native builds for Windows, Linux and macOS with auto-saved configs, on both x64 and ARM64
 
-## 总结
+## Summary
 
-MQTTX 是目前功能最完善的开源 MQTT 客户端。如果你需要 MQTT over WebSocket、完整的 5.0 特性、脚本自动化或数据可视化，它仍然是首选。TLS 双方都支持：NetAssistant 提供系统根证书 / 自定义 CA / 跳过校验三档校验与双向认证，常规加密连接不必为此换工具。
+MQTTX is the most feature-complete open-source MQTT client. If you need MQTT over WebSocket, full 5.0 features, scripting automation or data visualization, it remains the clear choice. TLS is supported by both: NetAssistant offers system roots / custom CA / skipped verification plus mutual TLS, so a standard encrypted connection is no reason to switch.
 
-NetAssistant 的 MQTT 能力是「够用」级别：3.1.1 / 5.0、TLS、订阅管理、QoS 0/1/2、retain、遗嘱、自动回复、周期发送都有，但 5.0 只覆盖基础特性，MQTT over WebSocket 不支持；压测、解码器、逐行/定时任务这些能力只在 TCP/UDP 下生效。如果你要的是**极轻量的 MQTT 调试**，或者需要**和 TCP/UDP 一起调**，它就是 MQTTX 的轻量场景替代；如果要覆盖 WebSocket、脚本与完整 5.0，继续用 MQTTX。
+NetAssistant's MQTT support is "adequate" rather than exhaustive: 3.1.1 / 5.0, TLS, subscription management, QoS 0/1/2, retain, will messages, auto-reply and periodic send are there, but 5.0 covers the basics only and MQTT over WebSocket is not supported; stress testing, decoders and line/scheduled tasks apply only to TCP/UDP. For **extremely lightweight MQTT debugging**, or when MQTT has to be **debugged together with TCP/UDP**, it is a lightweight alternative to MQTTX; keep MQTTX when you need WebSocket, scripting or full 5.0 coverage.
 
-> 要不要试试看？[下载 NetAssistant](/download)
+> Want to try it? [Download NetAssistant](/download)
 
-## 相关页面
+## Related pages
 
-- [MQTT 客户端对比总览](/compare/)
-- [MQTT Explorer 对比](/compare/mqtt-explorer)
-- [MQTT.fx 对比](/compare/mqtt-fx)
-- [MQTT 客户端功能与参数](/mqtt-client)
-- [MQTT 调试教程](/guide/mqtt)
-- [下载 NetAssistant](/download)
+- [MQTT client comparison overview](/compare/)
+- [MQTT Explorer comparison](/compare/mqtt-explorer)
+- [MQTT.fx comparison](/compare/mqtt-fx)
+- [MQTT client capabilities and settings](/mqtt-client)
+- [MQTT tutorial](/guide/mqtt)
+- [Download NetAssistant](/download)

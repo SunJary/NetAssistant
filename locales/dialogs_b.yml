@@ -5,1016 +5,2676 @@ new_connection:
   edit_title:
     zh-CN: 编辑连接
     en: Edit Connection
+    ja: "接続を編集"
+    de: "Verbindung bearbeiten"
+    ru: "Редактирование подключения"
+    pt-BR: "Editar conexão"
+    es: "Editar conexión"
   new_title:
     zh-CN: 新建连接
     en: New Connection
+    ja: "新規接続"
+    de: "Neue Verbindung"
+    ru: "Новое подключение"
+    pt-BR: "Nova conexão"
+    es: "Nueva conexión"
   copy_title:
     zh-CN: 复制连接
     en: Duplicate Connection
+    ja: "接続を複製"
+    de: "Verbindung duplizieren"
+    ru: "Дублирование подключения"
+    pt-BR: "Duplicar conexão"
+    es: "Duplicar conexión"
   name_label:
     zh-CN: 连接名称（可选）
     en: Connection Name (Optional)
+    ja: "接続名（任意）"
+    de: "Verbindungsname (optional)"
+    ru: "Название подключения (необязательно)"
+    pt-BR: "Nome da conexão (opcional)"
+    es: "Nombre de la conexión (opcional)"
   name_placeholder:
     zh-CN: 留空则仅显示地址
     en: Leave empty to show address only
+    ja: "空欄の場合はアドレスのみ表示"
+    de: "Leer lassen, um nur die Adresse anzuzeigen"
+    ru: "Оставьте пустым, чтобы показывать только адрес"
+    pt-BR: "Deixe vazio para mostrar só o endereço"
+    es: "Déjelo vacío para mostrar solo la dirección"
   host_label:
     zh-CN: 主机地址
     en: Host
+    ja: "ホストアドレス"
+    de: "Host-Adresse"
+    ru: "Адрес хоста"
+    pt-BR: "Host"
+    es: "Dirección del host"
   host_hint:
     zh-CN: "IPv4: 127.0.0.1(本地) | 0.0.0.0(全局) | IPv6: ::1(本地) | ::(全局)"
     en: "IPv4: 127.0.0.1 (local) | 0.0.0.0 (all interfaces) | IPv6: ::1 (local) | :: (all interfaces)"
+    ja: "IPv4: 127.0.0.1(ローカル) | 0.0.0.0(すべて) | IPv6: ::1(ローカル) | ::(すべて)"
+    de: "IPv4: 127.0.0.1 (lokal) | 0.0.0.0 (alle Schnittstellen) | IPv6: ::1 (lokal) | :: (alle Schnittstellen)"
+    ru: "IPv4: 127.0.0.1 (локальный) | 0.0.0.0 (все интерфейсы) | IPv6: ::1 (локальный) | :: (все интерфейсы)"
+    pt-BR: "IPv4: 127.0.0.1 (local) | 0.0.0.0 (todas as interfaces) | IPv6: ::1 (local) | :: (todas as interfaces)"
+    es: "IPv4: 127.0.0.1 (local) | 0.0.0.0 (todas las interfaces) | IPv6: ::1 (local) | :: (todas las interfaces)"
   port_label:
     zh-CN: 端口
     en: Port
+    ja: "ポート"
+    de: "Port"
+    ru: "Порт"
+    pt-BR: "Porta"
+    es: "Puerto"
   local_address_label:
     zh-CN: 本地地址
     en: Local Address
+    ja: "ローカルアドレス"
+    de: "Lokale Adresse"
+    ru: "Локальный адрес"
+    pt-BR: "Endereço local"
+    es: "Dirección local"
   local_address_placeholder:
     zh-CN: 留空自动；如 192.168.1.100
     en: Empty = auto; e.g. 192.168.1.100
+    ja: "空欄で自動；例 192.168.1.100"
+    de: "Leer = automatisch; z. B. 192.168.1.100"
+    ru: "Пусто = автоматически; например 192.168.1.100"
+    pt-BR: "Vazio = automático; ex.: 192.168.1.100"
+    es: "Vacío = automático; p. ej. 192.168.1.100"
   local_port_label:
     zh-CN: 本地端口
     en: Local Port
+    ja: "ローカルポート"
+    de: "Lokaler Port"
+    ru: "Локальный порт"
+    pt-BR: "Porta local"
+    es: "Puerto local"
   local_port_placeholder:
     zh-CN: 留空自动分配；如 50000
     en: Empty = auto; e.g. 50000
+    ja: "空欄で自動割り当て；例 50000"
+    de: "Leer = automatisch; z. B. 50000"
+    ru: "Пусто = автоматически; например 50000"
+    pt-BR: "Vazio = automático; ex.: 50000"
+    es: "Vacío = asignación automática; p. ej. 50000"
   local_bind_hint:
     zh-CN: "一般留空即可；多网卡或对端按源 IP/源端口过滤时才需填写。仅支持本机 IP，不支持域名"
     en: "Leave empty in most cases — only needed with multiple NICs or when the peer filters by source IP/port. Local IP only, no hostnames"
+    ja: "通常は空欄のままで構いません。複数 NIC の場合や、相手側が送信元 IP/送信元ポートで絞り込む場合のみ入力します。ローカル IP のみ対応し、ホスト名は使用できません"
+    de: "In der Regel leer lassen – nur bei mehreren Netzwerkkarten oder wenn die Gegenstelle nach Quell-IP/-Port filtert erforderlich. Nur lokale IPs, keine Hostnamen"
+    ru: "Обычно можно оставить пустым — нужно только при нескольких сетевых интерфейсах или если удалённая сторона фильтрует по исходному IP/порту. Только локальный IP, без доменных имён"
+    pt-BR: "Na maioria dos casos, deixe vazio — só é necessário com várias placas de rede ou quando o par filtra por IP/porta de origem. Apenas IP local, sem nomes de host"
+    es: "Déjelo vacío en la mayoría de los casos; solo hace falta con varias NIC o si el par filtra por IP/puerto de origen. Solo IP local, sin nombres de host"
   protocol_label:
     zh-CN: 协议
     en: Protocol
+    ja: "プロトコル"
+    de: "Protokoll"
+    ru: "Протокол"
+    pt-BR: "Protocolo"
+    es: "Protocolo"
   more_settings_collapse:
     zh-CN: "▼ 更多设置"
     en: "▼ More Settings"
+    ja: "▼ 詳細設定"
+    de: "▼ Weitere Einstellungen"
+    ru: "▼ Дополнительные параметры"
+    pt-BR: "▼ Mais configurações"
+    es: "▼ Más ajustes"
   more_settings_expand:
     zh-CN: "▶ 更多设置"
     en: "▶ More Settings"
+    ja: "▶ 詳細設定"
+    de: "▶ Weitere Einstellungen"
+    ru: "▶ Дополнительные параметры"
+    pt-BR: "▶ Mais configurações"
+    es: "▶ Más ajustes"
   message_mode_label:
     zh-CN: 消息模式
     en: Message Mode
+    ja: "メッセージモード"
+    de: "Nachrichtenmodus"
+    ru: "Режим сообщений"
+    pt-BR: "Modo da mensagem"
+    es: "Modo de mensaje"
   mode_text:
     zh-CN: 文本
     en: Text
+    ja: "テキスト"
+    de: "Text"
+    ru: "Текст"
+    pt-BR: "Texto"
+    es: "Texto"
   mode_hex:
     zh-CN: 十六进制
     en: Hexadecimal
+    ja: "16進数"
+    de: "Hexadezimal"
+    ru: "Шестнадцатеричный"
+    pt-BR: "Hexadecimal"
+    es: "Hexadecimal"
   decoder_label:
     zh-CN: 解码器
     en: Decoder
+    ja: "デコーダー"
+    de: "Decoder"
+    ru: "Декодер"
+    pt-BR: "Decodificador"
+    es: "Decodificador"
   decoder_bytes:
     zh-CN: 原始数据
     en: Raw Data
+    ja: "生データ"
+    de: "Rohdaten"
+    ru: "Исходные данные"
+    pt-BR: "Dados brutos"
+    es: "Datos sin procesar"
   decoder_line_based:
     zh-CN: 换行符
     en: Newline
+    ja: "改行"
+    de: "Zeilenumbruch"
+    ru: "Перевод строки"
+    pt-BR: "Quebra de linha"
+    es: "Salto de línea"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   save:
     zh-CN: 保存
     en: Save
+    ja: "保存"
+    de: "Speichern"
+    ru: "Сохранить"
+    pt-BR: "Salvar"
+    es: "Guardar"
   confirm:
     zh-CN: 确定
     en: OK
+    ja: "OK"
+    de: "OK"
+    ru: "ОК"
+    pt-BR: "OK"
+    es: "Aceptar"
   error_empty_host:
     zh-CN: 主机地址不能为空
     en: Host address cannot be empty
+    ja: "ホストアドレスを入力してください"
+    de: "Host-Adresse darf nicht leer sein"
+    ru: "Адрес хоста не может быть пустым"
+    pt-BR: "O endereço do host não pode ficar vazio"
+    es: "La dirección del host no puede estar vacía"
   error_bad_host:
     zh-CN: 主机地址无效（仅支持 IPv4/IPv6 地址，不支持域名）
     en: Invalid host address (IPv4/IPv6 only, hostnames not supported)
+    ja: "ホストアドレスが無効です（IPv4/IPv6 のみ対応、ホスト名は非対応）"
+    de: "Ungültige Host-Adresse (nur IPv4/IPv6, keine Hostnamen)"
+    ru: "Недопустимый адрес хоста (только IPv4/IPv6, доменные имена не поддерживаются)"
+    pt-BR: "Endereço de host inválido (apenas IPv4/IPv6, nomes de host não são aceitos)"
+    es: "Dirección del host no válida (solo IPv4/IPv6, sin nombres de host)"
   error_empty_port:
     zh-CN: 端口不能为空
     en: Port cannot be empty
+    ja: "ポートを入力してください"
+    de: "Port darf nicht leer sein"
+    ru: "Порт не может быть пустым"
+    pt-BR: "A porta não pode ficar vazia"
+    es: "El puerto no puede estar vacío"
   error_bad_port:
     zh-CN: 端口无效（需为 1-65535 的数字）
     en: Invalid port (a number between 1-65535)
+    ja: "ポートが無効です（1〜65535 の数値を入力）"
+    de: "Ungültiger Port (Zahl zwischen 1-65535)"
+    ru: "Недопустимый порт (число от 1 до 65535)"
+    pt-BR: "Porta inválida (um número entre 1-65535)"
+    es: "Puerto no válido (un número entre 1 y 65535)"
   error_bad_local_address:
     zh-CN: 本地地址无效（仅支持本机 IPv4/IPv6 地址）
     en: Invalid local address (local IPv4/IPv6 only)
+    ja: "ローカルアドレスが無効です（ローカルの IPv4/IPv6 のみ対応）"
+    de: "Ungültige lokale Adresse (nur lokale IPv4/IPv6-Adressen)"
+    ru: "Недопустимый локальный адрес (только локальные IPv4/IPv6)"
+    pt-BR: "Endereço local inválido (apenas IPv4/IPv6 da máquina local)"
+    es: "Dirección local no válida (solo IPv4/IPv6 locales)"
   error_bad_local_port:
     zh-CN: 本地端口无效（需为 0-65535 的数字）
     en: Invalid local port (a number between 0-65535)
+    ja: "ローカルポートが無効です（0〜65535 の数値を入力）"
+    de: "Ungültiger lokaler Port (Zahl zwischen 0-65535)"
+    ru: "Недопустимый локальный порт (число от 0 до 65535)"
+    pt-BR: "Porta local inválida (um número entre 0-65535)"
+    es: "Puerto local no válido (un número entre 0 y 65535)"
   mqtt_optional_placeholder:
     zh-CN: 可选
     en: Optional
+    ja: "任意"
+    de: "Optional"
+    ru: "Необязательно"
+    pt-BR: "Opcional"
+    es: "Opcional"
   mqtt_client_id_label:
     zh-CN: 客户端 ID
     en: Client ID
+    ja: "クライアント ID"
+    de: "Client-ID"
+    ru: "ID клиента"
+    pt-BR: "ID do cliente"
+    es: "ID de cliente"
   mqtt_username_label:
     zh-CN: 用户名
     en: Username
+    ja: "ユーザー名"
+    de: "Benutzername"
+    ru: "Имя пользователя"
+    pt-BR: "Usuário"
+    es: "Nombre de usuario"
   mqtt_password_label:
     zh-CN: 密码
     en: Password
+    ja: "パスワード"
+    de: "Passwort"
+    ru: "Пароль"
+    pt-BR: "Senha"
+    es: "Contraseña"
   mqtt_keep_alive_label:
     zh-CN: 心跳间隔（秒）
     en: Keep Alive (seconds)
+    ja: "キープアライブ間隔（秒）"
+    de: "Keep-Alive-Intervall (Sekunden)"
+    ru: "Интервал keep-alive (с)"
+    pt-BR: "Keep-alive (segundos)"
+    es: "Keep-alive (segundos)"
   mqtt_protocol_version_label:
     zh-CN: 协议版本
     en: Protocol Version
+    ja: "プロトコルバージョン"
+    de: "Protokollversion"
+    ru: "Версия протокола"
+    pt-BR: "Versão do protocolo"
+    es: "Versión del protocolo"
   mqtt_session_expiry_label:
     zh-CN: 会话过期（秒）
     en: Session Expiry (seconds)
+    ja: "セッション有効期限（秒）"
+    de: "Sitzungsablauf (Sekunden)"
+    ru: "Срок действия сеанса (с)"
+    pt-BR: "Expiração da sessão (segundos)"
+    es: "Caducidad de la sesión (segundos)"
   mqtt_session_expiry_hint:
     zh-CN: 留空则不下发；0 表示断开即过期
     en: Leave empty to omit; 0 means the session expires on disconnect
+    ja: "空欄なら送信しません。0 は切断時に失効します"
+    de: "Leer lassen = nicht senden; 0 = Ablauf beim Trennen"
+    ru: "Оставьте пустым, чтобы не передавать; 0 — сеанс истекает при отключении"
+    pt-BR: "Deixe vazio para omitir; 0 significa que a sessão expira ao desconectar"
+    es: "Déjelo vacío para omitirlo; 0 significa que la sesión caduca al desconectar"
   mqtt_receive_maximum_label:
     zh-CN: 接收最大值
     en: Receive Maximum
+    ja: "受信最大数"
+    de: "Empfangsmaximum"
+    ru: "Максимум приёма"
+    pt-BR: "Máximo de recebimento"
+    es: "Máximo de recepción"
   mqtt_receive_maximum_hint:
     zh-CN: 1-65535，留空则不下发
     en: 1-65535; leave empty to omit
+    ja: "1〜65535、空欄なら送信しません"
+    de: "1-65535; leer lassen = nicht senden"
+    ru: "1-65535; оставьте пустым, чтобы не передавать"
+    pt-BR: "1-65535; deixe vazio para omitir"
+    es: "1-65535; déjelo vacío para omitirlo"
   error_bad_session_expiry:
     zh-CN: 会话过期无效（需为 0-4294967295 的数字，或留空）
     en: Invalid session expiry (a number between 0-4294967295, or leave empty)
+    ja: "セッション有効期限が無効です（0〜4294967295 の数値、または空欄）"
+    de: "Ungültiger Sitzungsablauf (Zahl zwischen 0-4294967295 oder leer)"
+    ru: "Недопустимый срок действия сеанса (число от 0 до 4294967295 или пусто)"
+    pt-BR: "Expiração da sessão inválida (um número entre 0-4294967295, ou deixe vazio)"
+    es: "Caducidad de sesión no válida (un número entre 0 y 4294967295, o vacío)"
   error_bad_receive_maximum:
     zh-CN: 接收最大值无效（需为 1-65535 的数字，或留空）
     en: Invalid receive maximum (a number between 1-65535, or leave empty)
+    ja: "受信最大数が無効です（1〜65535 の数値、または空欄）"
+    de: "Ungültiges Empfangsmaximum (Zahl zwischen 1-65535 oder leer)"
+    ru: "Недопустимый максимум приёма (число от 1 до 65535 или пусто)"
+    pt-BR: "Máximo de recebimento inválido (um número entre 1-65535, ou deixe vazio)"
+    es: "Máximo de recepción no válido (un número entre 1 y 65535, o vacío)"
   mqtt_clean_session_label:
     zh-CN: 清理会话（Clean Session）
     en: Clean Session
+    ja: "クリーンセッション（Clean Session）"
+    de: "Sitzung bereinigen (Clean Session)"
+    ru: "Чистый сеанс (Clean Session)"
+    pt-BR: "Sessão limpa (Clean Session)"
+    es: "Sesión limpia (Clean Session)"
   mqtt_will_label:
     zh-CN: 启用遗嘱消息
     en: Enable Will Message
+    ja: "遺言メッセージを有効化"
+    de: "Will-Nachricht aktivieren"
+    ru: "Включить сообщение-завещание"
+    pt-BR: "Ativar mensagem de última vontade"
+    es: "Activar mensaje de última voluntad"
   mqtt_will_topic_label:
     zh-CN: 遗嘱主题
     en: Will Topic
+    ja: "遺言トピック"
+    de: "Will-Topic"
+    ru: "Тема завещания"
+    pt-BR: "Tópico da última vontade"
+    es: "Tema de la última voluntad"
   mqtt_will_payload_label:
     zh-CN: 遗嘱内容
     en: Will Payload
+    ja: "遺言ペイロード"
+    de: "Will-Payload"
+    ru: "Содержимое завещания"
+    pt-BR: "Conteúdo da última vontade"
+    es: "Contenido de la última voluntad"
   mqtt_will_qos_label:
     zh-CN: 遗嘱 QoS
     en: Will QoS
+    ja: "遺言 QoS"
+    de: "Will-QoS"
+    ru: "QoS завещания"
+    pt-BR: "QoS da última vontade"
+    es: "QoS de la última voluntad"
   mqtt_will_retain_label:
     zh-CN: 遗嘱保留消息（Retain）
     en: Will Retain
+    ja: "遺言の retain"
+    de: "Will-Retain"
+    ru: "Retain завещания"
+    pt-BR: "Retain da última vontade"
+    es: "Retener última voluntad (Retain)"
   qos_0:
     zh-CN: QoS 0
     en: QoS 0
+    ja: "QoS 0"
+    de: "QoS 0"
+    ru: "QoS 0"
+    pt-BR: "QoS 0"
+    es: "QoS 0"
   qos_1:
     zh-CN: QoS 1
     en: QoS 1
+    ja: "QoS 1"
+    de: "QoS 1"
+    ru: "QoS 1"
+    pt-BR: "QoS 1"
+    es: "QoS 1"
   qos_2:
     zh-CN: QoS 2
     en: QoS 2
+    ja: "QoS 2"
+    de: "QoS 2"
+    ru: "QoS 2"
+    pt-BR: "QoS 2"
+    es: "QoS 2"
   error_bad_keep_alive:
     zh-CN: 心跳间隔无效（需为 5-65535 的数字）
     en: Invalid keep alive (a number between 5-65535)
+    ja: "キープアライブ間隔が無効です（5〜65535 の数値を入力）"
+    de: "Ungültiges Keep-Alive (Zahl zwischen 5-65535)"
+    ru: "Недопустимый интервал keep-alive (число от 5 до 65535)"
+    pt-BR: "Keep-alive inválido (um número entre 5-65535)"
+    es: "Keep-alive no válido (un número entre 5 y 65535)"
   error_empty_will_topic:
     zh-CN: 启用遗嘱消息时，遗嘱主题不能为空
     en: Will topic cannot be empty when the will message is enabled
+    ja: "遺言メッセージを有効にする場合、遺言トピックは必須です"
+    de: "Will-Topic darf nicht leer sein, wenn die Will-Nachricht aktiviert ist"
+    ru: "При включённом сообщении-завещании тема завещания не может быть пустой"
+    pt-BR: "O tópico da última vontade não pode ficar vazio quando ela está ativada"
+    es: "El tema de la última voluntad no puede estar vacío si el mensaje está activado"
   error_password_requires_username:
     zh-CN: 填写密码时用户名不能为空（MQTT 要求密码依附于用户名）
     en: Username is required when a password is set (MQTT requires a username for a password)
+    ja: "パスワードを入力する場合はユーザー名が必須です（MQTT ではパスワードがユーザー名に紐づきます）"
+    de: "Benutzername ist erforderlich, wenn ein Passwort gesetzt ist (MQTT verlangt einen Benutzernamen zum Passwort)"
+    ru: "При указании пароля имя пользователя обязательно (MQTT требует имя пользователя для пароля)"
+    pt-BR: "O usuário é obrigatório quando há senha (o MQTT exige um usuário para a senha)"
+    es: "El nombre de usuario es obligatorio si se define una contraseña (MQTT exige un nombre de usuario para la contraseña)"
   mqtt_tls_label:
     zh-CN: 启用 TLS/SSL
     en: Enable TLS/SSL
+    ja: "TLS/SSL を有効化"
+    de: "TLS/SSL aktivieren"
+    ru: "Включить TLS/SSL"
+    pt-BR: "Ativar TLS/SSL"
+    es: "Activar TLS/SSL"
   mqtt_tls_verify_label:
     zh-CN: 证书校验
     en: Certificate Verification
+    ja: "証明書検証"
+    de: "Zertifikatsprüfung"
+    ru: "Проверка сертификата"
+    pt-BR: "Verificação do certificado"
+    es: "Verificación del certificado"
   mqtt_tls_verify_system:
     zh-CN: 系统根证书
     en: System Roots
+    ja: "システムルート証明書"
+    de: "Systemstammzertifikate"
+    ru: "Системные корневые сертификаты"
+    pt-BR: "Raízes do sistema"
+    es: "Raíces del sistema"
   mqtt_tls_verify_custom_ca:
     zh-CN: 自定义 CA
     en: Custom CA
+    ja: "カスタム CA"
+    de: "Benutzerdefinierte CA"
+    ru: "Собственный CA"
+    pt-BR: "CA personalizada"
+    es: "CA personalizada"
   mqtt_tls_verify_insecure:
     zh-CN: 跳过校验（不安全）
     en: Skip Verification (Insecure)
+    ja: "検証をスキップ（安全ではありません）"
+    de: "Prüfung überspringen (unsicher)"
+    ru: "Пропускать проверку (небезопасно)"
+    pt-BR: "Pular verificação (inseguro)"
+    es: "Omitir verificación (inseguro)"
   mqtt_tls_ca_label:
     zh-CN: CA 证书（PEM）
     en: CA Certificate (PEM)
+    ja: "CA 証明書（PEM）"
+    de: "CA-Zertifikat (PEM)"
+    ru: "Сертификат CA (PEM)"
+    pt-BR: "Certificado da CA (PEM)"
+    es: "Certificado de CA (PEM)"
   mqtt_tls_ca_placeholder:
     zh-CN: CA 证书 PEM 路径
     en: Path to the CA certificate (PEM)
+    ja: "CA 証明書の PEM パス"
+    de: "Pfad zum CA-Zertifikat (PEM)"
+    ru: "Путь к сертификату CA (PEM)"
+    pt-BR: "Caminho do certificado da CA (PEM)"
+    es: "Ruta del certificado de CA (PEM)"
   mqtt_tls_client_cert_label:
     zh-CN: 客户端证书（可选）
     en: Client Certificate (optional)
+    ja: "クライアント証明書（任意）"
+    de: "Client-Zertifikat (optional)"
+    ru: "Сертификат клиента (необязательно)"
+    pt-BR: "Certificado do cliente (opcional)"
+    es: "Certificado de cliente (opcional)"
   mqtt_tls_client_key_label:
     zh-CN: 客户端私钥（可选）
     en: Client Key (optional)
+    ja: "クライアント秘密鍵（任意）"
+    de: "Client-Privatschlüssel (optional)"
+    ru: "Закрытый ключ клиента (необязательно)"
+    pt-BR: "Chave do cliente (opcional)"
+    es: "Clave de cliente (opcional)"
   mqtt_tls_alpn_label:
     zh-CN: ALPN（可选，逗号分隔）
     en: ALPN (optional, comma separated)
+    ja: "ALPN（任意、カンマ区切り）"
+    de: "ALPN (optional, kommagetrennt)"
+    ru: "ALPN (необязательно, через запятую)"
+    pt-BR: "ALPN (opcional, separado por vírgulas)"
+    es: "ALPN (opcional, separado por comas)"
   mqtt_tls_alpn_hint:
     zh-CN: 多数 broker 不需要，仅特殊网关/负载均衡要求时填写
     en: Most brokers do not require it; only for specific gateways or load balancers
+    ja: "多くの broker では不要です。特殊なゲートウェイやロードバランサーで必要な場合のみ入力します"
+    de: "Die meisten Broker benötigen dies nicht; nur bei speziellen Gateways oder Load Balancern angeben"
+    ru: "Большинству брокеров не требуется; указывайте только для особых шлюзов или балансировщиков"
+    pt-BR: "A maioria dos brokers não exige; use apenas se o gateway ou balanceador pedir"
+    es: "La mayoría de los brokers no lo requieren; solo para gateways o balanceadores concretos"
   mqtt_tls_pick_file:
     zh-CN: 选择文件
     en: Choose File
+    ja: "ファイルを選択"
+    de: "Datei wählen"
+    ru: "Выбрать файл"
+    pt-BR: "Escolher arquivo"
+    es: "Elegir archivo"
   mqtt_tls_insecure_hint:
     zh-CN: 跳过校验仅用于自签证书调试，存在中间人风险
     en: Skipping verification is for self-signed debugging only and is vulnerable to MITM
+    ja: "検証スキップは自己署名証明書のデバッグ専用です。中間者攻撃のリスクがあります"
+    de: "Das Überspringen der Prüfung dient nur der Fehlersuche mit selbstsignierten Zertifikaten und birgt das Risiko von Man-in-the-Middle-Angriffen"
+    ru: "Пропуск проверки предназначен только для отладки самоподписанных сертификатов и создаёт риск атаки «человек посередине»"
+    pt-BR: "Pular a verificação serve só para depurar certificados autoassinados e expõe você a ataques MITM"
+    es: "Omitir la verificación solo sirve para depurar certificados autofirmados y conlleva riesgo de intermediario"
   mqtt_tls_sni_hint:
     zh-CN: 证书校验使用当前地址作为主机名，请填写域名而非 IP
     en: The address is used as the TLS hostname; use a domain name instead of an IP
+    ja: "証明書検証には現在のアドレスがホスト名として使われます。IP ではなくドメイン名を入力してください"
+    de: "Die Adresse wird als TLS-Hostname verwendet; geben Sie eine Domain statt einer IP an"
+    ru: "Для проверки сертификата текущий адрес используется как имя хоста; указывайте доменное имя, а не IP"
+    pt-BR: "A verificação usa o endereço atual como hostname; use um domínio em vez de um IP"
+    es: "La verificación del certificado usa la dirección actual como nombre de host; use un dominio en lugar de una IP"
   error_tls_ca_required:
     zh-CN: 自定义 CA 模式必须填写 CA 证书路径
     en: A CA certificate path is required in Custom CA mode
+    ja: "カスタム CA モードでは CA 証明書のパスが必須です"
+    de: "Im Modus „Benutzerdefinierte CA“ ist ein CA-Zertifikatspfad erforderlich"
+    ru: "В режиме собственного CA необходимо указать путь к сертификату CA"
+    pt-BR: "No modo CA personalizada, informe o caminho do certificado da CA"
+    es: "En el modo de CA personalizada debe indicar la ruta del certificado de CA"
   error_tls_client_auth_incomplete:
     zh-CN: 客户端证书与私钥必须成对填写
     en: Client certificate and key must be provided together
+    ja: "クライアント証明書と秘密鍵は両方指定してください"
+    de: "Client-Zertifikat und Schlüssel müssen gemeinsam angegeben werden"
+    ru: "Сертификат клиента и закрытый ключ нужно указывать вместе"
+    pt-BR: "O certificado e a chave do cliente devem ser informados juntos"
+    es: "El certificado de cliente y la clave privada deben indicarse juntos"
 
 variable_picker:
   title:
     zh-CN: 插入变量
     en: Insert Variable
+    ja: "変数を挿入"
+    de: "Variable einfügen"
+    ru: "Вставить переменную"
+    pt-BR: "Inserir variável"
+    es: "Insertar variable"
   desc_seq:
     zh-CN: "全局递增序号, 所有 worker 共享"
     en: "Global incrementing sequence number, shared by all workers"
+    ja: "グローバル連番。すべての worker で共有"
+    de: "Global steigende Sequenznummer, von allen Workern gemeinsam genutzt"
+    ru: "Глобальный возрастающий номер, общий для всех worker"
+    pt-BR: "Número de sequência global crescente, compartilhado por todos os workers"
+    es: "Número de secuencia global incremental, compartido por todos los workers"
   desc_worker_id:
     zh-CN: 当前工作线程编号
     en: Current worker thread ID
+    ja: "現在のワーカースレッド番号"
+    de: "Nummer des aktuellen Worker-Threads"
+    ru: "Номер текущего рабочего потока"
+    pt-BR: "ID da thread de trabalho atual"
+    es: "ID del hilo de trabajo actual"
   desc_counter:
     zh-CN: "线程本地计数器, 每包 +1"
     en: "Thread-local counter, +1 per packet"
+    ja: "スレッドローカルなカウンター。パケットごとに +1"
+    de: "Thread-lokaler Zähler, +1 pro Paket"
+    ru: "Счётчик потока, +1 на пакет"
+    pt-BR: "Contador local da thread, +1 por pacote"
+    es: "Contador local del hilo, +1 por paquete"
   desc_timestamp:
     zh-CN: 当前毫秒时间戳
     en: Current timestamp in milliseconds
+    ja: "現在のミリ秒タイムスタンプ"
+    de: "Aktueller Zeitstempel in Millisekunden"
+    ru: "Текущая временная метка в миллисекундах"
+    pt-BR: "Timestamp atual em milissegundos"
+    es: "Marca de tiempo actual en milisegundos"
   desc_uuid:
     zh-CN: 随机 UUID v4
     en: Random UUID v4
+    ja: "ランダム UUID v4"
+    de: "Zufällige UUID v4"
+    ru: "Случайный UUID v4"
+    pt-BR: "UUID v4 aleatório"
+    es: "UUID v4 aleatorio"
   desc_random:
     zh-CN: "区间随机整数, 如 ${random:1:100}"
     en: "Random integer within a range, e.g. ${random:1:100}"
+    ja: "範囲内のランダム整数。例 ${random:1:100}"
+    de: "Zufällige Ganzzahl im Bereich, z. B. ${random:1:100}"
+    ru: "Случайное целое из диапазона, например ${random:1:100}"
+    pt-BR: "Inteiro aleatório dentro de um intervalo, ex.: ${random:1:100}"
+    es: "Entero aleatorio dentro de un intervalo, p. ej. ${random:1:100}"
   desc_date:
     zh-CN: "当前日期, 如 2026-09-26"
     en: "Current date, e.g. 2026-09-26"
+    ja: "現在の日付。例 2026-09-26"
+    de: "Aktuelles Datum, z. B. 2026-09-26"
+    ru: "Текущая дата, например 2026-09-26"
+    pt-BR: "Data atual, ex.: 2026-09-26"
+    es: "Fecha actual, p. ej. 2026-09-26"
   desc_time:
     zh-CN: "当前时间, 如 14:30:05"
     en: "Current time, e.g. 14:30:05"
+    ja: "現在の時刻。例 14:30:05"
+    de: "Aktuelle Uhrzeit, z. B. 14:30:05"
+    ru: "Текущее время, например 14:30:05"
+    pt-BR: "Hora atual, ex.: 14:30:05"
+    es: "Hora actual, p. ej. 14:30:05"
   desc_datetime:
     zh-CN: "日期与时间, 如 2026-09-26 14:30:05"
     en: "Date and time, e.g. 2026-09-26 14:30:05"
+    ja: "日付と時刻。例 2026-09-26 14:30:05"
+    de: "Datum und Uhrzeit, z. B. 2026-09-26 14:30:05"
+    ru: "Дата и время, например 2026-09-26 14:30:05"
+    pt-BR: "Data e hora, ex.: 2026-09-26 14:30:05"
+    es: "Fecha y hora, p. ej. 2026-09-26 14:30:05"
   desc_datetime_ms:
     zh-CN: "日期与时间(含毫秒)"
     en: "Date and time with milliseconds"
+    ja: "日付と時刻（ミリ秒を含む）"
+    de: "Datum und Uhrzeit (mit Millisekunden)"
+    ru: "Дата и время (с миллисекундами)"
+    pt-BR: "Data e hora com milissegundos"
+    es: "Fecha y hora con milisegundos"
   desc_iso:
     zh-CN: "ISO 8601 本地时间(带时区偏移)"
     en: "ISO 8601 local time with timezone offset"
+    ja: "ISO 8601 のローカル時刻（タイムゾーンオフセット付き）"
+    de: "ISO 8601 Ortszeit (mit Zeitzonenversatz)"
+    ru: "Местное время ISO 8601 (со смещением часового пояса)"
+    pt-BR: "Hora local ISO 8601 (com fuso horário)"
+    es: "Fecha y hora local ISO 8601 con desfase horario"
   desc_utc:
     zh-CN: "ISO 8601 UTC 时间(以 Z 结尾)"
     en: "ISO 8601 UTC time (ends with Z)"
+    ja: "ISO 8601 の UTC 時刻（Z で終わる）"
+    de: "ISO 8601 UTC-Zeit (endet mit Z)"
+    ru: "Время UTC ISO 8601 (заканчивается на Z)"
+    pt-BR: "Hora UTC ISO 8601 (termina com Z)"
+    es: "Fecha y hora UTC ISO 8601 (termina en Z)"
   desc_timestamp_s:
     zh-CN: 当前秒级时间戳
     en: Current timestamp in seconds
+    ja: "現在の秒単位タイムスタンプ"
+    de: "Aktueller Zeitstempel in Sekunden"
+    ru: "Текущая временная метка в секундах"
+    pt-BR: "Timestamp atual em segundos"
+    es: "Marca de tiempo actual en segundos"
   desc_time_custom:
     zh-CN: "自定义时间格式(可改成任意 strftime 格式)"
     en: "Custom time format (any strftime format)"
+    ja: "カスタム時刻フォーマット（任意の strftime 形式に変更可能）"
+    de: "Benutzerdefiniertes Zeitformat (beliebiges strftime-Format)"
+    ru: "Свой формат времени (любой формат strftime)"
+    pt-BR: "Formato de hora personalizado (qualquer formato strftime)"
+    es: "Formato de hora personalizado (cualquier formato strftime)"
   desc_seq_common:
     zh-CN: "递增序号, 每条消息 +1"
     en: "Incrementing sequence number, +1 per message"
+    ja: "連番。メッセージごとに +1"
+    de: "Steigende Sequenznummer, +1 pro Nachricht"
+    ru: "Возрастающий номер, +1 на каждое сообщение"
+    pt-BR: "Número de sequência crescente, +1 por mensagem"
+    es: "Número de secuencia incremental, +1 por mensaje"
   hint:
     zh-CN: "提示: 点击输入框定位光标, 变量会插入到光标处; Hex 模式下数值变量自动转为十六进制"
     en: "Tip: Click in the input to place the cursor; variables are inserted at the cursor. In Hex mode, numeric variables are automatically converted to hexadecimal"
+    ja: "ヒント: 入力欄をクリックしてカーソルを移動すると、その位置に変数が挿入されます。Hex モードでは数値変数が自動的に 16進数に変換されます"
+    de: "Tipp: In das Feld klicken, um den Cursor zu setzen; Variablen werden an der Cursorposition eingefügt. Im Hex-Modus werden numerische Variablen automatisch in Hexadezimal umgewandelt"
+    ru: "Подсказка: щёлкните в поле, чтобы поставить курсор; переменные вставляются в позицию курсора. В режиме Hex числовые переменные автоматически переводятся в шестнадцатеричный вид"
+    pt-BR: "Dica: clique no campo para posicionar o cursor; as variáveis são inseridas na posição do cursor. No modo Hex, variáveis numéricas são convertidas automaticamente para hexadecimal"
+    es: "Consejo: haga clic en el campo para colocar el cursor; las variables se insertan en esa posición. En modo Hex, las variables numéricas se convierten automáticamente a hexadecimal"
   group_common:
     zh-CN: 通用变量
     en: General
+    ja: "共通変数"
+    de: "Allgemein"
+    ru: "Общие"
+    pt-BR: "Variáveis gerais"
+    es: "Generales"
   group_rx:
     zh-CN: 接收帧变量
     en: Received Frame
+    ja: "受信フレーム変数"
+    de: "Empfangenes Frame"
+    ru: "Переменные принятого кадра"
+    pt-BR: "Variáveis do quadro recebido"
+    es: "Variables de trama recibida"
   group_checksum:
     zh-CN: 生成校验（发送时填充）
     en: Generated Checksum (filled on send)
+    ja: "生成チェックサム（送信時に埋め込み）"
+    de: "Erzeugte Prüfsumme (beim Senden gefüllt)"
+    ru: "Вычисляемая контрольная сумма (при отправке)"
+    pt-BR: "Checksum gerado (preenchido ao enviar)"
+    es: "Suma de verificación generada (se rellena al enviar)"
   group_expr:
     zh-CN: 表达式
     en: Expressions
+    ja: "式"
+    de: "Ausdrücke"
+    ru: "Выражения"
+    pt-BR: "Expressões"
+    es: "Expresiones"
   desc_rx_raw:
     zh-CN: 触发本条规则的整帧内容（原样）
     en: The whole frame that triggered this rule (verbatim)
+    ja: "このルールをトリガーしたフレーム全体（そのまま）"
+    de: "Das gesamte Frame, das diese Regel ausgelöst hat (unverändert)"
+    ru: "Весь кадр, вызвавший это правило (как есть)"
+    pt-BR: "O quadro inteiro que acionou esta regra (como está)"
+    es: "La trama completa que activó esta regla (tal cual)"
   desc_rx_raw_slice:
     zh-CN: "接收帧的第 0 字节起 4 字节"
     en: "4 bytes of the received frame starting at offset 0"
+    ja: "受信フレームのオフセット 0 から 4 バイト"
+    de: "4 Byte des empfangenen Frames ab Offset 0"
+    ru: "4 байта принятого кадра, начиная со смещения 0"
+    pt-BR: "4 bytes do quadro recebido a partir do deslocamento 0"
+    es: "4 bytes de la trama recibida desde el desplazamiento 0"
   desc_rx_len:
     zh-CN: 接收帧长度（字节）
     en: Length of the received frame in bytes
+    ja: "受信フレームの長さ（バイト）"
+    de: "Länge des empfangenen Frames in Byte"
+    ru: "Длина принятого кадра в байтах"
+    pt-BR: "Tamanho do quadro recebido em bytes"
+    es: "Longitud de la trama recibida en bytes"
   desc_rx_src:
     zh-CN: "来源地址, 如 192.168.1.9:5000"
     en: "Source address, e.g. 192.168.1.9:5000"
+    ja: "送信元アドレス。例 192.168.1.9:5000"
+    de: "Quelladresse, z. B. 192.168.1.9:5000"
+    ru: "Исходный адрес, например 192.168.1.9:5000"
+    pt-BR: "Endereço de origem, ex.: 192.168.1.9:5000"
+    es: "Dirección de origen, p. ej. 192.168.1.9:5000"
   desc_rx_src_ip:
     zh-CN: 来源 IP（不含端口）
     en: Source IP (without port)
+    ja: "送信元 IP（ポートなし）"
+    de: "Quell-IP (ohne Port)"
+    ru: "Исходный IP (без порта)"
+    pt-BR: "IP de origem (sem porta)"
+    es: "IP de origen (sin puerto)"
   desc_rx_port:
     zh-CN: 来源端口
     en: Source port
+    ja: "送信元ポート"
+    de: "Quellport"
+    ru: "Исходный порт"
+    pt-BR: "Porta de origem"
+    es: "Puerto de origen"
   desc_rx_u8:
     zh-CN: "接收帧偏移 0 处的 1 字节无符号整数"
     en: "Unsigned 8-bit value at offset 0 of the received frame"
+    ja: "受信フレームのオフセット 0 にある 1 バイト符号なし整数"
+    de: "Vorzeichenloser 8-Bit-Wert an Offset 0 des empfangenen Frames"
+    ru: "Беззнаковое 8-битное значение по смещению 0 принятого кадра"
+    pt-BR: "Valor inteiro sem sinal de 1 byte no deslocamento 0 do quadro recebido"
+    es: "Entero sin signo de 8 bits en el desplazamiento 0 de la trama recibida"
   desc_rx_u16be:
     zh-CN: 接收帧大端 16 位无符号整数
     en: Big-endian unsigned 16-bit value of the received frame
+    ja: "受信フレームのビッグエンディアン 16 ビット符号なし整数"
+    de: "Vorzeichenloser 16-Bit-Wert (Big-Endian) des empfangenen Frames"
+    ru: "Беззнаковое 16-битное значение принятого кадра, старший байт первый"
+    pt-BR: "Valor inteiro sem sinal de 16 bits big-endian do quadro recebido"
+    es: "Entero sin signo de 16 bits big-endian de la trama recibida"
   desc_rx_u16le:
     zh-CN: 接收帧小端 16 位无符号整数
     en: Little-endian unsigned 16-bit value of the received frame
+    ja: "受信フレームのリトルエンディアン 16 ビット符号なし整数"
+    de: "Vorzeichenloser 16-Bit-Wert (Little-Endian) des empfangenen Frames"
+    ru: "Беззнаковое 16-битное значение принятого кадра, младший байт первый"
+    pt-BR: "Valor inteiro sem sinal de 16 bits little-endian do quadro recebido"
+    es: "Entero sin signo de 16 bits little-endian de la trama recibida"
   desc_rx_i32be:
     zh-CN: 接收帧大端 32 位有符号整数
     en: Big-endian signed 32-bit value of the received frame
+    ja: "受信フレームのビッグエンディアン 32 ビット符号付き整数"
+    de: "Vorzeichenbehafteter 32-Bit-Wert (Big-Endian) des empfangenen Frames"
+    ru: "Знаковое 32-битное значение принятого кадра, старший байт первый"
+    pt-BR: "Valor inteiro com sinal de 32 bits big-endian do quadro recebido"
+    es: "Entero con signo de 32 bits big-endian de la trama recibida"
   desc_rx_hex:
     zh-CN: 接收帧某段字节的十六进制文本
     en: Hex text of a byte range of the received frame
+    ja: "受信フレームの一部バイトの 16進数テキスト"
+    de: "Hexadezimaltext eines Bytebereichs des empfangenen Frames"
+    ru: "Шестнадцатеричный текст диапазона байтов принятого кадра"
+    pt-BR: "Texto hexadecimal de um trecho de bytes do quadro recebido"
+    es: "Texto hexadecimal de un rango de bytes de la trama recibida"
   desc_rx_ascii:
     zh-CN: 接收帧某段字节的 ASCII 文本
     en: ASCII text of a byte range of the received frame
+    ja: "受信フレームの一部バイトの ASCII テキスト"
+    de: "ASCII-Text eines Bytebereichs des empfangenen Frames"
+    ru: "Текст ASCII диапазона байтов принятого кадра"
+    pt-BR: "Texto ASCII de um trecho de bytes do quadro recebido"
+    es: "Texto ASCII de un rango de bytes de la trama recibida"
   desc_rx_crc16modbus:
     zh-CN: 对接收帧某段字节现算 CRC16/MODBUS
     en: Compute CRC16/MODBUS over a byte range of the received frame
+    ja: "受信フレームの一部バイトから CRC16/MODBUS を計算"
+    de: "CRC16/MODBUS über einen Bytebereich des empfangenen Frames berechnen"
+    ru: "Вычислить CRC16/MODBUS по диапазону байтов принятого кадра"
+    pt-BR: "Calcula CRC16/MODBUS sobre um trecho de bytes do quadro recebido"
+    es: "Calcula CRC16/MODBUS sobre un rango de bytes de la trama recibida"
   desc_rx_json:
     zh-CN: 接收帧 JSON 字段取值（路径如 action / data.items[0].temp）
     en: JSON field of the received frame (path like action / data.items[0].temp)
+    ja: "受信フレームの JSON フィールド値（パス例: action / data.items[0].temp）"
+    de: "JSON-Feld des empfangenen Frames (Pfad wie action / data.items[0].temp)"
+    ru: "Поле JSON принятого кадра (путь, например action / data.items[0].temp)"
+    pt-BR: "Campo JSON do quadro recebido (caminho como action / data.items[0].temp)"
+    es: "Valor de un campo JSON de la trama recibida (ruta como action / data.items[0].temp)"
   desc_gen_crc16modbus:
     zh-CN: 对**应答内容**现算 CRC16/MODBUS（大端）
     en: Compute CRC16/MODBUS over the reply payload (big-endian)
+    ja: "**応答内容**から CRC16/MODBUS を計算（ビッグエンディアン）"
+    de: "CRC16/MODBUS über die **Antwortnutzdaten** berechnen (Big-Endian)"
+    ru: "Вычислить CRC16/MODBUS по содержимому ответа (старший байт первый)"
+    pt-BR: "Calcula CRC16/MODBUS sobre o conteúdo da resposta (big-endian)"
+    es: "Calcula CRC16/MODBUS sobre el contenido de la respuesta (big-endian)"
   desc_gen_crc16modbus_le:
     zh-CN: 对**应答内容**现算 CRC16/MODBUS（小端，Modbus RTU 用）
     en: Compute CRC16/MODBUS over the reply payload (little-endian, for Modbus RTU)
+    ja: "**応答内容**から CRC16/MODBUS を計算（リトルエンディアン、Modbus RTU 用）"
+    de: "CRC16/MODBUS über die **Antwortnutzdaten** berechnen (Little-Endian, für Modbus RTU)"
+    ru: "Вычислить CRC16/MODBUS по содержимому ответа (младший байт первый, для Modbus RTU)"
+    pt-BR: "Calcula CRC16/MODBUS sobre o conteúdo da resposta (little-endian, para Modbus RTU)"
+    es: "Calcula CRC16/MODBUS sobre el contenido de la respuesta (little-endian, para Modbus RTU)"
   desc_gen_xor:
     zh-CN: 对**应答内容**现算异或校验（1 字节）
     en: Compute XOR checksum over the reply payload (1 byte)
+    ja: "**応答内容**から XOR チェックサムを計算（1 バイト）"
+    de: "XOR-Prüfsumme über die **Antwortnutzdaten** berechnen (1 Byte)"
+    ru: "Вычислить контрольную сумму XOR по содержимому ответа (1 байт)"
+    pt-BR: "Calcula o checksum XOR sobre o conteúdo da resposta (1 byte)"
+    es: "Calcula la suma de verificación XOR sobre el contenido de la respuesta (1 byte)"
   desc_gen_sum8:
     zh-CN: 对**应答内容**现算累加和（1 字节）
     en: Compute 8-bit sum over the reply payload (1 byte)
+    ja: "**応答内容**から 8 ビット加算和を計算（1 バイト）"
+    de: "8-Bit-Summe über die **Antwortnutzdaten** berechnen (1 Byte)"
+    ru: "Вычислить 8-битную сумму по содержимому ответа (1 байт)"
+    pt-BR: "Calcula a soma de 8 bits sobre o conteúdo da resposta (1 byte)"
+    es: "Calcula la suma acumulada sobre el contenido de la respuesta (1 byte)"
   desc_gen_lrc:
     zh-CN: 对**应答内容**现算 Modbus LRC（1 字节）
     en: Compute Modbus LRC over the reply payload (1 byte)
+    ja: "**応答内容**から Modbus LRC を計算（1 バイト）"
+    de: "Modbus LRC über die **Antwortnutzdaten** berechnen (1 Byte)"
+    ru: "Вычислить Modbus LRC по содержимому ответа (1 байт)"
+    pt-BR: "Calcula o LRC do Modbus sobre o conteúdo da resposta (1 byte)"
+    es: "Calcula el LRC de Modbus sobre el contenido de la respuesta (1 byte)"
   desc_gen_crc32:
     zh-CN: 对**应答内容**现算 CRC32（4 字节）
     en: Compute CRC32 over the reply payload (4 bytes)
+    ja: "**応答内容**から CRC32 を計算（4 バイト）"
+    de: "CRC32 über die **Antwortnutzdaten** berechnen (4 Byte)"
+    ru: "Вычислить CRC32 по содержимому ответа (4 байта)"
+    pt-BR: "Calcula CRC32 sobre o conteúdo da resposta (4 bytes)"
+    es: "Calcula CRC32 sobre el contenido de la respuesta (4 bytes)"
   desc_expr_arith:
     zh-CN: 算术表达式（支持 + - * / % 与括号）
     en: Arithmetic expression (supports + - * / % and parentheses)
+    ja: "算術式（+ - * / % と括弧に対応）"
+    de: "Arithmetischer Ausdruck (unterstützt + - * / % und Klammern)"
+    ru: "Арифметическое выражение (поддерживаются + - * / % и скобки)"
+    pt-BR: "Expressão aritmética (suporta + - * / % e parênteses)"
+    es: "Expresión aritmética (admite + - * / % y paréntesis)"
   desc_expr_rx:
     zh-CN: 表达式里读取接收帧数值
     en: Read a value from the received frame inside an expression
+    ja: "式の中で受信フレームの数値を参照"
+    de: "Wert aus dem empfangenen Frame in einem Ausdruck lesen"
+    ru: "Чтение значения из принятого кадра в выражении"
+    pt-BR: "Lê um valor do quadro recebido dentro de uma expressão"
+    es: "Lee un valor de la trama recibida dentro de una expresión"
   desc_expr_if:
     zh-CN: 条件表达式（if(条件, 真值, 假值)）
     en: Conditional expression (if(cond, then, else))
+    ja: "条件式（if(条件, 真値, 偽値)）"
+    de: "Bedingter Ausdruck (if(Bedingung, dann, sonst))"
+    ru: "Условное выражение (if(условие, да, нет))"
+    pt-BR: "Expressão condicional (if(condição, valor_verdadeiro, valor_falso))"
+    es: "Expresión condicional (if(condición, valor_si, valor_no))"
   desc_expr_bits:
     zh-CN: 取某值的位段（起始位, 位数）
     en: Extract a bit field (start bit, length)
+    ja: "値のビットフィールドを取得（開始ビット, ビット数）"
+    de: "Bitfeld aus einem Wert extrahieren (Startbit, Bitlänge)"
+    ru: "Извлечь битовый диапазон (начальный бит, длина)"
+    pt-BR: "Extrai um campo de bits (bit inicial, quantidade)"
+    es: "Extrae un campo de bits (bit inicial, longitud)"
 
 reply_rules:
   title:
     zh-CN: 回复规则
     en: Reply Rules
+    ja: "応答ルール"
+    de: "Antwortregeln"
+    ru: "Правила ответа"
+    pt-BR: "Regras de resposta"
+    es: "Reglas de respuesta"
   no_enabled_rule:
     zh-CN: 无启用规则
     en: No active rules
+    ja: "有効なルールなし"
+    de: "Keine aktiven Regeln"
+    ru: "Нет активных правил"
+    pt-BR: "Nenhuma regra ativa"
+    es: "No hay reglas activas"
   legacy_hint:
     zh-CN: 检测到旧的「自动回复」内容。可一键迁移成一条等价规则（旧的固定回复会被关闭，避免两条轨同时生效）。
     en: Legacy auto-reply content detected. Migrate it into an equivalent rule in one click (the legacy fixed reply is turned off so both paths never run at once).
+    ja: "旧「自動応答」の内容を検出しました。ワンクリックで同等のルールに移行できます（旧固定応答は無効化され、2 つの経路が同時に動くことはありません）。"
+    de: "Alte automatische Antwort erkannt. Sie lässt sich mit einem Klick in eine gleichwertige Regel umwandeln (die alte feste Antwort wird deaktiviert, damit nie beide Wege gleichzeitig laufen)."
+    ru: "Обнаружено содержимое старого «автоответа». Его можно одним щелчком перенести в эквивалентное правило (старый фиксированный ответ будет отключён, чтобы оба механизма не работали одновременно)."
+    pt-BR: "Conteúdo antigo de \"resposta automática\" detectado. Migre para uma regra equivalente com um clique (a resposta fixa antiga é desativada para as duas vias nunca rodarem juntas)."
+    es: "Se detectó contenido antiguo de «respuesta automática». Puede migrarlo a una regla equivalente con un clic (la respuesta fija antigua se desactiva para que ambas rutas no se ejecuten a la vez)."
   migrate:
     zh-CN: 一键迁移
     en: Migrate
+    ja: "ワンクリック移行"
+    de: "Migrieren"
+    ru: "Перенести"
+    pt-BR: "Migrar"
+    es: "Migrar"
   migrate_done:
     zh-CN: 已迁移为规则（可在列表中继续调整）。
     en: Migrated into a rule (you can keep editing it in the list).
+    ja: "ルールに移行しました（一覧で引き続き調整できます）。"
+    de: "In eine Regel migriert (kann in der Liste weiter bearbeitet werden)."
+    ru: "Перенесено в правило (его можно продолжить настраивать в списке)."
+    pt-BR: "Migrado para uma regra (você pode continuar ajustando na lista)."
+    es: "Migrado a una regla (puede seguir editándola en la lista)."
   migrate_nothing:
     zh-CN: 没有可迁移的旧固定回复内容。
     en: There is no legacy fixed reply content to migrate.
+    ja: "移行できる旧固定応答の内容はありません。"
+    de: "Es gibt keine alte feste Antwort zum Migrieren."
+    ru: "Нет старого фиксированного ответа для переноса."
+    pt-BR: "Não há conteúdo antigo de resposta fixa para migrar."
+    es: "No hay contenido antiguo de respuesta fija que migrar."
   list_title:
     zh-CN: 规则列表（自上而下依次求值，命中即停）
     en: Rules (evaluated top to bottom, first hit wins)
+    ja: "ルール一覧（上から順に評価し、最初の一致で停止）"
+    de: "Regeln (von oben nach unten ausgewertet, erster Treffer zählt)"
+    ru: "Список правил (проверяются сверху вниз, до первого совпадения)"
+    pt-BR: "Regras (avaliadas de cima para baixo, a primeira que corresponder vence)"
+    es: "Reglas (se evalúan de arriba abajo; gana la primera coincidencia)"
   count:
     zh-CN: 规则 %{n} 条
     en: "%{n} rules"
+    ja: "ルール %{n} 件"
+    de: "%{n} Regeln"
+    ru: "Правил: %{n}"
+    pt-BR: "%{n} regras"
+    es: "%{n} reglas"
   hits:
     zh-CN: 触发 %{n} 次
     en: "%{n} triggers"
+    ja: "%{n} 回トリガー"
+    de: "%{n} Auslösungen"
+    ru: "Срабатываний: %{n}"
+    pt-BR: "%{n} acionamentos"
+    es: "%{n} activaciones"
   invalid_count:
     zh-CN: "%{n} 条规则存在错误"
     en: "%{n} rules have errors"
+    ja: "%{n} 件のルールにエラーがあります"
+    de: "%{n} Regeln enthalten Fehler"
+    ru: "Правил с ошибками: %{n}"
+    pt-BR: "%{n} regras com erros"
+    es: "%{n} reglas tienen errores"
   empty:
     zh-CN: 还没有规则。点击左下角「新建规则」开始。
     en: No rules yet. Click the New Rule button at the bottom left to start.
+    ja: "ルールがまだありません。左下の「新規ルール」をクリックして開始してください。"
+    de: "Noch keine Regeln. Klicken Sie unten links auf „Neue Regel“, um zu beginnen."
+    ru: "Правил пока нет. Нажмите «Новое правило» в левом нижнем углу, чтобы начать."
+    pt-BR: "Ainda não há regras. Clique em \"Nova regra\" no canto inferior esquerdo para começar."
+    es: "Aún no hay reglas. Haga clic en «Nueva regla» en la esquina inferior izquierda para empezar."
   row_hits:
     zh-CN: 触发 %{n} 次
     en: "%{n} triggers"
+    ja: "%{n} 回トリガー"
+    de: "%{n} Auslösungen"
+    ru: "Срабатываний: %{n}"
+    pt-BR: "%{n} acionamentos"
+    es: "%{n} activaciones"
   label_condition:
     zh-CN: 条件
     en: Condition
+    ja: "条件"
+    de: "Bedingung"
+    ru: "Условие"
+    pt-BR: "Condição"
+    es: "Condición"
   label_action:
     zh-CN: 动作
     en: Action
+    ja: "アクション"
+    de: "Aktion"
+    ru: "Действие"
+    pt-BR: "Ação"
+    es: "Acción"
   badge_disabled:
     zh-CN: 已禁用
     en: Disabled
+    ja: "無効"
+    de: "Deaktiviert"
+    ru: "Отключено"
+    pt-BR: "Desativada"
+    es: "Desactivada"
   badge_any_message:
     zh-CN: 任意消息
     en: Any message
+    ja: "すべてのメッセージ"
+    de: "Beliebige Nachricht"
+    ru: "Любое сообщение"
+    pt-BR: "Qualquer mensagem"
+    es: "Cualquier mensaje"
   edit:
     zh-CN: 编辑
     en: Edit
+    ja: "編集"
+    de: "Bearbeiten"
+    ru: "Изменить"
+    pt-BR: "Editar"
+    es: "Editar"
   duplicate:
     zh-CN: 复制
     en: Duplicate
+    ja: "複製"
+    de: "Duplizieren"
+    ru: "Дублировать"
+    pt-BR: "Duplicar"
+    es: "Duplicar"
   copy_suffix:
     zh-CN: 副本
     en: copy
+    ja: "コピー"
+    de: "Kopie"
+    ru: "копия"
+    pt-BR: "cópia"
+    es: "copia"
   enable:
     zh-CN: 启用
     en: Enable
+    ja: "有効化"
+    de: "Aktivieren"
+    ru: "Включить"
+    pt-BR: "Ativar"
+    es: "Activar"
   disable:
     zh-CN: 停用
     en: Disable
+    ja: "無効化"
+    de: "Deaktivieren"
+    ru: "Отключить"
+    pt-BR: "Desativar"
+    es: "Desactivar"
   reset_hits:
     zh-CN: 清零
     en: Reset
+    ja: "クリア"
+    de: "Zurücksetzen"
+    ru: "Сбросить"
+    pt-BR: "Zerar"
+    es: "Reiniciar"
   reset_all:
     zh-CN: 全部清零
     en: Reset All
+    ja: "すべてクリア"
+    de: "Alle zurücksetzen"
+    ru: "Сбросить всё"
+    pt-BR: "Zerar tudo"
+    es: "Reiniciar todo"
   drag_hint:
     zh-CN: 提示：按住左侧 ⠿ 手柄可拖动调整规则顺序。
     en: "Tip: drag the ⠿ handle on the left to reorder rules."
+    ja: "ヒント: 左側の ⠿ ハンドルをドラッグすると、ルールの順序を変更できます。"
+    de: "Tipp: Ziehen Sie den Griff ⠿ links, um die Reihenfolge der Regeln zu ändern."
+    ru: "Подсказка: перетаскивайте за маркер ⠿ слева, чтобы изменить порядок правил."
+    pt-BR: "Dica: arraste a alça ⠿ à esquerda para reordenar as regras."
+    es: "Consejo: arrastre el asa ⠿ de la izquierda para reordenar las reglas."
   drag_handle_tooltip:
     zh-CN: 拖动排序
     en: Drag to reorder
+    ja: "ドラッグで並べ替え"
+    de: "Zum Umsortieren ziehen"
+    ru: "Перетащите для изменения порядка"
+    pt-BR: "Arraste para reordenar"
+    es: "Arrastrar para reordenar"
   delete:
     zh-CN: 删除
     en: Delete
+    ja: "削除"
+    de: "Löschen"
+    ru: "Удалить"
+    pt-BR: "Excluir"
+    es: "Eliminar"
   delete_confirm:
     zh-CN: 确认删除？
     en: Confirm delete?
+    ja: "削除しますか？"
+    de: "Löschen bestätigen?"
+    ru: "Удалить?"
+    pt-BR: "Confirmar exclusão?"
+    es: "¿Confirmar eliminación?"
   new_rule:
     zh-CN: 新建规则
     en: New Rule
+    ja: "新規ルール"
+    de: "Neue Regel"
+    ru: "Новое правило"
+    pt-BR: "Nova regra"
+    es: "Nueva regla"
   close:
     zh-CN: 关闭
     en: Close
+    ja: "閉じる"
+    de: "Schließen"
+    ru: "Закрыть"
+    pt-BR: "Fechar"
+    es: "Cerrar"
   select_all:
     zh-CN: 全选
     en: Select all
+    ja: "すべて選択"
+    de: "Alle auswählen"
+    ru: "Выбрать все"
+    pt-BR: "Selecionar tudo"
+    es: "Seleccionar todo"
   selected_count:
     zh-CN: 已选 %{selected} / %{total}
     en: "%{selected} of %{total} selected"
+    ja: "%{selected} / %{total} 件を選択"
+    de: "%{selected} von %{total} ausgewählt"
+    ru: "Выбрано %{selected} из %{total}"
+    pt-BR: "%{selected} de %{total} selecionadas"
+    es: "%{selected} de %{total} seleccionadas"
   transfer_hint:
     zh-CN: 勾选规则后可批量导出或复制
     en: Select rules to export or copy them in bulk
+    ja: "ルールを選択すると一括エクスポートまたはコピーができます"
+    de: "Regeln auswählen, um sie gesammelt zu exportieren oder zu kopieren"
+    ru: "Отметьте правила, чтобы экспортировать или скопировать их пакетом"
+    pt-BR: "Selecione regras para exportar ou copiar em lote"
+    es: "Marque reglas para exportarlas o copiarlas en lote"
   import:
     zh-CN: 导入
     en: Import
+    ja: "インポート"
+    de: "Importieren"
+    ru: "Импорт"
+    pt-BR: "Importar"
+    es: "Importar"
   export_selected:
     zh-CN: 导出所选 (%{n})
     en: Export Selected (%{n})
+    ja: "選択項目をエクスポート (%{n})"
+    de: "Auswahl exportieren (%{n})"
+    ru: "Экспорт выбранных (%{n})"
+    pt-BR: "Exportar selecionadas (%{n})"
+    es: "Exportar seleccionadas (%{n})"
   export_none:
     zh-CN: 导出所选
     en: Export Selected
+    ja: "選択項目をエクスポート"
+    de: "Auswahl exportieren"
+    ru: "Экспорт выбранных"
+    pt-BR: "Exportar selecionadas"
+    es: "Exportar seleccionadas"
   export_ok:
     zh-CN: 已导出 %{n} 条规则到 %{path}
     en: Exported %{n} rules to %{path}
+    ja: "%{n} 件のルールを %{path} にエクスポートしました"
+    de: "%{n} Regeln nach %{path} exportiert"
+    ru: "Экспортировано правил: %{n} в %{path}"
+    pt-BR: "%{n} regras exportadas para %{path}"
+    es: "Se exportaron %{n} reglas a %{path}"
   export_failed:
     zh-CN: 导出失败：%{reason}
     en: "Export failed: %{reason}"
+    ja: "エクスポートに失敗しました: %{reason}"
+    de: "Export fehlgeschlagen: %{reason}"
+    ru: "Ошибка экспорта: %{reason}"
+    pt-BR: "Falha ao exportar: %{reason}"
+    es: "Error al exportar: %{reason}"
   copy_to:
     zh-CN: 复制到其他连接
     en: Copy to Another Connection
+    ja: "他の接続にコピー"
+    de: "In andere Verbindung kopieren"
+    ru: "Копировать в другое подключение"
+    pt-BR: "Copiar para outra conexão"
+    es: "Copiar a otra conexión"
   import_ok:
     zh-CN: 已导入 %{n} 条规则
     en: Imported %{n} rules
+    ja: "%{n} 件のルールをインポートしました"
+    de: "%{n} Regeln importiert"
+    ru: "Импортировано правил: %{n}"
+    pt-BR: "%{n} regras importadas"
+    es: "Se importaron %{n} reglas"
   import_ok_invalid:
     zh-CN: 已导入 %{n} 条规则，其中 %{invalid} 条存在校验错误，可在列表中修正
     en: Imported %{n} rules; %{invalid} have validation errors you can fix in the list
+    ja: "%{n} 件のルールをインポートしました。うち %{invalid} 件に検証エラーがあります。一覧で修正できます"
+    de: "%{n} Regeln importiert; %{invalid} davon mit Validierungsfehlern, die in der Liste korrigiert werden können"
+    ru: "Импортировано правил: %{n}, из них с ошибками проверки: %{invalid}; их можно исправить в списке"
+    pt-BR: "%{n} regras importadas; %{invalid} têm erros de validação que você pode corrigir na lista"
+    es: "Se importaron %{n} reglas; %{invalid} tienen errores de validación que puede corregir en la lista"
   import_read_failed:
     zh-CN: 读取文件失败：%{reason}
     en: "Failed to read file: %{reason}"
+    ja: "ファイルの読み込みに失敗しました: %{reason}"
+    de: "Datei konnte nicht gelesen werden: %{reason}"
+    ru: "Не удалось прочитать файл: %{reason}"
+    pt-BR: "Falha ao ler o arquivo: %{reason}"
+    es: "Error al leer el archivo: %{reason}"
   import_too_large:
     zh-CN: 规则包过大（%{size} 字节，上限 %{max} 字节）
     en: Rule bundle is too large (%{size} bytes, limit %{max} bytes)
+    ja: "ルールパッケージが大きすぎます（%{size} バイト、上限 %{max} バイト）"
+    de: "Regelpaket zu groß (%{size} Byte, Grenze %{max} Byte)"
+    ru: "Пакет правил слишком велик (%{size} байт, предел %{max} байт)"
+    pt-BR: "Pacote de regras muito grande (%{size} bytes, limite %{max} bytes)"
+    es: "El paquete de reglas es demasiado grande (%{size} bytes; límite %{max} bytes)"
   import_not_bundle:
     zh-CN: 导入失败：这不是 NetAssistant 规则包
     en: "Import failed: not a NetAssistant rule bundle"
+    ja: "インポートに失敗しました: NetAssistant のルールパッケージではありません"
+    de: "Import fehlgeschlagen: kein NetAssistant-Regelpaket"
+    ru: "Ошибка импорта: это не пакет правил NetAssistant"
+    pt-BR: "Falha na importação: não é um pacote de regras do NetAssistant"
+    es: "Error al importar: no es un paquete de reglas de NetAssistant"
   import_unsupported_version:
     zh-CN: 导入失败：规则包版本 %{version} 不受支持，请升级应用
     en: "Import failed: bundle version %{version} is not supported; please upgrade the app"
+    ja: "インポートに失敗しました: ルールパッケージのバージョン %{version} はサポートされていません。アプリをアップグレードしてください"
+    de: "Import fehlgeschlagen: Paketversion %{version} wird nicht unterstützt; bitte aktualisieren Sie die App"
+    ru: "Ошибка импорта: версия пакета %{version} не поддерживается; обновите приложение"
+    pt-BR: "Falha na importação: a versão do pacote %{version} não é suportada; atualize o app"
+    es: "Error al importar: la versión %{version} del paquete no es compatible; actualice la aplicación"
   import_empty:
     zh-CN: 导入失败：规则包内没有任何规则
     en: "Import failed: the bundle contains no rules"
+    ja: "インポートに失敗しました: ルールパッケージにルールがありません"
+    de: "Import fehlgeschlagen: Das Paket enthält keine Regeln"
+    ru: "Ошибка импорта: в пакете нет ни одного правила"
+    pt-BR: "Falha na importação: o pacote não contém nenhuma regra"
+    es: "Error al importar: el paquete no contiene ninguna regla"
   import_too_many:
     zh-CN: 导入失败：规则包包含 %{n} 条规则，上限 %{max} 条
     en: "Import failed: the bundle has %{n} rules, limit %{max}"
+    ja: "インポートに失敗しました: ルールパッケージに %{n} 件のルールがあります。上限は %{max} 件です"
+    de: "Import fehlgeschlagen: Das Paket enthält %{n} Regeln, Grenze %{max}"
+    ru: "Ошибка импорта: правил в пакете: %{n}, предел %{max}"
+    pt-BR: "Falha na importação: o pacote tem %{n} regras, limite %{max}"
+    es: "Error al importar: el paquete contiene %{n} reglas; límite %{max}"
   import_invalid_json:
     zh-CN: 导入失败：规则包内容无法解析（%{reason}）
     en: "Import failed: cannot parse the bundle (%{reason})"
+    ja: "インポートに失敗しました: ルールパッケージの内容を解析できません（%{reason}）"
+    de: "Import fehlgeschlagen: Paketinhalt nicht lesbar (%{reason})"
+    ru: "Ошибка импорта: не удалось разобрать содержимое пакета (%{reason})"
+    pt-BR: "Falha na importação: não foi possível analisar o pacote (%{reason})"
+    es: "Error al importar: no se puede analizar el paquete (%{reason})"
   gate_off_suffix:
     zh-CN: （该连接「自动回复」未开启，规则暂不生效）
     en: " (Auto-reply is off for this connection, so the rules are not active yet)"
+    ja: "（この接続では「自動応答」が有効でないため、ルールはまだ適用されません）"
+    de: " (Automatische Antwort ist für diese Verbindung deaktiviert, daher sind die Regeln noch nicht aktiv)"
+    ru: " (для этого подключения «автоответ» выключен, поэтому правила пока не действуют)"
+    pt-BR: " (a \"resposta automática\" está desligada nesta conexão, então as regras ainda não estão ativas)"
+    es: " (la «respuesta automática» está desactivada en esta conexión, así que las reglas aún no se aplican)"
   copy_ok:
     zh-CN: 已复制 %{n} 条规则到 %{target}
     en: Copied %{n} rules to %{target}
+    ja: "%{n} 件のルールを %{target} にコピーしました"
+    de: "%{n} Regeln nach %{target} kopiert"
+    ru: "Скопировано правил: %{n} в %{target}"
+    pt-BR: "%{n} regras copiadas para %{target}"
+    es: "Se copiaron %{n} reglas a %{target}"
   copy_ok_gate_off:
     zh-CN: 已复制 %{n} 条规则到 %{target}（该连接「自动回复」未开启，规则暂不生效）
     en: Copied %{n} rules to %{target} (Auto-reply is off for this connection, so the rules are not active yet)
+    ja: "%{n} 件のルールを %{target} にコピーしました（この接続では「自動応答」が有効でないため、ルールはまだ適用されません）"
+    de: "%{n} Regeln nach %{target} kopiert (Automatische Antwort ist für diese Verbindung deaktiviert, daher sind die Regeln noch nicht aktiv)"
+    ru: "Скопировано правил: %{n} в %{target} (для этого подключения «автоответ» выключен, поэтому правила пока не действуют)"
+    pt-BR: "%{n} regras copiadas para %{target} (a \"resposta automática\" está desligada nesta conexão, então as regras ainda não estão ativas)"
+    es: "Se copiaron %{n} reglas a %{target} (la «respuesta automática» está desactivada en esta conexión, así que las reglas aún no se aplican)"
   invalid_suffix:
     zh-CN: 其中 %{invalid} 条存在校验错误。
     en: "%{invalid} of them have validation errors."
+    ja: "うち %{invalid} 件に検証エラーがあります。"
+    de: "%{invalid} davon weisen Validierungsfehler auf."
+    ru: "Из них с ошибками проверки: %{invalid}."
+    pt-BR: "%{invalid} delas têm erros de validação."
+    es: "%{invalid} de ellas tienen errores de validación."
 
 reply_rules_copy:
   title:
     zh-CN: 复制规则到其他连接
     en: Copy Rules to Another Connection
+    ja: "ルールを他の接続にコピー"
+    de: "Regeln in andere Verbindung kopieren"
+    ru: "Копировать правила в другое подключение"
+    pt-BR: "Copiar regras para outra conexão"
+    es: "Copiar reglas a otra conexión"
   desc:
     zh-CN: 将 %{n} 条规则追加到目标连接，不会覆盖目标已有规则；导入后会重新生成规则 ID。
     en: Append %{n} rules to the target connection without overwriting existing rules. Rule IDs are regenerated.
+    ja: "%{n} 件のルールを対象の接続に追加します。対象の既存ルールは上書きされません。インポート後にルール ID は再生成されます。"
+    de: "%{n} Regeln an die Zielverbindung anhängen, ohne vorhandene Regeln zu überschreiben. Regel-IDs werden neu erzeugt."
+    ru: "Добавить правила (%{n}) в целевое подключение, не перезаписывая существующие; после импорта идентификаторы правил создаются заново."
+    pt-BR: "Anexa %{n} regras à conexão de destino sem sobrescrever as existentes. Os IDs das regras são gerados novamente."
+    es: "Añade %{n} reglas a la conexión de destino sin sobrescribir las existentes. Los ID de regla se regeneran."
   empty:
     zh-CN: 没有其他 TCP/UDP 连接可复制，请先创建并保存一个连接。
     en: There are no other TCP/UDP connections. Create and save one first.
+    ja: "コピーできる他の TCP/UDP 接続がありません。先に接続を作成して保存してください。"
+    de: "Es gibt keine anderen TCP/UDP-Verbindungen. Legen Sie zuerst eine Verbindung an und speichern Sie sie."
+    ru: "Нет других подключений TCP/UDP для копирования. Сначала создайте и сохраните подключение."
+    pt-BR: "Não há outras conexões TCP/UDP. Crie e salve uma primeiro."
+    es: "No hay otras conexiones TCP/UDP. Cree y guarde una primero."
   existing:
     zh-CN: 已有 %{n} 条规则
     en: "%{n} existing rules"
+    ja: "既存のルール %{n} 件"
+    de: "%{n} vorhandene Regeln"
+    ru: "Существующих правил: %{n}"
+    pt-BR: "%{n} regras existentes"
+    es: "%{n} reglas existentes"
   role_client:
     zh-CN: 客户端
     en: Client
+    ja: "クライアント"
+    de: "Client"
+    ru: "Клиент"
+    pt-BR: "Cliente"
+    es: "Cliente"
   role_server:
     zh-CN: 服务端
     en: Server
+    ja: "サーバー"
+    de: "Server"
+    ru: "Сервер"
+    pt-BR: "Servidor"
+    es: "Servidor"
   mqtt_note:
     zh-CN: MQTT 连接不参与自动回复，因此不在复制目标中显示。
     en: MQTT connections do not run auto-reply, so they are not listed here.
+    ja: "MQTT 接続は自動応答の対象外のため、コピー先に表示されません。"
+    de: "MQTT-Verbindungen führen keine automatische Antwort aus und werden daher nicht als Ziel angezeigt."
+    ru: "Подключения MQTT не участвуют в автоответе, поэтому не отображаются здесь."
+    pt-BR: "Conexões MQTT não executam resposta automática, por isso não aparecem aqui."
+    es: "Las conexiones MQTT no ejecutan la respuesta automática, por lo que no aparecen aquí."
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   confirm:
     zh-CN: 复制 %{n} 条
     en: Copy %{n}
+    ja: "%{n} 件をコピー"
+    de: "%{n} kopieren"
+    ru: "Копировать: %{n}"
+    pt-BR: "Copiar %{n}"
+    es: "Copiar %{n}"
 
 mqtt_subscriptions:
   title_add:
     zh-CN: 新增订阅
     en: New Subscription
+    ja: "購読を追加"
+    de: "Neues Abonnement"
+    ru: "Новая подписка"
+    pt-BR: "Nova assinatura"
+    es: "Nueva suscripción"
   title_edit:
     zh-CN: 编辑订阅
     en: Edit Subscription
+    ja: "購読を編集"
+    de: "Abonnement bearbeiten"
+    ru: "Изменение подписки"
+    pt-BR: "Editar assinatura"
+    es: "Editar suscripción"
   save:
     zh-CN: 保存
     en: Save
+    ja: "保存"
+    de: "Speichern"
+    ru: "Сохранить"
+    pt-BR: "Salvar"
+    es: "Guardar"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   exists:
     zh-CN: 该主题已存在订阅
     en: That topic is already subscribed
+    ja: "このトピックは既に購読されています"
+    de: "Für dieses Topic besteht bereits ein Abonnement"
+    ru: "На эту тему уже есть подписка"
+    pt-BR: "Esse tópico já está assinado"
+    es: "Ese tema ya está suscrito"
 
 reply_rule_edit:
   title_new:
     zh-CN: 新建回复规则
     en: New Reply Rule
+    ja: "応答ルールを新規作成"
+    de: "Neue Antwortregel"
+    ru: "Новое правило ответа"
+    pt-BR: "Nova regra de resposta"
+    es: "Nueva regla de respuesta"
   title_edit:
     zh-CN: 编辑回复规则
     en: Edit Reply Rule
+    ja: "応答ルールを編集"
+    de: "Antwortregel bearbeiten"
+    ru: "Изменение правила ответа"
+    pt-BR: "Editar regra de resposta"
+    es: "Editar regla de respuesta"
   section_notes:
     zh-CN: 备注与标签
     en: Notes & tags
+    ja: "メモとタグ"
+    de: "Notizen & Tags"
+    ru: "Примечания и метки"
+    pt-BR: "Observações e tags"
+    es: "Notas y etiquetas"
   name:
     zh-CN: 规则名
     en: Name
+    ja: "ルール名"
+    de: "Name"
+    ru: "Название правила"
+    pt-BR: "Nome"
+    es: "Nombre"
   name_placeholder:
     zh-CN: 给这条规则起个名字
     en: Name this rule
+    ja: "このルールに名前を付ける"
+    de: "Geben Sie dieser Regel einen Namen"
+    ru: "Назовите это правило"
+    pt-BR: "Dê um nome a esta regra"
+    es: "Ponga un nombre a esta regla"
   description:
     zh-CN: 备注
     en: Notes
+    ja: "メモ"
+    de: "Notizen"
+    ru: "Примечание"
+    pt-BR: "Observações"
+    es: "Notas"
   description_placeholder:
     zh-CN: 说明这条规则的用途（可选）
     en: What this rule is for (optional)
+    ja: "このルールの用途を説明（任意）"
+    de: "Wofür diese Regel gedacht ist (optional)"
+    ru: "Опишите назначение правила (необязательно)"
+    pt-BR: "Para que serve esta regra (opcional)"
+    es: "Para qué sirve esta regla (opcional)"
   tags:
     zh-CN: 标签（逗号分隔）
     en: Tags (comma separated)
+    ja: "タグ（カンマ区切り）"
+    de: "Tags (kommagetrennt)"
+    ru: "Метки (через запятую)"
+    pt-BR: "Tags (separadas por vírgulas)"
+    es: "Etiquetas (separadas por comas)"
   tags_placeholder:
     zh-CN: 可选，用于分组筛选
     en: Optional, for grouping
+    ja: "任意、グループ分けに使用"
+    de: "Optional, zur Gruppierung"
+    ru: "Необязательно, для группировки"
+    pt-BR: "Opcional, para agrupar"
+    es: "Opcional, para agrupar"
   belongs_to:
     zh-CN: 所属连接
     en: Connection
+    ja: "対象接続"
+    de: "Verbindung"
+    ru: "Подключение"
+    pt-BR: "Conexão"
+    es: "Conexión"
   enabled:
     zh-CN: 启用
     en: Enabled
+    ja: "有効"
+    de: "Aktiviert"
+    ru: "Включено"
+    pt-BR: "Ativada"
+    es: "Activada"
   section_condition:
     zh-CN: 条件（满足才执行动作）
     en: Conditions (must hold to run the action)
+    ja: "条件（満たした場合のみアクションを実行）"
+    de: "Bedingungen (müssen erfüllt sein, damit die Aktion ausgeführt wird)"
+    ru: "Условия (должны выполняться для запуска действия)"
+    pt-BR: "Condições (precisam ser atendidas para executar a ação)"
+    es: "Condiciones (deben cumplirse para ejecutar la acción)"
   match_mode:
     zh-CN: 匹配模式
     en: Match mode
+    ja: "マッチモード"
+    de: "Übereinstimmungsmodus"
+    ru: "Режим сопоставления"
+    pt-BR: "Modo de correspondência"
+    es: "Modo de coincidencia"
   match_mode_any:
     zh-CN: 任意消息
     en: Any message
+    ja: "すべてのメッセージ"
+    de: "Beliebige Nachricht"
+    ru: "Любое сообщение"
+    pt-BR: "Qualquer mensagem"
+    es: "Cualquier mensaje"
   match_mode_custom:
     zh-CN: 自定义条件
     en: Custom conditions
+    ja: "カスタム条件"
+    de: "Benutzerdefinierte Bedingungen"
+    ru: "Свои условия"
+    pt-BR: "Condições personalizadas"
+    es: "Condiciones personalizadas"
   match_all_hint:
     zh-CN: 匹配全部报文（任意消息）
     en: Matches every frame (any message)
+    ja: "すべてのフレームに一致（すべてのメッセージ）"
+    de: "Trifft auf jedes Frame zu (beliebige Nachricht)"
+    ru: "Совпадает с любым кадром (любое сообщение)"
+    pt-BR: "Corresponde a todo quadro (qualquer mensagem)"
+    es: "Coincide con todas las tramas (cualquier mensaje)"
   summary:
     zh-CN: 当前条件
     en: Current condition
+    ja: "現在の条件"
+    de: "Aktuelle Bedingung"
+    ru: "Текущее условие"
+    pt-BR: "Condição atual"
+    es: "Condición actual"
   add_condition:
     zh-CN: ＋ 添加条件
     en: "+ Add condition"
+    ja: "＋ 条件を追加"
+    de: "+ Bedingung hinzufügen"
+    ru: "＋ Добавить условие"
+    pt-BR: "+ Adicionar condição"
+    es: "+ Añadir condición"
   add_condition_close:
     zh-CN: 收起
     en: Collapse
+    ja: "折りたたむ"
+    de: "Einklappen"
+    ru: "Свернуть"
+    pt-BR: "Recolher"
+    es: "Contraer"
   kind_all:
     zh-CN: 全部满足 (All)
     en: All of
+    ja: "すべて満たす (All)"
+    de: "Alle erfüllt"
+    ru: "Все (All)"
+    pt-BR: "Todas (All)"
+    es: "Todas (All)"
   kind_any:
     zh-CN: 任一满足 (Any)
     en: Any of
+    ja: "いずれかを満たす (Any)"
+    de: "Eine erfüllt"
+    ru: "Любое (Any)"
+    pt-BR: "Qualquer uma (Any)"
+    es: "Alguna (Any)"
   kind_not:
     zh-CN: 取反 (Not)
     en: Not
+    ja: "否定 (Not)"
+    de: "Nicht"
+    ru: "Отрицание (Not)"
+    pt-BR: "Negação (Not)"
+    es: "Negación (Not)"
   kind_contains:
     zh-CN: 包含字节序列
     en: Contains bytes
+    ja: "バイト列を含む"
+    de: "Enthält Bytefolge"
+    ru: "Содержит последовательность байтов"
+    pt-BR: "Contém bytes"
+    es: "Contiene bytes"
   kind_fixed_exact:
     zh-CN: 定长精确匹配
     en: Fixed exact
+    ja: "固定長の完全一致"
+    de: "Feste Länge, exakt"
+    ru: "Точное совпадение фиксированной длины"
+    pt-BR: "Fixo exato"
+    es: "Longitud fija exacta"
   kind_fixed_mask:
     zh-CN: 定长模糊匹配
     en: Fixed masked
+    ja: "固定長のマスク一致"
+    de: "Feste Länge, maskiert"
+    ru: "Совпадение фиксированной длины с маской"
+    pt-BR: "Fixo com máscara"
+    es: "Con máscara de longitud fija"
   kind_prefix_range:
     zh-CN: 前缀 + 长度区间
     en: Prefix + length range
+    ja: "プレフィックス + 長さ範囲"
+    de: "Präfix + Längenbereich"
+    ru: "Префикс + диапазон длины"
+    pt-BR: "Prefixo + faixa de tamanho"
+    es: "Prefijo + rango de longitud"
   kind_length:
     zh-CN: 帧长度区间
     en: Frame length
+    ja: "フレーム長の範囲"
+    de: "Frame-Länge"
+    ru: "Диапазон длины кадра"
+    pt-BR: "Faixa de tamanho do quadro"
+    es: "Rango de longitud de trama"
   kind_byte_at:
     zh-CN: 指定偏移字节
     en: Byte at offset
+    ja: "指定オフセットのバイト"
+    de: "Byte an Offset"
+    ru: "Байт по смещению"
+    pt-BR: "Byte no deslocamento"
+    es: "Byte en desplazamiento"
   kind_scalar_at:
     zh-CN: 指定偏移整数
     en: Integer at offset
+    ja: "指定オフセットの整数"
+    de: "Ganzzahl an Offset"
+    ru: "Целое по смещению"
+    pt-BR: "Inteiro no deslocamento"
+    es: "Entero en desplazamiento"
   kind_suffix:
     zh-CN: 帧尾匹配
     en: Suffix
+    ja: "フレーム末尾の一致"
+    de: "Suffix"
+    ru: "Окончание кадра"
+    pt-BR: "Sufixo"
+    es: "Sufijo"
   kind_regex:
     zh-CN: 正则匹配
     en: Regex
+    ja: "正規表現マッチ"
+    de: "Regulärer Ausdruck"
+    ru: "Регулярное выражение"
+    pt-BR: "Expressão regular"
+    es: "Expresión regular"
   kind_from:
     zh-CN: 来源地址
     en: Source address
+    ja: "送信元アドレス"
+    de: "Quelladresse"
+    ru: "Исходный адрес"
+    pt-BR: "Endereço de origem"
+    es: "Dirección de origen"
   kind_field_eq:
     zh-CN: 字段等于
     en: Field equals
+    ja: "フィールドが等しい"
+    de: "Feld gleich"
+    ru: "Поле равно"
+    pt-BR: "Campo igual a"
+    es: "Campo igual a"
   kind_json_eq:
     zh-CN: JSON 字段条件
     en: JSON field condition
+    ja: "JSON フィールド条件"
+    de: "JSON-Feldbedingung"
+    ru: "Условие по полю JSON"
+    pt-BR: "Condição de campo JSON"
+    es: "Condición de campo JSON"
   kind_checksum_valid:
     zh-CN: 校验值有效
     en: Checksum valid
+    ja: "チェックサムが有効"
+    de: "Prüfsumme gültig"
+    ru: "Контрольная сумма верна"
+    pt-BR: "Checksum válido"
+    es: "Suma de verificación válida"
   field_bytes:
     zh-CN: 字节（Hex/文本）
     en: Bytes (hex/text)
+    ja: "バイト（Hex/テキスト）"
+    de: "Bytes (Hex/Text)"
+    ru: "Байты (Hex/текст)"
+    pt-BR: "Bytes (hex/texto)"
+    es: "Bytes (hex/texto)"
   field_len:
     zh-CN: 帧长
     en: Length
+    ja: "フレーム長"
+    de: "Länge"
+    ru: "Длина кадра"
+    pt-BR: "Tamanho"
+    es: "Longitud"
   field_mask:
     zh-CN: 掩码（Hex）
     en: Mask (hex)
+    ja: "マスク（Hex）"
+    de: "Maske (Hex)"
+    ru: "Маска (Hex)"
+    pt-BR: "Máscara (hex)"
+    es: "Máscara (hex)"
   field_prefix:
     zh-CN: 前缀
     en: Prefix
+    ja: "プレフィックス"
+    de: "Präfix"
+    ru: "Префикс"
+    pt-BR: "Prefixo"
+    es: "Prefijo"
   field_min_len:
     zh-CN: 最小帧长
     en: Min length
+    ja: "最小フレーム長"
+    de: "Min. Länge"
+    ru: "Минимальная длина"
+    pt-BR: "Tamanho mínimo"
+    es: "Longitud mín."
   field_max_len:
     zh-CN: 最大帧长
     en: Max length
+    ja: "最大フレーム長"
+    de: "Max. Länge"
+    ru: "Максимальная длина"
+    pt-BR: "Tamanho máximo"
+    es: "Longitud máx."
   field_min:
     zh-CN: 最小
     en: Min
+    ja: "最小"
+    de: "Min."
+    ru: "Минимум"
+    pt-BR: "Mín."
+    es: "Mín."
   field_max:
     zh-CN: 最大
     en: Max
+    ja: "最大"
+    de: "Max."
+    ru: "Максимум"
+    pt-BR: "Máx."
+    es: "Máx."
   field_offset:
     zh-CN: 偏移
     en: Offset
+    ja: "オフセット"
+    de: "Offset"
+    ru: "Смещение"
+    pt-BR: "Deslocamento"
+    es: "Desplazamiento"
   field_width:
     zh-CN: 宽度
     en: Width
+    ja: "幅"
+    de: "Breite"
+    ru: "Ширина"
+    pt-BR: "Largura"
+    es: "Ancho"
   field_endian:
     zh-CN: 字节序
     en: Endian
+    ja: "バイトオーダー"
+    de: "Byte-Reihenfolge"
+    ru: "Порядок байтов"
+    pt-BR: "Ordem dos bytes"
+    es: "Orden de bytes"
   field_signed:
     zh-CN: 符号
     en: Sign
+    ja: "符号"
+    de: "Vorzeichen"
+    ru: "Знак"
+    pt-BR: "Sinal"
+    es: "Signo"
   field_cmp:
     zh-CN: 比较
     en: Compare
+    ja: "比較"
+    de: "Vergleich"
+    ru: "Сравнение"
+    pt-BR: "Comparar"
+    es: "Comparar"
   field_value:
     zh-CN: 值
     en: Value
+    ja: "値"
+    de: "Wert"
+    ru: "Значение"
+    pt-BR: "Valor"
+    es: "Valor"
   field_pattern:
     zh-CN: 正则
     en: Pattern
+    ja: "正規表現"
+    de: "Regulärer Ausdruck"
+    ru: "Регулярное выражение"
+    pt-BR: "Padrão"
+    es: "Patrón"
   field_addrs:
     zh-CN: 地址（逗号分隔，支持 CIDR）
     en: Addresses (comma separated, CIDR allowed)
+    ja: "アドレス（カンマ区切り、CIDR 対応）"
+    de: "Adressen (kommagetrennt, CIDR erlaubt)"
+    ru: "Адреса (через запятую, поддерживается CIDR)"
+    pt-BR: "Endereços (separados por vírgulas, CIDR permitido)"
+    es: "Direcciones (separadas por comas, se admite CIDR)"
   field_accessor:
     zh-CN: 取值标识
     en: Accessor
+    ja: "取得識別子"
+    de: "Accessor"
+    ru: "Идентификатор значения"
+    pt-BR: "Identificador de valor"
+    es: "Identificador de valor"
   field_json_path:
     zh-CN: 字段路径（如 action / data.items[0].temp）
     en: Field path (e.g. action / data.items[0].temp)
+    ja: "フィールドパス（例: action / data.items[0].temp）"
+    de: "Feldpfad (z. B. action / data.items[0].temp)"
+    ru: "Путь к полю (например action / data.items[0].temp)"
+    pt-BR: "Caminho do campo (ex.: action / data.items[0].temp)"
+    es: "Ruta del campo (p. ej. action / data.items[0].temp)"
   field_json_value:
     zh-CN: 期望值（数字/文本）
     en: Expected value (number/text)
+    ja: "期待値（数値/テキスト）"
+    de: "Erwarteter Wert (Zahl/Text)"
+    ru: "Ожидаемое значение (число/текст)"
+    pt-BR: "Valor esperado (número/texto)"
+    es: "Valor esperado (número/texto)"
   field_algorithm:
     zh-CN: 算法
     en: Algorithm
+    ja: "アルゴリズム"
+    de: "Algorithmus"
+    ru: "Алгоритм"
+    pt-BR: "Algoritmo"
+    es: "Algoritmo"
   field_at:
     zh-CN: 校验位位置
     en: Checksum position
+    ja: "チェックサム位置"
+    de: "Position der Prüfsumme"
+    ru: "Позиция контрольной суммы"
+    pt-BR: "Posição do checksum"
+    es: "Posición de la suma de verificación"
   at_fixed:
     zh-CN: 固定偏移
     en: Fixed offset
+    ja: "固定オフセット"
+    de: "Fester Offset"
+    ru: "Фиксированное смещение"
+    pt-BR: "Deslocamento fixo"
+    es: "Desplazamiento fijo"
   at_trailing:
     zh-CN: 末尾倒数
     en: From end
+    ja: "末尾からの位置"
+    de: "Vom Ende"
+    ru: "С конца"
+    pt-BR: "A partir do fim"
+    es: "Desde el final"
   field_n:
     zh-CN: 倒数第 N 字节
     en: Nth from end
+    ja: "末尾から N バイト目"
+    de: "N-tes Byte vom Ende"
+    ru: "N-й байт с конца"
+    pt-BR: "N-ésimo byte a partir do fim"
+    es: "N-ésimo byte desde el final"
   field_range:
     zh-CN: 覆盖区间（起始:长度，留空=到校验位前）
     en: "Range (start:len, empty = up to the checksum)"
+    ja: "対象範囲（開始:長さ、空欄=チェックサムの直前まで）"
+    de: "Bereich (Start:Länge, leer = bis zur Prüfsumme)"
+    ru: "Диапазон (начало:длина; пусто = до контрольной суммы)"
+    pt-BR: "Intervalo (início:tamanho, vazio = até o checksum)"
+    es: "Rango (inicio:longitud, vacío = hasta la suma de verificación)"
   field_op:
     zh-CN: 字节操作
     en: Byte op
+    ja: "バイト操作"
+    de: "Byte-Operation"
+    ru: "Операция с байтом"
+    pt-BR: "Operação de byte"
+    es: "Operación de byte"
   op_eq:
     zh-CN: 等于
     en: Equals
+    ja: "等しい"
+    de: "Gleich"
+    ru: "Равно"
+    pt-BR: "Igual"
+    es: "Igual a"
   op_ne:
     zh-CN: 不等于
     en: Not equal
+    ja: "等しくない"
+    de: "Ungleich"
+    ru: "Не равно"
+    pt-BR: "Diferente"
+    es: "Distinto de"
   op_masked:
     zh-CN: 掩码比较
     en: Masked
+    ja: "マスク比較"
+    de: "Maskiert"
+    ru: "Сравнение по маске"
+    pt-BR: "Com máscara"
+    es: "Con máscara"
   op_in:
     zh-CN: 在集合内
     en: In set
+    ja: "集合内"
+    de: "In Menge"
+    ru: "Входит в набор"
+    pt-BR: "No conjunto"
+    es: "En el conjunto"
   field_byte_value:
     zh-CN: 值（Hex 字节）
     en: Value (hex byte)
+    ja: "値（16 進バイト）"
+    de: "Wert (Hex-Byte)"
+    ru: "Значение (Hex-байт)"
+    pt-BR: "Valor (byte hex)"
+    es: "Valor (byte hex)"
   field_byte_mask:
     zh-CN: 掩码（Hex 字节）
     en: Mask (hex byte)
+    ja: "マスク（16 進バイト）"
+    de: "Maske (Hex-Byte)"
+    ru: "Маска (Hex-байт)"
+    pt-BR: "Máscara (byte hex)"
+    es: "Máscara (byte hex)"
   field_values:
     zh-CN: 集合（Hex 字节）
     en: Set (hex bytes)
+    ja: "集合（16 進バイト）"
+    de: "Menge (Hex-Bytes)"
+    ru: "Набор (Hex-байты)"
+    pt-BR: "Conjunto (bytes hex)"
+    es: "Conjunto (bytes hex)"
   field_constraints:
     zh-CN: 位置约束
     en: Positional constraints
+    ja: "位置制約"
+    de: "Positionsbedingungen"
+    ru: "Позиционные ограничения"
+    pt-BR: "Restrições de posição"
+    es: "Restricciones de posición"
   field_len_offset:
     zh-CN: 长度位偏移
     en: Length field offset
+    ja: "長さフィールドのオフセット"
+    de: "Offset des Längenfelds"
+    ru: "Смещение поля длины"
+    pt-BR: "Deslocamento do campo de tamanho"
+    es: "Desplazamiento del campo de longitud"
   field_base:
     zh-CN: 长度基准
     en: Length base
+    ja: "長さの基準"
+    de: "Längenbasis"
+    ru: "База длины"
+    pt-BR: "Base do tamanho"
+    es: "Base de longitud"
   add_constraint:
     zh-CN: ＋ 添加约束
     en: "+ Add constraint"
+    ja: "＋ 制約を追加"
+    de: "+ Einschränkung hinzufügen"
+    ru: "＋ Добавить ограничение"
+    pt-BR: "+ Adicionar restrição"
+    es: "+ Añadir restricción"
   add_constraint_close:
     zh-CN: 收起
     en: Collapse
+    ja: "折りたたむ"
+    de: "Einklappen"
+    ru: "Свернуть"
+    pt-BR: "Recolher"
+    es: "Contraer"
   constraint_byte_eq:
     zh-CN: 字节等于
     en: Byte equals
+    ja: "バイトが等しい"
+    de: "Byte gleich"
+    ru: "Байт равен"
+    pt-BR: "Byte igual"
+    es: "Byte igual a"
   constraint_byte_mask:
     zh-CN: 掩码位非零
     en: Masked bits non-zero
+    ja: "マスクビットが非ゼロ"
+    de: "Maskierte Bits ungleich null"
+    ru: "Биты маски ненулевые"
+    pt-BR: "Bits da máscara diferentes de zero"
+    es: "Bits de máscara distintos de cero"
   constraint_byte_in:
     zh-CN: 字节在集合内
     en: Byte in set
+    ja: "バイトが集合内"
+    de: "Byte in Menge"
+    ru: "Байт входит в набор"
+    pt-BR: "Byte no conjunto"
+    es: "Byte en el conjunto"
   constraint_length_from_byte:
     zh-CN: 帧长由长度位决定
     en: Length from byte
+    ja: "フレーム長を長さフィールドから決定"
+    de: "Länge aus Byte"
+    ru: "Длина кадра по полю длины"
+    pt-BR: "Tamanho a partir do byte"
+    es: "Longitud desde el byte de longitud"
   byte_mode:
     zh-CN: 模式
     en: Mode
+    ja: "モード"
+    de: "Modus"
+    ru: "Режим"
+    pt-BR: "Modo"
+    es: "Modo"
   mode_hex:
     zh-CN: Hex
     en: Hex
+    ja: "Hex"
+    de: "Hex"
+    ru: "Hex"
+    pt-BR: "Hex"
+    es: "Hex"
   mode_text:
     zh-CN: 文本
     en: Text
+    ja: "テキスト"
+    de: "Text"
+    ru: "Текст"
+    pt-BR: "Texto"
+    es: "Texto"
   section_action:
     zh-CN: 动作（命中后执行）
     en: Action (run on hit)
+    ja: "アクション（一致後に実行）"
+    de: "Aktion (bei Treffer ausführen)"
+    ru: "Действие (выполняется при совпадении)"
+    pt-BR: "Ação (executada ao corresponder)"
+    es: "Acción (se ejecuta al coincidir)"
   payload_placeholder:
     zh-CN: 应答内容（可含 ${rx.*} 等变量）
     en: Reply content (may contain ${rx.*} variables)
+    ja: "応答内容（${rx.*} などの変数を含められます）"
+    de: "Antwortinhalt (kann Variablen wie ${rx.*} enthalten)"
+    ru: "Содержимое ответа (может содержать переменные ${rx.*})"
+    pt-BR: "Conteúdo da resposta (pode conter variáveis ${rx.*})"
+    es: "Contenido de la respuesta (puede incluir variables como ${rx.*})"
   insert_variable:
     zh-CN: 插入变量
     en: Insert Variable
+    ja: "変数を挿入"
+    de: "Variable einfügen"
+    ru: "Вставить переменную"
+    pt-BR: "Inserir variável"
+    es: "Insertar variable"
   codec:
     zh-CN: 编码方式
     en: Encoding
+    ja: "エンコード方式"
+    de: "Kodierung"
+    ru: "Кодирование"
+    pt-BR: "Codificação"
+    es: "Codificación"
   codec_inherit:
     zh-CN: 继承连接
     en: Inherit
+    ja: "接続から継承"
+    de: "Von Verbindung übernehmen"
+    ru: "Как у подключения"
+    pt-BR: "Herdar"
+    es: "Heredar"
   codec_raw:
     zh-CN: 原样输出
     en: Raw
+    ja: "そのまま出力"
+    de: "Roh"
+    ru: "Как есть"
+    pt-BR: "Bruto"
+    es: "Sin procesar"
   codec_lf:
     zh-CN: 追加 LF
     en: LF
+    ja: "LF を追加"
+    de: "LF anhängen"
+    ru: "Добавить LF"
+    pt-BR: "LF"
+    es: "LF"
   codec_crlf:
     zh-CN: 追加 CRLF
     en: CRLF
+    ja: "CRLF を追加"
+    de: "CRLF anhängen"
+    ru: "Добавить CRLF"
+    pt-BR: "CRLF"
+    es: "CRLF"
   codec_hint:
     zh-CN: 二进制协议请选「原样输出」，否则会在帧尾追加换行导致校验失败。
     en: For binary protocols choose "Raw", otherwise a line ending is appended and the checksum breaks.
+    ja: "バイナリプロトコルでは「そのまま出力」を選んでください。そうしないとフレーム末尾に改行が付加され、チェックサムが失敗します。"
+    de: "Wählen Sie für binäre Protokolle „Roh“, sonst wird ein Zeilenumbruch am Frame-Ende angehängt und die Prüfsumme schlägt fehl."
+    ru: "Для бинарных протоколов выбирайте «Как есть», иначе в конец кадра добавится перевод строки и контрольная сумма станет неверной."
+    pt-BR: "Para protocolos binários, escolha \"Bruto\"; caso contrário, uma quebra de linha é anexada e o checksum falha."
+    es: "Para protocolos binarios elija «Sin procesar»; de lo contrario se añade un salto de línea al final y la suma de verificación falla."
   hex_codec_warning:
     zh-CN: Hex 模式下建议把编码方式改为「原样输出」，避免在帧尾追加换行。
     en: In Hex mode prefer "Raw" encoding to avoid an appended line ending.
+    ja: "Hex モードではエンコード方式を「そのまま出力」に変更し、フレーム末尾への改行付加を避けることを推奨します。"
+    de: "Im Hex-Modus sollte die Kodierung auf „Roh“ gesetzt werden, um einen angehängten Zeilenumbruch zu vermeiden."
+    ru: "В режиме Hex рекомендуется выбрать кодирование «Как есть», чтобы в конец кадра не добавлялся перевод строки."
+    pt-BR: "No modo Hex, prefira a codificação \"Bruto\" para evitar que uma quebra de linha seja anexada."
+    es: "En modo Hex se recomienda usar «Sin procesar» como codificación para no añadir un salto de línea al final."
   section_test:
     zh-CN: 内联试跑
     en: Inline Test
+    ja: "インラインテスト"
+    de: "Inline-Test"
+    ru: "Пробный запуск"
+    pt-BR: "Teste rápido"
+    es: "Prueba integrada"
   test_frame:
     zh-CN: 测试报文
     en: Test frame
+    ja: "テストフレーム"
+    de: "Test-Frame"
+    ru: "Тестовый кадр"
+    pt-BR: "Quadro de teste"
+    es: "Trama de prueba"
   test_frame_placeholder:
     zh-CN: 输入一帧报文，用当前草稿试跑
     en: Enter a frame to test against the current draft
+    ja: "フレームを入力し、現在の下書きで試行します"
+    de: "Geben Sie ein Frame ein, um den aktuellen Entwurf zu testen"
+    ru: "Введите кадр для проверки текущего черновика"
+    pt-BR: "Digite um quadro para testar com o rascunho atual"
+    es: "Introduzca una trama para probarla con el borrador actual"
   test_source:
     zh-CN: 来源地址
     en: Source address
+    ja: "送信元アドレス"
+    de: "Quelladresse"
+    ru: "Исходный адрес"
+    pt-BR: "Endereço de origem"
+    es: "Dirección de origen"
   test_source_placeholder:
     zh-CN: 127.0.0.1:12345
     en: 127.0.0.1:12345
+    ja: "127.0.0.1:12345"
+    de: "127.0.0.1:12345"
+    ru: "127.0.0.1:12345"
+    pt-BR: "127.0.0.1:12345"
+    es: "127.0.0.1:12345"
   run_test:
     zh-CN: 试跑
     en: Run Test
+    ja: "試行"
+    de: "Test ausführen"
+    ru: "Запустить"
+    pt-BR: "Testar"
+    es: "Ejecutar prueba"
   test_no_result:
     zh-CN: 尚未试跑（修改任意字段都会清空上次结果，避免看到过期结论）。
     en: Not run yet (editing any field clears the previous result so stale conclusions cannot mislead).
+    ja: "まだ試行していません（いずれかの項目を変更すると前回の結果がクリアされ、古い結論に惑わされません）。"
+    de: "Noch nicht getestet (Änderungen an einem Feld löschen das letzte Ergebnis, damit keine veralteten Schlüsse entstehen)."
+    ru: "Запуск ещё не выполнялся (изменение любого поля очищает прошлый результат, чтобы не показывать устаревший вывод)."
+    pt-BR: "Ainda não testado (editar qualquer campo limpa o resultado anterior para não mostrar conclusões desatualizadas)."
+    es: "Aún no se ha probado (editar cualquier campo borra el resultado anterior para evitar conclusiones obsoletas)."
   test_hit:
     zh-CN: 命中规则
     en: "Hit rule:"
+    ja: "一致したルール"
+    de: "Treffer:"
+    ru: "Совпало с правилом:"
+    pt-BR: "Regra atingida:"
+    es: "Regla coincidente:"
   test_miss:
     zh-CN: 未命中任何规则
     en: No rule matched
+    ja: "どのルールにも一致しませんでした"
+    de: "Keine Regel passt"
+    ru: "Ни одно правило не совпало"
+    pt-BR: "Nenhuma regra correspondeu"
+    es: "Ninguna regla coincidió"
   test_first_failure:
     zh-CN: 首个失败项
     en: First failure
+    ja: "最初の失敗項目"
+    de: "Erster Fehlschlag"
+    ru: "Первая ошибка"
+    pt-BR: "Primeira falha"
+    es: "Primer fallo"
   test_actual:
     zh-CN: 实际
     en: actual
+    ja: "実際"
+    de: "tatsächlich"
+    ru: "фактически"
+    pt-BR: "real"
+    es: "real"
   test_rendered:
     zh-CN: 渲染出的应答
     en: Rendered reply
+    ja: "生成された応答"
+    de: "Gerenderte Antwort"
+    ru: "Сформированный ответ"
+    pt-BR: "Resposta renderizada"
+    es: "Respuesta generada"
   test_rendered_empty:
     zh-CN: （无应答内容）
     en: (no reply content)
+    ja: "（応答内容なし）"
+    de: "(kein Antwortinhalt)"
+    ru: "(нет содержимого ответа)"
+    pt-BR: "(sem conteúdo de resposta)"
+    es: "(sin contenido de respuesta)"
   test_vars:
     zh-CN: 应答引用的接收帧变量
     en: Frame variables used by the reply
+    ja: "応答が参照する受信フレーム変数"
+    de: "Im Antworttext verwendete Frame-Variablen"
+    ru: "Переменные принятого кадра, использованные в ответе"
+    pt-BR: "Variáveis do quadro usadas na resposta"
+    es: "Variables de trama usadas por la respuesta"
   test_vars_empty:
     zh-CN: （未引用接收帧变量）
     en: (no frame variables referenced)
+    ja: "（受信フレーム変数は参照されていません）"
+    de: "(keine Frame-Variablen referenziert)"
+    ru: "(переменные кадра не используются)"
+    pt-BR: "(nenhuma variável do quadro referenciada)"
+    es: "(no se hace referencia a variables de trama)"
   cannot_save:
     zh-CN: 无法保存
     en: Cannot save
+    ja: "保存できません"
+    de: "Speichern nicht möglich"
+    ru: "Не удалось сохранить"
+    pt-BR: "Não é possível salvar"
+    es: "No se puede guardar"
   save:
     zh-CN: 保存
     en: Save
+    ja: "保存"
+    de: "Speichern"
+    ru: "Сохранить"
+    pt-BR: "Salvar"
+    es: "Guardar"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
 
 add_client:
   title:
     zh-CN: 添加客户端
     en: Add Client
+    ja: "クライアントを追加"
+    de: "Client hinzufügen"
+    ru: "Добавить клиента"
+    pt-BR: "Adicionar cliente"
+    es: "Añadir cliente"
   address_hint:
     zh-CN: "输入客户端地址，如 192.168.1.100:8080"
     en: "Enter the client address, e.g. 192.168.1.100:8080"
+    ja: "クライアントアドレスを入力。例 192.168.1.100:8080"
+    de: "Geben Sie die Client-Adresse ein, z. B. 192.168.1.100:8080"
+    ru: "Введите адрес клиента, например 192.168.1.100:8080"
+    pt-BR: "Digite o endereço do cliente, ex.: 192.168.1.100:8080"
+    es: "Introduzca la dirección del cliente, p. ej. 192.168.1.100:8080"
   address_empty:
     zh-CN: 地址不能为空
     en: Address cannot be empty
+    ja: "アドレスを入力してください"
+    de: "Adresse darf nicht leer sein"
+    ru: "Адрес не может быть пустым"
+    pt-BR: "O endereço não pode ficar vazio"
+    es: "La dirección no puede estar vacía"
   invalid_format:
     zh-CN: "格式错误，需要 IP:端口（如 192.168.1.100:8080）"
     en: "Invalid format; expected IP:port (e.g. 192.168.1.100:8080)"
+    ja: "形式が正しくありません。IP:ポート（例 192.168.1.100:8080）を入力してください"
+    de: "Ungültiges Format; erwartet IP:Port (z. B. 192.168.1.100:8080)"
+    ru: "Неверный формат; требуется IP:порт (например 192.168.1.100:8080)"
+    pt-BR: "Formato inválido; esperado IP:porta (ex.: 192.168.1.100:8080)"
+    es: "Formato no válido; se espera IP:puerto (p. ej. 192.168.1.100:8080)"
   invalid_address_format:
     zh-CN: "无效的地址格式，需要 IP:端口（如 192.168.1.100:8080）"
     en: "Invalid address format; expected IP:port (e.g. 192.168.1.100:8080)"
+    ja: "アドレス形式が無効です。IP:ポート（例 192.168.1.100:8080）を入力してください"
+    de: "Ungültiges Adressformat; erwartet IP:Port (z. B. 192.168.1.100:8080)"
+    ru: "Недопустимый формат адреса; требуется IP:порт (например 192.168.1.100:8080)"
+    pt-BR: "Formato de endereço inválido; esperado IP:porta (ex.: 192.168.1.100:8080)"
+    es: "Formato de dirección no válido; se espera IP:puerto (p. ej. 192.168.1.100:8080)"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   confirm:
     zh-CN: 确定
     en: OK
+    ja: "OK"
+    de: "OK"
+    ru: "ОК"
+    pt-BR: "OK"
+    es: "Aceptar"
 
 favorite_remark:
   title:
     zh-CN: 添加收藏备注
     en: Add Favorite Remark
+    ja: "お気に入りのメモを追加"
+    de: "Favoritennotiz hinzufügen"
+    ru: "Добавить примечание к избранному"
+    pt-BR: "Adicionar observação ao favorito"
+    es: "Añadir nota de favorito"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"
   confirm:
     zh-CN: 确定
     en: OK
+    ja: "OK"
+    de: "OK"
+    ru: "ОК"
+    pt-BR: "OK"
+    es: "Aceptar"
 
 favorite_list:
   title:
     zh-CN: 收藏列表
     en: Favorites
+    ja: "お気に入り一覧"
+    de: "Favoriten"
+    ru: "Избранное"
+    pt-BR: "Favoritos"
+    es: "Favoritos"
   close:
     zh-CN: 关闭
     en: Close
+    ja: "閉じる"
+    de: "Schließen"
+    ru: "Закрыть"
+    pt-BR: "Fechar"
+    es: "Cerrar"
   empty:
     zh-CN: 暂无收藏
     en: No favorites yet
+    ja: "お気に入りはまだありません"
+    de: "Noch keine Favoriten"
+    ru: "В избранном пока пусто"
+    pt-BR: "Nenhum favorito ainda"
+    es: "Aún no hay favoritos"
   not_found:
     zh-CN: 未找到匹配的收藏
     en: No matching favorites
+    ja: "一致するお気に入りが見つかりません"
+    de: "Keine passenden Favoriten"
+    ru: "Подходящих избранных элементов не найдено"
+    pt-BR: "Nenhum favorito correspondente"
+    es: "No hay favoritos coincidentes"
 
 stress_panel:
   title:
     zh-CN: 压测监控
     en: Stress Test Monitor
+    ja: "負荷テスト監視"
+    de: "Lasttest-Überwachung"
+    ru: "Мониторинг нагрузки"
+    pt-BR: "Monitor de teste de carga"
+    es: "Monitor de prueba de carga"
   configure_and_start:
     zh-CN: 配置并开始
     en: Configure and Start
+    ja: "設定して開始"
+    de: "Konfigurieren und starten"
+    ru: "Настроить и запустить"
+    pt-BR: "Configurar e iniciar"
+    es: "Configurar e iniciar"
   stop:
     zh-CN: 停止
     en: Stop
+    ja: "停止"
+    de: "Stoppen"
+    ru: "Остановить"
+    pt-BR: "Parar"
+    es: "Detener"
   export_csv:
     zh-CN: 导出CSV
     en: Export CSV
+    ja: "CSV をエクスポート"
+    de: "CSV exportieren"
+    ru: "Экспорт CSV"
+    pt-BR: "Exportar CSV"
+    es: "Exportar CSV"
   status_running:
     zh-CN: 运行中
     en: Running
+    ja: "実行中"
+    de: "Läuft"
+    ru: "Выполняется"
+    pt-BR: "Em execução"
+    es: "En ejecución"
   status_finished:
     zh-CN: 已完成
     en: Finished
+    ja: "完了"
+    de: "Abgeschlossen"
+    ru: "Завершено"
+    pt-BR: "Concluído"
+    es: "Finalizada"
   status_not_started:
     zh-CN: 未开始
     en: Not Started
+    ja: "未開始"
+    de: "Nicht gestartet"
+    ru: "Не запущено"
+    pt-BR: "Não iniciado"
+    es: "No iniciada"
   elapsed:
     zh-CN: "耗时: %{elapsed}"
     en: "Elapsed: %{elapsed}"
+    ja: "経過: %{elapsed}"
+    de: "Dauer: %{elapsed}"
+    ru: "Затрачено: %{elapsed}"
+    pt-BR: "Tempo decorrido: %{elapsed}"
+    es: "Tiempo transcurrido: %{elapsed}"
   current_qps:
     zh-CN: 当前 QPS
     en: Current QPS
+    ja: "現在の QPS"
+    de: "Aktuelle QPS"
+    ru: "Текущий QPS"
+    pt-BR: "QPS atual"
+    es: "QPS actual"
   peak_qps:
     zh-CN: "峰值 %{qps}"
     en: "Peak %{qps}"
+    ja: "ピーク %{qps}"
+    de: "Peak %{qps}"
+    ru: "Пик %{qps}"
+    pt-BR: "Pico %{qps}"
+    es: "Pico %{qps}"
   total_sent:
     zh-CN: 总发送
     en: Total Sent
+    ja: "総送信数"
+    de: "Gesamt gesendet"
+    ru: "Всего отправлено"
+    pt-BR: "Total enviado"
+    es: "Total enviado"
   success:
     zh-CN: 成功
     en: Success
+    ja: "成功"
+    de: "Erfolgreich"
+    ru: "Успешно"
+    pt-BR: "Sucesso"
+    es: "Correctos"
   failure:
     zh-CN: 失败
     en: Failed
+    ja: "失敗"
+    de: "Fehlgeschlagen"
+    ru: "Неудачно"
+    pt-BR: "Falhas"
+    es: "Fallidos"
   active_connections:
     zh-CN: "活跃(当前/峰值)"
     en: "Active (current/peak)"
+    ja: "アクティブ（現在/ピーク）"
+    de: "Aktiv (aktuell/Peak)"
+    ru: "Активные (текущие/пик)"
+    pt-BR: "Ativas (atual/pico)"
+    es: "Activas (actual/pico)"
   latency_title:
     zh-CN: "延迟 (ms)"
     en: "Latency (ms)"
+    ja: "遅延 (ms)"
+    de: "Latenz (ms)"
+    ru: "Задержка (мс)"
+    pt-BR: "Latência (ms)"
+    es: "Latencia (ms)"
   disconnects:
     zh-CN: 断连
     en: Disconnects
+    ja: "切断"
+    de: "Trennungen"
+    ru: "Разрывы"
+    pt-BR: "Desconexões"
+    es: "Desconexiones"
   reconnects:
     zh-CN: 重连
     en: Reconnects
+    ja: "再接続"
+    de: "Neuverbindungen"
+    ru: "Переподключения"
+    pt-BR: "Reconexões"
+    es: "Reconexiones"
   bytes_sent:
     zh-CN: 发送字节
     en: Bytes Sent
+    ja: "送信バイト"
+    de: "Gesendete Bytes"
+    ru: "Отправлено байт"
+    pt-BR: "Bytes enviados"
+    es: "Bytes enviados"
   bytes_received:
     zh-CN: 接收字节
     en: Bytes Received
+    ja: "受信バイト"
+    de: "Empfangene Bytes"
+    ru: "Принято байт"
+    pt-BR: "Bytes recebidos"
+    es: "Bytes recibidos"
   failure_breakdown_title:
     zh-CN: 失败原因分类
     en: Failure Breakdown
+    ja: "失敗原因の内訳"
+    de: "Fehlerursachen"
+    ru: "Причины сбоев"
+    pt-BR: "Detalhamento das falhas"
+    es: "Desglose de fallos"
   connect_failed:
     zh-CN: 连接失败
     en: Connection Failed
+    ja: "接続失敗"
+    de: "Verbindung fehlgeschlagen"
+    ru: "Сбой подключения"
+    pt-BR: "Falha de conexão"
+    es: "Conexión fallida"
   send_failed:
     zh-CN: 发送失败
     en: Send Failed
+    ja: "送信失敗"
+    de: "Senden fehlgeschlagen"
+    ru: "Сбой отправки"
+    pt-BR: "Falha ao enviar"
+    es: "Envío fallido"
   recv_timeout:
     zh-CN: 接收超时
     en: Receive Timeout
+    ja: "受信タイムアウト"
+    de: "Empfangs-Zeitüberschreitung"
+    ru: "Таймаут получения"
+    pt-BR: "Tempo limite de recebimento"
+    es: "Tiempo de espera de recepción"
   peer_closed:
     zh-CN: 对端关闭
     en: Peer Closed
+    ja: "相手側の切断"
+    de: "Gegenstelle getrennt"
+    ru: "Закрыто удалённой стороной"
+    pt-BR: "Par fechado"
+    es: "Cierre del par"
   validate_failed:
     zh-CN: 校验失败
     en: Validation Failed
+    ja: "検証失敗"
+    de: "Validierung fehlgeschlagen"
+    ru: "Сбой проверки"
+    pt-BR: "Falha na validação"
+    es: "Validación fallida"
 
 rename_connection:
   title:
     zh-CN: 重命名连接
     en: Rename Connection
+    ja: "接続名を変更"
+    de: "Verbindung umbenennen"
+    ru: "Переименовать подключение"
+    pt-BR: "Renomear conexão"
+    es: "Renombrar conexión"
   placeholder:
     zh-CN: 留空则仅显示地址
     en: Leave empty to show address only
+    ja: "空欄の場合はアドレスのみ表示"
+    de: "Leer lassen, um nur die Adresse anzuzeigen"
+    ru: "Оставьте пустым, чтобы показывать только адрес"
+    pt-BR: "Deixe vazio para mostrar só o endereço"
+    es: "Déjelo vacío para mostrar solo la dirección"
   confirm:
     zh-CN: 保存
     en: Save
+    ja: "保存"
+    de: "Speichern"
+    ru: "Сохранить"
+    pt-BR: "Salvar"
+    es: "Guardar"
   cancel:
     zh-CN: 取消
     en: Cancel
+    ja: "キャンセル"
+    de: "Abbrechen"
+    ru: "Отмена"
+    pt-BR: "Cancelar"
+    es: "Cancelar"

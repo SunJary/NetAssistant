@@ -1,140 +1,140 @@
 ---
-title: 功能特性 - TCP/UDP 调试与压测、MQTT 调试、工具箱
-description: NetAssistant 功能一览：TCP/UDP 客户端与服务端、MQTT 3.1.1 / 5.0、IPv4/IPv6、四种解码器解决粘包、内置工具箱、自动回复与 TCP/UDP 高并发压测，支持 Windows、Linux 与 macOS。
+title: Features - TCP/UDP Debugging & Stress Testing
+description: "NetAssistant features: TCP/UDP client & server, MQTT 3.1.1 / 5.0, IPv4/IPv6, four TCP decoders, built-in toolbox and TCP/UDP stress testing on Windows, Linux and macOS."
 ---
 
-# 功能特性
+# Features
 
-NetAssistant 是一个基于 Rust 构建的高性能、现代化的**跨平台**网络调试工具，专为开发者设计，支持 Windows、Linux 和 macOS 系统，x64 与 ARM64 均有原生构建。
+NetAssistant is a high-performance, modern **cross-platform** network debugging tool built with Rust, designed for developers and available on Windows, Linux and macOS, with native builds for both x64 and ARM64.
 
-按平台查看：[Windows 网络调试助手](/windows-network-debug-tool) · [macOS 网络调试助手](/mac-network-debug-tool) · [Linux 网络调试助手](/linux-network-debug-tool)。
+By platform: [Windows network debugging tool](/windows-network-debug-tool) · [Mac network debugging tool](/mac-network-debug-tool) · [Linux network debugging tool](/linux-network-debug-tool).
 
-## 核心功能
+## Core Features
 
-- **多协议支持**：完整支持 TCP/UDP 客户端和服务端模式，以及 MQTT 3.1.1 / 5.0 客户端；专项用法见 [TCP 调试工具](/tcp-debug-tool)、[UDP 调试工具](/udp-debug-tool) 与 [Socket 调试工具](/socket-debug-tool)
-- **内置工具箱**：标签栏右侧扳手图标打开常驻工具箱，左侧分组切换「转换 / 校验 / 哈希 / 时间 / JSON / 编码 / 随机」，输入即出结果，结果行可一键复制
-- **IPv4/IPv6 双栈**：同时支持 IPv4 和 IPv6 协议，适应各种网络环境
-- **多种 TCP 解码器**：支持原始数据、基于行的解码、长度前缀解码和 JSON 解码，满足不同协议格式需求，有效解决 TCP 粘包问题
-- **JSON 格式化**：发送框在文本模式提供「美化/压缩」按钮格式化待发送内容；接收区顶部可切换「原始/美化/压缩」全局显示格式，非 JSON 内容原样返回
-- **聊天式报文记录**：直观展示报文交互过程，便于调试和分析
-- **配置持久化**：自动保存连接配置，下次启动直接使用
-- **连接名称与副本**：新建/编辑连接可填可选名称，连接列表显示「名称 @ 地址 [协议]」、标签页标题显示名称，超长自动省略、悬停可看全名；右键可「重命名连接」（留空恢复仅显示地址）与「复制连接」（预填源配置并另存为新连接，MQTT 自动换新 Client ID，避免同 Broker 互踢）
-- **文件数据源**：从本地文件读取内容作为报文填入发送框，支持 UTF-8 / GBK / ANSI 编码选择与内容预览，文件大小以可读格式显示，上限 1 MiB
-- **ASCII ↔ Hex 双向互转**：文本/十六进制模式切换时按 UTF-8 整体互转，右键菜单可「转换为 Hex / 转换为文本」并在结果窗口中复制；不可打印字节以 `\xNN` 转义，往返转换字节级一致，详见 [十六进制发送](/hex-send)
+- **Multi-protocol support**: full support for TCP/UDP client and server modes, plus an MQTT 3.1.1 / 5.0 client; see the [TCP debug tool](/tcp-debug-tool), [UDP debug tool](/udp-debug-tool) and [Socket debug tool](/socket-debug-tool)
+- **Built-in toolbox**: open it from the wrench icon at the right of the tab bar; switch between Convert / Checksum / Hash / Time / JSON / Encoding / Random groups, results appear as you type and every row has a copy button
+- **IPv4/IPv6 dual stack**: supports both IPv4 and IPv6, adapting to any network environment
+- **Multiple TCP decoders**: raw data, line-delimited, length-prefix and JSON decoders for different protocol formats, effectively solving TCP sticky packet issues
+- **JSON formatting**: the send box offers "Prettify/Minify" buttons in text mode to format the outgoing payload; the receive area can switch between Raw/Prettified/Minified display formats globally, with non-JSON content shown as-is
+- **Chat-style message log**: intuitive display of packet exchanges for easier debugging and analysis
+- **Persistent configuration**: connection configs are saved automatically and restored on the next launch
+- **Connection names and copies**: new/edit dialogs accept an optional name; the connection list shows `name @ host:port [PROTOCOL]` and the tab title shows the name, with ellipsis plus a full-name tooltip; the context menu offers "Rename Connection" (clear it to show the address only) and "Duplicate Connection" (prefills the source config and saves a new connection, with a fresh Client ID for MQTT so two clients never kick each other off the same broker)
+- **File data source**: read a local file into the send box as a payload, with UTF-8 / GBK / ANSI encoding selection and content preview, human-readable file size, and a 1 MiB limit
+- **ASCII ↔ Hex conversion**: switching between text and hex mode converts the content as UTF-8; the context menu's "Convert to Hex / Convert to Text" shows the result in a window you can copy from; non-printable bytes are escaped as `\xNN`, round-tripping is byte-for-byte, and [hex send](/hex-send) covers the workflow
 
-关于粘包的成因、四种解决方案和调试方法，见 [TCP 粘包与拆包](/tcp-sticky-packet)。
+For the causes, four framing solutions and debugging steps, see [TCP sticky packets](/tcp-sticky-packet).
 
-![TCP 解码器截图](../assets/screenshots/zh/screenshot_tcp_decoder.png)
+![TCP decoder screenshot](../assets/screenshots/en/screenshot_tcp_decoder.png)
 
-![文件数据源截图](../assets/screenshots/zh/screenshot_file_source.png)
+![File data source screenshot](../assets/screenshots/en/screenshot_file_source.png)
 
-![ASCII 与 Hex 互转截图](../assets/screenshots/zh/screenshot_text_hex_convert.png)
+![ASCII to hex conversion screenshot](../assets/screenshots/en/screenshot_text_hex_convert.png)
 
-## 消息管理功能
+## Message Management
 
-- **复制消息**：快速复制单条消息内容到剪贴板，支持文本和十六进制两种格式
-- **消息文本可选中**：气泡正文支持拖选、双击选词、三击选行与 `Ctrl/Cmd+C` 复制；右键菜单可复制选中或全文，并对选中内容（未选中时对整条消息）执行文本 ⇄ Hex 转换与六种校验，拖选时高亮实时跟随鼠标
-- **双击复制来源**：双击消息来源地址复制 `ip:port`；MQTT 连接下双击 topic 标签复制原始 topic
-- **收藏消息**：将重要消息添加到收藏夹，支持为收藏项添加备注说明，并提供关键字搜索
-- **实时日志记录**：手动开启后所有收发消息实时异步写入日志文件（每条 flush 落盘），支持自定义保存路径，断开连接自动刷新关闭
-- **随时手动导出**：可随时导出当前消息记录为 TXT/JSON/CSV 格式文件，便于归档、分享和二次分析
-- **UDP 广播回复智能展示**：针对上位机/物联网设备发现场景优化，向广播地址发送指令后接收所有设备回复，非预期地址的回复用红色高亮标识，不丢失重要响应，详见 [UDP 广播设备发现](/udp-broadcast-device-discovery)
-- **连接配置编辑**：已保存的连接配置支持直接编辑修改，无需删除重建
-- **消息搜索**：`Ctrl+F` 或点击工具栏放大镜唤起非模态搜索浮层，实时显示命中计数 `i/n`，`Enter` / `Shift+Enter` 或上/下按钮环形跳转，命中项整行高亮并滚动到视口
-- **消息条数上限**：可配置「保留最后 N 条」（默认 10000，`0` 表示不限制），超出后自动淘汰最早的消息以控制内存占用；与自动滚动联动，关闭自动滚动时不淘汰消息
+- **Copy message**: quickly copy a single message to the clipboard, in either text or hex format
+- **Selectable message text**: drag-select, double-click a word or triple-click a line in a bubble and copy with `Ctrl/Cmd+C`; the context menu copies the selection or the full message and runs text ⇄ Hex conversion or six checksum algorithms on it, with the highlight following the mouse live
+- **Double-click to copy source**: double-click a message's source address to copy `ip:port`; on MQTT connections, double-click the topic pill to copy the raw topic
+- **Favorite messages**: add important messages to favorites with optional remarks, and locate them quickly via keyword search
+- **Real-time logging**: once enabled manually, all sent and received messages are written asynchronously to a log file in real time (flushed to disk per message), with a customizable save path; the log is flushed and closed automatically on disconnect
+- **Manual export anytime**: export the current message history to TXT/JSON/CSV files at any time for archiving, sharing and further analysis
+- **Smart UDP broadcast reply display**: optimized for host workstation / IoT device discovery scenarios — send a command to a broadcast address and receive replies from all devices; replies from unexpected addresses are highlighted in red so no important response is lost, see [UDP broadcast device discovery](/udp-broadcast-device-discovery)
+- **Connection config editing**: saved connection configs can be edited directly, no need to delete and recreate
+- **Message search**: `Ctrl+F` or the toolbar magnifier opens a non-modal search overlay with a live `i/n` match counter; jump ring-wise with `Enter` / `Shift+Enter` or the up/down buttons, and the matching row is highlighted and scrolled into view
+- **Message count cap**: configure "Keep last N" messages (default 10000, `0` = unlimited); once exceeded the oldest messages are dropped to bound memory usage. It is linked to auto-scroll, so nothing is dropped while auto-scroll is off
 
-![收藏消息截图](../assets/screenshots/zh/screenshot_favorite_message.png)
+![Favorite message screenshot](../assets/screenshots/en/screenshot_favorite_message.png)
 
-![消息搜索截图](../assets/screenshots/zh/screenshot_search.png)
+![Message search screenshot](../assets/screenshots/en/screenshot_search.png)
 
-## 自动化测试功能
+## Automated Testing
 
-- **回复规则**：按连接的规则引擎，用字节级条件（包含字节、定长精确/掩码匹配、前缀+长度区间、偏移字节/整数、帧尾、正则、来源地址（支持 CIDR）、JSON 字段、校验值验算等，可「全部/任一/取反」任意嵌套）匹配收到的报文并自动应答；JSON 字段条件支持 `data.items[0].temp` 等路径与 `== / != / > / >= / < / <= / 包含 / 存在` 运算符；应答支持接收帧变量与动态变量，可单独设置编码方式；规则按连接隔离，支持启用/停用、拖拽排序、触发统计与编辑内联试跑；规则可导入/导出为规则包文件（合并或覆盖），也可一键复制到其他连接
-- **消息变量**：发送框、定时任务与回复规则统一支持 `${seq}`、时间、`${uuid}`、`${random:min:max}` 等通用变量，以及 `${rx.*}` 接收帧变量、`${rx.json:路径}` JSON 字段取值、发送时生成的校验值与 `${= 表达式 }`
-- **发送任务与定时任务**：导入文件或粘贴多行后可逐行发送（可设间隔、循环与轮次）；每个连接可添加定时任务按固定间隔循环发送心跳，两者均可在任务面板查看进度、暂停/继续/停止
-- **周期发送功能**：按设定间隔重复发送当前输入框内容，用于长时间稳定性测试或模拟设备心跳
-- **压力测试功能**：内置 TCP/UDP 高并发压力测试引擎，详见 [TCP/UDP 压测](/tcp-stress-test)与[压力测试指南](/guide/stress)
+- **Reply rules**: a per-connection rule engine that matches incoming frames by byte-level conditions (contains bytes, fixed exact/masked, prefix + length range, byte/integer at offset, suffix, regex, source address with CIDR, JSON fields, checksum validation, and more, arbitrarily nested with all/any/not) and replies automatically; JSON field conditions accept paths such as `data.items[0].temp` with `== / != / > / >= / < / <= / contains / exists`; replies support received-frame and dynamic variables and can set their own encoding; rules are scoped per connection with enable/disable, drag-to-reorder, trigger counts and an inline test run; rules can be imported/exported as a rule bundle file (merge or overwrite) and copied to other connections in one click
+- **Message variables**: the send box, timed tasks and reply rules all share general variables such as `${seq}`, time, `${uuid}` and `${random:min:max}`, plus received-frame variables `${rx.*}`, `${rx.json:path}` JSON field access, checksums generated at send time and `${= expression }`
+- **Send tasks and timed tasks**: send imported files or pasted lines one per line (with interval, looping and round limits); each connection can add a timed task to send a heartbeat at a fixed interval — both show progress in the task panel with pause/resume/stop
+- **Periodic send**: repeat the current send-box content at a set interval for long-run stability testing or device heartbeat simulation
+- **Stress testing**: built-in TCP/UDP high-concurrency stress test engine, see [TCP/UDP stress testing](/tcp-stress-test) and the [Stress Testing Guide](/guide/stress)
 
-## MQTT 调试
+## MQTT Debugging
 
-- **MQTT 客户端**：协议版本可选 MQTT 5.0（新建默认）与 3.1.1，集成在客户端连接体系中，新建连接选择 MQTT 后填写 Broker 地址与端口（默认 1883）、Client ID、用户名/密码与 KeepAlive；「更多设置」可配置 Clean Session 与遗嘱消息（topic / payload / QoS / retain）
-- **MQTT over TLS**：可开启 TLS 加密，对 3.1.1 与 5.0 同时生效；证书校验三档：系统根证书（默认）、自定义 CA（PEM 文件路径，可文件选择）、跳过校验（不安全，仅自签联调，传输仍加密）；可填客户端证书与私钥做双向认证（PEM，成对填写）；ALPN 可选、留空不下发；握手失败给出可读原因与处置建议
-- **MQTT 5.0**：连接属性支持会话过期（秒，留空不下发，0 表示断开即过期）与接收最大值（1-65535，留空不下发）；Clean Start 沿用 Clean Session 开关，Client ID 为空时强制 clean start；CONNACK 连接被拒、SUBACK 订阅失败与 broker 主动 DISCONNECT 显示原因码与 broker 说明
-- **订阅管理**：运行时添加 / 编辑 / 取消订阅，无需重连；订阅严格按连接隔离，断线自动重连后只恢复开启中的订阅；每条订阅带独立开关，开启时等待 broker 确认（SUBACK）后才点亮，失败或 10 秒无响应自动关闭该条并提示原因（MQTT 5 可区分「没有权限」），关闭状态持久化；订阅列表占满侧栏高度、超出时框内滚动，悬停可查看完整 topic，双击复制 topic
-- **发布消息**：发送区设置 topic、QoS（0/1/2）与 retain，payload 沿用文本 / Hex 模式；topic 输入框右侧下拉可复用当前连接最近发送过的 topic（连同 QoS 与 retain），历史按连接持久化，最多保留 20 条；发布失败（MQTT 5 下 QoS 1/2 被 broker 拒收，或本地发送失败）以右上角通知显示目标 topic 与原因码，相同提示 3 秒内只弹一次，日志仍逐条记录；QoS 芯片悬停显示「至多一次 / 至少一次 / 仅一次」语义
-- **消息展示**：每条消息显示 topic 标签（retain 消息带标记），双击 topic 标签可复制原始 topic；消息记录、搜索、导出、JSON 格式化、回复规则等既有能力全部复用
-- **自动回复**：应答自动回发到收到消息的 topic；周期发送同样按当前发布 topic 发送
-- **协议约束**：MQTT 下隐藏解码器与「结尾字符」，不提供压测、逐行发送与定时任务；MQTT over WebSocket 不支持，5.0 高级特性（用户属性、Will Delay、订阅标识符、共享订阅等）未提供
+- **MQTT client**: choose MQTT 5.0 (default for new connections) or 3.1.1 as the protocol version, integrated into the client connection system — choose MQTT when creating a connection and fill in the broker address and port (default 1883), Client ID, optional username/password and KeepAlive; "More Settings" holds Clean Session and last-will settings (topic / payload / QoS / retain)
+- **MQTT over TLS**: enable TLS encryption for both 3.1.1 and 5.0; certificate verification has three modes: system roots (default), custom CA (PEM file path, with a file picker) and verification skipped (insecure, for self-signed testing only, traffic is still encrypted); an optional client certificate and private key (PEM, provided as a pair) enable mutual TLS; ALPN is optional, comma-separated and omitted when empty; handshake failures report a readable cause and suggested fix
+- **MQTT 5.0**: connect properties include session expiry (seconds, omitted when empty, 0 expires on disconnect) and receive maximum (1-65535, omitted when empty); Clean Start reuses the Clean Session switch and is forced when the Client ID is empty; rejected CONNACK, failed SUBACK and broker-initiated DISCONNECT show the reason code and the broker reason string
+- **Subscription management**: add / edit / unsubscribe at runtime without reconnecting; subscriptions are scoped per connection and only enabled entries are restored after an automatic reconnect; each subscription has its own switch that lights up only after the broker confirms it (SUBACK) and is auto-disabled with a reason on failure or a 10-second timeout (MQTT 5 tells "not authorized" apart), with the off state persisted; the list fills the side panel and scrolls inside it, shows the full topic on hover and copies the topic on double-click
+- **Publishing**: set topic, QoS (0/1/2) and retain in the send area while the payload keeps using text / hex mode; the dropdown at the right of the topic input reuses recent topics for this connection (with QoS and retain), persisted per connection with up to 20 entries; publish failures (QoS 1/2 rejected by the broker under MQTT 5, or a local send error) raise a top-right notification with the target topic and reason code, deduplicated to one per 3 seconds while the log still records every entry; hover a QoS chip for its semantics (at most once / at least once / exactly once)
+- **Message display**: every message carries a topic pill (retain is marked), and double-clicking the pill copies the raw topic; the existing log, search, export, JSON formatting and reply rules all work as before
+- **Auto reply**: replies are published back to the topic the message arrived on; periodic send also uses the current publish topic
+- **Protocol constraints**: decoders and the suffix selector are hidden for MQTT, and stress testing, line-send tasks and timed tasks are not offered; MQTT over WebSocket is not supported, and advanced 5.0 features (user properties, Will Delay, subscription identifiers, shared subscriptions, etc.) are not provided
 
-完整的 MQTT 连接参数、订阅管理与功能边界，见 [MQTT 客户端](/mqtt-client)。
+For full connection parameters, subscription management and the feature boundary, see the [MQTT client](/mqtt-client).
 
-![MQTT 新建连接截图](../assets/screenshots/zh/screenshot_mqtt_new_client.png)
+![New MQTT connection screenshot](../assets/screenshots/en/screenshot_mqtt_new_client.png)
 
-![MQTT 客户端截图](../assets/screenshots/zh/screenshot_mqtt_client.png)
+![MQTT client screenshot](../assets/screenshots/en/screenshot_mqtt_client.png)
 
-## 内置工具箱
+## Built-in Toolbox
 
-点击标签栏右侧的扳手图标即可打开工具箱。工具箱是常驻标签页，不可关闭；左侧分组切换纯切换，各组输入独立保留，输入即出结果：
+Click the wrench icon at the right of the tab bar to open the toolbox. It is a permanent tab that cannot be closed; groups switch on the left, each keeps its own input, and results appear as you type:
 
-- **转换**：文本 → Hex、Hex → 文本两个独立输入块
-- **校验**：输入 Hex 字节序列，即时给出 XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32 六种结果；CRC16-Modbus 的用法见 [Modbus TCP 调试](/modbus-tcp)
-- **哈希**：MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512 摘要；bcrypt / Argon2id / PBKDF2-SHA256 密码哈希（随机盐）；文件摘要（可多选算法、单遍读取）与哈希对比（粘贴哈希后按长度自动识别算法并标记匹配）
-- **时间**：时间戳 → 日期（本地 / UTC，自动识别秒与毫秒）、日期 → 时间戳（秒 / 毫秒，附星期与相对时间），支持 ISO 8601 与「填入当前」
-- **JSON**：美化 / 压缩，标准 JSON 解析失败时回退 JSON5 宽松语法（无引号 key、单引号、尾逗号、注释）
-- **编码**：Base64 编码 / 解码、URL 编码 / 解码
-- **随机**：UUID v4（带 / 不带横线）、指定长度十六进制（可大写）与十进制数字、自定义字符集随机密码（数字 / 小写 / 大写 / 符号点选，排除易混淆，随机密码 / 字母数字预设），以及 SM2 密钥对与 SM4 密钥 + IV；批量 1–100 条，结果快照仅在点击「生成」时刷新，支持逐行与全部复制
+- **Convert**: separate text → Hex and Hex → text blocks
+- **Checksum**: type hex bytes and get XOR / Sum8 / LRC / CRC16-Modbus / CRC16-CCITT-FALSE / CRC32 instantly; see [Modbus TCP debugging](/modbus-tcp) for the CRC16 use case
+- **Hash**: MD5 / SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512 digests; bcrypt / Argon2id / PBKDF2-SHA256 password hashes (random salt); file digests (select multiple algorithms, single read pass) and hash comparison (paste a hash to auto-detect the algorithm by length and mark a match)
+- **Time**: timestamp → date (local / UTC, auto-detecting seconds and milliseconds), date → timestamp (seconds / milliseconds, with weekday and relative time), ISO 8601 support and "Fill now"
+- **JSON**: beautify / minify with a JSON5 fallback (unquoted keys, single quotes, trailing commas, comments) when strict JSON parsing fails
+- **Encoding**: Base64 encode / decode and URL encode / decode
+- **Random**: UUID v4 (with or without dashes), hex strings of any length (uppercase optional), decimal digits, custom-charset passwords (pick digits / lowercase / uppercase / symbols, exclude ambiguous characters, Random password / Letters + digits presets), plus SM2 key pairs and SM4 key + IV; generate 1-100 values, copy rows individually or all at once, and results are snapshotted until you click Generate
 
-![工具箱哈希截图](../assets/screenshots/zh/screenshot_toolbox_hash.png)
+![Toolbox hash screenshot](../assets/screenshots/en/screenshot_toolbox_hash.png)
 
-![工具箱时间截图](../assets/screenshots/zh/screenshot_toolbox_time.png)
+![Toolbox time screenshot](../assets/screenshots/en/screenshot_toolbox_time.png)
 
-## 现代化界面
+## Modern Interface
 
-- **暗黑模式支持**：自动适应系统主题，提供舒适的夜间使用体验
-- **多标签页管理**：同时管理多个连接，方便切换和对比
-- **客户端消息查看**：在服务端模式下，可选择特定客户端查看其消息
-- **UDP 手动添加客户端**：在 UDP 服务端模式下，可手动添加客户端地址，便于主动向指定地址发送数据
-- **键盘快捷键**：`Ctrl+Enter` 发送、`Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` 管理标签页、`Ctrl+F` 搜索消息、`Ctrl+N` 新建连接、`Ctrl+K` 聚焦消息输入框，任何焦点状态下均生效
+- **Dark mode**: adapts to the system theme automatically for a comfortable night-time experience
+- **Multi-tab management**: manage multiple connections at once, easy to switch and compare
+- **Per-client message view**: in server mode, view messages of a specific client
+- **Manual client addition for UDP**: in UDP server mode, add client addresses manually to proactively send data to a specific address
+- **Keyboard shortcuts**: `Ctrl+Enter` to send, `Ctrl+Tab` / `Ctrl+1..9` / `Ctrl+W` to manage tabs, `Ctrl+F` to search messages, `Ctrl+N` for a new connection and `Ctrl+K` to focus the message input — all working regardless of the current focus
 
-![UDP 手动添加客户端截图](../assets/screenshots/zh/screenshot_udp_add_client.png)
+![UDP manual client addition screenshot](../assets/screenshots/en/screenshot_udp_add_client.png)
 
-## 技术亮点
+## Technical Highlights
 
-### ⚡ 极速性能
+### ⚡ Blazing Performance
 
-- **Rust 驱动**：零成本抽象、内存安全、无垃圾回收
-- **Tokio 异步运行时**：基于 epoll/kqueue 的高性能事件循环，支持百万级并发连接
+- **Powered by Rust**: zero-cost abstractions, memory safety, no garbage collection
+- **Tokio async runtime**: high-performance event loop based on epoll/kqueue, supporting million-level concurrent connections
 
-### 🎨 现代化界面
+### 🎨 Modern Interface
 
-- **GPUI 框架**：GPU 加速渲染与文本渲染，流畅 60fps 体验
-- **自适应主题**：自动适应系统亮色/暗色模式
-- **响应式设计**：适应不同屏幕尺寸的自适应布局
+- **GPUI framework**: GPU-accelerated rendering and text rendering, smooth 60fps experience
+- **Adaptive theme**: automatically follows the system light/dark mode
+- **Responsive design**: adaptive layout that fits different screen sizes
 
-### 🔧 架构设计
+### 🔧 Architecture
 
-- **压测引擎独立成层**：零 GPUI 依赖的纯逻辑设计，便于复用与测试；基于令牌桶的速率限制，精准控制发送频率
-- **核心逻辑与 UI 解耦**：消息处理器独立于界面层，网络协议层与界面层清晰分离
+- **Standalone stress engine**: pure logic layer with zero GPUI dependency, easy to reuse and test; token-bucket-based rate limiting for precise send-rate control
+- **Decoupled core logic and UI**: message handlers are independent of the UI layer; the network protocol layer and the UI layer are cleanly separated
 
-## 性能指标
+## Benchmarks
 
-开发过程中使用内置压测功能对 NetAssistant 自身进行了高并发测试，借此发现并优化了多个性能瓶颈（消息批量更新、批量日志写入等）：
+During development, NetAssistant was stress-tested against itself using the built-in stress engine, which helped discover and optimize several performance bottlenecks (batched message updates, batched log writes, etc.):
 
-| 指标 | 表现 |
-| ---- | ---- |
-| 启动时间 | < 100ms |
-| 内存占用 | < 20MB |
-| UI 响应 | 60fps 渲染 |
+| Metric | Result |
+| ------ | ------ |
+| Startup time | < 100ms |
+| Memory footprint | < 20MB |
+| UI responsiveness | 60fps rendering |
 
-## 使用场景
+## Use Cases
 
-- **开发者通信验证**：后端开发者对接硬件前模拟硬件发送数据；测试客户端与服务端之间的通信逻辑和数据格式，验证服务端的正确性和鲁棒性
-- **硬件设备测试**：硬件工程师测试传感器、控制器等设备；嵌入式开发者验证资源受限系统的网络协议栈实现与传输效率
-- **服务性能压测**：对自研服务端进行并发吞吐、延迟分布和稳定性评估，快速定位性能瓶颈
+- **Developer communication verification**: backend developers simulate hardware sending data before integrating with it; test communication logic and data formats between client and server to verify server correctness and robustness
+- **Hardware device testing**: hardware engineers test sensors, controllers and other devices; embedded developers verify the network protocol stack implementation and transmission efficiency of resource-constrained systems
+- **Service performance stress testing**: evaluate concurrency throughput, latency distribution and stability of your own server, and locate performance bottlenecks quickly
 
-## 相关页面
+## Related Pages
 
-- [下载 NetAssistant](/download)
-- [使用指南](/guide/)
-- [常见问题 FAQ](/faq)
-- [更新日志](/changelog)
+- [Download NetAssistant](/download)
+- [Getting started guide](/guide/)
+- [FAQ](/faq)
+- [Changelog](/changelog)
