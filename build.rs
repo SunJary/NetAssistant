@@ -1,4 +1,7 @@
 fn main() {
+    // 修改 BUILD_VERSION（如本地测试用 1.5.0）时强制重跑构建脚本，刷新 APP_VERSION
+    println!("cargo:rerun-if-env-changed=BUILD_VERSION");
+
     let version = std::env::var("BUILD_VERSION")
         .ok()
         .unwrap_or_else(|| chrono::Utc::now().format("%Y%m%d").to_string());

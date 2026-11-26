@@ -27,6 +27,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; 16299 = Windows 10 1709; gpui 的 DirectWrite 文本系统要求 1703+, 这里取与 Zed 相同的保守值。
 MinVersion=10.0.16299
 PrivilegesRequired=lowest
+; 自动更新时安装器需要关闭仍在运行的本应用；是否重新拉起由 /RELAUNCH=1 决定
+CloseApplications=yes
+RestartApplications=no
 UninstallDisplayName=NetAssistant
 UninstallDisplayIcon={app}\netassistant.exe
 
@@ -46,3 +49,11 @@ Name: "desktopicon"; Description: "创建桌面图标"; GroupDescription: "附�
 
 [Run]
 Filename: "{app}\netassistant.exe"; Description: "运行 NetAssistant"; Flags: nowait postinstall skipifsilent
+; 自动更新：安装完成后重新启动新版本（仅 /RELAUNCH=1 时生效）
+Filename: "{app}\netassistant.exe"; Flags: nowait; Check: ShouldRelaunch
+
+[Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

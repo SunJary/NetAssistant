@@ -23,6 +23,8 @@ pub enum CustomIconName {
     Trash2,
     /// 工具箱入口
     Wrench,
+    /// 更新/下载
+    Download,
 }
 
 impl From<IconName> for CustomIconName {
@@ -50,6 +52,7 @@ impl IconNamed for CustomIconName {
             CustomIconName::Repeat => "icons/repeat.svg".into(),
             CustomIconName::Trash2 => "icons/trash-2.svg".into(),
             CustomIconName::Wrench => "icons/wrench.svg".into(),
+            CustomIconName::Download => "icons/download.svg".into(),
         }
     }
 }

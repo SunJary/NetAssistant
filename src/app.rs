@@ -331,10 +331,8 @@ pub struct NetAssistantApp {
     pub favorite_list_position: Option<Pixels>,
     pub favorite_list_position_y: Option<Pixels>,
 
-    // 版本更新检查状态
-    pub update_available: bool,
-    pub latest_version: Option<String>,
-    pub show_update_tooltip: bool,
+    // 版本更新状态（检查 / 下载 / 待安装）
+    pub update: crate::update::state::UpdateState,
 
     // GitHub Star 数
     pub star_count: Option<u32>,
@@ -672,10 +670,8 @@ impl NetAssistantApp {
             favorite_list_search_input: cx.new(|cx| InputState::new(window, cx)),
             favorite_list_position: None,
             favorite_list_position_y: None,
-            // 版本更新检查状态
-            update_available: false,
-            latest_version: None,
-            show_update_tooltip: false,
+            // 版本更新状态
+            update: crate::update::state::UpdateState::default(),
             // GitHub Star 数
             star_count: None,
             // Star 引导提示
@@ -942,23 +938,59 @@ impl NetAssistantApp {
         app.show_star_prompt = app.stats.should_show_star_prompt(&today);
         app.star_count = app.stats.cached_star_count;
 
-        // 后台检查版本 + 获取 star 数（在 tokio 运行时上发起 HTTP 请求）
+        // 上次更新回执：安装前写入，新版本启动后在这里确认结果。
+        // 通知延迟到首帧渲染时弹出（此时 gpui-component 的 Root 已就绪）。
+        if let Some(applied) = crate::update::take_applied() {
+            let current =
+                crate::update::verify::normalize_version(env!("APP_VERSION")).to_string();
+            let to = crate::update::verify::normalize_version(&applied.to).to_string();
+            if current == to {
+                app.update.applied_notice = Some((true, to));
+            } else if current == crate::update::verify::normalize_version(&applied.from) {
+                app.update.applied_notice = Some((false, current));
+            }
+        }
+
+        // 后台检查更新 + 获取 star 数（在 tokio 运行时上发起 HTTP 请求）
         let weak_app_update = cx.entity().clone().downgrade();
         let current_version = env!("APP_VERSION").to_string();
         let tokio_handle = tokio::runtime::Handle::current();
 
         cx.spawn(async move |_, async_app: &mut gpui_kit::AsyncApp| {
-            // 在 tokio 运行时上并行发起两个 HTTP 请求
-            let version_handle = tokio_handle
-                .spawn(async move { crate::update_checker::check_latest_version().await });
+            // 清理旧版本下载缓存与上次安装残留（阻塞 IO 交给线程池）
+            let cleanup_version = current_version.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                crate::update::downloader::clean_old_versions(&cleanup_version);
+                crate::update::installer::clean_up(&cleanup_version);
+            })
+            .await;
+
             let star_handle =
                 tokio_handle.spawn(async { crate::update_checker::fetch_star_count().await });
 
-            // 等待结果（两个请求并行执行）
-            let latest_version = version_handle.await.ok().flatten();
-            let star_count = star_handle.await.ok().flatten();
+            // 开发版（8 位日期号）没有发布清单，跳过更新检查。
+            let update_enabled = !crate::update::verify::is_dev_version(&current_version);
+            let manifest_handle = if update_enabled {
+                Some(tokio_handle.spawn(async { crate::update::fetch_manifest().await }))
+            } else {
+                None
+            };
 
-            let mut has_update = false;
+            let star_count = star_handle.await.ok().flatten();
+            let manifest = match manifest_handle {
+                Some(handle) => match handle.await {
+                    Ok(Ok(manifest)) => Some(manifest),
+                    Ok(Err(e)) => {
+                        log::debug!("[update] 检查更新失败: {e}");
+                        None
+                    }
+                    Err(e) => {
+                        log::debug!("[update] 更新检查任务异常: {e}");
+                        None
+                    }
+                },
+                None => None,
+            };
 
             if let Some(app) = weak_app_update.upgrade() {
                 let _ = app.update(async_app, |app, cx| {
@@ -969,35 +1001,342 @@ impl NetAssistantApp {
                         // 读-改-写磁盘，避免陈旧内存快照覆盖其他实例刚写入的关闭记录
                         AppStats::update_cached_star_count(stars);
                     }
-
-                    // 版本检查（开发版日期号也检查，直接认为需要更新）
-                    if let Some(latest) = &latest_version {
-                        if crate::update_checker::should_show_update(&current_version, latest) {
-                            app.update_available = true;
-                            app.latest_version = Some(latest.clone());
-                            app.show_update_tooltip = true;
-                            has_update = true;
-                        }
-                    }
-
                     cx.notify();
                 });
             }
 
-            // 10 秒后自动隐藏 tooltip
-            if has_update {
+            let Some(manifest) = manifest else {
+                return;
+            };
+            if !crate::update::verify::is_newer(&current_version, &manifest.version) {
+                return;
+            }
+
+            let version = manifest.version.clone();
+            let asset = manifest.asset_for_current_platform().cloned();
+
+            // 先展示"发现新版本"，再进入后台下载
+            if let Some(app) = weak_app_update.upgrade() {
+                let version_for_ui = version.clone();
+                let size = asset.as_ref().map(|a| a.size).unwrap_or(0);
+                let manual_only = asset.is_none();
+                let asset_for_state = asset.clone();
+                let _ = app.update(async_app, |app, cx| {
+                    app.update.phase = crate::update::state::UpdatePhase::Available {
+                        version: version_for_ui,
+                        size,
+                    };
+                    app.update.asset = asset_for_state;
+                    app.update.show_tooltip = true;
+                    app.update.manual_only = manual_only;
+                    cx.notify();
+                });
+            }
+
+            let Some(asset) = asset else {
+                // 当前平台没有自动更新产物：收起提示，用户可从对话框跳转下载页。
                 smol::Timer::after(std::time::Duration::from_secs(5)).await;
                 if let Some(app) = weak_app_update.upgrade() {
                     let _ = app.update(async_app, |app, cx| {
-                        app.show_update_tooltip = false;
+                        app.update.show_tooltip = false;
                         cx.notify();
                     });
+                }
+                return;
+            };
+
+            // 安装形态前置检查：便携版 / dmg 等无法自动更新时不下载，
+            // 直接把对话框切到「手动下载」，避免白白拉几十 MB。
+            if let Err(e) = crate::update::installer::auto_update_supported() {
+                log::info!("[update] 不支持自动更新，改为手动下载: {e}");
+                // 按安装形态挑更合适的包：便携版给 zip、非 AppImage 的 Linux 给 tar.gz；
+                // 清单里没有对应资产时退回标准资产。
+                let manual_key = crate::update::installer::manual_asset_key();
+                let manual_asset = match manual_key.and_then(|key| manifest.assets.get(key)) {
+                    Some(found) => found.clone(),
+                    None => {
+                        if manual_key.is_some() {
+                            log::info!("[update] 清单缺少该形态的资产，回退到标准资产");
+                        }
+                        asset.clone()
+                    }
+                };
+                log::info!(
+                    "[update] 手动下载包: {}",
+                    manual_asset
+                        .urls
+                        .first()
+                        .map(String::as_str)
+                        .unwrap_or("<无地址>")
+                );
+                if let Some(app) = weak_app_update.upgrade() {
+                    let version_for_ui = version.clone();
+                    let size = manual_asset.size;
+                    let asset_for_state = manual_asset.clone();
+                    let _ = app.update(async_app, |app, cx| {
+                        app.update.phase = crate::update::state::UpdatePhase::Available {
+                            version: version_for_ui,
+                            size,
+                        };
+                        app.update.asset = Some(asset_for_state);
+                        app.update.manual_only = true;
+                        app.update.show_tooltip = true;
+                        cx.notify();
+                    });
+                }
+                smol::Timer::after(std::time::Duration::from_secs(5)).await;
+                if let Some(app) = weak_app_update.upgrade() {
+                    let _ = app.update(async_app, |app, cx| {
+                        app.update.show_tooltip = false;
+                        cx.notify();
+                    });
+                }
+                return;
+            }
+
+            // 后台下载（流式写盘 + SHA-256 校验）
+            let progress = Arc::new(crate::update::downloader::DownloadProgress::default());
+            let progress_for_task = progress.clone();
+            let asset_for_task = asset.clone();
+            let version_for_task = version.clone();
+            let download_handle = tokio_handle.spawn(async move {
+                crate::update::downloader::download_asset(
+                    &asset_for_task,
+                    &version_for_task,
+                    progress_for_task,
+                )
+                .await
+            });
+
+            let tip_until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !download_handle.is_finished() {
+                smol::Timer::after(std::time::Duration::from_millis(200)).await;
+                let (received, total) = progress.snapshot();
+                if let Some(app) = weak_app_update.upgrade() {
+                    let version_for_ui = version.clone();
+                    let hide_tip = std::time::Instant::now() >= tip_until;
+                    let _ = app.update(async_app, |app, cx| {
+                        app.update.phase = crate::update::state::UpdatePhase::Downloading {
+                            version: version_for_ui,
+                            received,
+                            total,
+                        };
+                        if hide_tip {
+                            app.update.show_tooltip = false;
+                        }
+                        cx.notify();
+                    });
+                }
+            }
+
+            let result = match download_handle.await {
+                Ok(result) => result,
+                Err(e) => Err(format!("下载任务异常结束: {e}")),
+            };
+
+            match result {
+                Ok(package) => {
+                    // 下载完成后立即预置：mac/Linux 解压或复制到安装目录旁，
+                    // 退出时只做 rename；Windows 这一步直接复用安装包。
+                    let stage_plan = crate::update::installer::InstallPlan {
+                        version: version.clone(),
+                        package,
+                    };
+                    let staged = match tokio_handle
+                        .spawn_blocking(move || crate::update::installer::stage(&stage_plan))
+                        .await
+                    {
+                        Ok(result) => result,
+                        Err(e) => Err(crate::update::installer::InstallError::Failed(format!(
+                            "预置更新任务异常: {e}"
+                        ))),
+                    };
+
+                    match staged {
+                        Ok(staged) => {
+                            let package = staged.path.clone();
+                            crate::update::installer::set_pending(staged);
+                            if let Some(app) = weak_app_update.upgrade() {
+                                let version_for_ui = version.clone();
+                                let _ = app.update(async_app, |app, cx| {
+                                    app.update.phase =
+                                        crate::update::state::UpdatePhase::Ready {
+                                            version: version_for_ui,
+                                            package,
+                                        };
+                                    app.update.show_tooltip = true;
+                                    cx.notify();
+                                });
+                            }
+                            smol::Timer::after(std::time::Duration::from_secs(5)).await;
+                            if let Some(app) = weak_app_update.upgrade() {
+                                let _ = app.update(async_app, |app, cx| {
+                                    app.update.show_tooltip = false;
+                                    cx.notify();
+                                });
+                            }
+                        }
+                        Err(crate::update::installer::InstallError::Unsupported(message)) => {
+                            log::warn!("[update] 当前安装形态不支持自动更新: {message}");
+                            if let Some(app) = weak_app_update.upgrade() {
+                                let _ = app.update(async_app, |app, cx| {
+                                    app.update.phase =
+                                        crate::update::state::UpdatePhase::Failed { message };
+                                    app.update.manual_only = true;
+                                    app.update.show_tooltip = false;
+                                    cx.notify();
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            let message = e.to_string();
+                            log::warn!("[update] 预置更新失败: {message}");
+                            if let Some(app) = weak_app_update.upgrade() {
+                                let _ = app.update(async_app, |app, cx| {
+                                    app.update.phase =
+                                        crate::update::state::UpdatePhase::Failed { message };
+                                    app.update.show_tooltip = false;
+                                    cx.notify();
+                                });
+                            }
+                        }
+                    }
+                }
+                Err(message) => {
+                    log::warn!("[update] 下载更新失败: {message}");
+                    if let Some(app) = weak_app_update.upgrade() {
+                        let _ = app.update(async_app, |app, cx| {
+                            app.update.phase =
+                                crate::update::state::UpdatePhase::Failed { message };
+                            app.update.show_tooltip = false;
+                            cx.notify();
+                        });
+                    }
                 }
             }
         })
         .detach();
 
         app
+    }
+
+    /// 立即退出并安装已下载的更新（由 `on_app_quit` 执行安装）。
+    pub fn install_update_now(&mut self, cx: &mut Context<Self>) {
+        if self.update.ready_package().is_none() {
+            return;
+        }
+        self.update.dialog_open = false;
+        // 标记为显式安装：开发构建下只有这条路径会真正执行安装
+        crate::update::installer::request_install_now();
+        cx.quit();
+    }
+
+    /// 关闭更新对话框。
+    pub fn close_update_dialog(&mut self, cx: &mut Context<Self>) {
+        self.update.dialog_open = false;
+        cx.notify();
+    }
+
+    /// 手动下载更新包到「下载」目录（保留原始文件名）。
+    ///
+    /// 用于便携版 / dmg / deb 等不支持自动更新的安装形态，
+    /// 用户不必再去 GitHub Release 里翻找对应文件。
+    pub fn download_update_manually(&mut self, cx: &mut Context<Self>) {
+        if matches!(
+            self.update.phase,
+            crate::update::state::UpdatePhase::Downloading { .. }
+        ) {
+            return;
+        }
+        let Some(asset) = self.update.asset.clone() else {
+            return;
+        };
+        let crate::update::state::UpdatePhase::Available { version, .. } = &self.update.phase
+        else {
+            return;
+        };
+        let version = version.clone();
+        let size = asset.size;
+        let dir = crate::update::downloader::download_target_dir();
+
+        self.update.phase = crate::update::state::UpdatePhase::Downloading {
+            version: version.clone(),
+            received: 0,
+            total: size,
+        };
+        self.update.downloaded_package = None;
+        cx.notify();
+
+        let progress = Arc::new(crate::update::downloader::DownloadProgress::default());
+        let progress_for_task = progress.clone();
+        let tokio_handle = tokio::runtime::Handle::current();
+        let handle = tokio_handle.spawn(async move {
+            crate::update::downloader::download_to(&asset, &dir, progress_for_task).await
+        });
+
+        let weak = cx.entity().downgrade();
+        let progress_for_ui = progress;
+        cx.spawn(async move |_, async_app: &mut gpui_kit::AsyncApp| {
+            while !handle.is_finished() {
+                smol::Timer::after(Duration::from_millis(200)).await;
+                let (received, total) = progress_for_ui.snapshot();
+                let version = version.clone();
+                if let Some(app) = weak.upgrade() {
+                    let _ = app.update(async_app, |app, cx| {
+                        app.update.phase = crate::update::state::UpdatePhase::Downloading {
+                            version,
+                            received,
+                            total: if total > 0 { total } else { size },
+                        };
+                        cx.notify();
+                    });
+                }
+            }
+
+            let result = handle
+                .await
+                .map_err(|e| format!("下载任务异常: {e}"))
+                .and_then(|r| r);
+            let Some(app) = weak.upgrade() else {
+                return;
+            };
+            let _ = app.update(async_app, |app, cx| match result {
+                Ok(path) => {
+                    app.update.downloaded_package = Some(path);
+                    app.update.phase = crate::update::state::UpdatePhase::Available {
+                        version,
+                        size,
+                    };
+                    cx.notify();
+                }
+                Err(message) => {
+                    app.update.phase = crate::update::state::UpdatePhase::Failed { message };
+                    app.update.show_tooltip = false;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// 在文件管理器中定位手动下载的安装包。
+    pub fn open_downloaded_package_dir(&self) {
+        let Some(path) = &self.update.downloaded_package else {
+            return;
+        };
+        let dir = path.parent().unwrap_or(path);
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("explorer").arg(dir).spawn();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(dir).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+        }
     }
 
     pub fn toggle_connection(&mut self, tab_id: String, cx: &mut Context<Self>) {
@@ -6149,6 +6488,19 @@ impl Drop for NetAssistantApp {
 
 impl Render for NetAssistantApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 上次更新结果提示：等到这里 Root 已经挂载，push_notification 才安全
+        if let Some((success, version)) = self.update.applied_notice.take() {
+            let notification = if success {
+                Notification::success(
+                    t!("update.applied_success", version => version).to_string(),
+                )
+            } else {
+                Notification::warning(
+                    t!("update.applied_failed", version => version).to_string(),
+                )
+            };
+            window.push_notification(notification, cx);
+        }
         MainWindow::new(self, cx).render(window, cx)
     }
 }

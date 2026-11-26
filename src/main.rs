@@ -25,6 +25,7 @@ mod stress;
 mod theme_event_handler;
 mod theme_manager;
 mod ui;
+mod update;
 mod update_checker;
 mod utils;
 
@@ -112,6 +113,10 @@ fn main() {
 
     // app.run() 已返回：GPUI 已销毁窗口和 entity，Drop 已清理连接
     info!("=== app.run 已返回，准备关闭 tokio runtime ===");
+
+    // 事件循环已结束，此时启动更新安装进程最安全：
+    // Windows 上创建进程可能泵消息循环、重入 GPUI，所以不在退出钩子里做。
+    crate::update::installer::install_pending();
 
     // 后台写线程有防抖，进程即将强制退出：同步落盘最后一次窗口位置
     window_state.flush();

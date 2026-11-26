@@ -502,6 +502,87 @@ jobs:
           echo "$FORMATTED_COMMITS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Prepare update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_TAG="${GITHUB_REF_NAME}"
+          VERSION="${VERSION_TAG#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION_TAG}"
+          mkdir -p artifacts/update
+          cd artifacts
+
+          # 自动更新只覆盖三端：Windows x64 安装包、macOS universal zip、Linux x64 AppImage
+          WIN=$(find . -maxdepth 2 -name 'netassistant-windows-x86_64-setup.exe' -print -quit)
+          MAC=$(find . -maxdepth 2 -name 'netassistant-macos-universal.zip' -print -quit)
+          LIN=$(find . -maxdepth 2 -name 'netassistant-linux-x86_64.AppImage' -print -quit)
+          # 手动下载用：便携版 zip / Linux tar.gz
+          WIN_PORTABLE=$(find . -maxdepth 2 -name 'netassistant-windows-x86_64.zip' -print -quit)
+          LIN_TGZ=$(find . -maxdepth 2 -name 'netassistant-linux-x86_64.tar.gz' -print -quit)
+
+          SIZE_WIN=$(stat -c%s "$WIN" 2>/dev/null || echo 0)
+          SIZE_MAC=$(stat -c%s "$MAC" 2>/dev/null || echo 0)
+          SIZE_LIN=$(stat -c%s "$LIN" 2>/dev/null || echo 0)
+          SIZE_WIN_PORTABLE=$(stat -c%s "$WIN_PORTABLE" 2>/dev/null || echo 0)
+          SIZE_LIN_TGZ=$(stat -c%s "$LIN_TGZ" 2>/dev/null || echo 0)
+          SHA_WIN=$(sha256sum "$WIN" 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA_MAC=$(sha256sum "$MAC" 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA_LIN=$(sha256sum "$LIN" 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA_WIN_PORTABLE=$(sha256sum "$WIN_PORTABLE" 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA_LIN_TGZ=$(sha256sum "$LIN_TGZ" 2>/dev/null | cut -d' ' -f1 || echo "")
+
+          VERSION="$VERSION" BASE="$BASE" \
+          SIZE_WIN="$SIZE_WIN" SIZE_MAC="$SIZE_MAC" SIZE_LIN="$SIZE_LIN" \
+          SIZE_WIN_PORTABLE="$SIZE_WIN_PORTABLE" SIZE_LIN_TGZ="$SIZE_LIN_TGZ" \
+          SHA_WIN="$SHA_WIN" SHA_MAC="$SHA_MAC" SHA_LIN="$SHA_LIN" \
+          SHA_WIN_PORTABLE="$SHA_WIN_PORTABLE" SHA_LIN_TGZ="$SHA_LIN_TGZ" \
+          python3 - <<'PY'
+          import json, os
+
+          version = os.environ["VERSION"]
+          base = os.environ["BASE"]
+
+          assets = {}
+          candidates = {
+              "windows-x86_64": ("netassistant-windows-x86_64-setup.exe", "SIZE_WIN", "SHA_WIN"),
+              "macos-universal": ("netassistant-macos-universal.zip", "SIZE_MAC", "SHA_MAC"),
+              "linux-x86_64": ("netassistant-linux-x86_64.AppImage", "SIZE_LIN", "SHA_LIN"),
+              # 手动下载备选（自动更新不会使用）
+              "windows-x86_64-portable": ("netassistant-windows-x86_64.zip", "SIZE_WIN_PORTABLE", "SHA_WIN_PORTABLE"),
+              "linux-x86_64-tar-gz": ("netassistant-linux-x86_64.tar.gz", "SIZE_LIN_TGZ", "SHA_LIN_TGZ"),
+          }
+          for key, (name, size_env, sha_env) in candidates.items():
+              sha = os.environ[sha_env]
+              if not sha:
+                  continue
+              assets[key] = {
+                  "urls": [f"{base}/{name}"],
+                  "size": int(os.environ[size_env] or 0),
+                  "sha256": sha,
+              }
+
+          if not assets:
+              raise SystemExit("no auto-update assets found")
+
+          manifest = {
+              "schema": 1,
+              "channel": "stable",
+              "version": version,
+              "notes_url": f"https://github.com/{os.environ.get('GITHUB_REPOSITORY', '')}/releases/tag/{os.environ.get('GITHUB_REF_NAME', '')}",
+              "assets": assets,
+          }
+          with open("update/update.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, ensure_ascii=False, indent=2)
+          print(json.dumps(manifest, ensure_ascii=False, indent=2))
+          PY
+
+          # 所有产物统一校验和，供手动下载的用户核对
+          find . -maxdepth 2 -type f \
+            ! -path './update/*' \
+            ! -name '*.sha256' \
+            -print0 | sort -z | xargs -0 sha256sum > update/SHA256SUMS
+          cat update/SHA256SUMS
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:

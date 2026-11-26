@@ -43,6 +43,176 @@ title_bar:
     pt-BR: "Nova versão disponível — clique para ver"
     es: "Nueva versión disponible; haga clic para verla"
 
+update:
+  title:
+    zh-CN: 软件更新
+    en: Software Update
+    ja: "ソフトウェア更新"
+    de: "Software-Update"
+    ru: "Обновление программы"
+    pt-BR: "Atualização do software"
+    es: "Actualización de software"
+  available:
+    zh-CN: 发现新版本 v%{version}
+    en: "New version v%{version} available"
+    ja: "新しいバージョン v%{version} があります"
+    de: "Neue Version v%{version} verfügbar"
+    ru: "Доступна новая версия v%{version}"
+    pt-BR: "Nova versão v%{version} disponível"
+    es: "Nueva versión v%{version} disponible"
+  downloading:
+    zh-CN: 正在后台下载更新 %{percent}%（v%{version}）
+    en: "Downloading update %{percent}% (v%{version})"
+    ja: "更新をバックグラウンドでダウンロード中 %{percent}%（v%{version}）"
+    de: "Update wird im Hintergrund geladen: %{percent} % (v%{version})"
+    ru: "Загрузка обновления %{percent}% (v%{version})"
+    pt-BR: "Baixando atualização %{percent}% (v%{version})"
+    es: "Descargando actualización %{percent}% (v%{version})"
+  background_downloading:
+    zh-CN: 正在后台下载安装包（约 %{size} MB），下载完成后退出应用即可自动安装。
+    en: "Downloading the package in the background (~%{size} MB). It installs automatically when you quit."
+    ja: "インストールパッケージをバックグラウンドでダウンロード中（約 %{size} MB）。終了時に自動でインストールされます。"
+    de: "Das Paket wird im Hintergrund geladen (ca. %{size} MB) und beim Beenden automatisch installiert."
+    ru: "Пакет загружается в фоне (около %{size} МБ) и установится при выходе."
+    pt-BR: "Baixando o pacote em segundo plano (~%{size} MB). Ele será instalado ao sair."
+    es: "Descargando el paquete en segundo plano (~%{size} MB). Se instalará al salir."
+  background_downloading_unknown:
+    zh-CN: 正在后台下载安装包，下载完成后退出应用即可自动安装。
+    en: "Downloading the package in the background. It installs automatically when you quit."
+    ja: "インストールパッケージをバックグラウンドでダウンロード中。終了時に自動でインストールされます。"
+    de: "Das Paket wird im Hintergrund geladen und beim Beenden automatisch installiert."
+    ru: "Пакет загружается в фоне и установится при выходе."
+    pt-BR: "Baixando o pacote em segundo plano. Ele será instalado ao sair."
+    es: "Descargando el paquete en segundo plano. Se instalará al salir."
+  ready_title:
+    zh-CN: 新版本 v%{version} 已就绪
+    en: "Version v%{version} is ready"
+    ja: "バージョン v%{version} の準備ができました"
+    de: "Version v%{version} ist bereit"
+    ru: "Версия v%{version} готова"
+    pt-BR: "A versão v%{version} está pronta"
+    es: "La versión v%{version} está lista"
+  ready:
+    zh-CN: 更新包已下载并通过校验，退出应用时会自动安装。
+    en: "The update has been downloaded and verified. It installs automatically when you quit."
+    ja: "更新パッケージはダウンロードと検証が完了しました。終了時に自動でインストールされます。"
+    de: "Das Update wurde geladen und geprüft. Es wird beim Beenden automatisch installiert."
+    ru: "Обновление загружено и проверено. Оно установится при выходе."
+    pt-BR: "A atualização foi baixada e verificada. Ela será instalada ao sair."
+    es: "La actualización se ha descargado y verificado. Se instalará al salir."
+  ready_tooltip:
+    zh-CN: 新版本 v%{version} 已就绪，退出时自动安装
+    en: "v%{version} is ready — installs when you quit"
+    ja: "v%{version} の準備ができました。終了時に自動インストール"
+    de: "v%{version} ist bereit – Installation beim Beenden"
+    ru: "v%{version} готова — установится при выходе"
+    pt-BR: "v%{version} está pronta — instala ao sair"
+    es: "v%{version} está lista; se instala al salir"
+  failed_short:
+    zh-CN: 更新下载失败，点击查看
+    en: "Update download failed — click for details"
+    ja: "更新のダウンロードに失敗しました。クリックで詳細"
+    de: "Update-Download fehlgeschlagen – klicken für Details"
+    ru: "Не удалось загрузить обновление — нажмите для подробностей"
+    pt-BR: "Falha ao baixar a atualização — clique para detalhes"
+    es: "Error al descargar la actualización; haga clic para ver detalles"
+  failed:
+    zh-CN: 更新失败：%{message}
+    en: "Update failed: %{message}"
+    ja: "更新に失敗しました：%{message}"
+    de: "Update fehlgeschlagen: %{message}"
+    ru: "Ошибка обновления: %{message}"
+    pt-BR: "Falha na atualização: %{message}"
+    es: "Error de actualización: %{message}"
+  manual:
+    zh-CN: 当前平台暂不支持自动更新，请前往下载页手动安装。
+    en: "Automatic updates are not available for this platform. Please download it manually."
+    ja: "このプラットフォームでは自動更新に対応していません。ダウンロードページから手動でインストールしてください。"
+    de: "Für diese Plattform ist kein automatisches Update verfügbar. Bitte manuell herunterladen."
+    ru: "Для этой платформы автоматическое обновление недоступно. Скачайте вручную."
+    pt-BR: "A atualização automática não está disponível para esta plataforma. Baixe manualmente."
+    es: "La actualización automática no está disponible en esta plataforma. Descárguela manualmente."
+  install_now:
+    zh-CN: 立即重启并更新
+    en: "Restart and update"
+    ja: "再起動して更新"
+    de: "Neu starten und aktualisieren"
+    ru: "Перезапустить и обновить"
+    pt-BR: "Reiniciar e atualizar"
+    es: "Reiniciar y actualizar"
+  later:
+    zh-CN: 稍后
+    en: "Later"
+    ja: "後で"
+    de: "Später"
+    ru: "Позже"
+    pt-BR: "Depois"
+    es: "Más tarde"
+  open_page:
+    zh-CN: 前往下载页
+    en: "Open download page"
+    ja: "ダウンロードページを開く"
+    de: "Downloadseite öffnen"
+    ru: "Открыть страницу загрузки"
+    pt-BR: "Abrir página de download"
+    es: "Abrir página de descarga"
+  manual_download:
+    zh-CN: 下载安装包
+    en: "Download installer"
+    ja: "インストーラーをダウンロード"
+    de: "Installer herunterladen"
+    ru: "Скачать установщик"
+    pt-BR: "Baixar instalador"
+    es: "Descargar instalador"
+  manual_downloaded:
+    zh-CN: 安装包已保存到 %{path}
+    en: "Installer saved to %{path}"
+    ja: "インストーラーを保存しました: %{path}"
+    de: "Installer gespeichert unter %{path}"
+    ru: "Установщик сохранён: %{path}"
+    pt-BR: "Instalador salvo em %{path}"
+    es: "Instalador guardado en %{path}"
+  open_folder:
+    zh-CN: 打开文件夹
+    en: "Open folder"
+    ja: "フォルダーを開く"
+    de: "Ordner öffnen"
+    ru: "Открыть папку"
+    pt-BR: "Abrir pasta"
+    es: "Abrir carpeta"
+  checking:
+    zh-CN: 正在检查更新…
+    en: "Checking for updates…"
+    ja: "更新を確認しています…"
+    de: "Suche nach Updates…"
+    ru: "Проверка обновлений…"
+    pt-BR: "Verificando atualizações…"
+    es: "Buscando actualizaciones…"
+  notes_default:
+    zh-CN: 完整更新说明见 Release 页面。
+    en: "Full release notes are available on the Release page."
+    ja: "完全なリリースノートは Release ページをご覧ください。"
+    de: "Die vollständigen Versionshinweise finden Sie auf der Release-Seite."
+    ru: "Полный список изменений — на странице релиза."
+    pt-BR: "As notas completas da versão estão na página do Release."
+    es: "Las notas completas de la versión están en la página del Release."
+  applied_success:
+    zh-CN: 已更新到 v%{version}
+    en: "Updated to v%{version}"
+    ja: "v%{version} に更新しました"
+    de: "Auf v%{version} aktualisiert"
+    ru: "Обновлено до v%{version}"
+    pt-BR: "Atualizado para v%{version}"
+    es: "Actualizado a la v%{version}"
+  applied_failed:
+    zh-CN: 上次更新未完成，当前仍是 v%{version}
+    en: "The last update did not complete — still on v%{version}"
+    ja: "前回の更新は完了しませんでした。現在は v%{version} です"
+    de: "Das letzte Update wurde nicht abgeschlossen – weiterhin v%{version}"
+    ru: "Прошлое обновление не завершилось — по-прежнему v%{version}"
+    pt-BR: "A última atualização não foi concluída — ainda na v%{version}"
+    es: "La última actualización no se completó; sigue en la v%{version}"
+
 star_prompt:
   title:
     zh-CN: 喜欢 NetAssistant？
