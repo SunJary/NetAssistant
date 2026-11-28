@@ -1913,6 +1913,54 @@ connection_tab:
     ru: "Закрыть поиск (Esc)"
     pt-BR: "Fechar pesquisa (Esc)"
     es: "Cerrar búsqueda (Esc)"
+  topic_filter_title:
+    zh-CN: 主题
+    en: Topics
+    ja: "トピック"
+    de: "Themen"
+    ru: "Темы"
+    pt-BR: "Tópicos"
+    es: "Temas"
+  topic_filter_all:
+    zh-CN: 全部主题
+    en: All topics
+    ja: "すべてのトピック"
+    de: "Alle Themen"
+    ru: "Все темы"
+    pt-BR: "Todos os tópicos"
+    es: "Todos los temas"
+  topic_filter_empty:
+    zh-CN: 暂无主题
+    en: No topics yet
+    ja: "トピックがありません"
+    de: "Noch keine Themen"
+    ru: "Пока нет тем"
+    pt-BR: "Nenhum tópico ainda"
+    es: "Aún no hay temas"
+  topic_filter_active:
+    zh-CN: "主题: %{topic}"
+    en: "Topic: %{topic}"
+    ja: "トピック: %{topic}"
+    de: "Thema: %{topic}"
+    ru: "Тема: %{topic}"
+    pt-BR: "Tópico: %{topic}"
+    es: "Tema: %{topic}"
+  topic_prefix_active:
+    zh-CN: "前缀: %{prefix}"
+    en: "Prefix: %{prefix}"
+    ja: "プレフィックス: %{prefix}"
+    de: "Präfix: %{prefix}"
+    ru: "Префикс: %{prefix}"
+    pt-BR: "Prefixo: %{prefix}"
+    es: "Prefijo: %{prefix}"
+  topic_filter_clear:
+    zh-CN: 清除主题过滤
+    en: Clear topic filter
+    ja: "トピックフィルターを解除"
+    de: "Themenfilter aufheben"
+    ru: "Сбросить фильтр темы"
+    pt-BR: "Limpar filtro de tópico"
+    es: "Borrar filtro de tema"
   display_format:
     zh-CN: "格式:%{label}"
     en: "Format: %{label}"

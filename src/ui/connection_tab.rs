@@ -1,4 +1,5 @@
 use crate::ui::components::hex_editor::{HexEditorState, adapter as hex_adapter};
+use crate::ui::components::highlight_selectable_text::HighlightSelectableText;
 use crate::ui::components::input_with_mode::{InputWithMode, open_tool_result_dialog};
 use crate::ui::dialog::variable_picker::{
     VariableItem, VariablePickerTarget, message_variable_items, render_variable_picker,
@@ -30,7 +31,7 @@ use gpui_kit::*;
 
 use log::{debug, info};
 use rust_i18n::t;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, RwLock};
@@ -61,6 +62,39 @@ use indexmap::IndexMap;
 /// 重算挂在事件泵 16ms 节拍上，再叠加这一层限流：压测洪泛下最多 4 次/秒，
 /// 避免每拍都做一次 O(N) 全量扫描。
 pub const SEARCH_RECALC_MIN_INTERVAL: Duration = Duration::from_millis(250);
+
+/// 单条消息最多高亮的命中片段数。单字符查询在长文本上会生成上万个 run，
+/// 必须设上限，否则文本布局会明显变慢。
+pub const TOPIC_HIGHLIGHT_CAP: usize = 200;
+
+/// 返回显示文本中 `needle` 的全部命中区间（大小写不敏感，最多 `cap` 个）。
+///
+/// 只在小写化不改变字节长度时用偏移映射；否则退化为大小写敏感匹配（同时过滤掉
+/// 非 UTF-8 边界），保证返回区间一定合法，避免 `StyledText::with_highlights`
+/// 的调试断言失败。
+fn find_match_ranges(
+    text: &str,
+    needle: &str,
+    cap: usize,
+) -> Vec<std::ops::Range<usize>> {
+    if needle.is_empty() || cap == 0 {
+        return Vec::new();
+    }
+    let lower_text = text.to_lowercase();
+    let lower_needle = needle.to_lowercase();
+    let (haystack, needle) = if lower_text.len() == text.len() && lower_needle.len() == needle.len()
+    {
+        (lower_text.as_str(), lower_needle.as_str())
+    } else {
+        (text, needle)
+    };
+    haystack
+        .match_indices(needle)
+        .take(cap)
+        .map(|(start, m)| start..start + m.len())
+        .filter(|range| text.is_char_boundary(range.start) && text.is_char_boundary(range.end))
+        .collect()
+}
 
 /// 新消息「入场动画」时长（上滑 + 淡入）。
 pub const ROW_ANIM_DURATION: Duration = Duration::from_millis(200);
@@ -102,6 +136,238 @@ impl MqttSubscriptionState {
             error: None,
         }
     }
+}
+
+/// 主题树首次构建时的默认展开阈值：主题数不超过该值时全部展开，否则只显示根节点。
+pub const TOPIC_TREE_DEFAULT_EXPAND_LIMIT: usize = 20;
+/// 主题树行的最大缩进层级（避免深层 topic 把名称挤出可视区）。
+pub const TOPIC_TREE_INDENT_CAP: usize = 5;
+
+/// MQTT 侧栏的当前视图（同一时刻只显示一个列表，避免两块区域抢高度）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MqttSideView {
+    /// 订阅列表（默认）
+    #[default]
+    Subscriptions,
+    /// 主题树
+    Topics,
+}
+
+/// 主题过滤条件。
+///
+/// 用枚举而非 `Option<String> + bool`，避免出现「精确/前缀」的非法组合。
+/// 叶子节点用 `Exact`，内部节点用 `Prefix`（等价于 `path/#`）。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum TopicFilter {
+    /// 不过滤
+    #[default]
+    None,
+    /// 精确匹配某个 topic
+    Exact(String),
+    /// 按 `/` 段边界前缀匹配
+    Prefix(String),
+}
+
+impl TopicFilter {
+    pub fn is_active(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    /// topic 是否命中当前过滤。
+    pub fn matches(&self, topic: &str) -> bool {
+        match self {
+            Self::None => true,
+            Self::Exact(expected) => topic == expected,
+            Self::Prefix(prefix) => topic_matches_prefix(topic, prefix),
+        }
+    }
+
+    /// 显示用路径：精确原样，前缀追加 `/#`。
+    pub fn display_path(&self) -> Option<String> {
+        match self {
+            Self::None => None,
+            Self::Exact(topic) => Some(topic.clone()),
+            Self::Prefix(prefix) => Some(format!("{}/#", prefix)),
+        }
+    }
+
+    /// 选中路径（树的 `full_path`），用于自动展开祖先。
+    pub fn selected_path(&self) -> Option<&str> {
+        match self {
+            Self::None => None,
+            Self::Exact(path) | Self::Prefix(path) => Some(path),
+        }
+    }
+
+    /// 当前统计集合下是否仍有匹配（用于消息淘汰后自动取消过滤）。
+    pub fn has_match(&self, stats: &[(String, usize)]) -> bool {
+        match self {
+            Self::None => true,
+            _ => stats.iter().any(|(topic, _)| self.matches(topic)),
+        }
+    }
+}
+
+/// 前缀匹配必须按 `/` 段边界：`a` 命中 `a` 与 `a/b`，但不命中 `ab`。
+fn topic_matches_prefix(topic: &str, prefix: &str) -> bool {
+    topic == prefix
+        || topic
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// 主题树节点（构建期结构；render 只读 `TopicTreeRow`）。
+#[derive(Debug, Clone, Default)]
+pub struct TopicTreeNode {
+    /// 当前层级段名
+    pub segment: String,
+    /// 到该节点的完整路径
+    pub full_path: String,
+    /// 该路径本身作为 topic 的消息数（路径可同时是 topic 与父节点）
+    #[allow(dead_code)]
+    pub own_count: usize,
+    /// `own_count` + 所有子孙合计
+    pub total_count: usize,
+    pub children: Vec<TopicTreeNode>,
+}
+
+/// flatten 后的一行（render 直接按下标读取）。
+#[derive(Debug, Clone)]
+pub struct TopicTreeRow {
+    pub full_path: String,
+    pub segment: String,
+    pub depth: usize,
+    pub total_count: usize,
+    pub has_children: bool,
+    pub expanded: bool,
+}
+
+/// 树构建用的临时节点（`BTreeMap` 保证同级段名有序，之后按条数重排）。
+#[derive(Default)]
+struct TopicTreeBuilder {
+    segment: String,
+    full_path: String,
+    children: BTreeMap<String, TopicTreeBuilder>,
+}
+
+/// 由「topic + 条数」统计构建树。
+pub fn build_topic_tree(stats: &[(String, usize)]) -> Vec<TopicTreeNode> {
+    let direct: HashMap<&str, usize> = stats
+        .iter()
+        .map(|(topic, count)| (topic.as_str(), *count))
+        .collect();
+
+    let mut root: BTreeMap<String, TopicTreeBuilder> = BTreeMap::new();
+    for (topic, _) in stats {
+        let mut children = &mut root;
+        let mut parent_path = String::new();
+        // 用下标判断「是否第一段」而非 parent_path 是否为空：topic 可能以 `/` 开头
+        // （如 `/dev/2/status`），此时首段为空串、parent_path 也为空串，
+        // 若按空串判断会把第二段误当成根，拼出错误的 full_path（计数与过滤全部失配）。
+        for (i, segment) in topic.split('/').enumerate() {
+            let full_path = if i == 0 {
+                segment.to_string()
+            } else {
+                format!("{}/{}", parent_path, segment)
+            };
+            let builder = children
+                .entry(segment.to_string())
+                .or_insert_with(|| TopicTreeBuilder {
+                    segment: segment.to_string(),
+                    full_path,
+                    children: BTreeMap::new(),
+                });
+            parent_path = builder.full_path.clone();
+            children = &mut builder.children;
+        }
+    }
+
+    fn finalize(builder: TopicTreeBuilder, direct: &HashMap<&str, usize>) -> TopicTreeNode {
+        let own_count = direct.get(builder.full_path.as_str()).copied().unwrap_or(0);
+        let mut children: Vec<TopicTreeNode> = builder
+            .children
+            .into_values()
+            .map(|child| finalize(child, direct))
+            .collect();
+        let mut total_count = own_count;
+        for child in &children {
+            total_count += child.total_count;
+        }
+        // 同级：条数降序，条数相同按段名升序
+        children.sort_by(|a, b| {
+            b.total_count
+                .cmp(&a.total_count)
+                .then_with(|| a.segment.cmp(&b.segment))
+        });
+        TopicTreeNode {
+            segment: builder.segment,
+            full_path: builder.full_path,
+            own_count,
+            total_count,
+            children,
+        }
+    }
+
+    let mut roots: Vec<TopicTreeNode> = root
+        .into_values()
+        .map(|builder| finalize(builder, &direct))
+        .collect();
+    roots.sort_by(|a, b| {
+        b.total_count
+            .cmp(&a.total_count)
+            .then_with(|| a.segment.cmp(&b.segment))
+    });
+    roots
+}
+
+/// 收集树中全部节点的完整路径。
+fn collect_topic_paths(nodes: &[TopicTreeNode], out: &mut HashSet<String>) {
+    for node in nodes {
+        out.insert(node.full_path.clone());
+        collect_topic_paths(&node.children, out);
+    }
+}
+
+/// 某路径的全部祖先路径（不含自身），由近到远。
+fn topic_path_ancestors(path: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = path;
+    while let Some((parent, _)) = current.rsplit_once('/') {
+        out.push(parent.to_string());
+        current = parent;
+    }
+    out
+}
+
+/// 按展开状态把树摊平成可见行。
+pub fn flatten_topic_tree(tree: &[TopicTreeNode], expanded: &HashSet<String>) -> Vec<TopicTreeRow> {
+    fn push_row(
+        node: &TopicTreeNode,
+        depth: usize,
+        expanded: &HashSet<String>,
+        rows: &mut Vec<TopicTreeRow>,
+    ) {
+        let is_expanded = !node.children.is_empty() && expanded.contains(&node.full_path);
+        rows.push(TopicTreeRow {
+            full_path: node.full_path.clone(),
+            segment: node.segment.clone(),
+            depth,
+            total_count: node.total_count,
+            has_children: !node.children.is_empty(),
+            expanded: is_expanded,
+        });
+        if is_expanded {
+            for child in &node.children {
+                push_row(child, depth + 1, expanded, rows);
+            }
+        }
+    }
+
+    let mut rows = Vec::new();
+    for node in tree {
+        push_row(node, 0, expanded, &mut rows);
+    }
+    rows
 }
 
 /// 统一行高提示的估算值（单行消息约 88–96px：页眉行 + 气泡 + 按钮行 + gap_1×2）。
@@ -235,6 +501,28 @@ pub struct ConnectionTabState {
     pub search_dirty: bool,
     /// 上次重算时刻，用于事件泵限流
     pub search_last_recalc: Instant,
+
+    // ===== MQTT 主题过滤（仅 MQTT 客户端；会话内状态，无持久化） =====
+    /// MQTT 侧栏当前视图（订阅 / 主题）
+    pub mqtt_side_view: MqttSideView,
+    /// 当前生效的主题过滤（`None` = 不过滤）
+    pub topic_filter: TopicFilter,
+    /// 聚合结果：topic + 消息条数，已按条数降序、topic 升序排序
+    pub topic_stats: Vec<(String, usize)>,
+    /// 统计需要重算（消息新增/淘汰/清空时置位，由事件泵节流消费）
+    pub topics_dirty: bool,
+    /// 上次统计重算时刻，用于事件泵限流
+    pub topics_last_recalc: Instant,
+    /// GPUI List 状态 - 主题树（虚拟化渲染）
+    pub topic_list_state: ListState,
+    /// 主题树根节点集合
+    pub topic_tree: Vec<TopicTreeNode>,
+    /// flatten 后的可见行；render 只读它，不扫描消息
+    pub topic_tree_rows: Vec<TopicTreeRow>,
+    /// 展开状态（按完整路径）
+    pub expanded_topic_paths: HashSet<String>,
+    /// 首次构建是否已应用默认展开策略；清空消息时复位
+    pub topic_tree_init_done: bool,
 
     /// 消息气泡的焦点句柄（每个 tab 一个）。
     ///
@@ -419,6 +707,18 @@ impl ConnectionTabState {
             search_dirty: false,
             search_last_recalc: Instant::now(),
 
+            // MQTT 主题过滤（默认无过滤、无统计）
+            mqtt_side_view: MqttSideView::Subscriptions,
+            topic_filter: TopicFilter::None,
+            topic_stats: Vec::new(),
+            topics_dirty: false,
+            topics_last_recalc: Instant::now(),
+            topic_list_state: ListState::new(0, ListAlignment::Top, px(32.)),
+            topic_tree: Vec::new(),
+            topic_tree_rows: Vec::new(),
+            expanded_topic_paths: HashSet::new(),
+            topic_tree_init_done: false,
+
             // 初始化服务端和客户端的控制句柄
             server_handle: None,
             client_handle: None,
@@ -491,6 +791,90 @@ impl ConnectionTabState {
         }
     }
 
+    /// 客户端过滤是否放行该消息（不含 topic 过滤）。
+    ///
+    /// 主题统计必须基于这一层：否则选中某 topic 后统计会坍缩成单项，
+    /// 用户无法再切换到其它 topic。
+    pub fn client_visible(&self, message: &Message) -> bool {
+        if let (Some(selected), Some(source)) = (&self.selected_client, &message.source) {
+            if source != &selected.to_string() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// 消息是否可见（render / 搜索重算统一口径）。
+    pub fn message_visible(&self, message: &Message) -> bool {
+        if !self.client_visible(message) {
+            return false;
+        }
+        self.topic_filter
+            .matches(message.topic.as_deref().unwrap_or(""))
+    }
+
+    /// 设置主题过滤，并立即刷新树的可见行（展开选中路径祖先，保证选中项可见）。
+    pub fn set_topic_filter(&mut self, filter: TopicFilter) {
+        self.topic_filter = filter;
+        // 可见集合变了，命中集合需要重算
+        self.search_dirty = true;
+        self.refresh_topic_tree_rows();
+    }
+
+    /// 切换某个树节点的展开状态。
+    pub fn toggle_topic_node_expanded(&mut self, full_path: &str) {
+        if !self.expanded_topic_paths.remove(full_path) {
+            self.expanded_topic_paths.insert(full_path.to_string());
+        }
+        self.refresh_topic_tree_rows();
+    }
+
+    /// 由当前 `topic_stats` 重建树并刷新可见行。
+    ///
+    /// 只在事件泵 250ms 节流内调用；render 不触发任何构建。
+    pub fn rebuild_topic_tree(&mut self) {
+        self.topic_tree = build_topic_tree(&self.topic_stats);
+
+        let mut existing_paths = HashSet::new();
+        collect_topic_paths(&self.topic_tree, &mut existing_paths);
+
+        // 首次构建（且已有主题）时应用默认展开策略
+        if !self.topic_tree_init_done && !self.topic_stats.is_empty() {
+            self.topic_tree_init_done = true;
+            if self.topic_stats.len() <= TOPIC_TREE_DEFAULT_EXPAND_LIMIT {
+                self.expanded_topic_paths = existing_paths.clone();
+            } else {
+                self.expanded_topic_paths.clear();
+            }
+        } else {
+            // 修剪已不存在的路径，避免展开状态长期累积
+            self.expanded_topic_paths
+                .retain(|path| existing_paths.contains(path));
+        }
+
+        self.refresh_topic_tree_rows();
+    }
+
+    /// 重新摊平树并同步虚拟列表行数（不重建树本身）。
+    fn refresh_topic_tree_rows(&mut self) {
+        // 选中路径的祖先自动展开，保证选中项在树中可见
+        if let Some(selected) = self.topic_filter.selected_path() {
+            for ancestor in topic_path_ancestors(selected) {
+                self.expanded_topic_paths.insert(ancestor);
+            }
+        }
+        let rows = flatten_topic_tree(&self.topic_tree, &self.expanded_topic_paths);
+        let old_len = self.topic_tree_rows.len();
+        let new_len = rows.len();
+        if new_len > old_len {
+            self.topic_list_state
+                .splice(old_len..old_len, new_len - old_len);
+        } else if old_len > new_len {
+            self.topic_list_state.splice(new_len..old_len, 0);
+        }
+        self.topic_tree_rows = rows;
+    }
+
     pub fn add_message(&mut self, message: Message) {
         // 日志记录：异步写入文件
         if self.log_enabled {
@@ -509,6 +893,8 @@ impl ConnectionTabState {
         let dropped = self.message_list.add_message(message);
         // 命中集合可能变化：只置脏标记，重算交给事件泵限流消费（此处不做 O(N) 扫描）
         self.search_dirty = true;
+        // 主题统计同样只置脏，重算交给事件泵限流消费
+        self.topics_dirty = true;
 
         // 先补尾部、再删头部：每一步都作用在当时的索引空间上
         self.message_list_state.splice(old_count..old_count, 1);
@@ -559,6 +945,8 @@ impl ConnectionTabState {
         let dropped = self.message_list.add_messages_batch(messages);
         // 命中集合可能变化：只置脏标记，重算交给事件泵限流消费（此处不做 O(N) 扫描）
         self.search_dirty = true;
+        // 主题统计同样只置脏，重算交给事件泵限流消费
+        self.topics_dirty = true;
 
         // 先补尾部、再删头部：尾部 splice 必须无条件执行，
         // 否则 GPUI 的 item_count 会与 Vec 长度错位
@@ -1687,9 +2075,9 @@ impl<'a> ConnectionTab<'a> {
             )
             // 回复规则入口: 客户端与服务端都显示(F-04)。
             .child(self.render_reply_rules_section(window, cx))
-            // MQTT 订阅块（仅 MQTT 客户端；规划 §8.3.1）: 置于「自动回复」之下
+            // MQTT 订阅/主题块（仅 MQTT 客户端；规划 §8.3.1）: 置于「自动回复」之下
             .when(is_client && is_mqtt, |this| {
-                this.child(self.render_mqtt_subscriptions(&theme, cx))
+                this.child(self.render_mqtt_side_panel(&theme, cx))
             })
             // 服务端专属: 客户端连接列表
             .when(!is_client, |this| {
@@ -1727,56 +2115,156 @@ impl<'a> ConnectionTab<'a> {
             })
     }
 
-    /// 渲染 MQTT 订阅块（仅 MQTT 客户端）。
+    /// 渲染 MQTT 侧栏（仅 MQTT 客户端；订阅 / 主题单区分段）。
     ///
-    /// 布局：
-    /// - 标题行 `订阅 (N)` + 右侧「＋」新增入口（照搬同侧栏「＋新建连接」的位置与样式）；
-    /// - **只读一览**列表（占满面板剩余高度（同服务端「客户端连接」），超出时内部滚动）；
-    /// - 每行悬停**向上**弹出提示显示完整 topic（行内长 topic 会截断），
-    ///   **双击**复制 topic 名称（复制成功弹一条通知）；
-    /// - 每行**右键**出上下文菜单：`编辑订阅…`（开弹窗编辑模式）/ `取消订阅`（直接执行）。
-    ///
-    /// 单条的新增与编辑都收进「订阅」弹窗（`mqtt_subscriptions.rs`）；本块不再有
-    /// 「管理订阅…」按钮，也没有底部新增区。已订阅列表乐观维护（D-10）: 操作即入列/移除,
-    /// 投递失败由 app 侧回滚并提示（见 `NetAssistantApp::mqtt_subscribe_topic`）。
-    fn render_mqtt_subscriptions(&self, theme: &Theme, cx: &mut Context<NetAssistantApp>) -> Div {
-        let tab_id = self.tab_id.clone();
-        let subs = self.tab_state.mqtt_subscriptions.clone();
-        let error = self.tab_state.mqtt_sub_error.clone();
-
-        // ===== 标题行: 订阅 (N) + 右侧「＋」新增入口(照同侧栏「＋新建连接」) =====
-        let add_tab = tab_id.clone();
-        let mut block = div()
+    /// 同一时刻只显示一个列表：消除原先「订阅块 + 主题块」两块 `flex_1` 抢高度的问题。
+    /// 订阅行交互（开关 / 双击复制 / 右键菜单 / ＋新增 / 错误红字）保持原逻辑不变。
+    fn render_mqtt_side_panel(&self, theme: &Theme, cx: &mut Context<NetAssistantApp>) -> Div {
+        let view = self.tab_state.mqtt_side_view;
+        div()
             .flex()
             .flex_col()
             .gap_1()
             .mt_3()
-            // 同服务端「客户端连接」列表: 块本身 flex_1, 让列表盒占满面板剩余高度(高度固定、超出滚动)
             .flex_1()
             .min_h_0()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_2()
-                    .child(
+            .child(self.render_mqtt_side_header(view, theme, cx))
+            .child(match view {
+                MqttSideView::Subscriptions => self.render_mqtt_subscription_body(theme, cx),
+                MqttSideView::Topics => self.render_topic_tree_body(theme, cx),
+            })
+    }
+
+    /// 侧栏分段头：[订阅 (N)] [主题 (M)]；右侧按视图挂动作（订阅=＋ / 主题=全部）。
+    fn render_mqtt_side_header(
+        &self,
+        view: MqttSideView,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let tab_id = self.tab_id.clone();
+        let subs_count = self.tab_state.mqtt_subscriptions.len();
+        let topic_count = self.tab_state.topic_stats.len();
+
+        // 分段项：选中项底部 brand 边框 + 前景色加重
+        let make_segment = |target: MqttSideView,
+                            label: String,
+                            count: usize,
+                            theme: &Theme,
+                            cx: &mut Context<NetAssistantApp>|
+         -> Stateful<Div> {
+            let seg_tab = tab_id.clone();
+            let is_active = view == target;
+            div()
+                .id(ElementId::Name(
+                    format!("mqtt-side-seg-{:?}", target).into(),
+                ))
+                .flex()
+                .items_center()
+                .gap_1()
+                .pb_1()
+                .border_b_2()
+                .border_color(if is_active { theme.primary } else { theme.secondary })
+                .cursor_pointer()
+                .child(
+                    div()
+                        .text_xs()
+                        .when(is_active, |el| el.font_semibold())
+                        .text_color(if is_active {
+                            theme.foreground
+                        } else {
+                            theme.muted_foreground
+                        })
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(format!("({})", count)),
+                )
+                .on_mouse_down(MouseButton::Left, cx.listener(
+                    move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                        if let Some(tab) = app.connection_tabs.get_mut(&seg_tab) {
+                            tab.mqtt_side_view = target;
+                        }
+                        cx.notify();
+                    },
+                ))
+        };
+
+        let mut header = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_3()
+            .child(make_segment(
+                MqttSideView::Subscriptions,
+                t!("connection_tab.mqtt_subscriptions_title").to_string(),
+                subs_count,
+                theme,
+                cx,
+            ))
+            .child(make_segment(
+                MqttSideView::Topics,
+                t!("connection_tab.topic_filter_title").to_string(),
+                topic_count,
+                theme,
+                cx,
+            ));
+
+        match view {
+            MqttSideView::Subscriptions => {
+                // 右侧「＋」新增入口（照同侧栏「＋新建连接」）
+                let add_tab = tab_id.clone();
+                header = header.child(
+                    div()
+                        .id("mqtt-sub-add-btn")
+                        .ml_auto()
+                        .flex_shrink_0()
+                        .px_1p5()
+                        .py_0p5()
+                        .rounded_md()
+                        .text_xs()
+                        .cursor_pointer()
+                        .text_color(theme.primary)
+                        .hover(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
+                        .tooltip(|window, cx| {
+                            Tooltip::new(
+                                t!("connection_tab.mqtt_new_subscription").to_string(),
+                            )
+                            .build(window, cx)
+                        })
+                        .child("＋")
+                        .on_mouse_down(MouseButton::Left, cx.listener(
+                            move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                // 弹窗状态必须在这里建好: 表单的输入实体只能在此上下文创建。
+                                // 此处直接改字段而非 app.update, 避免在已持有租约时重入 update。
+                                app.mqtt_subscriptions_dialog =
+                                    Some(MqttSubscriptionDialogState::new_add(
+                                        add_tab.clone(),
+                                        window,
+                                        cx,
+                                    ));
+                                if let Some(tab) = app.connection_tabs.get_mut(&add_tab) {
+                                    tab.mqtt_sub_error = None;
+                                }
+                                open_mqtt_subscriptions_dialog(
+                                    cx.entity().downgrade(),
+                                    window,
+                                    cx,
+                                );
+                                cx.notify();
+                            },
+                        )),
+                );
+            }
+            MqttSideView::Topics => {
+                if self.tab_state.topic_filter.is_active() {
+                    let clear_tab = tab_id.clone();
+                    header = header.child(
                         div()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(theme.foreground)
-                            .child(t!("connection_tab.mqtt_subscriptions_title").to_string()),
-                    )
-                    // 计数用字面量 (N): 语言中立, 与同侧栏「客户端连接」列表写法一致
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(format!("({})", subs.len())),
-                    )
-                    .child(
-                        div()
-                            .id("mqtt-sub-add-btn")
+                            .id("topic-filter-clear")
                             .ml_auto()
                             .flex_shrink_0()
                             .px_1p5()
@@ -1788,34 +2276,38 @@ impl<'a> ConnectionTab<'a> {
                             .hover(|this| this.text_color(gpui_kit::white()).bg(theme.primary))
                             .tooltip(|window, cx| {
                                 Tooltip::new(
-                                    t!("connection_tab.mqtt_new_subscription").to_string(),
+                                    t!("connection_tab.topic_filter_clear").to_string(),
                                 )
                                 .build(window, cx)
                             })
-                            .child("＋")
+                            .child(t!("connection_tab.topic_filter_all").to_string())
                             .on_mouse_down(MouseButton::Left, cx.listener(
-                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, window: &mut Window, cx: &mut Context<NetAssistantApp>| {
-                                    // 弹窗状态必须在这里建好: 表单的输入实体只能在此上下文创建。
-                                    // 此处直接改字段而非 app.update, 避免在已持有租约时重入 update。
-                                    app.mqtt_subscriptions_dialog =
-                                        Some(MqttSubscriptionDialogState::new_add(
-                                            add_tab.clone(),
-                                            window,
-                                            cx,
-                                        ));
-                                    if let Some(tab) = app.connection_tabs.get_mut(&add_tab) {
-                                        tab.mqtt_sub_error = None;
+                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                    if let Some(tab) = app.connection_tabs.get_mut(&clear_tab) {
+                                        tab.set_topic_filter(TopicFilter::None);
                                     }
-                                    open_mqtt_subscriptions_dialog(
-                                        cx.entity().downgrade(),
-                                        window,
-                                        cx,
-                                    );
                                     cx.notify();
                                 },
                             )),
-                    ),
-            );
+                    );
+                }
+            }
+        }
+
+        header
+    }
+
+    /// 渲染订阅列表体（标题行与右侧动作由分段头承担）。
+    fn render_mqtt_subscription_body(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<NetAssistantApp>,
+    ) -> Div {
+        let tab_id = self.tab_id.clone();
+        let subs = self.tab_state.mqtt_subscriptions.clone();
+        let error = self.tab_state.mqtt_sub_error.clone();
+
+        let mut block = div().flex().flex_col().gap_1().flex_1().min_h_0();
 
         // ===== 只读一览列表: 带边框盒 + 固定高度(同服务端「客户端连接」列表) + 超出时内部滚动 =====
         // 外层块与盒子都挂 flex_1(占满面板剩余高度), 内层 div 挂 overflow_y_scrollbar():
@@ -2087,6 +2579,216 @@ impl<'a> ConnectionTab<'a> {
         }
 
         block
+    }
+
+    /// 渲染主题树列表体（仅 MQTT 客户端）。
+    ///
+    /// 数据来自事件泵 250ms 节流重建的 `topic_tree_rows`；render 只按下标读取，
+    /// 不做任何树构建或消息扫描。行内箭头只切换展开，主题名只切换过滤。
+    fn render_topic_tree_body(&self, theme: &Theme, cx: &mut Context<NetAssistantApp>) -> Div {
+        let tab_id = self.tab_id.clone();
+        let rows = self.tab_state.topic_tree_rows.clone();
+        let filter = self.tab_state.topic_filter.clone();
+
+        // 空态：单行提示（不再画大盒子）
+        if rows.is_empty() {
+            return div()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .items_start()
+                .p_2()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(t!("connection_tab.topic_filter_empty").to_string()),
+                );
+        }
+
+        let entity = cx.entity().clone();
+        let scrollbar_state = self.tab_state.topic_list_state.clone();
+        let row_theme = theme.clone();
+
+        div()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .overflow_hidden()
+            .bg(theme.background)
+            .rounded_md()
+            .border_1()
+            .border_color(theme.border)
+            .child(
+                div()
+                    .relative()
+                    .size_full()
+                    .child(
+                        div().pr_1().pl_1().size_full().child(
+                            list(
+                                self.tab_state.topic_list_state.clone(),
+                                move |ix, _window, _cx| {
+                                    let Some(row) = rows.get(ix) else {
+                                        return div().into_any();
+                                    };
+                                    let full_path = row.full_path.clone();
+                                    // 空段（topic 以 `/` 开头产生的层级）显示为 `/`，避免行内出现空白标签
+                                    let segment = if row.segment.is_empty() {
+                                        "/".to_string()
+                                    } else {
+                                        row.segment.clone()
+                                    };
+                                    let depth = row.depth;
+                                    let total_count = row.total_count;
+                                    let has_children = row.has_children;
+                                    let expanded = row.expanded;
+                                    let is_selected =
+                                        filter.selected_path() == Some(full_path.as_str());
+                                    let theme = row_theme.clone();
+
+                                    // 箭头：只切换展开（独立点击区，不与名称点击叠加）
+                                    let arrow = if has_children {
+                                        let entity = entity.clone();
+                                        let tab_id_toggle = tab_id.clone();
+                                        let path_toggle = full_path.clone();
+                                        div()
+                                            .id(ElementId::Name(
+                                                format!("topic-tree-toggle-{}", full_path)
+                                                    .into(),
+                                            ))
+                                            .w(px(14.0))
+                                            .flex_shrink_0()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .cursor_pointer()
+                                            .child(
+                                                Icon::new(if expanded {
+                                                    IconName::ChevronDown
+                                                } else {
+                                                    IconName::ChevronRight
+                                                })
+                                                .size(px(12.0))
+                                                .text_color(theme.muted_foreground),
+                                            )
+                                            .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+                                                entity.update(cx, |app, cx| {
+                                                    if let Some(tab) = app.connection_tabs.get_mut(&tab_id_toggle) {
+                                                        tab.toggle_topic_node_expanded(&path_toggle);
+                                                    }
+                                                    cx.notify();
+                                                });
+                                            })
+                                    } else {
+                                        // 叶子留空占位，保持同级名称左边界对齐
+                                        div()
+                                            .id(ElementId::Name(
+                                                format!("topic-tree-leaf-{}", full_path)
+                                                    .into(),
+                                            ))
+                                            .w(px(14.0))
+                                            .flex_shrink_0()
+                                    };
+
+                                    // 名称 + 条数：点击切换过滤（重复点击取消）
+                                    let entity_click = entity.clone();
+                                    let tab_id_click = tab_id.clone();
+                                    let path_click = full_path.clone();
+                                    // tooltip 显示完整路径；空段根路径为空串，同样显示 `/`
+                                    let tip_path = if full_path.is_empty() {
+                                        "/".to_string()
+                                    } else {
+                                        full_path.clone()
+                                    };
+                                    let name = div()
+                                        .id(ElementId::Name(
+                                            format!("topic-tree-name-{}", full_path).into(),
+                                        ))
+                                        .flex_1()
+                                        .min_w_0()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .overflow_hidden()
+                                                .text_ellipsis()
+                                                .whitespace_nowrap()
+                                                .text_xs()
+                                                .text_color(theme.foreground)
+                                                .child(segment),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_shrink_0()
+                                                .text_xs()
+                                                .text_color(theme.muted_foreground)
+                                                .child(format!("{}", total_count)),
+                                        )
+                                        .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+                                            entity_click.update(cx, |app, cx| {
+                                                if let Some(tab) = app.connection_tabs.get_mut(&tab_id_click) {
+                                                    let target = if has_children {
+                                                        TopicFilter::Prefix(path_click.clone())
+                                                    } else {
+                                                        TopicFilter::Exact(path_click.clone())
+                                                    };
+                                                    let next = if tab.topic_filter == target {
+                                                        TopicFilter::None
+                                                    } else {
+                                                        target
+                                                    };
+                                                    tab.set_topic_filter(next);
+                                                }
+                                                cx.notify();
+                                            });
+                                        })
+                                        .tooltip(move |window, cx| {
+                                            Tooltip::new(tip_path.clone()).build(window, cx)
+                                        });
+
+                                    let indent = depth.min(TOPIC_TREE_INDENT_CAP) as f32 * 12.0;
+
+                                    div()
+                                        .id(ElementId::named_usize("topic-tree-item", ix))
+                                        .w_full()
+                                        .py_0p5()
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap_1()
+                                                .px_1p5()
+                                                .py_1()
+                                                .rounded_md()
+                                                .when(is_selected, |el| el.bg(theme.success))
+                                                .hover(|style| style.bg(theme.border))
+                                                .child(div().w(px(indent)).flex_shrink_0())
+                                                .child(arrow)
+                                                .child(name),
+                                        )
+                                        .into_any()
+                                },
+                            )
+                            .size_full(),
+                        ),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .right_0()
+                            .bottom_0()
+                            .w(px(12.0))
+                            .child(
+                                Scrollbar::vertical(&scrollbar_state)
+                                    .mode(ScrollbarMode::Always),
+                            ),
+                    ),
+            )
     }
 
     /// 渲染 MQTT 发布行: topic 输入 + QoS 芯片 + retain 勾选 + 块内红字（仅 MQTT 客户端; 规划 §8.3.2）。
@@ -2837,6 +3539,15 @@ impl<'a> ConnectionTab<'a> {
                                                     tab_state.search_match_ids.clear();
                                                     tab_state.search_cursor = 0;
                                                     tab_state.search_dirty = false;
+                                                    // 主题来自消息本身：一并清空过滤、统计与树状态
+                                                    tab_state.topic_filter = TopicFilter::None;
+                                                    tab_state.topic_stats.clear();
+                                                    tab_state.topics_dirty = false;
+                                                    tab_state.topic_tree.clear();
+                                                    tab_state.topic_tree_rows.clear();
+                                                    tab_state.expanded_topic_paths.clear();
+                                                    tab_state.topic_tree_init_done = false;
+                                                    tab_state.topic_list_state.reset(0);
                                                 });
                                                 // 网络层计数一并归零(否则下一拍同步会覆盖回原值)
                                                 app.reset_net_counters(&tab_id_clear);
@@ -2856,7 +3567,6 @@ impl<'a> ConnectionTab<'a> {
                 )
                 .into_any()
             } else {
-                let selected_client = self.tab_state.selected_client.clone();
                 let scrollbar_state =
                     MessageListScrollbarHandle(self.tab_state.message_list_state.clone());
                 let tab_id_for_list = tab_id.clone();
@@ -2869,6 +3579,8 @@ impl<'a> ConnectionTab<'a> {
                     .relative()
                     .w_full()
                     .flex_1()
+                    .flex()
+                    .flex_col()
                     // 搜索浮层：非模态，悬浮在消息区右上角（不加全屏遮罩，可边看消息边搜索）
                     .when(self.tab_state.search_open, |this| {
                         let total = self.tab_state.search_match_ids.len();
@@ -3012,10 +3724,88 @@ impl<'a> ConnectionTab<'a> {
                                 ),
                         )
                     })
+                    // 主题过滤提示条：让用户明确知道当前只显示某个 topic（精确 / 前缀）
+                    .when(self.tab_state.topic_filter.is_active(), |this| {
+                        let filter_label = match &self.tab_state.topic_filter {
+                            TopicFilter::Exact(_) => t!(
+                                "connection_tab.topic_filter_active",
+                                topic = self.tab_state.topic_filter.display_path().unwrap_or_default()
+                            )
+                            .to_string(),
+                            TopicFilter::Prefix(_) => t!(
+                                "connection_tab.topic_prefix_active",
+                                prefix = self.tab_state.topic_filter.display_path().unwrap_or_default()
+                            )
+                            .to_string(),
+                            TopicFilter::None => String::new(),
+                        };
+                        let clear_tab = tab_id.clone();
+                        this.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .mb_2()
+                                .px_2()
+                                .py_1()
+                                .rounded_md()
+                                .bg(theme.secondary)
+                                .border_1()
+                                .border_color(theme.border)
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .child(filter_label),
+                                )
+                                .child(
+                                    div()
+                                        .id("topic-filter-hint-clear")
+                                        .w_5()
+                                        .h_5()
+                                        .flex_shrink_0()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(2.0))
+                                        .cursor_pointer()
+                                        .hover(|style| style.bg(theme.secondary_hover))
+                                        .tooltip(|window, cx| {
+                                            Tooltip::new(
+                                                t!("connection_tab.topic_filter_clear")
+                                                    .to_string(),
+                                            )
+                                            .build(window, cx)
+                                        })
+                                        .child(
+                                            Icon::new(IconName::Close)
+                                                .size(px(12.0))
+                                                .text_color(theme.muted_foreground),
+                                        )
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(
+                                                move |app: &mut NetAssistantApp, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<NetAssistantApp>| {
+                                                    if let Some(tab) = app.connection_tabs.get_mut(&clear_tab) {
+                                                        tab.set_topic_filter(TopicFilter::None);
+                                                    }
+                                                    cx.notify();
+                                                },
+                                            ),
+                                        ),
+                                ),
+                        )
+                    })
                     .child(
                         div()
                             .pr_8()
-                            .size_full()
+                            .flex_1()
+                            .min_h_0()
                             // SelectableText 把选区高亮画在元素自身 paint 里，而拖拽时
                             // gpui-base 只通知选择层自身（未订阅 refresh_window_on_change），
                             // 虚拟列表项不会重绘，表现为松手才整段变色。拖拽期间主动请求
@@ -3079,13 +3869,23 @@ impl<'a> ConnectionTab<'a> {
                                                 };
                                             let is_favorited =
                                                 favorited_contents.contains(favorite_key.as_ref());
-                                            let should_show = if message.source.is_none() {
-                                                true
-                                            } else {
-                                                selected_client.as_ref().map_or(true, |selected| {
-                                                    message.source.as_ref() == Some(&selected.to_string())
+                                            // 搜索命中高亮：仅在浮层打开且查询词非空时，对「显示文本」
+                                            // 重新扫描（JSON 美化会改变偏移，不能复用原始内容的匹配位置）
+                                            let highlight_ranges: Vec<std::ops::Range<usize>> = tab
+                                                .filter(|t| {
+                                                    t.search_open && !t.search_query.is_empty()
                                                 })
-                                            };
+                                                .map(|t| {
+                                                    find_match_ranges(
+                                                        display_text.as_ref(),
+                                                        t.search_query.as_str(),
+                                                        TOPIC_HIGHLIGHT_CAP,
+                                                    )
+                                                })
+                                                .unwrap_or_default();
+                                            // 可见性口径统一：客户端过滤 + topic 过滤
+                                            let should_show =
+                                                tab.map_or(true, |t| t.message_visible(message));
 
                                             if !should_show {
                                                 return div().into_any();
@@ -3299,32 +4099,69 @@ impl<'a> ConnectionTab<'a> {
                                                                         .when(!is_sent, |div| {
                                                                             div.text_color(theme.foreground)
                                                                         })
-                                                                        .child(
-                                                                            // 可选中复制：拖选/双击选词/三击选行，
-                                                                            // Ctrl/Cmd+C 由 gpui-base Root 的 Copy 动作处理。
-                                                                            // 元素 id 用 message.id：虚拟列表淘汰后下标会漂移
-                                                                            SelectableText::new(
-                                                                                ElementId::Name(
-                                                                                    format!(
-                                                                                        "msg-text-{}",
-                                                                                        message.id
-                                                                                    )
-                                                                                    .into(),
-                                                                                ),
-                                                                                display_text.clone(),
-                                                                            )
+                                                                        .child({
                                                                             // 选区配色按气泡底色分别取：
                                                                             // 发送气泡底色是 primary（实心蓝），用前景色做白蒙层；
                                                                             // 接收气泡底色是 secondary，用 primary 做蓝蒙层。
                                                                             // 统一用 theme.selection 会在蓝底上几乎不可见。
-                                                                            .selection_color(if is_sent {
+                                                                            let selection_color = if is_sent {
                                                                                 theme
                                                                                     .primary_foreground
                                                                                     .opacity(0.30)
                                                                             } else {
                                                                                 theme.primary.opacity(0.22)
-                                                                            }),
-                                                                        ),
+                                                                            };
+                                                                            // 可选中复制：拖选/双击选词/三击选行，
+                                                                            // Ctrl/Cmd+C 由 gpui-base Root 的 Copy 动作处理。
+                                                                            // 元素 id 用 message.id：虚拟列表淘汰后下标会漂移
+                                                                            let text_id = ElementId::Name(
+                                                                                format!(
+                                                                                    "msg-text-{}",
+                                                                                    message.id
+                                                                                )
+                                                                                .into(),
+                                                                            );
+                                                                            if highlight_ranges.is_empty() {
+                                                                                SelectableText::new(
+                                                                                    text_id,
+                                                                                    display_text.clone(),
+                                                                                )
+                                                                                .selection_color(selection_color)
+                                                                                .into_any()
+                                                                            } else {
+                                                                                // 高亮配色按气泡底色取：接收用黄色半透明，
+                                                                                // 发送是实心蓝 + 白字，黄底对比度差，改用浅白蒙层。
+                                                                                let highlight_style =
+                                                                                    HighlightStyle {
+                                                                                        background_color: Some(
+                                                                                            if is_sent {
+                                                                                                theme
+                                                                                                    .primary_foreground
+                                                                                                    .opacity(0.28)
+                                                                                            } else {
+                                                                                                theme
+                                                                                                    .yellow
+                                                                                                    .opacity(0.55)
+                                                                                            },
+                                                                                        ),
+                                                                                        ..Default::default()
+                                                                                    };
+                                                                                HighlightSelectableText::new(
+                                                                                    text_id,
+                                                                                    display_text.clone(),
+                                                                                )
+                                                                                .highlights(
+                                                                                    highlight_ranges
+                                                                                        .iter()
+                                                                                        .cloned()
+                                                                                        .map(|range| {
+                                                                                            (range, highlight_style)
+                                                                                        }),
+                                                                                )
+                                                                                .selection_color(selection_color)
+                                                                                .into_any()
+                                                                            }
+                                                                        }),
                                                                 ),
                                                         )
                                                         .child(
@@ -4289,5 +5126,131 @@ mod scrollbar_bottom_tests {
         );
 
         handle.end_drag();
+    }
+}
+
+#[cfg(test)]
+mod topic_tree_tests {
+    use std::collections::HashSet;
+
+    use super::{TopicFilter, build_topic_tree, flatten_topic_tree, topic_matches_prefix};
+
+    fn stats(entries: &[(&str, usize)]) -> Vec<(String, usize)> {
+        entries.iter().map(|(topic, c)| (topic.to_string(), *c)).collect()
+    }
+
+    /// 前缀必须按 `/` 段边界匹配：`a` 命中 `a` / `a/b`，不命中 `ab` / `a-b`。
+    #[test]
+    fn prefix_matches_on_segment_boundary() {
+        assert!(topic_matches_prefix("a", "a"));
+        assert!(topic_matches_prefix("a/b", "a"));
+        assert!(topic_matches_prefix("a/b/c", "a/b"));
+        assert!(!topic_matches_prefix("ab", "a"));
+        assert!(!topic_matches_prefix("a-b", "a"));
+        assert!(!topic_matches_prefix("a/b", "a/b/c"));
+    }
+
+    #[test]
+    fn filter_match_and_display() {
+        let stats = stats(&[("a/b", 2), ("ab", 1)]);
+        assert!(TopicFilter::Prefix("a".into()).has_match(&stats));
+        assert!(!TopicFilter::Prefix("ac".into()).has_match(&stats));
+        assert!(TopicFilter::Exact("ab".into()).has_match(&stats));
+        assert_eq!(
+            TopicFilter::Prefix("a".into()).display_path().as_deref(),
+            Some("a/#")
+        );
+        assert_eq!(
+            TopicFilter::Exact("a/b".into()).display_path().as_deref(),
+            Some("a/b")
+        );
+        // 无过滤恒有效（空统计也不应触发「过滤失效清空」）
+        assert!(TopicFilter::None.has_match(&[]));
+    }
+
+    /// 分组、合计、同级排序（条数降序，条数相同按段名升序）。
+    #[test]
+    fn tree_groups_counts_and_sorts() {
+        let tree = build_topic_tree(&stats(&[
+            ("a/b", 2),
+            ("a/b/c", 1),
+            ("a/c", 1),
+            ("ab", 3),
+        ]));
+        assert_eq!(tree.len(), 2);
+        // a 合计 4 > ab 3
+        assert_eq!(tree[0].segment, "a");
+        assert_eq!(tree[0].total_count, 4);
+        assert_eq!(tree[0].own_count, 0);
+        assert_eq!(tree[1].segment, "ab");
+        assert_eq!(tree[1].own_count, 3);
+
+        // a 的子节点：b(3) 先于 c(1)
+        let children = &tree[0].children;
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0].segment, "b");
+        // a/b 既是 topic 又是 a/b/c 的父节点
+        assert_eq!(children[0].own_count, 2);
+        assert_eq!(children[0].total_count, 3);
+        assert_eq!(children[0].children[0].segment, "c");
+        assert_eq!(children[1].segment, "c");
+        assert_eq!(children[1].total_count, 1);
+    }
+
+    #[test]
+    fn flatten_respects_expanded_paths() {
+        let tree = build_topic_tree(&stats(&[("a/b", 1), ("a/c", 1)]));
+        let mut expanded = HashSet::new();
+
+        let collapsed = flatten_topic_tree(&tree, &expanded);
+        assert_eq!(collapsed.len(), 1);
+        assert_eq!(collapsed[0].full_path, "a");
+        assert!(collapsed[0].has_children);
+        assert!(!collapsed[0].expanded);
+
+        expanded.insert("a".to_string());
+        let rows = flatten_topic_tree(&tree, &expanded);
+        assert_eq!(rows.len(), 3);
+        assert!(rows[0].expanded);
+        assert_eq!(rows[1].depth, 1);
+        assert_eq!(rows[2].depth, 1);
+        assert!(!rows[1].has_children);
+    }
+
+    #[test]
+    fn empty_stats_produce_empty_tree() {
+        assert!(build_topic_tree(&[]).is_empty());
+    }
+
+    /// 以 `/` 开头的 topic（如 `/dev/2/status`）首段为空串：必须保留空段根节点，
+    /// 且子孙的 full_path 也要带开头 `/`（否则计数与过滤都失配）。
+    #[test]
+    fn leading_slash_topic_keeps_empty_root_and_absolute_paths() {
+        let tree = build_topic_tree(&stats(&[("/dev/2/status", 3), ("1", 2)]));
+        // 根层：空段根 与 "1"，按合计降序（空段根 3 > "1" 2）
+        assert_eq!(tree.len(), 2);
+        assert_eq!(tree[0].segment, "");
+        assert_eq!(tree[0].full_path, "");
+        assert_eq!(tree[0].total_count, 3);
+        assert_eq!(tree[1].segment, "1");
+        assert_eq!(tree[1].total_count, 2);
+
+        // 空段根下的 full_path 必须是「绝对路径」：/dev → /dev/2 → /dev/2/status
+        let dev = &tree[0].children[0];
+        assert_eq!(dev.segment, "dev");
+        assert_eq!(dev.full_path, "/dev");
+        assert_eq!(dev.total_count, 3);
+        let status = &dev.children[0].children[0];
+        assert_eq!(status.full_path, "/dev/2/status");
+        assert_eq!(status.total_count, 3);
+
+        // 前缀过滤按绝对路径命中：/dev 命中 /dev/2/status
+        assert!(topic_matches_prefix("/dev/2/status", "/dev"));
+        assert!(TopicFilter::Prefix("/dev".into()).has_match(&stats(&[("/dev/2/status", 3)])));
+        // 平面统计里的原始 topic 直接命中该节点
+        assert!(TopicFilter::Exact("/dev/2/status".into()).has_match(&stats(&[(
+            "/dev/2/status",
+            3
+        )])));
     }
 }

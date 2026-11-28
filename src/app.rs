@@ -42,7 +42,7 @@ use gpui_kit::component::notification::Notification;
 
 use crate::ui::connection_tab::{
     ConnectionTabState, MqttSubscriptionState, ROW_RECENT_CAP, ROW_RECENT_WINDOW,
-    SEARCH_RECALC_MIN_INTERVAL, STATUS_HINT_TTL,
+    SEARCH_RECALC_MIN_INTERVAL, STATUS_HINT_TTL, TopicFilter,
 };
 use crate::ui::dialog::{
     DecoderSelectionDialogState, ImportFileDialogState, MqttSubscriptionDialogState,
@@ -881,7 +881,11 @@ impl NetAssistantApp {
                     // 搜索匹配重算挂在同一节拍上并做下限流：消息洪泛时只置 search_dirty，
                     // 由这里最多 4 次/秒地重算，避免每拍做一次 O(N) 全量扫描。
                     let searches_changed = app.throttled_recalc_searches();
-                    if !has_events && (counters_changed || searches_changed || hints_expired) {
+                    // 主题统计同拍限流重算（仅 MQTT 客户端；内部按 250ms 节流）
+                    let topics_changed = app.throttled_recalc_topic_stats();
+                    if !has_events
+                        && (counters_changed || searches_changed || topics_changed || hints_expired)
+                    {
                         cx.notify();
                     }
                 });
@@ -2538,19 +2542,11 @@ impl NetAssistantApp {
         }
 
         let needle = tab_state.search_query.to_lowercase();
-        // 可见性过滤与渲染处保持同一口径：未选中客户端时全部可见
-        let selected_source = tab_state
-            .selected_client
-            .as_ref()
-            .map(|addr| addr.to_string());
+        // 可见性过滤与渲染处保持同一口径（客户端过滤 + topic 过滤）
         let mut ids: Vec<u64> = Vec::new();
         for message in tab_state.message_list.messages.iter() {
-            if let (Some(selected), Some(source)) =
-                (selected_source.as_ref(), message.source.as_ref())
-            {
-                if source != selected {
-                    continue;
-                }
+            if !tab_state.message_visible(message) {
+                continue;
             }
             if message
                 .get_content_by_type()
@@ -2585,6 +2581,65 @@ impl NetAssistantApp {
             .collect();
         for tab_id in &due {
             self.recalc_search_matches(tab_id);
+        }
+        !due.is_empty()
+    }
+
+    /// 重算某个标签页的主题统计（仅 MQTT 客户端）。
+    ///
+    /// 统计范围基于「客户端过滤」而非当前可见集合：已选中某 topic 时仍要能看到
+    /// 其它 topic（否则列表坍缩成单项，无法切换）。选中 topic 因消息淘汰而消失时
+    /// 自动清空过滤并置 `search_dirty`，保证计数与可见内容重新对齐。
+    fn recalc_topic_stats(&mut self, tab_id: &str) {
+        let Some(tab_state) = self.connection_tabs.get_mut(tab_id) else {
+            return;
+        };
+        tab_state.topics_dirty = false;
+        tab_state.topics_last_recalc = Instant::now();
+
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for message in tab_state.message_list.messages.iter() {
+            if !tab_state.client_visible(message) {
+                continue;
+            }
+            if let Some(topic) = message.topic.as_deref() {
+                *counts.entry(topic).or_insert(0) += 1;
+            }
+        }
+        let mut sorted: Vec<(String, usize)> = counts
+            .into_iter()
+            .map(|(topic, count)| (topic.to_string(), count))
+            .collect();
+        // 条数降序，条数相同按 topic 升序
+        sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+        // 选中的精确 topic 或前缀下已无消息时自动取消过滤（前缀按段边界匹配）
+        if !tab_state.topic_filter.has_match(&sorted) {
+            tab_state.topic_filter = TopicFilter::None;
+            tab_state.search_dirty = true;
+        }
+
+        tab_state.topic_stats = sorted;
+        // 树重建与可见行 splice 都收敛在此处（事件泵 250ms 节流），render 不扫描消息
+        tab_state.rebuild_topic_tree();
+    }
+
+    /// 事件泵节拍上的主题统计限流重算：只处理「MQTT 客户端 + 已置脏」的标签页。
+    fn throttled_recalc_topic_stats(&mut self) -> bool {
+        let now = Instant::now();
+        let due: Vec<String> = self
+            .connection_tabs
+            .iter()
+            .filter(|(_, tab)| {
+                tab.topics_dirty
+                    && tab.connection_config.is_client()
+                    && tab.connection_config.protocol() == ConnectionType::Mqtt
+                    && now.duration_since(tab.topics_last_recalc) >= SEARCH_RECALC_MIN_INTERVAL
+            })
+            .map(|(tab_id, _)| tab_id.clone())
+            .collect();
+        for tab_id in &due {
+            self.recalc_topic_stats(tab_id);
         }
         !due.is_empty()
     }
