@@ -43,7 +43,7 @@ head:
                 "name": "NetAssistant 能替代 MQTTX 吗？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "在轻量调试场景可以替代：日常订阅、发布、TLS 联调，以及低内存环境、Windows 现场或需要和 TCP/UDP 一起调试时都很合适；如果你需要 MQTT over WebSocket、脚本自动化、数据可视化或更完整的 5.0 特性，MQTTX 仍是更合适的选择。"
+                  "text": "在轻量调试场景可以替代：日常订阅、发布、TLS 联调，以及低内存环境、Windows 现场或需要和 TCP/UDP 一起调试时都很合适；如果你需要 MQTT over WebSocket、脚本自动化、数值曲线或更完整的 5.0 特性，MQTTX 仍是更合适的选择。"
                 }
               },
               {
@@ -64,7 +64,7 @@ head:
 
 如果你只是偶尔连一下 Broker，验证设备有没有发消息、topic 对不对、QoS 有没有生效，专门装一个 Electron 客户端并不划算。NetAssistant 内置 **MQTT 客户端**（MQTT 3.1.1 / 5.0），和 TCP/UDP 调试在同一个应用里，Rust 原生构建，内存约 20MB。
 
-**定位**：MQTTX 等专用客户端的轻量场景替代——日常订阅、发布、TLS 联调足够用，低内存环境、Windows 现场、需要和 TCP/UDP 混合调试时更顺手。它不追求功能全集替代：MQTT over WebSocket、脚本自动化与数据可视化暂不支持，MQTT 5.0 只覆盖基础特性，这些场景仍建议用 MQTTX。
+**定位**：MQTTX 等专用客户端的轻量场景替代——日常订阅、发布、TLS 联调足够用，低内存环境、Windows 现场、需要和 TCP/UDP 混合调试时更顺手。它不追求功能全集替代：MQTT over WebSocket、脚本自动化与数值曲线暂不支持，MQTT 5.0 只覆盖基础特性，这些场景仍建议用 MQTTX。
 
 > [下载 NetAssistant](/zh/download) · [和 MQTTX 的详细对比](/zh/comparison-mqttx) · [全部功能](/zh/features)
 
@@ -118,9 +118,15 @@ head:
 
 ![MQTT 客户端界面](../../assets/screenshots/zh/screenshot_mqtt_client.png)
 
+### 主题树与过滤
+
+MQTT 侧栏可在「订阅」与「主题」两个视图间切换，标题旁显示各自条数。「主题」视图把当前会话消息记录里出现过的 topic 按 `/` 层级分组，并显示每个节点下的消息条数。主题数不超过 20 个时默认全部展开；超出时只展开根节点，点箭头逐层展开。
+
+点击叶子节点按精确 topic 过滤消息区，点击分支节点按该前缀过滤（过滤栏显示为 `path/#`）；再次点击同一节点或点右上角「全部主题」即可取消。选中的主题因消息条数上限被淘汰后，过滤会自动清除。主题树统计的是当前会话收发的 topic，不是对 Broker retained 主题的全量扫描。
+
 ### 消息展示与管理
 
-每条消息显示 topic 标签，retain 消息带标记；双击 topic 标签可复制原始 topic。消息记录、搜索、导出、JSON 格式化和回复规则等既有能力全部复用。
+每条消息显示 topic 标签，retain 消息带标记；双击 topic 标签可复制原始 topic。搜索命中的文本会在气泡内高亮，同时保留当前命中行高亮。消息记录、搜索、导出、JSON 格式化和回复规则等既有能力全部复用。
 
 ### 自动回复与周期发送
 
@@ -161,7 +167,7 @@ head:
 
 ### 能替代 MQTTX 吗？
 
-基础订阅、发布与轻量调试可以覆盖；需要 MQTT over WebSocket、脚本自动化、数据可视化或更完整的 5.0 特性时，MQTTX 更合适。
+基础订阅、发布与轻量调试可以覆盖；需要 MQTT over WebSocket、脚本自动化、数值曲线或更完整的 5.0 特性时，MQTTX 更合适。
 
 ### 支持 QoS 2 和 retain 吗？
 

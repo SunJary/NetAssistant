@@ -33,10 +33,10 @@
 ## 核心功能
 
 - **TCP/UDP 调试**：客户端与服务端、IPv4/IPv6、多标签、UDP 广播与多设备回复、本地地址绑定。
-- **报文处理**：文本 ⇄ Hex、原始/行/长度前缀/JSON 四种解码器、JSON 美化、搜索、收藏、TXT/JSON/CSV 导出、实时日志。
+- **报文处理**：文本 ⇄ Hex、原始/行/长度前缀/JSON 四种解码器、JSON 美化、搜索（气泡内命中高亮）、收藏、TXT/JSON/CSV 导出、实时日志。
 - **自动化**：周期发送、逐行发送、定时任务、条件回复规则，以及 `${seq}`、`${timestamp}`、`${uuid}` 等变量模板。
 - **压力测试**：TCP/UDP Ping-Pong 与吞吐模式、短/长连接、QPS、p50/p95/p99、失败分类、CSV 报告。
-- **MQTT 客户端**：3.1.1/5.0、QoS 0/1/2、TLS 与双向认证、遗嘱消息、订阅恢复、断线自动重连。
+- **MQTT 客户端**：3.1.1/5.0、QoS 0/1/2、TLS 与双向认证、遗嘱消息、订阅恢复、断线自动重连，以及按精确 topic 或前缀过滤消息区的会话主题树。
 - **内置工具箱**：转换、校验（XOR/Sum8/LRC/CRC16/CRC32）、哈希、时间戳、JSON、Base64/URL 编解码、随机生成（UUID / Hex / 自定义字符集 / SM2、SM4 密钥）。
 
 完整说明见 [功能特性](https://netassistant.trydo.top/zh/features)。
@@ -120,7 +120,7 @@ A：不支持。NetAssistant 只做网络调试（TCP/UDP/MQTT），串口调试
 A：Windows 10 1709+、macOS 10.15+、Linux（需要 GTK3，如 Ubuntu 22.04+）。
 
 **Q：MQTT 支持到什么程度？**  
-A：支持 3.1.1/5.0、QoS 0/1/2、TLS 与双向认证、遗嘱、订阅管理与自动重连；不支持 MQTT over WebSocket、共享订阅、用户属性与 MQTT 压测。
+A：支持 3.1.1/5.0、QoS 0/1/2、TLS 与双向认证、遗嘱、按精确 topic 或前缀过滤报文的会话主题树、订阅管理与自动重连；不支持 MQTT over WebSocket、共享订阅、用户属性与 MQTT 压测。
 
 **Q：TCP 粘包怎么处理？**  
 A：内置原始数据、行分隔、长度前缀、JSON 四种解码器；原理与选型见 [TCP 粘包与拆包](https://netassistant.trydo.top/zh/tcp-sticky-packet)。
@@ -144,6 +144,7 @@ A：`Ctrl+Enter` 发送、`Ctrl+F` 搜索、`Ctrl+N` 新建连接、`Ctrl+W` 关
 - TCP/UDP 客户端与服务端，IPv4/IPv6 双栈，本地地址与端口绑定
 - MQTT 3.1.1/5.0：QoS 0/1/2、Clean Session、KeepAlive、遗嘱消息、会话过期、原因码
 - MQTT TLS：系统根证书 / 自定义 CA / 跳过校验，支持客户端证书与私钥双向认证
+- MQTT 主题树：把当前会话出现过的 topic 按 `/` 层级分组并显示消息条数；点击叶子按精确 topic 过滤，点击分支按前缀过滤，右上角「全部主题」一键恢复
 - 多标签页、连接重命名、复制连接（MQTT 自动生成新 Client ID）
 
 **报文与消息**
@@ -152,7 +153,7 @@ A：`Ctrl+Enter` 发送、`Ctrl+F` 搜索、`Ctrl+N` 新建连接、`Ctrl+W` 关
 - HEX 编辑器支持十六进制与文本双视图
 - 原始、行分隔、长度前缀、JSON 四种 TCP 解码器
 - 发送与接收均支持 JSON 美化/压缩
-- 消息搜索、收藏与备注、双击复制源地址或 topic
+- 消息搜索（气泡内命中高亮）、收藏与备注、双击复制源地址或 topic
 - 导出 TXT/JSON/CSV；实时日志写入文件，支持自定义路径
 - 消息条数上限（默认 10000，`0` 不限制），控制长时间调试的内存占用
 - 文件数据源：UTF-8 / GBK / ANSI，上限 1 MiB

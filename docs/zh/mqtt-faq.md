@@ -14,7 +14,7 @@ head:
             "name": "MQTT 客户端哪个好？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "需要 WebSocket、脚本与完整 5.0 选 MQTTX；需要 topic 树浏览与 retained 清理选 MQTT Explorer；已购商业授权选 MQTT.fx；需要免费、轻量并把 TCP/UDP 与 MQTT 放在一起调试，选 NetAssistant。"
+              "text": "需要 WebSocket、脚本与完整 5.0 选 MQTTX；需要 Broker 全量 topic 树、retained 值与清理选 MQTT Explorer；已购商业授权选 MQTT.fx；需要免费、轻量并把 TCP/UDP 与 MQTT 放在一起调试，选 NetAssistant。"
             }
           },
           {
@@ -108,11 +108,11 @@ MQTT 客户端是连接 Broker、订阅 topic、发布和查看报文的工具�
 | 需求 | 推荐 |
 | ---- | ---- |
 | WebSocket、脚本、完整 5.0 | MQTTX |
-| topic 树浏览、retained 清理、数值曲线 | MQTT Explorer |
+| Broker 全量 topic 树、retained 清理、数值曲线 | MQTT Explorer |
 | 已购商业授权、完整 5.0 工具链 | MQTT.fx |
-| 免费开源、轻量、TCP/UDP 与 MQTT 一体 | NetAssistant |
+| 免费开源、轻量、报文流 + 会话主题树、TCP/UDP 与 MQTT 一体 | NetAssistant |
 
-没有一款工具覆盖所有场景。日常只收发报文，轻量客户端更省资源；需要浏览整个 Broker 结构时，topic 树更直观。
+没有一款工具覆盖所有场景。日常只收发报文，轻量客户端更省资源；NetAssistant 的「主题」视图可按精确 topic 或前缀过滤报文流，但要摸清 Broker 的 retained 结构，MQTT Explorer 仍然更直接。
 
 ### NetAssistant 免费吗？
 

@@ -14,7 +14,7 @@ head:
             "name": "Which MQTT client is best?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Choose MQTTX when you need WebSocket, scripting and full 5.0 features; MQTT Explorer when you need topic tree browsing and retained message cleanup; MQTT.fx when you already hold a commercial license; NetAssistant when you want a free, lightweight client that keeps TCP/UDP and MQTT debugging in one app."
+              "text": "Choose MQTTX when you need WebSocket, scripting and full 5.0 features; MQTT Explorer when you need a broker-wide topic tree with retained values and cleanup; MQTT.fx when you already hold a commercial license; NetAssistant when you want a free, lightweight client that keeps TCP/UDP and MQTT debugging in one app."
             }
           },
           {
@@ -108,11 +108,11 @@ An MQTT client is a tool that connects to a broker, subscribes to topics, publis
 | Requirement | Recommendation |
 | ---- | ---- |
 | WebSocket, scripting, full 5.0 | MQTTX |
-| Topic tree browsing, retained cleanup, numeric charts | MQTT Explorer |
+| Broker-wide topic tree, retained cleanup, numeric charts | MQTT Explorer |
 | A commercial license already purchased, full 5.0 toolchain | MQTT.fx |
-| Free and open source, lightweight, TCP/UDP and MQTT in one app | NetAssistant |
+| Free and open source, lightweight, message stream + session topic tree, TCP/UDP and MQTT in one app | NetAssistant |
 
-No single tool covers every scenario. For everyday publish and subscribe, a lightweight client saves resources; when you need to browse the whole broker structure, a topic tree is more direct.
+No single tool covers every scenario. For everyday publish and subscribe, a lightweight client saves resources; NetAssistant's Topics view filters the stream by exact topic or prefix, while mapping a broker's retained structure is still more direct in MQTT Explorer.
 
 ### Is NetAssistant free?
 

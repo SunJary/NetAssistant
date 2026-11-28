@@ -47,7 +47,7 @@ description: "为 NetAssistant 官网（docs/ + VitePress）撰写与优化 SEO 
 相关页面至少出现一次以下边界，不虚构；**这些边界同样会随版本变化，写前先用 `docs/features.md` 与最新 changelog 复核，已不成立的条目直接删掉，不要保留旧结论**：
 
 - 不做串口、Unix Domain Socket、HTTP/WebSocket 客户端
-- MQTT over WebSocket 不支持；无脚本引擎；无 topic 树与数据可视化
+- MQTT over WebSocket 不支持；无脚本引擎；主题树只统计当前会话出现过的 topic（不是 Broker 全量 retained 扫描），无数值曲线与 retained 批量清理
 - MQTT 5.0 仅覆盖 Clean Start / 会话过期 / 接收最大值 / 原因码等基础特性，无用户属性、Will Delay、共享订阅、订阅标识符
 - MQTT 不支持压测、逐行发送与定时任务（这些仅 TCP/UDP 提供）
 - UDP 支持广播发送与多设备回复；**组播接收未实现**，不要写成「支持组播调试」
@@ -96,7 +96,7 @@ description: "为 NetAssistant 官网（docs/ + VitePress）撰写与优化 SEO 
 | `/mqtt-testing` | mqtt 测试工具 | QoS、retain、遗嘱、通配符 |
 | `/mqtt-faq` | mqtt 工具 常见问题 | 端口、Client ID、版本选择 |
 | `/comparison-mqttx` | mqttx 替代 | 轻量替代边界 |
-| `/compare/mqtt-explorer` | mqtt explorer 替代 | topic 树 vs 报文流 |
+| `/compare/mqtt-explorer` | mqtt explorer 替代 | 会话主题树 vs Broker 全量主题树 |
 | `/compare/mqtt-fx` | mqtt.fx 替代 | 商业授权 vs 免费开源 |
 | `/mqtt-client-windows`、`/mqtt-client-mac`、`/mqtt-client-linux` | mqtt 客户端 + 平台 | 三个独立页面，安装为主，能力复用 `/mqtt-client` |
 

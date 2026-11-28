@@ -116,7 +116,7 @@ Subscribe before publishing so the message shows up in your own message view. Th
 
 ## Step 5: Verify and save
 
-The message view labels every entry with its topic and marks retained messages; double-click a topic label to copy the raw topic. Connection configs are saved automatically and are ready on the next launch.
+The message view labels every entry with its topic and marks retained messages; double-click a topic label to copy the raw topic. Switch the sidebar to **Topics** to see the topics seen in this session, then click a leaf to filter the stream by that exact topic or a branch to filter by prefix; **All topics** clears it. Search hits are also highlighted inside each bubble. Connection configs are saved automatically and are ready on the next launch.
 
 When publishing fails, the top-right notification names the target topic and reason (MQTT 5 distinguishes cases such as not authorized); identical notifications are shown once per 3 seconds while the log still records every entry.
 

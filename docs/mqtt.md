@@ -34,7 +34,7 @@ This page ties the MQTT content together by task. If you are new, start with Qui
 - Transport: direct TCP; TLS supports system roots, a custom CA, skipped verification and mutual TLS
 - Send and receive: QoS 0/1/2, retain, last-will messages, wildcard subscriptions, per-subscription switches
 - 5.0: Clean Start, session expiry, receive maximum, connect/subscribe/publish reason codes
-- Debugging: message search, favorites, TXT / JSON / CSV export, auto-reply, periodic send
+- Debugging: message search, a session topic tree that filters by exact topic or prefix, favorites, TXT / JSON / CSV export, auto-reply, periodic send
 - Boundaries: no MQTT over WebSocket, no scripting, no shared subscriptions, no MQTT stress testing
 
 For the full settings, see [MQTT client](/mqtt-client).
@@ -51,7 +51,7 @@ For the full settings, see [MQTT client](/mqtt-client).
 
 - [MQTT client comparison overview](/compare/): MQTTX vs MQTT Explorer vs MQTT.fx and NetAssistant, and where each one fits
 - [MQTTX comparison](/comparison-mqttx): the differences in WebSocket, scripting and full 5.0
-- [MQTT Explorer comparison](/compare/mqtt-explorer): topic tree or message stream
+- [MQTT Explorer comparison](/compare/mqtt-explorer): session topic tree or broker-wide topic tree
 - [MQTT.fx comparison](/compare/mqtt-fx): commercial licensing or free and open source
 
 ## Suggested reading order

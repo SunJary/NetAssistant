@@ -1,6 +1,6 @@
 ---
 title: MQTT Explorer Alternative - Topic Tree vs Message Stream
-description: An MQTT Explorer alternative with a time-ordered message stream, search, export and ~20MB memory, while MQTT Explorer keeps the MQTT topic tree and charts.
+description: An MQTT Explorer alternative with a time-ordered message stream, a session topic tree, search, export and ~20MB memory, while MQTT Explorer keeps the broker-wide topic tree, retained values and charts.
 head:
   - - script
     - type: application/ld+json
@@ -14,7 +14,7 @@ head:
             "name": "Can NetAssistant replace MQTT Explorer?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "It can for message send/receive, subscription troubleshooting, search/export and mixed TCP/UDP debugging; if you mainly rely on topic tree browsing, numeric charts and bulk retained cleanup, MQTT Explorer remains the better fit."
+              "text": "It can for message send/receive, subscription troubleshooting, search/export and mixed TCP/UDP debugging; if you mainly rely on a broker-wide topic tree with retained values, numeric charts and bulk retained cleanup, MQTT Explorer remains the better fit."
             }
           },
           {
@@ -22,7 +22,7 @@ head:
             "name": "Does NetAssistant have a topic tree view?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "No. It shows messages as a time-ordered stream, each with a topic tag, and supports search, filtering and export. Use MQTT Explorer when you need to browse a whole broker's topics by hierarchy."
+              "text": "Yes. The MQTT sidebar has a Topics view built from the topics seen in the current session, with message counts; click a leaf to filter by exact topic or a branch to filter by prefix. It does not scan retained values across the whole broker the way MQTT Explorer does."
             }
           },
           {
@@ -55,7 +55,7 @@ head:
 
 # MQTT Explorer Alternative: Topic Tree vs Message Stream
 
-MQTT Explorer draws the topics on a broker as a tree, which is great for browsing a whole namespace top-down; NetAssistant lays messages out as a time-ordered stream, which is great for watching a few topics for send/receive issues. Both are free, open-source clients; the difference is not "which one is stronger" but whether you are **browsing** or **debugging** right now.
+MQTT Explorer draws every topic on a broker as a tree with retained values, which is great for browsing a whole namespace top-down; NetAssistant keeps the message stream as the main view and adds a topic tree built from the current session, which is great for jumping between the topics you are actually debugging. Both are free, open-source clients; the difference is not "which one is stronger" but whether you are **browsing a broker's retained structure** or **narrowing down live traffic**.
 
 ## What MQTT Explorer does well
 
@@ -64,10 +64,11 @@ MQTT Explorer draws the topics on a broker as a tree, which is great for browsin
 - **Values and comparison**: plot numeric topics as charts and see how the current message differs from the previous one
 - **Home Assistant / IoT browsing**: commonly used in the community to inspect topic structure
 
-If your task is "see what is happening on this broker", the topic tree is indeed more intuitive than a message stream.
+If your task is "map everything on this broker before touching any traffic", MQTT Explorer's broker-wide tree is still more direct.
 
 ## How NetAssistant differs
 
+- **Session topic tree + filtering**: the Topics view groups the topics seen in this session by hierarchy and message count; click a leaf for an exact-topic filter, a branch for a prefix filter, and reset with "All topics"
 - **Message stream + topic tags**: every message carries its topic, and double-clicking copies the raw topic, handy for watching filters such as `device/+/status`
 - **Search and export**: messages can be searched and starred, and exported to TXT / JSON / CSV, so field data can go back for analysis
 - **TCP/UDP and MQTT in one app**: no switching tools when debugging gateways, private protocols and MQTT together
@@ -75,14 +76,14 @@ If your task is "see what is happening on this broker", the topic tree is indeed
 - **Finer TLS control**: system roots / custom CA / skip verification, with a client certificate and private key for mutual TLS
 - **MQTT 5.0 basics**: session expiry, receive maximum, and connect/subscribe/publish reason codes
 
-It has no topic tree, no numeric charts, and no bulk retained deletion by tree.
+Its topic tree only covers topics seen in the current session (no retained values from across the broker), and it has no numeric charts or bulk retained deletion by tree.
 
 ## Comparison table
 
 | Dimension | NetAssistant | MQTT Explorer |
 | ---- | ---- | ---- |
-| Main view | Time-ordered message stream + topic tags | Hierarchical topic tree |
-| Best for | Watching topics, troubleshooting, exporting data | Browsing broker structure, cleaning retained messages, numeric charts |
+| Main view | Time-ordered message stream + session topic tree | Broker-wide topic tree with retained values |
+| Best for | Watching live topics, filtering, troubleshooting, exporting data | Mapping broker structure, cleaning retained messages, numeric charts |
 | Protocol scope | TCP/UDP client and server + MQTT 3.1.1 / 5.0 | MQTT |
 | Multiple connections | Parallel tab management | Multiple connection profiles (per official docs) |
 | TLS | Three verification modes + mutual TLS | TLS supported |
@@ -92,7 +93,7 @@ It has no topic tree, no numeric charts, and no bulk retained deletion by tree.
 
 ## When to stay with MQTT Explorer
 
-- Taking over an unfamiliar broker and needing to map the topic structure first
+- Taking over an unfamiliar broker and needing to map its topic structure and retained values before any live traffic
 - Bulk-cleaning retained messages and removing abandoned topics
 - Plotting numeric topics as charts to watch trends
 - The team has already built inspection habits around the topic tree
@@ -111,17 +112,17 @@ It has no topic tree, no numeric charts, and no bulk retained deletion by tree.
 2. Choose the TLS verification mode based on the certificate source; if you used MQTTS before, change the port to 8883
 3. Subscribe to the same wildcards you watched in MQTT Explorer, such as `home/#` or `device/+/status`
 4. Reproduce the issue in the publish area, search keywords in the message view, and export JSON when needed
-5. Switch back to MQTT Explorer when you need to browse structure; both can connect to the same broker, but the client IDs must differ
+5. Use the Topics view to narrow the stream while debugging; switch back to MQTT Explorer when you need the broker-wide retained structure. Both can connect to the same broker, but the client IDs must differ
 
 ## FAQ
 
 ### Can NetAssistant replace MQTT Explorer?
 
-It can for message send/receive, subscription troubleshooting, search/export and mixed TCP/UDP debugging; when you depend on the topic tree, numeric charts and bulk retained cleanup, stay with MQTT Explorer.
+It can for message send/receive, subscription troubleshooting, search/export and mixed TCP/UDP debugging; when you depend on a broker-wide topic tree, numeric charts and bulk retained cleanup, stay with MQTT Explorer.
 
 ### Does NetAssistant have a topic tree view?
 
-No. It shows a time-ordered message stream, each message with a topic tag, with search and export.
+Yes. The MQTT sidebar has a Topics view built from the topics seen in the current session, with message counts; clicking a leaf filters by exact topic and clicking a branch filters by prefix. It does not scan retained values across the whole broker.
 
 ### How do I delete retained messages?
 

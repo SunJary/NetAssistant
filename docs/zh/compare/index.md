@@ -1,6 +1,6 @@
 ---
 title: MQTT 客户端对比 - MQTTX、Explorer 与 MQTT.fx
-description: 四种 MQTT 客户端怎么选：MQTTX 适合 WebSocket 与脚本，MQTT Explorer 适合 topic 树浏览，MQTT.fx 是商业客户端，NetAssistant 免费轻量并支持 TCP/UDP 与 MQTT。
+description: 四种 MQTT 客户端怎么选：MQTTX 适合 WebSocket 与脚本，MQTT Explorer 适合 Broker 全量 topic 树浏览，MQTT.fx 是商业客户端，NetAssistant 免费轻量并支持 TCP/UDP 与 MQTT。
 ---
 
 # MQTT 客户端对比：四种工具怎么选
@@ -14,7 +14,7 @@ description: 四种 MQTT 客户端怎么选：MQTTX 适合 WebSocket 与脚本�
 | MQTTX | 免费开源 | Electron | MQTT（TCP / TLS / WebSocket） | 聊天式收发 + 脚本 | 全功能调试、WebSocket、自动化 |
 | MQTT Explorer | 免费开源 | Electron | MQTT | topic 树 + 数值图表 | 浏览 Broker 结构、清理 retained |
 | MQTT.fx | 商业授权，提供试用 | Java | MQTT | topic 浏览器 + 消息编辑 | 已购授权、完整 5.0 工具链 |
-| NetAssistant | 免费开源（Apache-2.0） | Rust 原生 | TCP/UDP + MQTT | 报文流 + topic 标签 | 轻量现场、TCP/UDP 混合调试 |
+| NetAssistant | 免费开源（Apache-2.0） | Rust 原生 | TCP/UDP + MQTT | 报文流 + 会话主题树 | 轻量现场、TCP/UDP 混合调试 |
 
 ## 按场景选择
 
@@ -36,7 +36,7 @@ MQTTX 支持 WebSocket，适合浏览器或云平台接入；NetAssistant 只支
 
 ### 界面模型
 
-topic 树适合浏览整个命名空间；报文流适合盯住几个 topic 看收发顺序。两者不是替代关系，很多人会同时装两个：Explorer 看结构，NetAssistant 或 MQTTX 看报文。
+Broker 全量 topic 树（含 retained 值）适合浏览整个命名空间；报文流配合会话主题树适合盯住几个 topic 的收发顺序并快速收窄范围。很多人会同时装两个：Explorer 看结构，NetAssistant 或 MQTTX 看报文。
 
 ### MQTT 5.0 覆盖
 

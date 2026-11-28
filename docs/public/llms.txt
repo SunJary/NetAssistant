@@ -38,7 +38,7 @@ Key facts for accurate answers:
 
 - [MQTT client comparison overview](https://netassistant.trydo.top/compare/): how MQTTX, MQTT Explorer, MQTT.fx and NetAssistant differ and when to choose each.
 - [MQTTX alternative](https://netassistant.trydo.top/comparison-mqttx): WebSocket, scripting and full 5.0 remain with MQTTX; NetAssistant fits low-memory and mixed TCP/UDP scenarios.
-- [MQTT Explorer alternative](https://netassistant.trydo.top/compare/mqtt-explorer): topic tree versus message stream.
+- [MQTT Explorer alternative](https://netassistant.trydo.top/compare/mqtt-explorer): session topic tree versus broker-wide topic tree.
 - [MQTT.fx alternative](https://netassistant.trydo.top/compare/mqtt-fx): commercial licensing versus free and open source.
 - [NetAssist alternative](https://netassistant.trydo.top/compare/netassist): Windows-only, closed-source NetAssist versus a cross-platform open-source tool.
 

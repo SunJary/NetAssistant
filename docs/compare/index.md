@@ -1,6 +1,6 @@
 ---
 title: "MQTT Client Comparison: MQTTX, Explorer, MQTT.fx"
-description: "Compare four MQTT clients: MQTTX for WebSocket and scripting, MQTT Explorer for topic trees, commercial MQTT.fx and free lightweight NetAssistant with TCP/UDP."
+description: "Compare four MQTT clients: MQTTX for WebSocket and scripting, MQTT Explorer for broker-wide topic trees, commercial MQTT.fx and free lightweight NetAssistant with TCP/UDP."
 ---
 
 # MQTT Client Comparison: Choosing the Best MQTT Client
@@ -14,7 +14,7 @@ There is no single answer when choosing an MQTT client: the differences come dow
 | MQTTX | Free and open source | Electron | MQTT (TCP / TLS / WebSocket) | Chat-style send and receive + scripting | Full-feature debugging, WebSocket, automation |
 | MQTT Explorer | Free and open source | Electron | MQTT | Topic tree + numeric charts | Browsing broker structure, cleaning up retained messages |
 | MQTT.fx | Commercial, trial available | Java | MQTT | Topic browser + message editor | Existing licenses, full 5.0 tooling |
-| NetAssistant | Free and open source (Apache-2.0) | Rust native | TCP/UDP + MQTT | Message stream + topic tags | Lightweight field work, mixed TCP/UDP debugging |
+| NetAssistant | Free and open source (Apache-2.0) | Rust native | TCP/UDP + MQTT | Message stream + session topic tree | Lightweight field work, mixed TCP/UDP debugging |
 
 ## Choose by scenario
 
@@ -36,7 +36,7 @@ MQTTX supports WebSocket, which suits browser or cloud-platform access; NetAssis
 
 ### UI model
 
-A topic tree suits browsing a whole namespace; a message stream suits watching send and receive order on a few topics. The two are not substitutes — many people install both: Explorer to see structure, NetAssistant or MQTTX to see messages.
+A broker-wide topic tree suits browsing a whole namespace including retained values; a message stream plus a session topic tree suits watching send and receive order and filtering down to the topics being debugged. Many people install both: Explorer to map structure, NetAssistant or MQTTX to watch messages.
 
 ### MQTT 5.0 coverage
 

@@ -33,10 +33,10 @@ English | [中文](README-zh.md)
 ## Core Features
 
 - **TCP/UDP debugging**: client and server modes, IPv4/IPv6, multiple tabs, UDP broadcast with replies from multiple devices, local address binding.
-- **Message handling**: text ⇄ hex, raw/line/length-prefix/JSON decoders, JSON beautify, search, favorites, TXT/JSON/CSV export and real-time logging.
+- **Message handling**: text ⇄ hex, raw/line/length-prefix/JSON decoders, JSON beautify, search with in-bubble highlighting, favorites, TXT/JSON/CSV export and real-time logging.
 - **Automation**: periodic send, line-by-line send, timed tasks, conditional reply rules, and variables such as `${seq}`, `${timestamp}` and `${uuid}`.
 - **Stress testing**: TCP/UDP Ping-Pong and throughput modes, short/long connections, QPS, p50/p95/p99, failure breakdown and CSV reports.
-- **MQTT client**: 3.1.1/5.0, QoS 0/1/2, TLS and mutual TLS, last-will messages, subscription restore and automatic reconnect.
+- **MQTT client**: 3.1.1/5.0, QoS 0/1/2, TLS and mutual TLS, last-will messages, subscription restore, automatic reconnect, and a session topic tree that filters the message stream by exact topic or prefix.
 - **Built-in toolbox**: conversion, checksums (XOR/Sum8/LRC/CRC16/CRC32), hashes, timestamps, JSON, Base64/URL encoding and random generation (UUID / hex / custom charset / SM2, SM4 keys).
 
 See [Features](https://netassistant.trydo.top/features) for the full list.
@@ -120,7 +120,7 @@ A: No. NetAssistant focuses on network debugging (TCP/UDP/MQTT); use a serial te
 A: Windows 10 1709+, macOS 10.15+, and Linux with GTK3 (for example Ubuntu 22.04+).
 
 **Q: How complete is MQTT support?**  
-A: MQTT 3.1.1/5.0, QoS 0/1/2, TLS and mutual TLS, last-will messages, subscription management and automatic reconnect. MQTT over WebSocket, shared subscriptions, user properties and MQTT stress testing are not supported.
+A: MQTT 3.1.1/5.0, QoS 0/1/2, TLS and mutual TLS, last-will messages, a session topic tree that filters the stream by exact topic or prefix, subscription management and automatic reconnect. MQTT over WebSocket, shared subscriptions, user properties and MQTT stress testing are not supported.
 
 **Q: How do I handle TCP sticky packets?**  
 A: Choose raw, line, length-prefix or JSON decoders. See [TCP sticky packets](https://netassistant.trydo.top/tcp-sticky-packet) for how each works.
@@ -144,6 +144,7 @@ More questions: [FAQ](https://netassistant.trydo.top/faq).
 - TCP/UDP client and server, IPv4/IPv6 dual stack, local address and port binding
 - MQTT 3.1.1/5.0: QoS 0/1/2, Clean Session, KeepAlive, last-will messages, session expiry and reason codes
 - MQTT TLS: system roots / custom CA / verification skipped, optional client certificate and private key for mutual TLS
+- MQTT topic tree: topics seen in the current session grouped by `/` hierarchy with message counts; click a topic to filter by exact topic, click a branch to filter by prefix (or "All topics" to reset)
 - Multiple tabs, connection renaming, duplicate connection (MQTT gets a fresh Client ID)
 
 **Messages and payloads**
@@ -152,7 +153,7 @@ More questions: [FAQ](https://netassistant.trydo.top/faq).
 - HEX editor with dual hex/text views
 - Raw, line, length-prefix and JSON TCP decoders
 - JSON beautify/minify for both send and receive views
-- Message search, favorites with notes, double-click to copy source address or topic
+- Message search with in-bubble hit highlighting, favorites with notes, double-click to copy source address or topic
 - Export to TXT/JSON/CSV; real-time logging with a custom path
 - Message count cap (default 10000, `0` = unlimited) to bound memory during long sessions
 - File data source: UTF-8 / GBK / ANSI, up to 1 MiB

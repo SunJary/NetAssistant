@@ -34,7 +34,7 @@ description: NetAssistant MQTT 调试总览：从连接 Broker、订阅发布，
 - 传输：TCP 直连，TLS 支持系统根证书、自定义 CA、跳过校验与双向认证
 - 收发：QoS 0/1/2、retain、遗嘱、通配符订阅、订阅独立开关
 - 5.0：Clean Start、会话过期、接收最大值、连接/订阅/发布原因码
-- 调试：消息搜索、收藏、TXT / JSON / CSV 导出、自动回复、周期发送
+- 调试：消息搜索、按精确 topic 或前缀过滤的会话主题树、收藏、TXT / JSON / CSV 导出、自动回复、周期发送
 - 边界：不支持 MQTT over WebSocket、脚本、共享订阅与 MQTT 压测
 
 完整参数见 [MQTT 客户端](/zh/mqtt-client)。
@@ -51,7 +51,7 @@ description: NetAssistant MQTT 调试总览：从连接 Broker、订阅发布，
 
 - [MQTT 客户端对比总览](/zh/compare/)：MQTTX、MQTT Explorer、MQTT.fx 与 NetAssistant 的适用场景
 - [MQTTX 对比](/zh/comparison-mqttx)：WebSocket、脚本与完整 5.0 的差异
-- [MQTT Explorer 对比](/zh/compare/mqtt-explorer)：topic 树与报文流的选择
+- [MQTT Explorer 对比](/zh/compare/mqtt-explorer)：会话主题树与 Broker 全量主题树的选择
 - [MQTT.fx 对比](/zh/compare/mqtt-fx)：商业授权与免费开源的取舍
 
 ## 建议阅读顺序

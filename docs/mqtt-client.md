@@ -43,7 +43,7 @@ head:
                 "name": "Can NetAssistant replace MQTTX?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes for lightweight debugging: everyday subscribe, publish and TLS work, low-memory environments, Windows field machines, or debugging MQTT alongside TCP/UDP. For MQTT over WebSocket, scripting, data visualization or fuller 5.0 features, MQTTX remains the better fit."
+                  "text": "Yes for lightweight debugging: everyday subscribe, publish and TLS work, low-memory environments, Windows field machines, or debugging MQTT alongside TCP/UDP. For MQTT over WebSocket, scripting, value charts or fuller 5.0 features, MQTTX remains the better fit."
                 }
               },
               {
@@ -64,7 +64,7 @@ head:
 
 If you only need to connect to a broker occasionally to check whether a device is publishing, whether the topic is right or whether QoS is working, installing an Electron client is overkill. NetAssistant includes an **MQTT client** (MQTT 3.1.1 / 5.0) in the same app as its TCP/UDP tools, built with Rust and using about 20MB of memory.
 
-**Positioning**: a lightweight, scenario-based alternative to dedicated clients such as MQTTX — enough for everyday subscribing, publishing and TLS work, and handier in low-memory environments, on Windows field machines, or when MQTT has to be debugged alongside TCP/UDP. It does not aim to replace every MQTTX feature: MQTT over WebSocket, scripting and data visualization are not supported, and MQTT 5.0 covers the basics only, so MQTTX is still the better fit for those cases.
+**Positioning**: a lightweight, scenario-based alternative to dedicated clients such as MQTTX — enough for everyday subscribing, publishing and TLS work, and handier in low-memory environments, on Windows field machines, or when MQTT has to be debugged alongside TCP/UDP. It does not aim to replace every MQTTX feature: MQTT over WebSocket, scripting and value charts are not supported, and MQTT 5.0 covers the basics only, so MQTTX is still the better fit for those cases.
 
 > [Download NetAssistant](/download) · [Detailed MQTTX comparison](/comparison-mqttx) · [All features](/features)
 
@@ -118,9 +118,15 @@ Publish failures raise a top-right notification that names the target topic and 
 
 ![MQTT client interface](../assets/screenshots/en/screenshot_mqtt_client.png)
 
+### Topic tree and filtering
+
+The MQTT side panel switches between **Subscriptions** and **Topics**, with a count next to each. The Topics view groups topics seen in the current session's message log by `/` hierarchy and shows how many messages each node holds. With 20 or fewer topics the tree opens fully; beyond that only root nodes expand, and the arrow toggles one level at a time.
+
+Click a leaf to filter the message stream to that exact topic, or a branch to filter everything under that prefix (the filter bar shows it as `path/#`). Click the same node again, or **All topics**, to clear the filter. If the selected topic ages out of the message cap, the filter resets automatically. The tree reflects what the current session has received and published, not a full retained-topic scan of the broker.
+
 ### Message view and management
 
-Each message shows a topic tag, with a marker for retained messages. Double-click a topic tag to copy the raw topic. The existing message log, search, export, JSON formatting and reply rules all work in MQTT mode.
+Each message shows a topic tag, with a marker for retained messages. Double-click a topic tag to copy the raw topic. Search hits are highlighted inside each bubble in addition to the current row highlight. The existing message log, search, export, JSON formatting and reply rules all work in MQTT mode.
 
 ### Auto-reply and periodic send
 
@@ -161,7 +167,7 @@ TLS is supported; MQTT over WebSocket is not. Choose system roots, a custom CA o
 
 ### Can it replace MQTTX?
 
-It covers basic subscribe, publish and lightweight debugging. For MQTT over WebSocket, scripting, data visualization or fuller 5.0 features, MQTTX is better.
+It covers basic subscribe, publish and lightweight debugging. For MQTT over WebSocket, scripting, value charts or fuller 5.0 features, MQTTX is better.
 
 ### Does it support QoS 2 and retain?
 
